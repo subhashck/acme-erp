@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hospital Inventory & Pharmacy Management - Complete Guide</title>
+<style>
+    @page { margin: 2cm; }
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.7;
+        color: #333;
+        max-width: 210mm;
+        margin: 0 auto;
+        padding: 40px;
+        background: #fff;
+    }
+    h1 {
+        color: #1a5276;
+        font-size: 28px;
+        border-bottom: 3px solid #1a5276;
+        padding-bottom: 10px;
+        margin-top: 0;
+    }
+    h2 {
+        color: #2874a6;
+        font-size: 22px;
+        border-left: 5px solid #2874a6;
+        padding-left: 15px;
+        margin-top: 40px;
+    }
+    h3 {
+        color: #2e86c1;
+        font-size: 18px;
+        margin-top: 30px;
+    }
+    h4 {
+        color: #5499c7;
+        font-size: 15px;
+        margin-top: 20px;
+    }
+    .subtitle {
+        font-size: 16px;
+        color: #666;
+        font-style: italic;
+        margin-bottom: 30px;
+    }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 13px;
+    }
+    th {
+        background: #1a5276;
+        color: white;
+        padding: 10px;
+        text-align: left;
+        font-weight: 600;
+    }
+    td {
+        padding: 10px;
+        border-bottom: 1px solid #ddd;
+    }
+    tr:nth-child(even) {
+        background: #f8f9fa;
+    }
+    .code-block {
+        background: #f4f6f7;
+        border-left: 4px solid #1a5276;
+        padding: 15px 20px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        margin: 15px 0;
+        overflow-x: auto;
+        white-space: pre-wrap;
+    }
+    .highlight-box {
+        background: #eaf2f8;
+        border: 1px solid #aed6f1;
+        border-radius: 6px;
+        padding: 15px 20px;
+        margin: 20px 0;
+    }
+    .warning-box {
+        background: #fdf2e9;
+        border: 1px solid #f5cba7;
+        border-radius: 6px;
+        padding: 15px 20px;
+        margin: 20px 0;
+    }
+    .success-box {
+        background: #e9f7ef;
+        border: 1px solid #a9dfbf;
+        border-radius: 6px;
+        padding: 15px 20px;
+        margin: 20px 0;
+    }
+    .arrow-flow {
+        text-align: center;
+        font-size: 14px;
+        color: #1a5276;
+        font-weight: 600;
+        margin: 10px 0;
+    }
+    .page-break {
+        page-break-before: always;
+    }
+    ul, ol {
+        margin: 10px 0;
+        padding-left: 25px;
+    }
+    li {
+        margin: 5px 0;
+    }
+    .toc {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 30px;
+    }
+    .toc h3 {
+        margin-top: 0;
+        color: #1a5276;
+    }
+    .toc ul {
+        list-style: none;
+        padding-left: 0;
+    }
+    .toc li {
+        padding: 5px 0;
+        border-bottom: 1px dotted #ccc;
+    }
+    .toc a {
+        color: #2874a6;
+        text-decoration: none;
+    }
+    .footer {
+        margin-top: 60px;
+        padding-top: 20px;
+        border-top: 2px solid #1a5276;
+        font-size: 12px;
+        color: #666;
+        text-align: center;
+    }
+</style>
+<base target="_blank">
+</head>
+<body>
+
+<h1>Hospital Inventory & Pharmacy Management</h1>
+<p class="subtitle">Complete Operational Guide for Mid-Sized Indian Hospitals — From Procurement to Patient Billing</p>
+
+<div class="toc">
+<h3>Table of Contents</h3>
+<ul>
+    <li><a href="#part1">Part 1: Overview — Inventory & Pharmacy Operations</a></li>
+    <li><a href="#part2">Part 2: Consumables in Hospital Software</a></li>
+    <li><a href="#appendix">Appendix: Summary Diagrams & Quick Reference</a></li>
+</ul>
+</div>
+
+<!-- ============================================================ -->
+<!-- PART 1: OVERVIEW -->
+<!-- ============================================================ -->
+
+<h2 id="part1">Part 1: Inventory & Pharmacy Operations — Complete Overview</h2>
+
+<h3>1. Purchase Orders (PO) & Procurement</h3>
+
+<h4>Initiation</h4>
+<ul>
+    <li><strong>Indent/Request:</strong> Departments (wards, OT, ICU) raise material indents when stock reaches reorder levels. The pharmacy/inventory department consolidates these.</li>
+    <li><strong>Rate Contracts:</strong> Many hospitals have annual rate contracts with vendors for commonly used items (especially generics and consumables), negotiated by the purchase committee.</li>
+    <li><strong>Tender Process:</strong> For high-value or bulk purchases, hospitals may float tenders. For mid-sized hospitals, this is often done quarterly or annually.</li>
+    <li><strong>Emergency Purchases:</strong> Local purchases are authorized for urgent needs, often with a spending limit (e.g., ₹10,000–₹50,000) requiring approval from the medical superintendent or administrator.</li>
+</ul>
+
+<h4>PO Creation</h4>
+<ul>
+    <li>POs are generated in the Hospital Information System (HIS) or ERP module.</li>
+    <li>Details include: item name, brand/generic name, quantity, rate, vendor, expected delivery date, terms (credit period, typically 30–60 days).</li>
+    <li><strong>Approval Workflow:</strong> Pharmacy head → Finance/Accounts → Hospital Administrator (depending on amount).</li>
+    <li><strong>GST Compliance:</strong> POs specify HSN codes and GST rates (5%, 12%, or 18% for medicines; 5% or 12% for medical devices).</li>
+</ul>
+
+<h3>2. Vendor Invoices & Goods Receipt</h3>
+
+<h4>Goods Receipt Note (GRN)</h4>
+<p>When stock arrives, the <strong>store/pharmacy officer</strong> verifies:</p>
+<ul>
+    <li>Physical quantity vs. PO quantity</li>
+    <li>Batch numbers, manufacturing dates (MFG), expiry dates</li>
+    <li>Cold chain integrity (for vaccines, biologics, insulin)</li>
+    <li>Packaging integrity and damage</li>
+</ul>
+
+<div class="warning-box">
+    <strong>Shortages/Damages:</strong> Recorded on the delivery challan; goods returned or credit notes requested.
+</div>
+
+<p><strong>GRN Entry:</strong> Entered in the system against the PO. This updates "Goods Received but Invoice Not Received" (GRIN) status.</p>
+
+<h4>Invoice Processing</h4>
+<ul>
+    <li>Vendor submits invoice (often after delivery or with the delivery).</li>
+    <li><strong>Three-way matching:</strong> PO → GRN → Invoice. The accounts department verifies:
+        <ul>
+            <li>Rates match the PO/contract</li>
+            <li>Quantities match GRN</li>
+            <li>GST details are correct</li>
+            <li>Valid e-way bill (if applicable)</li>
+        </ul>
+    </li>
+    <li><strong>Payment:</strong> After verification, processed as per credit terms. Many hospitals pay vendors on a 30–45 day cycle.</li>
+</ul>
+
+<h3>3. Stock Entry & Inventory Management</h3>
+
+<h4>Categorization & Storage</h4>
+<ul>
+    <li><strong>Drug Classification:</strong> Stored by category—antibiotics, cardiac, analgesics, surgical consumables, etc.</li>
+    <li><strong>Storage Conditions:</strong>
+        <ul>
+            <li>Room temperature (15–25°C)</li>
+            <li>Cold chain (2–8°C) for vaccines, insulin, certain biologics</li>
+            <li>Controlled substances (Schedule H, H1, X) in locked cabinets with restricted access</li>
+        </ul>
+    </li>
+    <li><strong>FEFO (First Expiry First Out):</strong> Strictly followed. New stock placed behind old stock.</li>
+</ul>
+
+<h4>Stock Entry in System</h4>
+<p>After GRN, stock is "accepted" into inventory:</p>
+<ul>
+    <li>Batch-wise entry (critical for traceability)</li>
+    <li>MFG date, expiry date, purchase rate, MRP</li>
+    <li>Location mapping (rack/bin number in the store)</li>
+    <li><strong>Opening Stock:</strong> Some items (OTC, consumables) may also be received as opening stock when a new pharmacy counter is set up.</li>
+</ul>
+
+<h4>Inventory Controls</h4>
+<table>
+    <tr>
+        <th>Control</th>
+        <th>Description</th>
+    </tr>
+    <tr>
+        <td><strong>Reorder Levels (ROL)</strong></td>
+        <td>System alerts when stock hits the minimum level (e.g., 15 days of consumption)</td>
+    </tr>
+    <tr>
+        <td><strong>ABC Analysis</strong></td>
+        <td><strong>A items:</strong> High-value, low-volume (strict control, frequent review)<br><strong>B items:</strong> Moderate value<br><strong>C items:</strong> Low-value, high-volume (OTC, consumables)</td>
+    </tr>
+    <tr>
+        <td><strong>Expiry Management</strong></td>
+        <td>Monthly expiry reports generated; near-expiry items (3–6 months) are flagged for return to vendor or discounted disposal</td>
+    </tr>
+</table>
+
+<h3>4. Pharmacy Sales — OTC (Outpatient / Walk-in)</h3>
+
+<h4>Process Flow</h4>
+<ol>
+    <li><strong>Prescription or Direct Request:</strong> Patient presents a prescription or asks for OTC items (e.g., paracetamol, antacids, bandages).</li>
+    <li><strong>Billing & Dispensing:</strong>
+        <ul>
+            <li>Pharmacist enters items in the POS/billing module.</li>
+            <li>System checks stock availability (batch-wise).</li>
+            <li>MRP is auto-populated; any discount (if hospital policy allows) is applied.</li>
+            <li>GST is calculated (usually included in MRP for medicines).</li>
+        </ul>
+    </li>
+    <li><strong>Payment:</strong> Cash, UPI, card, or wallet. Some hospitals allow credit for staff or corporate tie-ups.</li>
+    <li><strong>Dispensing:</strong>
+        <ul>
+            <li>Label printing: dosage instructions, patient name, expiry date.</li>
+            <li>FEFO compliance: oldest batch dispensed first.</li>
+            <li><strong>Counseling:</strong> Pharmacist explains dosage, side effects, food interactions (especially for antibiotics, diabetes meds).</li>
+        </ul>
+    </li>
+    <li><strong>Stock Deduction:</strong> Real-time reduction in inventory. Batch traceability maintained.</li>
+</ol>
+
+<div class="highlight-box">
+    <strong>Key Regulatory Points:</strong><br>
+    • <strong>OTC Scope:</strong> In India, Schedule H and H1 drugs require prescriptions. OTC sales are limited to non-scheduled items.<br>
+    • <strong>Narcotics/Controlled Drugs:</strong> Schedule X drugs require special registers, double-lock storage, and detailed dispensing logs (patient name, doctor, quantity, balance).
+</div>
+
+<h3>5. Pharmacy for In-Patients (IP Pharmacy / Ward Supply)</h3>
+
+<h4>Indent-Based System (Most Common)</h4>
+<ol>
+    <li><strong>Doctor's Order:</strong> Physician enters medication orders in the HIS (CPOE — Computerized Physician Order Entry).</li>
+    <li><strong>Pharmacy Requisition (Indent):</strong> The system or ward nurse generates an indent for the required medicines/consumables.</li>
+    <li><strong>Pharmacy Processing:</strong>
+        <ul>
+            <li>IP pharmacy receives the indent.</li>
+            <li>Picks items batch-wise from inventory.</li>
+            <li>Prepares doses (unit-dose packaging for some hospitals).</li>
+        </ul>
+    </li>
+    <li><strong>Dispatch to Ward:</strong> Delivered via pneumatic chutes, trolleys, or ward runners.</li>
+    <li><strong>Administration:</strong> Nurse administers and documents in the e-MAR (electronic Medication Administration Record).</li>
+    <li><strong>Billing:</strong> Automatically posted to the patient's bill in real-time or at discharge (depending on HIS configuration).</li>
+</ol>
+
+<h4>Floor Stock / Ward Stock Model</h4>
+<ul>
+    <li>High-use items (IV fluids, syringes, cotton, common antibiotics) are kept as <strong>floor stock</strong> in wards.</li>
+    <li>Nurses consume and document usage; pharmacy replenishes periodically (daily or based on PAR levels).</li>
+    <li><strong>Reconciliation:</strong> Periodic physical stock checks in wards vs. system consumption.</li>
+</ul>
+
+<h4>Discharge Medication (TTO — To Take Out)</h4>
+<ul>
+    <li>When a patient is discharged, the doctor prescribes take-home medication.</li>
+    <li>Pharmacy dispenses against the discharge summary; billed under the final IP bill or separately at the pharmacy counter.</li>
+    <li>Often includes 3–7 days of antibiotics, painkillers, or chronic disease medication.</li>
+</ul>
+
+<h3>6. Returns, Wastage & Disposal</h3>
+
+<table>
+    <tr>
+        <th>Type</th>
+        <th>Process</th>
+    </tr>
+    <tr>
+        <td><strong>Vendor Returns</strong></td>
+        <td>Near-expiry or excess stock returned to vendors as per agreement (usually before 3–6 months of expiry)</td>
+    </tr>
+    <tr>
+        <td><strong>Patient Returns</strong></td>
+        <td>Unopened, non-damaged medicines may be returned in some hospitals (policy-dependent; rare in India)</td>
+    </tr>
+    <tr>
+        <td><strong>Ward Returns</strong></td>
+        <td>Unused indents returned to pharmacy; stock re-entered if intact</td>
+    </tr>
+    <tr>
+        <td><strong>Wastage & Disposal</strong></td>
+        <td>Expired stock, broken vials, or contaminated items segregated as biomedical waste per BMW Rules 2016; pharmaceutical waste disposed via authorized agencies</td>
+    </tr>
+    <tr>
+        <td><strong>Write-off</strong></td>
+        <td>Approved by hospital administration; recorded in inventory system</td>
+    </tr>
+</table>
+
+<h3>7. Key Systems & Compliance</h3>
+
+<h4>Software Systems</h4>
+<ul>
+    <li><strong>HIS/ERP Modules:</strong> Common ones in India include Medanta, Fortis (in-house), Practo, eHospital (NIC), HIS by Tata Technologies, SoftClinic, MediSteer, or custom-built ERPs.</li>
+    <li><strong>Integration:</strong> Pharmacy module linked to billing, IP management, lab, and accounts.</li>
+</ul>
+
+<h4>Regulatory Compliance</h4>
+<table>
+    <tr>
+        <th>Regulation</th>
+        <th>Requirement</th>
+    </tr>
+    <tr>
+        <td><strong>Drugs & Cosmetics Act, 1940</strong></td>
+        <td>Licensing (retail drug license from State Drug Control Department)</td>
+    </tr>
+    <tr>
+        <td><strong>Schedule H/H1/X</strong></td>
+        <td>Strict documentation for prescription-only and narcotic drugs</td>
+    </tr>
+    <tr>
+        <td><strong>GST</strong></td>
+        <td>Monthly returns; input tax credit on purchases</td>
+    </tr>
+    <tr>
+        <td><strong>NABH Accreditation</strong></td>
+        <td>Traceability, FEFO, expiry management, patient counseling protocols</td>
+    </tr>
+    <tr>
+        <td><strong>Biomedical Waste Management Rules</strong></td>
+        <td>Proper segregation and disposal</td>
+    </tr>
+</table>
+
+<h3>8. Typical Pain Points in Mid-Sized Indian Hospitals</h3>
+
+<table>
+    <tr>
+        <th>Issue</th>
+        <th>Why It Happens</th>
+    </tr>
+    <tr>
+        <td>Stock-outs of critical drugs</td>
+        <td>Poor demand forecasting, delayed PO approvals</td>
+    </tr>
+    <tr>
+        <td>Expiry losses</td>
+        <td>Over-ordering, poor FEFO adherence, lack of batch tracking</td>
+    </tr>
+    <tr>
+        <td>Billing leakage</td>
+        <td>Manual IP indenting, ward floor stock not reconciled</td>
+    </tr>
+    <tr>
+        <td>Vendor payment delays</td>
+        <td>Three-way matching bottlenecks, disputed invoices</td>
+    </tr>
+    <tr>
+        <td>Narcotics tracking gaps</td>
+        <td>Manual registers, lack of real-time system integration</td>
+    </tr>
+    <tr>
+        <td>GST mismatches</td>
+        <td>Incorrect HSN codes, invoice-PO mismatches</td>
+    </tr>
+</table>
+
+<div class="page-break"></div>
+
+<!-- ============================================================ -->
+<!-- PART 2: CONSUMABLES -->
+<!-- ============================================================ -->
+
+<h2 id="part2">Part 2: Consumables in Hospital Software — Complete Treatment Guide</h2>
+
+<h3>1. What Counts as "Consumables" in a Hospital</h3>
+
+<table>
+    <tr>
+        <th>Category</th>
+        <th>Examples</th>
+        <th>Where Used</th>
+    </tr>
+    <tr>
+        <td><strong>Surgical consumables</strong></td>
+        <td>Sutures, gloves, drapes, catheters, syringes, needles</td>
+        <td>OT, procedure rooms, wards</td>
+    </tr>
+    <tr>
+        <td><strong>Medical consumables</strong></td>
+        <td>IV sets, cannulas, oxygen masks, nebulizer kits, Foley's</td>
+        <td>IP wards, ICU, emergency</td>
+    </tr>
+    <tr>
+        <td><strong>General consumables</strong></td>
+        <td>Cotton, gauze, bandages, surgical tape</td>
+        <td>All departments</td>
+    </tr>
+    <tr>
+        <td><strong>Diagnostic consumables</strong></td>
+        <td>Blood collection tubes, reagents, strips</td>
+        <td>Lab, radiology</td>
+    </tr>
+    <tr>
+        <td><strong>Patient amenities</strong></td>
+        <td>Toothbrush, soap, bed sheets (disposable)</td>
+        <td>IP billing (often package)</td>
+    </tr>
+</table>
+
+<h3>2. Master Data Setup in Software</h3>
+
+<h4>Item Master Classification</h4>
+<p>Most HIS/ERP systems classify consumables under <strong>non-drug inventory</strong> or <strong>surgical stores</strong>. Key fields:</p>
+
+<div class="code-block">Item Code: SUR-GLV-001
+Item Name: Surgical Gloves (Sterile, Size 7.5)
+Category: Surgical Consumables
+Sub-category: Hand Protection
+UOM: Pair (or Box of 50 pairs)
+Storage: Surgical Store / OT Store
+Valuation: FIFO (or Weighted Average)
+GST HSN: 4015 11 00 (18% or 12% depending)
+Re-order Level: 100 boxes
+Re-order Qty: 500 boxes
+Vendor Preference: Vendor A (Rate Contract)
+Is Billable to Patient: Yes / No
+Is Part of Package: Yes / No
+Charge Code: OT-CHG-045 (links to billing master)</div>
+
+<h4>Critical Decision: Billable vs. Non-Billable</h4>
+
+<table>
+    <tr>
+        <th>Type</th>
+        <th>How Treated in Software</th>
+        <th>Example</th>
+    </tr>
+    <tr>
+        <td><strong>Billable consumables</strong></td>
+        <td>Linked to a charge master code; billed per use or per procedure</td>
+        <td>Sutures, stents, implants, special gloves</td>
+    </tr>
+    <tr>
+        <td><strong>Non-billable (absorbed)</strong></td>
+        <td>Cost absorbed into room rent or OT charges; tracked for cost analysis but not separately billed</td>
+        <td>Standard gauze, cotton, routine syringes</td>
+    </tr>
+    <tr>
+        <td><strong>Package-linked</strong></td>
+        <td>Pre-defined quantity included in surgery package; excess billed separately</td>
+        <td>Knee replacement package includes 2 packs sutures; 3rd pack is extra</td>
+    </tr>
+</table>
+
+<h3>3. Procurement & Stock Entry</h3>
+
+<h4>Purchase Order</h4>
+<ul>
+    <li>Consumables often have <strong>annual rate contracts</strong> with surgical supply vendors (e.g., Ethicon, Romsons, Polymed).</li>
+    <li>POs may specify: brand, size, sterilization status (gamma/EO), lot number traceability (critical for implants).</li>
+</ul>
+
+<h4>Goods Receipt (GRN)</h4>
+<ul>
+    <li><strong>Batch/lot tracking mandatory</strong> for surgical items (recall management).</li>
+    <li><strong>Sterility check:</strong> Expiry of sterilization (not just manufacturing date).</li>
+    <li><strong>Implant tracking:</strong> Unique serial number entry for each implant (stent, pacemaker, orthopedic implant) — required for NABH and medico-legal.</li>
+</ul>
+
+<h4>Stock Entry Nuances</h4>
+
+<div class="code-block">GRN Entry:
+- Item: Suture (Vicryl 2-0, CT-1 needle)
+- Batch: VIC2026A
+- MFG: Jan 2026
+- Expiry: Dec 2028
+- Sterility Expiry: Dec 2028 (if applicable)
+- Serial Numbers: [for implants only]
+- Location: OT Store, Rack B-12
+- Qty Received: 50 boxes
+- Unit Cost: ₹450
+- MRP: ₹650</div>
+
+<h3>4. How Consumables Flow to Patient Billing</h3>
+
+<h4>Method A: Indent-Based (Ward/OT → Pharmacy/Store)</h4>
+
+<div class="code-block">Step 1: Doctor orders procedure (e.g., central line insertion)
+Step 2: Nurse raises indent in HIS for:
+        - Central Venous Catheter Kit (1)
+        - Surgical gloves (2 pairs)
+        - Syringe 10ml (2)
+        - Dressing kit (1)
+
+Step 3: Store dispatches against indent
+Step 4: System auto-posts to patient bill:
+        - CVC Kit: ₹2,400
+        - Gloves: ₹180 (₹90 x 2)
+        - Syringes: ₹40 (₹20 x 2)
+        - Dressing: ₹150
+        [Total: ₹2,770 added to IP bill]
+
+Step 5: Nurse documents actual usage in e-MAR/care plan</div>
+
+<div class="highlight-box">
+    <strong>Software Logic:</strong> The indent "reserves" stock; actual consumption is confirmed by nurse documentation. Some systems auto-consume on indent; others require explicit "administer/used" confirmation.
+</div>
+
+<h4>Method B: Procedure/Surgery Template (OT Charges)</h4>
+
+<div class="code-block">Surgery Master: "Laparoscopic Cholecystectomy"
+Linked Consumables:
+- Port (10mm): 3 units → ₹4,500
+- Port (5mm): 2 units → ₹2,000
+- Endo GIA stapler: 1 unit → ₹8,500
+- Trocar: 3 units → ₹3,600
+- Clip applier: 1 unit → ₹2,200
+- Standard consumables (absorbed): gloves, gauze, sutures
+
+When surgery is scheduled:
+→ System auto-generates OT consumables indent
+→ Surgeon can modify quantities intra-op
+→ Excess usage flagged for billing approval
+→ Final bill = package charge + extra consumables</div>
+
+<h4>Method C: Floor Stock with Periodic Reconciliation</h4>
+
+<div class="code-block">Ward Floor Stock (Daily):
+- IV Cannula 18G: 50 units
+- Syringes 5ml: 100 units
+- Normal Saline 500ml: 40 bottles
+
+Daily/Shift:
+- Nurse documents usage per patient in HIS
+- System auto-deducts from floor stock + posts to patient bill
+- Pharmacy replenishes to PAR level
+
+At month-end:
+- Physical stock count vs. system consumption
+- Variance report → adjustment/write-off</div>
+
+<h3>5. Special Cases & Software Handling</h3>
+
+<h4>Implants & High-Value Items</h4>
+<ul>
+    <li><strong>Unique serialization:</strong> Each implant tracked by serial number from GRN to patient.</li>
+    <li><strong>Patient linkage:</strong> In software, implant S/N linked to patient UHID and surgery record.</li>
+    <li><strong>Implant card:</strong> Auto-generated and given to patient (mandatory for cardiac stents, orthopedic implants).</li>
+    <li><strong>Return policy:</strong> Non-returnable once opened; tracked for vendor warranty.</li>
+</ul>
+
+<h4>Reusable vs. Disposable</h4>
+
+<table>
+    <tr>
+        <th>Type</th>
+        <th>Software Treatment</th>
+    </tr>
+    <tr>
+        <td>Disposable</td>
+        <td>Standard inventory, auto-deduct on use</td>
+    </tr>
+    <tr>
+        <td>Reusable (e.g., certain scopes, instruments)</td>
+        <td>Asset register, not inventory; track sterilization cycles</td>
+    </tr>
+    <tr>
+        <td>Semi-reusable (e.g., diathermy pencils)</td>
+        <td>Sometimes tracked as "patient-specific" single-use</td>
+    </tr>
+</table>
+
+<h4>Non-Billable / Absorbed Consumables</h4>
+<ul>
+    <li>Still tracked in inventory for <strong>costing and profitability analysis</strong>.</li>
+    <li>Software reports: "Cost of consumables per surgery," "Ward consumption vs. occupancy."</li>
+    <li>Helps administrators decide when to revise package pricing.</li>
+</ul>
+
+<h3>6. Key Software Modules & Their Roles</h3>
+
+<table>
+    <tr>
+        <th>Module</th>
+        <th>Function for Consumables</th>
+    </tr>
+    <tr>
+        <td><strong>Inventory/Stores</strong></td>
+        <td>GRN, stock ledger, batch tracking, expiry alerts, reorder triggers</td>
+    </tr>
+    <tr>
+        <td><strong>Pharmacy</strong></td>
+        <td>Some consumables (syringes, IV fluids) managed here; often separate surgical store</td>
+    </tr>
+    <tr>
+        <td><strong>OT Management</strong></td>
+        <td>Surgery templates, consumables checklists, implant tracking</td>
+    </tr>
+    <tr>
+        <td><strong>IP/Ward Management</strong></td>
+        <td>Indent raising, floor stock management, nurse documentation</td>
+    </tr>
+    <tr>
+        <td><strong>Billing</strong></td>
+        <td>Auto-posting of consumable charges, package vs. extra billing</td>
+    </tr>
+    <tr>
+        <td><strong>Purchase/Accounts</strong></td>
+        <td>Three-way matching, vendor payments, rate contract management</td>
+    </tr>
+    <tr>
+        <td><strong>Costing/Analytics</strong></td>
+        <td>Consumption analysis, surgery profitability, variance reports</td>
+    </tr>
+</table>
+
+<h3>7. Common Software Pitfalls & How to Avoid Them</h3>
+
+<table>
+    <tr>
+        <th>Problem</th>
+        <th>Root Cause</th>
+        <th>Software Fix</th>
+    </tr>
+    <tr>
+        <td>Patient billed for consumables not used</td>
+        <td>Nurse indent ≠ actual usage</td>
+        <td>Require "confirm usage" step; don't auto-bill on indent alone</td>
+    </tr>
+    <tr>
+        <td>OT consumables not captured</td>
+        <td>Surgeon uses item not in template</td>
+        <td>Mobile/tablet entry intra-op; "add unplanned item" workflow</td>
+    </tr>
+    <tr>
+        <td>Implants not traceable</td>
+        <td>Serial number not entered at GRN</td>
+        <td>Mandatory serial field; block GRN completion without it</td>
+    </tr>
+    <tr>
+        <td>Floor stock leakage</td>
+        <td>No periodic reconciliation</td>
+        <td>Daily shift-end stock count prompt in system</td>
+    </tr>
+    <tr>
+        <td>GST mismatch on consumables</td>
+        <td>Wrong HSN code in master</td>
+        <td>HSN validation at master creation; periodic audit</td>
+    </tr>
+    <tr>
+        <td>Package profitability unknown</td>
+        <td>Absorbed consumables not costed</td>
+        <td>Map absorbed items to surgery; run cost reports</td>
+    </tr>
+</table>
+
+<h3>8. Software Architecture Data Flow</h3>
+
+<div class="code-block">[Master Data]
+   ├── Item Master (consumable type, billable flag, charge code)
+   ├── Surgery/Procedure Templates (linked consumables)
+   └── Rate Contracts (vendor pricing)
+
+[Transaction Flow]
+   PO → GRN (batch/serial) → Stock Ledger
+                              │
+        ┌────────────────────┼────────────────────┐
+        ↓                    ↓                    ↓
+   [OT Template]      [Ward Indent]        [Floor Stock]
+        ↓                    ↓                    ↓
+   Surgeon modifies    Nurse confirms       Daily consumption
+   intra-op           usage                entry
+        ↓                    ↓                    ↓
+   [Billing Engine] ←── [Consumption Posting] ──┘
+        │
+   Patient Bill (package + extras)
+   │
+   [Reports: Costing, Variance, Expiry, Vendor Analysis]</div>
+
+<h3>9. Recommended Reports for Consumables</h3>
+
+<table>
+    <tr>
+        <th>Report</th>
+        <th>Purpose</th>
+        <th>Frequency</th>
+    </tr>
+    <tr>
+        <td>Consumption by department/ward</td>
+        <td>Cost center analysis</td>
+        <td>Monthly</td>
+    </tr>
+    <tr>
+        <td>Surgery-wise consumables cost</td>
+        <td>Package pricing review</td>
+        <td>Monthly</td>
+    </tr>
+    <tr>
+        <td>Expiry near 3/6 months</td>
+        <td>Vendor return planning</td>
+        <td>Weekly</td>
+    </tr>
+    <tr>
+        <td>Implant traceability report</td>
+        <td>NABH/medico-legal</td>
+        <td>On demand</td>
+    </tr>
+    <tr>
+        <td>Floor stock variance</td>
+        <td>Leakage detection</td>
+        <td>Daily/Shift</td>
+    </tr>
+    <tr>
+        <td>Vendor performance (OTIF, quality)</td>
+        <td>Procurement review</td>
+        <td>Quarterly</td>
+    </tr>
+</table>
+
+<div class="page-break"></div>
+
+<!-- ============================================================ -->
+<!-- APPENDIX -->
+<!-- ============================================================ -->
+
+<h2 id="appendix">Appendix: Summary Diagrams & Quick Reference</h2>
+
+<h3>Complete Process Flow Diagram</h3>
+
+<div class="code-block">┌─────────────────────────────────────────────────────────────┐
+│                    PROCUREMENT PHASE                         │
+└─────────────────────────────────────────────────────────────┘
+
+[Department Indent] → [Purchase Order] → [Vendor Supply]
+                                              ↓
+[Invoice Payment] ← [Three-way Match] ← [GRN + Invoice]
+                                              ↓
+                                    [Stock Entry (Batch-wise)]
+                                              ↓
+                    ┌─────────────────────────┼─────────────────────────┐
+                    ↓                         ↓                         ↓
+            [OTC Sales]              [IP Indent/Ward Supply]      [Floor Stock]
+            (Walk-in billing)        (CPOE → Indent → Dispense)   (PAR replenishment)
+                    ↓                         ↓
+            [Real-time stock deduction]  [Auto-billing to patient]
+                    ↓                         ↓
+            [Returns/Expiry/Wastage] ←── [Discharge TTO] ──→ [Final billing]
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                   CONSUMABLES FLOW                         │
+└─────────────────────────────────────────────────────────────┘
+
+[Master Data]
+   ├── Item Master (consumable type, billable flag, charge code)
+   ├── Surgery/Procedure Templates (linked consumables)
+   └── Rate Contracts (vendor pricing)
+
+[Transaction Flow]
+   PO → GRN (batch/serial) → Stock Ledger
+                              │
+        ┌────────────────────┼────────────────────┐
+        ↓                    ↓                    ↓
+   [OT Template]      [Ward Indent]        [Floor Stock]
+        ↓                    ↓                    ↓
+   Surgeon modifies    Nurse confirms       Daily consumption
+   intra-op           usage                entry
+        ↓                    ↓                    ↓
+   [Billing Engine] ←── [Consumption Posting] ──┘
+        │
+   Patient Bill (package + extras)
+   │
+   [Reports: Costing, Variance, Expiry, Vendor Analysis]</div>
+
+<h3>GST Rates Quick Reference</h3>
+
+<table>
+    <tr>
+        <th>Item Category</th>
+        <th>Typical GST Rate</th>
+        <th>HSN Chapter</th>
+    </tr>
+    <tr>
+        <td>Medicines (formulations)</td>
+        <td>5% / 12%</td>
+        <td>30</td>
+    </tr>
+    <tr>
+        <td>Surgical instruments</td>
+        <td>12% / 18%</td>
+        <td>90</td>
+    </tr>
+    <tr>
+        <td>Rubber gloves</td>
+        <td>12% / 18%</td>
+        <td>40</td>
+    </tr>
+    <tr>
+        <td>IV sets, cannulas</td>
+        <td>12%</td>
+        <td>90</td>
+    </tr>
+    <tr>
+        <td>Syringes, needles</td>
+        <td>12%</td>
+        <td>90</td>
+    </tr>
+    <tr>
+        <td>Diagnostic reagents</td>
+        <td>12% / 18%</td>
+        <td>30 / 38</td>
+    </tr>
+    <tr>
+        <td>Orthopedic implants</td>
+        <td>5% / 12%</td>
+        <td>90</td>
+    </tr>
+    <tr>
+        <td>Cardiac stents</td>
+        <td>5%</td>
+        <td>90</td>
+    </tr>
+</table>
+
+<div class="success-box">
+    <strong>Key Design Decision for Software Architects:</strong><br><br>
+    Consumables can be treated as either:<br><br>
+    <strong>1. Inventory items that happen to be billable</strong> (inventory-centric)<br>
+    <strong>2. Charge items that happen to be stocked</strong> (billing-centric)<br><br>
+    Most mid-sized Indian hospitals end up with a <strong>hybrid approach</strong> — implants and high-value items are inventory-tracked; routine consumables are often "absorbed" or managed as floor stock with loose tracking.
+</div>
+
+<h3>Approval Limits (Typical for Mid-Sized Hospitals)</h3>
+
+<table>
+    <tr>
+        <th>Amount Range</th>
+        <th>Approver</th>
+    </tr>
+    <tr>
+        <td>Up to ₹10,000</td>
+        <td>Department Head</td>
+    </tr>
+    <tr>
+        <td>₹10,001 – ₹50,000</td>
+        <td>Medical Superintendent</td>
+    </tr>
+    <tr>
+        <td>₹50,001 – ₹2,00,000</td>
+        <td>Hospital Administrator / CEO</td>
+    </tr>
+    <tr>
+        <td>Above ₹2,00,000</td>
+        <td>Board / Management Committee</td>
+    </tr>
+</table>
+
+<h3>NABH Requirements for Pharmacy & Inventory</h3>
+
+<ul>
+    <li>Batch-wise traceability from vendor to patient</li>
+    <li>FEFO compliance with documented evidence</li>
+    <li>Expiry management with monthly reports</li>
+    <li>Patient counseling documentation for high-risk drugs</li>
+    <li>Implant traceability with patient implant cards</li>
+    <li>Narcotic drug register maintenance</li>
+    <li>Temperature monitoring logs for cold chain items</li>
+    <li>Biomedical waste segregation and disposal records</li>
+</ul>
+
+<div class="footer">
+    <strong>Hospital Inventory & Pharmacy Management — Complete Guide</strong><br>
+    Prepared for Mid-Sized Indian Hospitals<br>
+    Covers: Purchase Orders, GRN, Stock Entry, OTC Sales, IP Pharmacy, Consumables Software Treatment<br><br>
+    <em>This document is for informational and educational purposes. Adapt processes based on your hospital's specific software, scale, and regulatory environment.</em>
+</div>
+
+</body>
+</html>
