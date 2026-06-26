@@ -97,6 +97,8 @@ export const shifts = sqliteTable("shifts", {
   startTime: text("start_time").notNull(),
   endTime: text("end_time").notNull(),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
+  isOffDay: integer("is_off_day", { mode: "boolean" }).notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
   ...timestamps
 });
 

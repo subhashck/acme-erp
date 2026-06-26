@@ -13,19 +13,23 @@ import { exportRosterToExcel } from "../../../lib/roster-export";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { Select } from "../../../ui/select";
+import { Autocomplete } from "../../../ui/autocomplete";
+import { MonthPicker } from "../../../components/ui/month-picker";
 import type { RosterRow, StaffRow, DepartmentRow, ShiftRow } from "../../../types";
-import { 
-  today, 
-  currentYearMonth, 
-  isoDate, 
-  rollingWeek, 
-  isActiveToday, 
-  SHIFT_CONFIG
+import {
+  today,
+  currentYearMonth,
+  isoDate,
+  rollingWeek,
+  isActiveToday,
+  SHIFT_CONFIG,
+  getShiftConfig
 } from "../../../lib/roster-utils";
-import { 
-  ShiftBadge, 
-  OnDutyCard, 
-  DayColumn 
+import {
+  ShiftBadge,
+  OnDutyCard,
+  DayColumn,
+  MonthlyTableView
 } from "../../../components/RosterComponents";
 
 export const Route = createFileRoute("/_authenticated/hr/roster")({
@@ -37,12 +41,12 @@ export const Route = createFileRoute("/_authenticated/hr/roster")({
 
 const rosterSchema = z
   .object({
-    staffId:      z.coerce.number().positive("Select a staff member"),
+    staffId: z.coerce.number().positive("Select a staff member"),
     departmentId: z.coerce.number().positive("Select a department"),
-    shiftId:      z.coerce.number().positive("Select a shift"),
-    startDate:    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
-    endDate:      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
-    notes:        z.string().optional()
+    shiftId: z.coerce.number().positive("Select a shift"),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+    notes: z.string().optional()
   })
   .refine((v) => v.endDate >= v.startDate, {
     path: ["endDate"],
@@ -60,6 +64,7 @@ function Roster() {
 
   const [showForm, setShowForm] = React.useState(false);
   const [showTable, setShowTable] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<"daily" | "monthly">("daily");
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [exportMonth, setExportMonth] = React.useState<string>(currentYearMonth());
@@ -69,9 +74,9 @@ function Roster() {
   const [filterActive, setFilterActive] = React.useState(false);
   const [staffSearch, setStaffSearch] = React.useState("");
 
-  const staffQuery   = useRpcQuery<StaffRow[]>    (["staff"],          () => client.hr.staff.$get());
-  const deptsQuery   = useRpcQuery<DepartmentRow[]>(["departments"],    () => client.departments.$get());
-  const shiftsQuery  = useRpcQuery<ShiftRow[]>    (["masters-shifts"], () => client.masters.shifts.$get());
+  const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
+  const deptsQuery = useRpcQuery<DepartmentRow[]>(["departments"], () => client.departments.$get());
+  const shiftsQuery = useRpcQuery<ShiftRow[]>(["masters-shifts"], () => client.masters.shifts.$get());
   const rostersQuery = useRpcQuery<RosterRow[]>(
     ["rosters", departmentId],
     () => client.hr.roster.$get(departmentId ? { query: { departmentId: departmentId.toString() } } : {})
@@ -100,10 +105,10 @@ function Roster() {
   };
 
   const departments = deptsQuery.data ?? [];
-  const rosters     = rostersQuery.data ?? [];
-  const shifts      = shiftsQuery.data ?? [];
-  const todayStr    = today();
-  const week        = rollingWeek(weekOffset * 7);
+  const rosters = rostersQuery.data ?? [];
+  const shifts = shiftsQuery.data ?? [];
+  const todayStr = today();
+  const week = rollingWeek(weekOffset * 7 - 1, 8);
 
   // Auto-select first department when data arrives
   React.useEffect(() => {
@@ -191,7 +196,7 @@ function Roster() {
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
-  const onDutyNow = rosters.filter((r) => isActiveToday(r, todayStr));
+  const onDutyNow = rosters.filter((r) => isActiveToday(r, todayStr) && !r.isOffDay);
 
   const filteredRosters = rosters.filter((r) => {
     if (filterStaff && !r.staffName.toLowerCase().includes(filterStaff.toLowerCase())) return false;
@@ -208,13 +213,10 @@ function Roster() {
   const deptStaff = (staffQuery.data ?? []).filter((s) => s.departmentId === departmentId);
   const filteredDeptStaff = deptStaff.filter((s) => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
 
-  const staffOptions: [string, string][] = [
-    ["", "Select staff…"],
-    ...deptStaff.map((s) => [s.id.toString(), s.name] as [string, string])
-  ];
+  const staffOptions: [string, string][] = deptStaff.map((s) => [s.id.toString(), `${s.name} (${s.role})`] as [string, string]);
 
   const shiftOptions: [string, string][] = [
-    ["", "Select shift…"],
+    // ["", "Select shift…"],
     ...shifts.map((s) => [s.id.toString(), s.name] as [string, string])
   ];
 
@@ -236,12 +238,13 @@ function Roster() {
             }}>
               {showForm ? <><span className="text-lg leading-none">×</span> Cancel</> : <><Plus size={16} /> Add Assignment</>}
             </Button>
-            <div className="flex gap-1.5 items-center">
-              <input
-                type="month"
+
+            <div className="flex gap-1.5 items-center ml-2">
+              <MonthPicker
                 value={exportMonth}
-                onChange={(e) => setExportMonth(e.target.value)}
-                className="h-10 px-3 rounded-lg border border-border text-sm text-foreground bg-background outline-none cursor-pointer"
+                onChange={setExportMonth}
+                className="w-[180px] h-10"
+                placeholder="Export Month"
               />
               <Button variant="outline" onClick={handleExport}>
                 <Download size={16} /> Export Excel
@@ -259,11 +262,10 @@ function Roster() {
             <button
               key={dept.id}
               onClick={() => { navigate({ to: "/hr/roster", search: { departmentId: dept.id } }); setShowForm(false); }}
-              className={`px-4 py-1.5 rounded-full border transition-all duration-155 outline-none cursor-pointer text-sm font-medium ${
-                active
-                  ? "bg-primary text-primary-foreground font-bold border-primary"
-                  : "border-border bg-card text-muted-foreground hover:text-foreground"
-              }`}
+              className={`px-4 py-1.5 rounded-full border transition-all duration-155 outline-none cursor-pointer text-sm font-medium ${active
+                ? "bg-primary text-primary-foreground font-bold border-primary"
+                : "border-border bg-card text-muted-foreground hover:text-foreground"
+                }`}
             >
               {dept.name}
             </button>
@@ -283,163 +285,133 @@ function Roster() {
       {departmentId && (
         <div className="flex flex-col gap-6 mt-6">
           {/* ── Add Assignment Panel ── */}
-            {showForm && (
-              <Card className="border-2 border-primary/20 bg-muted/20">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarDays size={18} className="text-primary" />
-                    {editingId ? "Edit Assignment" : "New Assignment"} — {selectedDept?.name}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={submit} className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
-                    <input type="hidden" {...form.register("departmentId")} value={departmentId} />
-
-                    <div>
-                      <Select label="Staff Member" {...form.register("staffId")} options={staffOptions} />
-                      {form.formState.errors.staffId && (
-                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.staffId.message}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Select label="Shift" {...form.register("shiftId")} options={shiftOptions} />
-                      {form.formState.errors.shiftId && (
-                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.shiftId.message}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Field label="From" type="date" {...form.register("startDate")} />
-                      {form.formState.errors.startDate && (
-                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.startDate.message}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Field label="To" type="date" {...form.register("endDate")} />
-                      {form.formState.errors.endDate && (
-                        <p className="text-xs text-red-500 mt-1">{form.formState.errors.endDate.message}</p>
-                      )}
-                    </div>
-
-                    <div className="col-span-full">
-                      <Field label="Notes (optional)" {...form.register("notes")} placeholder="Any special instructions…" />
-                    </div>
-
-                    <div className="col-span-full">
-                      <Button type="submit" className="w-full">
-                        {editingId ? <Edit2 size={16} /> : <Plus size={16} />} {editingId ? "Update Assignment" : "Save Assignment"}
-                      </Button>
-                    </div>
-                  </form>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* ── On Duty Right Now ── */}
-            <Card>
+          {showForm && (
+            <Card className="border-2 border-primary/20 bg-muted/20">
               <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <Users size={18} className="text-primary" />
-                    On Duty Right Now
-                  </span>
-                  <span
-                    className={`text-sm font-bold rounded-full px-3 py-1 border ${
-                      onDutyNow.length > 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                    }`}
-                  >
-                    {onDutyNow.length} on duty
-                  </span>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays size={18} className="text-primary" />
+                  {editingId ? "Edit Assignment" : "New Assignment"} — {selectedDept?.name}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {onDutyNow.length > 0 ? (
-                  <div className="flex gap-2.5 flex-wrap">
-                    {onDutyNow.map((r) => <OnDutyCard key={r.id} roster={r} />)}
+                <form onSubmit={submit} className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
+                  <input type="hidden" {...form.register("departmentId")} value={departmentId} />
+
+                  <div>
+                    <Autocomplete
+                      label="Staff Member"
+                      value={form.watch("staffId")?.toString() ?? ""}
+                      onChange={(val) => form.setValue("staffId", val ? Number(val) : 0, { shouldValidate: true })}
+                      options={staffOptions}
+                      placeholder="Search staff by name or role…"
+                      error={form.formState.errors.staffId?.message}
+                    />
                   </div>
-                ) : (
-                  <div className="text-center py-6 text-muted-foreground/60">
-                    <Clock size={28} className="mx-auto mb-2 opacity-40" />
-                    <p className="m-0 text-sm">No staff assigned for today in {selectedDept?.name}</p>
-                    <p className="mt-1 mb-0 text-xs text-amber-500">⚠ Coverage gap — add an assignment</p>
+
+                  <div>
+                    <Select label="Shift" {...form.register("shiftId")} options={shiftOptions} />
+                    {form.formState.errors.shiftId && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.shiftId.message}</p>
+                    )}
                   </div>
-                )}
+
+                  <div>
+                    <Field label="From" type="date" {...form.register("startDate")} />
+                    {form.formState.errors.startDate && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.startDate.message}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <Field label="To" type="date" {...form.register("endDate")} />
+                    {form.formState.errors.endDate && (
+                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.endDate.message}</p>
+                    )}
+                  </div>
+
+                  <div className="col-span-full">
+                    <Field label="Notes (optional)" {...form.register("notes")} placeholder="Any special instructions…" />
+                  </div>
+
+                  <div className="col-span-full">
+                    <Button type="submit" className="w-full">
+                      {editingId ? <Edit2 size={16} /> : <Plus size={16} />} {editingId ? "Update Assignment" : "Save Assignment"}
+                    </Button>
+                  </div>
+                </form>
               </CardContent>
             </Card>
+          )}
 
-            {/* ── Staff Pool (Horizontal List) ── */}
-            <Card>
-              <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between flex-wrap gap-4">
-                <div>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Users size={16} className="text-primary" />
-                    Staff Pool
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Drag staff from here to assign them to shifts on the calendar below</p>
+          {/* ── On Duty Right Now ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Users size={18} className="text-primary" />
+                  Staff on duty
+                </span>
+                <span
+                  className={`text-sm font-bold rounded-full px-3 py-1 border ${onDutyNow.length > 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                    }`}
+                >
+                  {onDutyNow.length} on duty
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {onDutyNow.length > 0 ? (
+                <div className="flex gap-2.5 flex-wrap">
+                  {onDutyNow.map((r) => <OnDutyCard key={r.id} roster={r} />)}
                 </div>
-                <div className="w-full sm:w-[240px]">
-                  <input
-                    type="text"
-                    placeholder="Search staff..."
-                    value={staffSearch}
-                    onChange={(e) => setStaffSearch(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-border outline-none bg-muted text-foreground focus:bg-background focus:ring-1 focus:ring-primary focus:border-primary transition-all"
-                  />
+              ) : (
+                <div className="text-center py-6 text-muted-foreground/60">
+                  <Clock size={28} className="mx-auto mb-2 opacity-40" />
+                  <p className="m-0 text-sm">No staff assigned for today in {selectedDept?.name}</p>
+                  <p className="mt-1 mb-0 text-xs text-amber-500">⚠ Coverage gap — add an assignment</p>
                 </div>
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
-                  {filteredDeptStaff.length > 0 ? (
-                    filteredDeptStaff.map((member) => (
-                      <div
-                        key={member.id}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("staffId", member.id.toString());
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        className="flex items-center gap-2 p-2 rounded-xl border border-border bg-card hover:bg-muted hover:border-border transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm min-w-[190px] shrink-0 group"
-                      >
-                        {/* Visual indicator for drag handle */}
-                        <div className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors shrink-0">
-                          <svg width="8" height="12" viewBox="0 0 8 12" fill="none" className="stroke-current">
-                            <circle cx="2" cy="2" r="1" fill="currentColor"/>
-                            <circle cx="2" cy="6" r="1" fill="currentColor"/>
-                            <circle cx="2" cy="10" r="1" fill="currentColor"/>
-                            <circle cx="6" cy="2" r="1" fill="currentColor"/>
-                            <circle cx="6" cy="6" r="1" fill="currentColor"/>
-                            <circle cx="6" cy="10" r="1" fill="currentColor"/>
-                          </svg>
-                        </div>
-                        
-                        {/* Initial circle */}
-                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-foreground shrink-0">
-                          {member.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-                        </div>
-                        
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-semibold text-foreground truncate m-0">{member.name}</p>
-                          <p className="text-[10px] text-muted-foreground truncate m-0">{member.role}</p>
-                        </div>
-                      </div>
-                    ))
+              )}
+            </CardContent>
+          </Card>
+
+
+
+          {/* ── Calendar / Roster View ── */}
+          <Card className="overflow-hidden">
+            <div className="flex border-b border-border bg-muted/20">
+              <button
+                onClick={() => setViewMode("daily")}
+                className={`flex-1 py-3.5 text-sm font-semibold border-b-2 transition-all ${
+                  viewMode === "daily" 
+                    ? "border-primary text-primary bg-background shadow-[0_1px_0_0_hsl(var(--background))]" 
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                Daily View
+              </button>
+              <button
+                onClick={() => setViewMode("monthly")}
+                className={`flex-1 py-3.5 text-sm font-semibold border-b-2 transition-all ${
+                  viewMode === "monthly" 
+                    ? "border-primary text-primary bg-background shadow-[0_1px_0_0_hsl(var(--background))]" 
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                Monthly View
+              </button>
+            </div>
+            
+            <CardHeader className="pt-5">
+              <CardTitle className="flex items-center justify-between flex-wrap gap-3">
+                <span className="flex items-center gap-2">
+                  <CalendarDays size={18} className="text-primary" />
+                  {viewMode === "daily" ? (
+                    weekOffset === 0 ? "Next 7 Days" : `Week of ${new Date(week[0] + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
                   ) : (
-                    <p className="text-center text-xs text-muted-foreground/60 py-2 w-full">No staff found</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* ── 7-Day Rolling Calendar ── */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between flex-wrap gap-3">
-                  <span className="flex items-center gap-2">
-                    <CalendarDays size={18} className="text-primary" />
-                    {weekOffset === 0 ? "Next 7 Days" : `Week of ${new Date(week[0] + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`} — {selectedDept?.name}
-                  </span>
+                    `Monthly View - ${exportMonth}`
+                  )} — {selectedDept?.name}
+                </span>
+                {viewMode === "daily" && (
                   <div className="flex items-center gap-1.5">
                     <Button
                       variant="outline"
@@ -465,29 +437,109 @@ function Roster() {
                       Next Week →
                     </Button>
                   </div>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {/* Shift legend */}
-                <div className="flex gap-2 flex-wrap mb-3.5">
-                  {Object.entries(SHIFT_CONFIG).map(([name, cfg]) => {
-                    const Icon = cfg.Icon;
-                    return (
-                      <span
-                        key={name}
-                        className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-0.5 border ${cfg.textColorClass} ${cfg.bgClass} ${cfg.borderClass}`}
-                      >
-                        <Icon size={11} /> {name}
-                      </span>
-                    );
-                  })}
-                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-500 bg-amber-500/10 border border-dashed border-amber-500/30 rounded-full px-2.5 py-0.5">
-                    ⚠ No cover
-                  </span>
-                </div>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Shift legend */}
+              <div className="flex gap-2 flex-wrap mb-3.5">
+                {viewMode === "monthly" && <span className="text-xs text-muted-foreground mr-1 self-center">Drag shift to assign:</span>}
+                {shifts.filter(s => s.active).map((shiftData) => {
+                  const name = shiftData.name;
+                  const cfg = getShiftConfig(name);
+                  const Icon = cfg.Icon;
+                  const isDraggable = viewMode === "monthly";
 
-                {/* Calendar grid */}
-                <div className="overflow-x-auto">
+                  return (
+                    <span
+                      key={name}
+                      draggable={isDraggable}
+                      onDragStart={
+                        isDraggable
+                          ? (e) => {
+                            e.dataTransfer.setData("shiftId", shiftData.id.toString());
+                            e.dataTransfer.effectAllowed = "copy";
+                          }
+                          : undefined
+                      }
+                      className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-0.5 border ${isDraggable ? "cursor-grab active:cursor-grabbing hover:opacity-80 transition-opacity" : ""
+                        } ${cfg.textColorClass} ${cfg.bgClass} ${cfg.borderClass}`}
+                    >
+                      <Icon size={11} /> {name}
+                    </span>
+                  );
+                })}
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-500 bg-amber-500/10 border border-dashed border-amber-500/30 rounded-full px-2.5 py-0.5 ml-auto">
+                  ⚠ No cover
+                </span>
+              </div>
+
+              {viewMode === "daily" ? (
+                <>
+                  {/* ── Staff Pool (Horizontal List) ── */}
+                  <div className="border border-border rounded-xl mb-4 bg-muted/10">
+                    <div className="p-3 border-b border-border flex flex-row items-center justify-between flex-wrap gap-4">
+                      <div>
+                        <h3 className="text-sm font-semibold flex items-center gap-2 m-0">
+                          <Users size={16} className="text-primary" />
+                          Staff Pool
+                        </h3>
+                        <p className="text-xs text-muted-foreground mt-0.5 mb-0">Drag staff from here to assign them to shifts on the calendar below</p>
+                      </div>
+                      <div className="w-full sm:w-[240px]">
+                        <input
+                          type="text"
+                          placeholder="Search staff..."
+                          value={staffSearch}
+                          onChange={(e) => setStaffSearch(e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-border outline-none bg-background text-foreground focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                        {filteredDeptStaff.length > 0 ? (
+                          filteredDeptStaff.map((member) => (
+                            <div
+                              key={member.id}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("staffId", member.id.toString());
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
+                              className="flex items-center gap-2 p-2 rounded-xl border border-border bg-card hover:bg-muted hover:border-border transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm min-w-[190px] shrink-0 group"
+                            >
+                              {/* Visual indicator for drag handle */}
+                              <div className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors shrink-0">
+                                <svg width="8" height="12" viewBox="0 0 8 12" fill="none" className="stroke-current">
+                                  <circle cx="2" cy="2" r="1" fill="currentColor" />
+                                  <circle cx="2" cy="6" r="1" fill="currentColor" />
+                                  <circle cx="2" cy="10" r="1" fill="currentColor" />
+                                  <circle cx="6" cy="2" r="1" fill="currentColor" />
+                                  <circle cx="6" cy="6" r="1" fill="currentColor" />
+                                  <circle cx="6" cy="10" r="1" fill="currentColor" />
+                                </svg>
+                              </div>
+
+                              {/* Initial circle */}
+                              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-foreground shrink-0">
+                                {member.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold text-foreground truncate m-0">{member.name}</p>
+                                <p className="text-[10px] text-muted-foreground truncate m-0">{member.role}</p>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-center text-xs text-muted-foreground/60 py-2 w-full m-0">No staff found</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
                   <div className="flex gap-2 min-w-[700px]">
                     {weeklyData.map(({ date, rosters: dayRosters }) => (
                       <DayColumn
@@ -500,9 +552,22 @@ function Roster() {
                       />
                     ))}
                   </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-2">
+                  <MonthlyTableView
+                    exportMonth={exportMonth}
+                    rosters={rosters}
+                    shifts={shifts}
+                    allStaff={deptStaff}
+                    onDropShift={handleDropStaff}
+                    onDeleteRoster={deleteRoster}
+                  />
                 </div>
-              </CardContent>
-            </Card>
+              )}
+            </CardContent>
+          </Card>
 
           {/* ── All Assignments (collapsible) ── */}
           <Card>
@@ -586,9 +651,8 @@ function Roster() {
                               return (
                                 <tr
                                   key={r.id}
-                                  className={`border-b border-border transition-colors duration-100 ${
-                                    isToday ? "bg-primary/5 text-foreground" : "bg-card text-foreground"
-                                  }`}
+                                  className={`border-b border-border transition-colors duration-100 ${isToday ? "bg-primary/5 text-foreground" : "bg-card text-foreground"
+                                    }`}
                                 >
                                   <td className="px-3.5 py-2.5 font-semibold">
                                     {r.staffName}
@@ -616,9 +680,8 @@ function Roster() {
                                       onClick={() => deleteRoster(r.id)}
                                       disabled={deletingId === r.id}
                                       title="Remove assignment"
-                                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive cursor-pointer hover:bg-destructive/20 transition-all duration-150 ${
-                                        deletingId === r.id ? "opacity-50" : "opacity-100"
-                                      }`}
+                                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive cursor-pointer hover:bg-destructive/20 transition-all duration-150 ${deletingId === r.id ? "opacity-50" : "opacity-100"
+                                        }`}
                                     >
                                       <Trash2 size={14} />
                                     </button>
@@ -634,9 +697,9 @@ function Roster() {
                 )}
               </CardContent>
             )}
-            </Card>
-          </div>
-        )}
+          </Card>
+        </div>
+      )}
     </ModuleLayout>
   );
 }

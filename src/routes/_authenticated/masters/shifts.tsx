@@ -23,7 +23,9 @@ const schema = z.object({
   code: z.string().min(1).max(10),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Format: HH:MM"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Format: HH:MM"),
-  active: z.boolean().default(true)
+  active: z.boolean().default(true),
+  isOffDay: z.boolean().default(false),
+  sortOrder: z.coerce.number().int().default(0)
 });
 
 type ShiftInput = z.output<typeof schema>;
@@ -33,7 +35,7 @@ function Shifts() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const form = useForm<z.input<typeof schema>, unknown, ShiftInput>({
     resolver: zodResolver(schema),
-    defaultValues: { active: true, code: "" }
+    defaultValues: { active: true, code: "", isOffDay: false, sortOrder: 0 }
   });
 
   const submit = form.handleSubmit(async (values) => {
@@ -46,7 +48,7 @@ function Shifts() {
       } else {
         await client.masters.shifts.$post({ json: values });
       }
-      form.reset({ name: "", code: "", startTime: "", endTime: "", active: true });
+      form.reset({ name: "", code: "", startTime: "", endTime: "", active: true, isOffDay: false, sortOrder: 0 });
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ["masters-shifts"] });
     } catch (error) {
@@ -61,7 +63,9 @@ function Shifts() {
       code: row.code || "",
       startTime: row.startTime,
       endTime: row.endTime,
-      active: row.active
+      active: row.active,
+      isOffDay: row.isOffDay,
+      sortOrder: row.sortOrder
     });
   };
 
@@ -70,6 +74,12 @@ function Shifts() {
     ["code", "Short Code"],
     ["startTime", "Start Time"],
     ["endTime", "End Time"],
+    ["sortOrder", "Order"],
+    {
+      id: "isOffDay",
+      label: "Off Day",
+      render: (row) => row.isOffDay ? <Badge variant="default" className="border-amber-200 text-amber-700 bg-amber-50">Yes</Badge> : <span className="text-muted-foreground">—</span>
+    },
     ["active", "Active"],
     {
       id: "actions",
@@ -96,16 +106,23 @@ function Shifts() {
               <Field label="Short Code" {...form.register("code")} placeholder="e.g., M" />
               <Field label="Start Time" {...form.register("startTime")} placeholder="HH:MM" />
               <Field label="End Time" {...form.register("endTime")} placeholder="HH:MM" />
-              <div className="flex items-center gap-2">
-                <input type="checkbox" id="active" {...form.register("active")} />
-                <label htmlFor="active" className="text-sm">Active</label>
+              <Field label="Sort Order" type="number" {...form.register("sortOrder")} placeholder="e.g., 1" />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="active" {...form.register("active")} />
+                  <label htmlFor="active" className="text-sm">Active</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="checkbox" id="isOffDay" {...form.register("isOffDay")} />
+                  <label htmlFor="isOffDay" className="text-sm">Is Off Day</label>
+                </div>
               </div>
               <div className="flex gap-2">
                 <Button type="submit"><Plus size={16} className="mr-2" /> {editingId ? "Update" : "Add"}</Button>
                 {editingId && (
                   <Button type="button" variant="outline" onClick={() => {
                     setEditingId(null);
-                    form.reset({ name: "", code: "", startTime: "", endTime: "", active: true });
+                    form.reset({ name: "", code: "", startTime: "", endTime: "", active: true, isOffDay: false, sortOrder: 0 });
                   }}>Cancel</Button>
                 )}
               </div>
@@ -129,9 +146,14 @@ function Shifts() {
                       <span className="font-semibold text-sm text-foreground">
                         {row.name} <span className="text-xs text-muted-foreground font-mono ml-1.5">({row.code})</span>
                       </span>
-                      <Badge variant={row.active ? "default" : "destructive"}>
-                        {row.active ? "Active" : "Inactive"}
-                      </Badge>
+                      <div className="flex gap-1.5">
+                        {row.isOffDay && (
+                          <Badge variant="default" className="border-amber-200 text-amber-700 bg-amber-50">Off Day</Badge>
+                        )}
+                        <Badge variant={row.active ? "default" : "destructive"}>
+                          {row.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">

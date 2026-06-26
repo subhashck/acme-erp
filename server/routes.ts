@@ -160,7 +160,9 @@ const shiftInput = z.object({
   code: z.string().min(1).max(10),
   startTime: z.string().regex(/^\d{2}:\d{2}$/, "Format: HH:MM"),
   endTime: z.string().regex(/^\d{2}:\d{2}$/, "Format: HH:MM"),
-  active: z.boolean().default(true)
+  active: z.boolean().default(true),
+  isOffDay: z.boolean().default(false),
+  sortOrder: z.number().int().default(0)
 });
 
 const rosterInput = z.object({
@@ -352,7 +354,7 @@ export const api = new Hono<AuthEnv>()
     
     return c.json(row);
   })
-  .get("/masters/shifts", (c) => c.json(db.select().from(shifts).orderBy(shifts.name).all()))
+  .get("/masters/shifts", (c) => c.json(db.select().from(shifts).orderBy(shifts.sortOrder, shifts.name).all()))
   .post("/masters/shifts", requireAdmin, async (c) => {
     const input = await jsonBody(c, shiftInput);
     const [row] = db.insert(shifts).values(input).returning().all();
@@ -1049,7 +1051,8 @@ export const api = new Hono<AuthEnv>()
         staffId: rosters.staffId,
         shiftName: shifts.name,
         startTime: shifts.startTime,
-        endTime: shifts.endTime
+        endTime: shifts.endTime,
+        isOffDay: shifts.isOffDay
       })
       .from(rosters)
       .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
@@ -1077,6 +1080,8 @@ export const api = new Hono<AuthEnv>()
       } else if (rost) {
         if (leaveReq) {
           computedStatus = "Approved Leave";
+        } else if (rost.isOffDay) {
+          computedStatus = "Off Duty";
         } else {
           computedStatus = "Absent";
         }
@@ -1366,7 +1371,8 @@ export const api = new Hono<AuthEnv>()
           staffId: rosters.staffId,
           shiftName: shifts.name,
           startTime: shifts.startTime,
-          endTime: shifts.endTime
+          endTime: shifts.endTime,
+          isOffDay: shifts.isOffDay
         })
         .from(rosters)
         .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
@@ -1387,6 +1393,7 @@ export const api = new Hono<AuthEnv>()
         const onLeave = leaveSet.has(emp.id);
 
         if (onLeave) continue;
+        if (rost?.isOffDay) continue;
 
         if (rost) {
           const rand = Math.random();
@@ -1450,6 +1457,7 @@ export const api = new Hono<AuthEnv>()
       departmentName: departments.name,
       shiftId: rosters.shiftId,
       shift: shifts.name,
+      isOffDay: shifts.isOffDay,
       startDate: rosters.startDate,
       endDate: rosters.endDate,
       notes: rosters.notes,

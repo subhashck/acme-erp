@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Trash2 } from "lucide-react";
-import type { RosterRow, ShiftRow } from "../types";
+import type { RosterRow, ShiftRow, StaffRow } from "../types";
 import { getShiftConfig, today, shortDay } from "../lib/roster-utils";
 
 export function ShiftBadge({ shift, size = "sm" }: { shift: string; size?: "sm" | "lg" }) {
@@ -36,12 +36,12 @@ export function OnDutyCard({ roster }: { roster: RosterRow }) {
 interface ShiftSlotProps {
   date: string;
   shift: ShiftRow;
-  assignment?: RosterRow;
+  assignments: RosterRow[];
   onDropStaff: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
 }
 
-export function ShiftSlot({ date, shift, assignment, onDropStaff, onDeleteRoster }: ShiftSlotProps) {
+export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoster }: ShiftSlotProps) {
   const [isOver, setIsOver] = React.useState(false);
   const cfg = getShiftConfig(shift.name);
   const Icon = cfg.Icon;
@@ -64,46 +64,52 @@ export function ShiftSlot({ date, shift, assignment, onDropStaff, onDeleteRoster
     }
   };
 
-  if (assignment) {
-    return (
-      <div
-        className={`group relative rounded-xl p-2.5 text-[12px] border transition-all duration-155 shadow-xs flex flex-col gap-1 ${cfg.bgClass} ${cfg.borderClass}`}
-      >
-        <div className="flex justify-between items-start gap-1">
-          <span className={`font-semibold truncate pr-4 ${cfg.textColorClass}`} title={assignment.staffName}>
-            {assignment.staffName}
-          </span>
-          <button
-            onClick={() => onDeleteRoster(assignment.id)}
-            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity p-0.5 rounded-md hover:bg-destructive/15 dark:hover:bg-red-950/30 cursor-pointer border-0 bg-transparent"
-            title="Remove assignment"
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
-        <div className={`flex items-center gap-1.5 ${cfg.colorClass}`}>
-          <Icon size={11} />
-          <span className="text-[10px] font-bold uppercase tracking-wider">{shift.name}</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`rounded-xl border-[1.5px] border-dashed p-3 text-center transition-all duration-155 flex flex-col items-center justify-center gap-1 min-h-[58px] ${
+      className={`rounded-xl border-[1.5px] p-2 transition-all duration-155 flex flex-col gap-1.5 min-h-[58px] ${
         isOver
           ? "border-primary bg-primary/10 scale-[1.02]"
-          : "border-border bg-muted/20 hover:bg-muted/40 hover:border-muted-foreground/30"
+          : assignments.length === 0 
+            ? "border-dashed border-border bg-muted/20 hover:bg-muted/40 hover:border-muted-foreground/30 items-center justify-center" 
+            : "border-transparent bg-transparent"
       }`}
     >
-      <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
-        <span className="opacity-60"><Icon size={10} /></span> {shift.name}
-      </span>
-      <span className="text-[9px] text-muted-foreground/40">Drop staff here</span>
+      {assignments.length === 0 ? (
+        <>
+          <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+            <span className="opacity-60"><Icon size={10} /></span> {shift.name}
+          </span>
+          <span className="text-[9px] text-muted-foreground/40">Drop staff here</span>
+        </>
+      ) : (
+        <>
+          <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1 px-1">
+            <span className="opacity-60"><Icon size={10} /></span> {shift.name}
+          </span>
+          <div className="flex flex-col gap-1.5">
+            {assignments.map(assignment => (
+              <div
+                key={assignment.id}
+                className={`group relative rounded-lg p-2 text-[12px] border shadow-xs flex justify-between items-center ${cfg.bgClass} ${cfg.borderClass}`}
+              >
+                <span className={`font-semibold truncate pr-2 ${cfg.textColorClass}`} title={assignment.staffName}>
+                  {assignment.staffName}
+                </span>
+                <button
+                  onClick={() => onDeleteRoster(assignment.id)}
+                  className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity p-0.5 rounded-md hover:bg-destructive/15 dark:hover:bg-red-950/30 cursor-pointer border-0 bg-transparent shrink-0"
+                  title="Remove assignment"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -122,6 +128,7 @@ export function DayColumn({
   onDeleteRoster: (rosterId: number) => void;
 }) {
   const isToday = date === today();
+  const isPast = date < today();
 
   return (
     <div
@@ -129,7 +136,7 @@ export function DayColumn({
         isToday
           ? "border-2 border-primary bg-primary/5 shadow-xs"
           : "border-border bg-card"
-      }`}
+      } ${isPast ? "opacity-50 grayscale hover:opacity-100 hover:grayscale-0" : ""}`}
     >
       {/* Day header */}
       <div className="text-center mb-1">
@@ -160,7 +167,7 @@ export function DayColumn({
       {/* Shift slots */}
       <div className="flex flex-col gap-2">
         {shifts.map((shift) => {
-          const assignment = rosters.find(
+          const assignments = rosters.filter(
             (r) => r.shiftId === shift.id || r.shift === shift.name
           );
           return (
@@ -168,13 +175,192 @@ export function DayColumn({
               key={shift.id}
               date={date}
               shift={shift}
-              assignment={assignment}
+              assignments={assignments}
               onDropStaff={onDropStaff}
               onDeleteRoster={onDeleteRoster}
             />
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function MonthlyTableCell({
+  dateStr,
+  staffId,
+  activeAssignment,
+  shiftCode,
+  cfg,
+  onDropShift,
+  onDeleteRoster
+}: {
+  dateStr: string;
+  staffId: number;
+  activeAssignment?: RosterRow;
+  shiftCode?: string;
+  cfg?: any;
+  onDropShift: (staffId: number, date: string, shiftId: number) => void;
+  onDeleteRoster: (rosterId: number) => void;
+}) {
+  const [isOver, setIsOver] = React.useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOver(true);
+  };
+
+  const handleDragLeave = () => setIsOver(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsOver(false);
+    const shiftIdStr = e.dataTransfer.getData("shiftId");
+    if (shiftIdStr) {
+      onDropShift(staffId, dateStr, parseInt(shiftIdStr, 10));
+    }
+  };
+
+  if (activeAssignment && shiftCode && cfg) {
+    return (
+      <td
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`p-0 border-l border-border relative group transition-colors ${isOver ? "bg-primary/20" : ""}`}
+      >
+        <div
+          className={`flex items-center justify-center w-full h-full min-h-[36px] font-bold text-[11px] ${cfg.bgClass} ${cfg.textColorClass}`}
+          title={activeAssignment.shift}
+        >
+          {shiftCode}
+        </div>
+        <button
+          onClick={() => onDeleteRoster(activeAssignment.id)}
+          className="absolute inset-0 flex items-center justify-center w-full h-full opacity-0 group-hover:opacity-100 bg-destructive/80 text-destructive-foreground cursor-pointer transition-opacity"
+          title="Remove assignment"
+        >
+          <Trash2 size={14} />
+        </button>
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`p-0 border-l border-border transition-colors ${isOver ? "bg-primary/20" : ""}`}
+    >
+      <div className="flex items-center justify-center w-full h-full min-h-[36px] bg-transparent text-muted-foreground/30">
+        -
+      </div>
+    </td>
+  );
+}
+
+export function MonthlyTableView({
+  exportMonth,
+  rosters,
+  shifts,
+  allStaff,
+  onDropShift,
+  onDeleteRoster
+}: {
+  exportMonth: string;
+  rosters: RosterRow[];
+  shifts: ShiftRow[];
+  allStaff: StaffRow[];
+  onDropShift: (staffId: number, date: string, shiftId: number) => void;
+  onDeleteRoster: (rosterId: number) => void;
+}) {
+  const [year, month] = exportMonth.split("-").map(Number);
+  if (!year || !month) return <div className="p-8 text-center text-muted-foreground">Invalid month selected</div>;
+
+  const numDays = new Date(year, month, 0).getDate();
+  const firstDay = `${exportMonth}-01`;
+  const lastDay = `${exportMonth}-${numDays.toString().padStart(2, "0")}`;
+
+  const monthRosters = rosters.filter(
+    (r) => r.startDate <= lastDay && r.endDate >= firstDay
+  );
+
+  const dayDates: string[] = [];
+  for (let d = 1; d <= numDays; d++) {
+    dayDates.push(`${exportMonth}-${d.toString().padStart(2, "0")}`);
+  }
+
+  const staffList = allStaff.sort((a, b) => a.name.localeCompare(b.name));
+
+  const getShiftCode = (name: string): string => {
+    const dbShift = shifts.find((s) => s.name === name);
+    if (dbShift?.code) return dbShift.code;
+    return name.substring(0, 2).toUpperCase();
+  };
+
+  if (staffList.length === 0) {
+    return (
+      <div className="p-8 text-center text-muted-foreground text-sm border rounded-lg bg-muted/20">
+        No staff members found in this department.
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto border rounded-xl bg-card">
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr className="bg-muted/50 border-b">
+            <th className="px-3 py-2 text-left font-semibold sticky left-0 bg-muted/90 z-20 w-[150px] shadow-[1px_0_0_rgba(0,0,0,0.1)] border-r">
+              Staff Member
+            </th>
+            {dayDates.map((dateStr, idx) => (
+              <th key={dateStr} className="px-1 py-2 text-center font-medium min-w-[32px] border-l border-border">
+                {idx + 1}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {staffList.map((staff) => {
+            const staffRosters = monthRosters.filter((r) => r.staffId === staff.id);
+            return (
+              <tr key={staff.id} className="hover:bg-muted/30">
+                <td className="px-3 py-2 font-medium sticky left-0 bg-card z-10 shadow-[1px_0_0_rgba(0,0,0,0.1)] truncate border-r border-border">
+                  {staff.name}
+                </td>
+                {dayDates.map((dateStr) => {
+                  const activeAssignment = staffRosters.find(
+                    (r) => r.startDate <= dateStr && r.endDate >= dateStr
+                  );
+
+                  let shiftCode;
+                  let cfg;
+
+                  if (activeAssignment) {
+                    shiftCode = getShiftCode(activeAssignment.shift);
+                    cfg = getShiftConfig(activeAssignment.shift);
+                  }
+
+                  return (
+                    <MonthlyTableCell
+                      key={dateStr}
+                      dateStr={dateStr}
+                      staffId={staff.id}
+                      activeAssignment={activeAssignment}
+                      shiftCode={shiftCode}
+                      cfg={cfg}
+                      onDropShift={onDropShift}
+                      onDeleteRoster={onDeleteRoster}
+                    />
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

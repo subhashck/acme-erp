@@ -79,7 +79,7 @@ export type LeaveDetailRow = {
 };
 export type RoleTypeRow = { id: number; name: string; active: boolean };
 export type LeaveTypeRow = { id: number; name: string; maxDays: number; active: boolean; payable: boolean; paymentRate: number };
-export type ShiftRow = { id: number; name: string; code: string; startTime: string; endTime: string; active: boolean };
+export type ShiftRow = { id: number; name: string; code: string; startTime: string; endTime: string; active: boolean; isOffDay: boolean; sortOrder: number };
 export type RosterRow = {
   id: number;
   staffId: number;
@@ -88,6 +88,7 @@ export type RosterRow = {
   departmentName: string;
   shiftId: number;
   shift: string;
+  isOffDay: boolean;
   startDate: string;
   endDate: string;
   notes?: string | null;
