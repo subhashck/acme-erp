@@ -751,6 +751,7 @@ function AttendancePage() {
                     enableSorting
                     enableFiltering
                     filterPlaceholder="Search logs..."
+                    isLoading={attendanceQuery.isLoading}
                   />
                 </CardContent>
               </Card>
@@ -1006,6 +1007,7 @@ function AttendancePage() {
               <CardContent className="p-0">
                 <DataTable
                   rows={filteredMappings}
+                  isLoading={mappingsQuery.isLoading}
                   columns={[
                     {
                       id: "employeeCode",

@@ -134,7 +134,7 @@ function Shifts() {
           <CardContent className="p-0">
             {/* Desktop Table View */}
             <div className="hidden md:block">
-              <DataTable rows={query.data ?? []} columns={columns} />
+              <DataTable rows={query.data ?? []} columns={columns} isLoading={query.isLoading} />
             </div>
 
             {/* Mobile Card List View */}

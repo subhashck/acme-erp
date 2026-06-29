@@ -2,19 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Plus, Edit2 } from "lucide-react";
 import { queryClient, useRpcQuery } from "@/lib/query";
 import { client } from "@/services/rpc";
-import type { RoleTypeRow } from "@/types";
-import { DataTable, type ColumnDef } from "@/components/DataTable";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
-import { Button } from "@/ui/button";
 import { Field } from "@/components/Field";
-import { Plus, Edit2 } from "lucide-react";
+import { Button } from "@/ui/button";
+import { DataTable, type ColumnDef } from "@/components/DataTable";
 import { useState } from "react";
 import { ModuleLayout } from "@/components/ModuleLayout";
 
-export const Route = createFileRoute("/_authenticated/masters/roles")({
-  component: Roles
+export const Route = createFileRoute("/_authenticated/masters/banks")({
+  component: Banks
 });
 
 const schema = z.object({
@@ -22,32 +21,34 @@ const schema = z.object({
   active: z.boolean().default(true)
 });
 
-type RoleInput = z.output<typeof schema>;
+type BankInput = z.output<typeof schema>;
+type BankRow = { id: number; name: string; active: boolean };
 
-function Roles() {
-  const query = useRpcQuery<RoleTypeRow[]>(["masters-roles"], () => client.masters.roles.$get());
+function Banks() {
+  const query = useRpcQuery<BankRow[]>(["masters-banks"], () => client.masters.banks.$get());
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  const form = useForm<z.input<typeof schema>, unknown, RoleInput>({
+  const form = useForm<z.input<typeof schema>, unknown, BankInput>({
     resolver: zodResolver(schema),
     defaultValues: { active: true }
   });
 
   const submit = form.handleSubmit(async (values) => {
     if (editingId) {
-      await (client.masters.roles as any)[":id"].$put({
+      await (client.masters.banks as any)[":id"].$put({
         param: { id: editingId.toString() },
         json: values
       });
     } else {
-      await client.masters.roles.$post({ json: values });
+      await client.masters.banks.$post({ json: values });
     }
+
     form.reset({ name: "", active: true });
     setEditingId(null);
-    queryClient.invalidateQueries({ queryKey: ["masters-roles"] });
+    queryClient.invalidateQueries({ queryKey: ["masters-banks"] });
   });
 
-  const handleEdit = (row: RoleTypeRow) => {
+  const handleEdit = (row: BankRow) => {
     setEditingId(row.id);
     form.reset({
       name: row.name,
@@ -55,8 +56,8 @@ function Roles() {
     });
   };
 
-  const columns: ColumnDef<RoleTypeRow>[] = [
-    ["name", "Role Name"],
+  const columns: ColumnDef<BankRow>[] = [
+    ["name", "Name"],
     ["active", "Active"],
     {
       id: "actions",
@@ -71,15 +72,16 @@ function Roles() {
 
   return (
     <ModuleLayout
-      title="Roles"
-      description="Manage organizational roles and designation titles for hospital staff members."
+      title="Banks"
+      description="Manage the list of banks for staff salary processing."
     >
       <div className="grid gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-1">
-          <CardHeader><CardTitle>{editingId ? "Edit Role" : "Add Role"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{editingId ? "Edit Bank" : "Add Bank"}</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={submit} className="grid gap-4">
               <Field label="Name" {...form.register("name")} />
+              
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="active" {...form.register("active")} />
                 <label htmlFor="active" className="text-sm">Active</label>

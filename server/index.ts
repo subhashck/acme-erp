@@ -18,8 +18,11 @@ app.use(
   })
 );
 
-app.on(["GET", "POST"], "/api/auth/**", (c) => auth.handler(c.req.raw));
 app.use("/api/*", async (c, next) => {
+  // Auth endpoints: delegate directly to better-auth and return its response
+  if (c.req.path.startsWith("/api/auth/")) {
+    return auth.handler(c.req.raw);
+  }
   const session = await auth.api.getSession({
     headers: c.req.raw.headers
   });

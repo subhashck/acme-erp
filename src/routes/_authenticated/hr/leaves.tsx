@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CalendarClock, AlertCircle } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
@@ -16,6 +16,11 @@ import { Select } from "../../../ui/select";
 import { formatDate } from "../../../utils/format";
 import { cn } from "../../../utils/cn";
 import { Badge } from "../../../ui/badge";
+import { Label } from "../../../ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Calendar } from "../../../components/ui/calendar";
+import { format } from "date-fns";
+import { Calendar as CalendarIcon } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/hr/leaves")({
   component: LeaveManagement
@@ -201,18 +206,75 @@ function LeaveManagement() {
                     options={activeLeaveTypes} 
                     error={leaveForm.formState.errors.leaveType?.message}
                   />
-                  <Field 
-                    label="Start Date" 
-                    type="date" 
-                    {...leaveForm.register("startDate")} 
-                    error={leaveForm.formState.errors.startDate?.message}
-                  />
-                  <Field 
-                    label="End Date" 
-                    type="date" 
-                    {...leaveForm.register("endDate")} 
-                    error={leaveForm.formState.errors.endDate?.message}
-                  />
+                  <div className="flex flex-col gap-1">
+                    <Label>Start Date</Label>
+                    <Controller
+                      control={leaveForm.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal border border-input h-10 px-3 py-2 bg-background hover:bg-muted/30 text-sm rounded-lg cursor-pointer",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                              // initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {leaveForm.formState.errors.startDate?.message && (
+                      <p className="text-xs text-red-500 mt-1">{leaveForm.formState.errors.startDate.message}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <Label>End Date</Label>
+                    <Controller
+                      control={leaveForm.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal border border-input h-10 px-3 py-2 bg-background hover:bg-muted/30 text-sm rounded-lg cursor-pointer",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                              // initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {leaveForm.formState.errors.endDate?.message && (
+                      <p className="text-xs text-red-500 mt-1">{leaveForm.formState.errors.endDate.message}</p>
+                    )}
+                  </div>
 
                   {requestedDays > 0 && selectedTypeBalance && (
                     <div className={cn(
@@ -371,6 +433,7 @@ function LeaveManagement() {
                       )
                     }
                   ]}
+                  isLoading={leavesQuery.isLoading}
                 />
               </div>
 

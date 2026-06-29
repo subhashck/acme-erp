@@ -136,7 +136,7 @@ function LeaveTypes() {
         </Card>
         <Card className="xl:col-span-2">
           <CardContent className="p-0">
-            <DataTable rows={query.data ?? []} columns={columns} />
+            <DataTable rows={query.data ?? []} columns={columns} isLoading={query.isLoading} />
           </CardContent>
         </Card>
       </div>

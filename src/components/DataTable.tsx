@@ -34,6 +34,7 @@ export interface DataTableProps<T> {
   enableFiltering?: boolean;
   filterPlaceholder?: string;
   defaultPageSize?: number;
+  isLoading?: boolean;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -45,6 +46,7 @@ export function DataTable<T extends Record<string, unknown>>({
   enableFiltering = false,
   filterPlaceholder = "Search...",
   defaultPageSize = 10,
+  isLoading = false,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [sortKey, setSortKey] = React.useState<string | null>(null);
@@ -186,40 +188,53 @@ export function DataTable<T extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody>
-            {paginatedRows.map((row, index) => (
-              <tr key={String(row.id ?? index)} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                {columns.map((col) => {
-                  if (!Array.isArray(col)) {
-                    return (
-                      <td key={col.id} className={`px-4 py-3 ${col.className || ""}`}>
-                        {col.render(row)}
-                      </td>
-                    );
-                  }
-                  const [key] = col;
-                  const value = row[key];
-                  const isStatus = key.toLowerCase().includes("status");
-                  const isLow = lowStock && key === "quantity" && Number(value) <= Number(row.reorderLevel);
-                  return (
-                    <td key={key} className="px-4 py-3">
-                      {isStatus || isLow ? (
-                        <Badge variant={isLow ? "destructive" : "default"}>
-                          {String(value)}
-                        </Badge>
-                      ) : (
-                        String(value ?? "")
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {!paginatedRows.length && (
+            {isLoading ? (
               <tr>
-                <td className="px-4 py-8 text-center text-muted-foreground" colSpan={columns.length}>
-                  No records yet
+                <td className="px-4 py-12 text-center" colSpan={columns.length}>
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                    <span className="text-sm text-muted-foreground font-medium animate-pulse">Loading data...</span>
+                  </div>
                 </td>
               </tr>
+            ) : (
+              <>
+                {paginatedRows.map((row, index) => (
+                  <tr key={String(row.id ?? index)} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                    {columns.map((col) => {
+                      if (!Array.isArray(col)) {
+                        return (
+                          <td key={col.id} className={`px-4 py-3 ${col.className || ""}`}>
+                            {col.render(row)}
+                          </td>
+                        );
+                      }
+                      const [key] = col;
+                      const value = row[key];
+                      const isStatus = key.toLowerCase().includes("status");
+                      const isLow = lowStock && key === "quantity" && Number(value) <= Number(row.reorderLevel);
+                      return (
+                        <td key={key} className="px-4 py-3">
+                          {isStatus || isLow ? (
+                            <Badge variant={isLow ? "destructive" : "default"}>
+                              {String(value)}
+                            </Badge>
+                          ) : (
+                            String(value ?? "")
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {!paginatedRows.length && (
+                  <tr>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={columns.length}>
+                      No records yet
+                    </td>
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>

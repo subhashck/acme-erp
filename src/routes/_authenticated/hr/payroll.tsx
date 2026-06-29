@@ -496,6 +496,7 @@ function PayrollPage() {
                 enableSorting
                 enableFiltering
                 filterPlaceholder="Search payslips..."
+                isLoading={payslipsQuery.isLoading}
               />
             </CardContent>
           </Card>
@@ -516,6 +517,7 @@ function PayrollPage() {
                 enableSorting
                 enableFiltering
                 filterPlaceholder="Search staff salaries..."
+                isLoading={staffQuery.isLoading}
               />
             </CardContent>
           </Card>

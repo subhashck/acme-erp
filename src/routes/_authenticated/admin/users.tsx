@@ -413,20 +413,15 @@ function UserManagementPage() {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-              {usersQuery.isLoading ? (
-                <div className="flex h-64 items-center justify-center text-muted-foreground animate-pulse">
-                  Retrieving accounts...
-                </div>
-              ) : (
-                <DataTable
-                  rows={users as any}
-                  columns={columns as any}
-                  enablePagination
-                  enableSorting
-                  enableFiltering
-                  filterPlaceholder="Search by name or email..."
-                />
-              )}
+              <DataTable
+                rows={users as any}
+                columns={columns as any}
+                enablePagination
+                enableSorting
+                enableFiltering
+                filterPlaceholder="Search by name or email..."
+                isLoading={usersQuery.isLoading}
+              />
             </CardContent>
           </Card>
         </div>

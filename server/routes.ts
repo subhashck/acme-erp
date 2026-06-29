@@ -5,19 +5,30 @@ import { db } from "./db/client.ts";
 import { auth, type AuthEnv } from "./auth.ts";
 import {
   departments,
+  immunizationRecords,
+  immunizationSchedules,
   leaveRequests,
   leaveTypes,
+  patients,
   roleTypes,
   shifts,
   rosters,
   staff,
+  staffHrProfiles,
   staffSalaries,
   staffDepartments,
   departmentLeaders,
   payslips,
   attendance,
-  biometricMappings
+  biometricMappings,
+  banks,
+  notifications,
+  user,
+  messages
 } from "./db/schema.ts";
+import { streamSSE } from "hono/streaming";
+import { notificationEmitter, sendNotification } from "./utils/notifier.ts";
+import { chatEmitter, dispatchMessage } from "./utils/chat-notifier.ts";
 
 const idParam = z.object({ id: z.coerce.number().int().positive() });
 const staffInput = z.object({
@@ -37,10 +48,44 @@ const staffInput = z.object({
   esi: z.number().min(0).default(0),
   professionalTax: z.number().min(0).default(0),
   otherDeductions: z.number().min(0).default(0),
-  salary: z.number().positive(),
+  bankName: z.string().optional(),
+  accountNumber: z.string().optional(),
+  ifscCode: z.string().optional(),
+  salary: z.number().positive().default(1),
   status: z.string().default("Active"),
   aadhar: z.string().regex(/^[2-9]\d{11}$/, "Aadhar must be a valid 12-digit number (cannot start with 0 or 1)"),
-  pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i, "Invalid PAN format").transform((val) => val.toUpperCase())
+  pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i, "Invalid PAN format").transform((val) => val.toUpperCase()),
+  hrProfile: z.object({
+    dateOfBirth: z.string().optional(),
+    gender: z.string().optional(),
+    maritalStatus: z.string().optional(),
+    bloodGroup: z.string().optional(),
+    fatherName: z.string().optional(),
+    motherName: z.string().optional(),
+    spouseName: z.string().optional(),
+    emergencyContactName: z.string().optional(),
+    emergencyContactPhone: z.string().optional(),
+    currentAddress: z.string().optional(),
+    permanentAddress: z.string().optional(),
+    educationHistory: z.array(z.object({
+      qualification: z.string().optional(),
+      institution: z.string().optional(),
+      year: z.string().optional(),
+      grade: z.string().optional()
+    })).default([]),
+    professionalHistory: z.array(z.object({
+      employer: z.string().optional(),
+      designation: z.string().optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+      responsibilities: z.string().optional()
+    })).default([]),
+    uan: z.string().optional(),
+    epfNumber: z.string().optional(),
+    esiNumber: z.string().optional(),
+    dateOfJoining: z.string().optional(),
+    lastWorkingDate: z.string().optional()
+  }).optional()
 });
 const leaveRequestInput = z.object({
   staffId: z.number().int().positive(),
@@ -106,6 +151,22 @@ const prescriptionInput = z.object({
     })
   ).min(1)
 });
+const immunizationRecordInput = z.object({
+  patientId: z.number().int().positive(),
+  scheduleId: z.number().int().positive().optional().nullable(),
+  vaccineCode: z.string().min(1),
+  vaccineName: z.string().min(2),
+  doseLabel: z.string().min(1),
+  administeredAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD"),
+  administeredByStaffId: z.number().int().positive().optional().nullable(),
+  batchNo: z.string().optional(),
+  manufacturer: z.string().optional(),
+  site: z.string().optional(),
+  route: z.string().optional(),
+  adverseEvent: z.string().optional(),
+  notes: z.string().optional(),
+  status: z.string().default("Administered")
+});
 
 const code = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 const jsonBody = async <T extends z.ZodTypeAny>(c: Context, schema: T) =>
@@ -163,6 +224,11 @@ const shiftInput = z.object({
   active: z.boolean().default(true),
   isOffDay: z.boolean().default(false),
   sortOrder: z.number().int().default(0)
+});
+
+const bankInput = z.object({
+  name: z.string().min(2),
+  active: z.boolean().default(true)
 });
 
 const rosterInput = z.object({
@@ -234,6 +300,23 @@ function doIntervalsOverlap(
   return false;
 }
 
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysToDate(date: Date, days: number) {
+  const next = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+function inferDateOfBirth(row: typeof patients.$inferSelect) {
+  const created = row.createdAt instanceof Date ? row.createdAt : new Date();
+  const dob = new Date(Date.UTC(created.getUTCFullYear(), created.getUTCMonth(), created.getUTCDate()));
+  dob.setUTCFullYear(dob.getUTCFullYear() - row.age);
+  return dob;
+}
+
 export const api = new Hono<AuthEnv>()
   .get("/dashboard", async (c) => {
     const todayStr = new Date().toISOString().split("T")[0];
@@ -255,6 +338,193 @@ export const api = new Hono<AuthEnv>()
       }
     });
   })
+  .get("/notifications/stream", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+
+    return streamSSE(c, async (stream) => {
+      const eventName = `user:${userId}`;
+
+      const listener = async (n: any) => {
+        try {
+          await stream.writeSSE({ event: "notification", data: JSON.stringify(n) });
+        } catch (e) {
+          notificationEmitter.off(eventName, listener);
+        }
+      };
+
+      notificationEmitter.on(eventName, listener);
+
+      // Send initial unread notifications
+      try {
+        const unreads = db
+          .select()
+          .from(notifications)
+          .where(sql`${notifications.userId} = ${userId} AND ${notifications.read} = 0`)
+          .orderBy(desc(notifications.createdAt))
+          .all();
+        
+        for (const n of unreads) {
+          await stream.writeSSE({ event: "notification", data: JSON.stringify(n) });
+        }
+      } catch (err) {
+        console.error("Error streaming initial notifications:", err);
+      }
+
+      const ping = setInterval(async () => {
+        try {
+          await stream.writeSSE({ event: "ping", data: "heartbeat" });
+        } catch {
+          clearInterval(ping);
+          notificationEmitter.off(eventName, listener);
+        }
+      }, 15000);
+
+      stream.onAbort(() => {
+        clearInterval(ping);
+        notificationEmitter.off(eventName, listener);
+      });
+
+      // Keep stream open by waiting for abort
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          resolve();
+        });
+      });
+    });
+  })
+  .get("/notifications", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const rows = db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .all();
+    return c.json(rows);
+  })
+  .post("/notifications/:id/clear", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const id = Number(c.req.param("id"));
+
+    db.update(notifications)
+      .set({ read: true })
+      .where(sql`${notifications.id} = ${id} AND ${notifications.userId} = ${userId}`)
+      .run();
+
+    return c.json({ ok: true });
+  })
+  .post("/notifications/clear-all", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+
+    db.update(notifications)
+      .set({ read: true })
+      .where(eq(notifications.userId, userId))
+      .run();
+
+    return c.json({ ok: true });
+  })
+  .get("/immunization/schedule", (c) => {
+    const rows = db
+      .select()
+      .from(immunizationSchedules)
+      .where(eq(immunizationSchedules.active, true))
+      .orderBy(immunizationSchedules.sortOrder, immunizationSchedules.id)
+      .all();
+    return c.json(rows);
+  })
+  .get("/immunization/patients", (c) => {
+    const search = c.req.query("search")?.trim();
+    let query = db
+      .select({
+        id: patients.id,
+        mrn: patients.mrn,
+        name: patients.name,
+        age: patients.age,
+        gender: patients.gender,
+        phone: patients.phone
+      })
+      .from(patients)
+      .$dynamic();
+
+    if (search) {
+      query = query.where(sql`${patients.name} LIKE ${`%${search}%`} OR ${patients.mrn} LIKE ${`%${search}%`} OR ${patients.phone} LIKE ${`%${search}%`}`);
+    }
+
+    return c.json(query.orderBy(desc(patients.createdAt)).limit(50).all());
+  })
+  .get("/immunization/patients/:id", (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const patient = db.select().from(patients).where(eq(patients.id, id)).get();
+    if (!patient) return c.json({ error: "Patient not found" }, 404);
+
+    const schedule = db.select().from(immunizationSchedules).where(eq(immunizationSchedules.active, true)).orderBy(immunizationSchedules.sortOrder).all();
+    const records = db
+      .select({
+        id: immunizationRecords.id,
+        patientId: immunizationRecords.patientId,
+        scheduleId: immunizationRecords.scheduleId,
+        vaccineCode: immunizationRecords.vaccineCode,
+        vaccineName: immunizationRecords.vaccineName,
+        doseLabel: immunizationRecords.doseLabel,
+        administeredAt: immunizationRecords.administeredAt,
+        administeredByStaffId: immunizationRecords.administeredByStaffId,
+        batchNo: immunizationRecords.batchNo,
+        manufacturer: immunizationRecords.manufacturer,
+        site: immunizationRecords.site,
+        route: immunizationRecords.route,
+        adverseEvent: immunizationRecords.adverseEvent,
+        notes: immunizationRecords.notes,
+        status: immunizationRecords.status,
+        staffName: staff.name
+      })
+      .from(immunizationRecords)
+      .leftJoin(staff, eq(immunizationRecords.administeredByStaffId, staff.id))
+      .where(eq(immunizationRecords.patientId, id))
+      .orderBy(desc(immunizationRecords.administeredAt), desc(immunizationRecords.createdAt))
+      .all();
+
+    const completed = new Set(records.map((record) => record.scheduleId).filter(Boolean));
+    const dob = inferDateOfBirth(patient);
+    const today = todayIsoDate();
+    const due = schedule
+      .filter((item) => item.beneficiaryType === "Child" && item.dueAgeDays !== null && !completed.has(item.id))
+      .map((item) => {
+        const dueDate = addDaysToDate(dob, item.dueAgeDays ?? 0);
+        const overdue = dueDate < today;
+        return { ...item, dueDate, status: overdue ? "Overdue" : "Due" };
+      })
+      .filter((item) => item.dueDate <= today || item.status === "Due")
+      .slice(0, 12);
+
+    return c.json({ patient, records, due });
+  })
+  .post("/immunization/records", async (c) => {
+    const input = await jsonBody(c, immunizationRecordInput);
+    const schedule = input.scheduleId
+      ? db.select().from(immunizationSchedules).where(eq(immunizationSchedules.id, input.scheduleId)).get()
+      : null;
+
+    const [row] = db
+      .insert(immunizationRecords)
+      .values({
+        ...input,
+        scheduleId: input.scheduleId ?? null,
+        administeredByStaffId: input.administeredByStaffId ?? null,
+        batchNo: input.batchNo ?? null,
+        manufacturer: input.manufacturer ?? null,
+        site: input.site || schedule?.site || null,
+        route: input.route || schedule?.route || null,
+        adverseEvent: input.adverseEvent ?? null,
+        notes: input.notes ?? null
+      })
+      .returning()
+      .all();
+    return c.json(row, 201);
+  })
   .get("/masters/roles", (c) => c.json(db.select().from(roleTypes).orderBy(roleTypes.name).all()))
   .post("/masters/roles", requireAdmin, async (c) => {
     const input = await jsonBody(c, roleTypeInput);
@@ -271,6 +541,58 @@ export const api = new Hono<AuthEnv>()
   .post("/masters/leave-types", requireAdmin, async (c) => {
     const input = await jsonBody(c, leaveTypeInput);
     const [row] = db.insert(leaveTypes).values(input).returning().all();
+    return c.json(row, 201);
+  })
+  .post("/hr/leaves", async (c) => {
+    const input = await jsonBody(c, leaveRequestInput);
+    const [row] = db.insert(leaveRequests).values({
+      ...input,
+      requestNo: code("LV"),
+      startDate: new Date(input.startDate),
+      endDate: new Date(input.endDate),
+      status: "Pending"
+    }).returning().all();
+
+    // Trigger Notification for Supervisors & Admin
+    try {
+      const employee = db.select().from(staff).where(eq(staff.id, input.staffId)).get();
+      if (employee) {
+        const supervisorIds = [];
+        if (employee.supervisorLevel1Id) supervisorIds.push(employee.supervisorLevel1Id);
+        if (employee.supervisorLevel2Id) supervisorIds.push(employee.supervisorLevel2Id);
+
+        for (const supId of supervisorIds) {
+          const sup = db.select().from(staff).where(eq(staff.id, supId)).get();
+          if (sup) {
+            const u = db.select().from(user).where(eq(user.email, sup.email)).get();
+            if (u) {
+              await sendNotification({
+                userId: u.id,
+                title: "New Leave Request",
+                message: `${employee.name} requested leave: ${row.requestNo} (${input.leaveType})`,
+                type: "info",
+                link: `/hr/leaves`
+              });
+            }
+          }
+        }
+        
+        // Also notify all admins
+        const admins = db.select().from(user).where(eq(user.role, "admin")).all();
+        for (const adm of admins) {
+          await sendNotification({
+            userId: adm.id,
+            title: "New Leave Request",
+            message: `${employee.name} requested leave: ${row.requestNo} (${input.leaveType})`,
+            type: "info",
+            link: `/hr/leaves`
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to send leave submission notification:", err);
+    }
+
     return c.json(row, 201);
   })
   .put("/masters/leave-types/:id", requireAdmin, async (c) => {
@@ -366,6 +688,18 @@ export const api = new Hono<AuthEnv>()
     const [row] = db.update(shifts).set(input).where(eq(shifts.id, id)).returning().all();
     return c.json(row);
   })
+  .get("/masters/banks", (c) => c.json(db.select().from(banks).orderBy(banks.name).all()))
+  .post("/masters/banks", requireAdmin, async (c) => {
+    const input = await jsonBody(c, bankInput);
+    const [row] = db.insert(banks).values(input).returning().all();
+    return c.json(row, 201);
+  })
+  .put("/masters/banks/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, bankInput);
+    const [row] = db.update(banks).set(input).where(eq(banks.id, id)).returning().all();
+    return c.json(row);
+  })
   .get("/departments", (c) => c.json(db.select().from(departments).orderBy(departments.name).all()))
   .get("/hr/staff", (c) => {
     const manager = aliasedTable(staff, "manager");
@@ -394,6 +728,9 @@ export const api = new Hono<AuthEnv>()
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
         otherDeductions: staffSalaries.otherDeductions,
+        bankName: staffSalaries.bankName,
+        accountNumber: staffSalaries.accountNumber,
+        ifscCode: staffSalaries.ifscCode,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -404,7 +741,7 @@ export const api = new Hono<AuthEnv>()
       })
       .from(staff)
       .leftJoin(staffDepartments, sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`)
-      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .leftJoin(manager, eq(staff.supervisorLevel1Id, manager.id))
       .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
       .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
@@ -428,6 +765,10 @@ export const api = new Hono<AuthEnv>()
       esi,
       professionalTax,
       otherDeductions,
+      bankName,
+      accountNumber,
+      ifscCode,
+      hrProfile,
       ...staffData
     } = input;
     const [row] = db.insert(staff).values({ ...staffData, employeeCode: code("EMP"), version: 1, active: true }).returning().all();
@@ -442,7 +783,10 @@ export const api = new Hono<AuthEnv>()
       epf,
       esi,
       professionalTax,
-      otherDeductions
+      otherDeductions,
+      bankName,
+      accountNumber,
+      ifscCode
     }).run();
 
     db.insert(staffDepartments).values({
@@ -453,6 +797,15 @@ export const api = new Hono<AuthEnv>()
       changedById: session?.user.id,
       changedByName: session?.user.name,
     }).run();
+
+    if (hrProfile) {
+      db.insert(staffHrProfiles).values({
+        staffId: row.id,
+        ...hrProfile,
+        educationHistory: hrProfile.educationHistory ? JSON.stringify(hrProfile.educationHistory) : "[]",
+        professionalHistory: hrProfile.professionalHistory ? JSON.stringify(hrProfile.professionalHistory) : "[]"
+      }).run();
+    }
 
     return c.json(row, 201);
   })
@@ -472,6 +825,10 @@ export const api = new Hono<AuthEnv>()
       esi,
       professionalTax,
       otherDeductions,
+      bankName,
+      accountNumber,
+      ifscCode,
+      hrProfile,
       ...staffData
     } = input;
 
@@ -515,7 +872,10 @@ export const api = new Hono<AuthEnv>()
       epf,
       esi,
       professionalTax,
-      otherDeductions
+      otherDeductions,
+      bankName,
+      accountNumber,
+      ifscCode
     }).run();
 
     // Handle department change / update
@@ -561,7 +921,50 @@ export const api = new Hono<AuthEnv>()
       }).run();
     }
 
+    const oldProfile = db.select().from(staffHrProfiles).where(eq(staffHrProfiles.staffId, id)).get();
+    
+    db.insert(staffHrProfiles).values({
+      staffId: newStaffRow.id,
+      dateOfBirth: hrProfile?.dateOfBirth ?? oldProfile?.dateOfBirth,
+      gender: hrProfile?.gender ?? oldProfile?.gender,
+      maritalStatus: hrProfile?.maritalStatus ?? oldProfile?.maritalStatus,
+      bloodGroup: hrProfile?.bloodGroup ?? oldProfile?.bloodGroup,
+      fatherName: hrProfile?.fatherName ?? oldProfile?.fatherName,
+      motherName: hrProfile?.motherName ?? oldProfile?.motherName,
+      spouseName: hrProfile?.spouseName ?? oldProfile?.spouseName,
+      emergencyContactName: hrProfile?.emergencyContactName ?? oldProfile?.emergencyContactName,
+      emergencyContactPhone: hrProfile?.emergencyContactPhone ?? oldProfile?.emergencyContactPhone,
+      currentAddress: hrProfile?.currentAddress ?? oldProfile?.currentAddress,
+      permanentAddress: hrProfile?.permanentAddress ?? oldProfile?.permanentAddress,
+      uan: oldProfile?.uan,
+      epfNumber: hrProfile?.epfNumber ?? oldProfile?.epfNumber,
+      esiNumber: hrProfile?.esiNumber ?? oldProfile?.esiNumber,
+      educationHistory: hrProfile?.educationHistory ? JSON.stringify(hrProfile.educationHistory) : (oldProfile?.educationHistory ?? "[]"),
+      professionalHistory: hrProfile?.professionalHistory ? JSON.stringify(hrProfile.professionalHistory) : (oldProfile?.professionalHistory ?? "[]"),
+    }).run();
+
     return c.json(newStaffRow);
+  })
+  .get("/hr/staff/:id/profile", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const profile = db.select().from(staffHrProfiles).where(eq(staffHrProfiles.staffId, id)).get();
+    
+    if (profile) {
+      return c.json({
+        ...profile,
+        educationHistory: JSON.parse(profile.educationHistory || "[]"),
+        professionalHistory: JSON.parse(profile.professionalHistory || "[]")
+      });
+    }
+    
+    return c.json({
+      fatherName: "",
+      motherName: "",
+      epfNumber: "",
+      esiNumber: "",
+      educationHistory: [],
+      professionalHistory: []
+    });
   })
   .get("/hr/staff/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
@@ -591,6 +994,9 @@ export const api = new Hono<AuthEnv>()
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
         otherDeductions: staffSalaries.otherDeductions,
+        bankName: staffSalaries.bankName,
+        accountNumber: staffSalaries.accountNumber,
+        ifscCode: staffSalaries.ifscCode,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -646,6 +1052,9 @@ export const api = new Hono<AuthEnv>()
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
         otherDeductions: staffSalaries.otherDeductions,
+        bankName: staffSalaries.bankName,
+        accountNumber: staffSalaries.accountNumber,
+        ifscCode: staffSalaries.ifscCode,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -916,6 +1325,23 @@ export const api = new Hono<AuthEnv>()
       .set({ status: "Approved", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
       .run();
+
+    // Trigger Notification for the Employee
+    try {
+      const u = db.select().from(user).where(eq(user.email, employee.email)).get();
+      if (u) {
+        await sendNotification({
+          userId: u.id,
+          title: "Leave Approved",
+          message: `Your leave request ${leaveRequest.requestNo} has been approved.`,
+          type: "success",
+          link: "/hr/leaves"
+        });
+      }
+    } catch (err) {
+      console.error("Failed to send leave approval notification:", err);
+    }
+
     return c.json({ ok: true });
   })
   .post("/hr/leaves/:id/reject", async (c) => {
@@ -970,6 +1396,23 @@ export const api = new Hono<AuthEnv>()
       .set({ status: "Rejected", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
       .run();
+
+    // Trigger Notification for the Employee
+    try {
+      const u = db.select().from(user).where(eq(user.email, employee.email)).get();
+      if (u) {
+        await sendNotification({
+          userId: u.id,
+          title: "Leave Rejected",
+          message: `Your leave request ${leaveRequest.requestNo} has been rejected.`,
+          type: "error",
+          link: "/hr/leaves"
+        });
+      }
+    } catch (err) {
+      console.error("Failed to send leave rejection notification:", err);
+    }
+
     return c.json({ ok: true });
   })
   .post("/hr/leaves/:id/forward", async (c) => {
@@ -1506,6 +1949,26 @@ export const api = new Hono<AuthEnv>()
     }
 
     const [row] = db.insert(rosters).values(input).returning().all();
+
+    // Trigger notification for the employee
+    try {
+      const employee = db.select().from(staff).where(eq(staff.id, input.staffId)).get();
+      if (employee) {
+        const u = db.select().from(user).where(eq(user.email, employee.email)).get();
+        if (u) {
+          await sendNotification({
+            userId: u.id,
+            title: "New Shift Schedule",
+            message: `You have been assigned a new shift starting from ${input.startDate} to ${input.endDate}.`,
+            type: "info",
+            link: "/hr/roster"
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to send roster assignment notification:", err);
+    }
+
     return c.json(row, 201);
   })
   .put("/hr/roster/:id", async (c) => {
@@ -1885,4 +2348,168 @@ export const api = new Hono<AuthEnv>()
 
     return c.json({ ok: true, generatedCount });
   })
+  .get("/colleagues", async (c) => {
+    const session = c.get("session");
+    const currentUserId = session.user.id;
+    const rows = db.select({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      image: user.image
+    })
+    .from(user)
+    .where(sql`${user.id} != ${currentUserId}`)
+    .all();
+    return c.json(rows);
+  })
+  .get("/messages/stream", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const email = session.user.email;
+
+    let deptId: number | null = null;
+    try {
+      const staffMember = db.select().from(staff).where(eq(staff.email, email)).get();
+      if (staffMember) {
+        const deptMap = db.select().from(staffDepartments).where(eq(staffDepartments.staffId, staffMember.id)).get();
+        if (deptMap) {
+          deptId = deptMap.departmentId;
+        }
+      }
+    } catch (err) {
+      console.error("Error retrieving user department:", err);
+    }
+
+    return streamSSE(c, async (stream) => {
+      const orgListener = async (msg: any) => {
+        try { await stream.writeSSE({ event: "message", data: JSON.stringify(msg) }); } catch { cleanup(); }
+      };
+      const deptListener = async (msg: any) => {
+        try { await stream.writeSSE({ event: "message", data: JSON.stringify(msg) }); } catch { cleanup(); }
+      };
+      const directListener = async (msg: any) => {
+        try { await stream.writeSSE({ event: "message", data: JSON.stringify(msg) }); } catch { cleanup(); }
+      };
+
+      const cleanup = () => {
+        chatEmitter.off("organization", orgListener);
+        if (deptId) {
+          chatEmitter.off(`department:${deptId}`, deptListener);
+        }
+        chatEmitter.off(`user:${userId}`, directListener);
+      };
+
+      chatEmitter.on("organization", orgListener);
+      if (deptId) {
+        chatEmitter.on(`department:${deptId}`, deptListener);
+      }
+      chatEmitter.on(`user:${userId}`, directListener);
+
+      const ping = setInterval(async () => {
+        try {
+          await stream.writeSSE({ event: "ping", data: "heartbeat" });
+        } catch {
+          clearInterval(ping);
+          cleanup();
+        }
+      }, 15000);
+
+      stream.onAbort(() => {
+        clearInterval(ping);
+        cleanup();
+      });
+
+      await new Promise<void>((resolve) => {
+        stream.onAbort(() => {
+          resolve();
+        });
+      });
+    });
+  })
+  .get("/messages", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const channelType = c.req.query("channelType") || "organization";
+    const departmentIdStr = c.req.query("departmentId");
+    const colleagueId = c.req.query("colleagueId");
+
+    let rows: any[] = [];
+    if (channelType === "organization") {
+      rows = db.select({
+        id: messages.id,
+        senderId: messages.senderId,
+        senderName: user.name,
+        senderImage: user.image,
+        content: messages.content,
+        createdAt: messages.createdAt
+      })
+      .from(messages)
+      .innerJoin(user, eq(messages.senderId, user.id))
+      .where(eq(messages.channelType, "organization"))
+      .orderBy(messages.createdAt)
+      .all();
+    } else if (channelType === "department" && departmentIdStr) {
+      const deptId = Number(departmentIdStr);
+      rows = db.select({
+        id: messages.id,
+        senderId: messages.senderId,
+        senderName: user.name,
+        senderImage: user.image,
+        content: messages.content,
+        createdAt: messages.createdAt
+      })
+      .from(messages)
+      .innerJoin(user, eq(messages.senderId, user.id))
+      .where(sql`${messages.channelType} = 'department' AND ${messages.departmentId} = ${deptId}`)
+      .orderBy(messages.createdAt)
+      .all();
+    } else if (channelType === "direct" && colleagueId) {
+      rows = db.select({
+        id: messages.id,
+        senderId: messages.senderId,
+        senderName: user.name,
+        senderImage: user.image,
+        content: messages.content,
+        createdAt: messages.createdAt
+      })
+      .from(messages)
+      .innerJoin(user, eq(messages.senderId, user.id))
+      .where(sql`${messages.channelType} = 'direct' AND ((${messages.senderId} = ${userId} AND ${messages.receiverId} = ${colleagueId}) OR (${messages.senderId} = ${colleagueId} AND ${messages.receiverId} = ${userId}))`)
+      .orderBy(messages.createdAt)
+      .all();
+    }
+
+    return c.json(rows);
+  })
+  .post("/messages", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const body = await c.req.json();
+
+    const result = db.insert(messages).values({
+      senderId: userId,
+      receiverId: body.receiverId || null,
+      channelType: body.channelType || "organization",
+      departmentId: body.departmentId ? Number(body.departmentId) : null,
+      content: body.content
+    }).run();
+
+    const sender = db.select().from(user).where(eq(user.id, userId)).get();
+    const newMsg = {
+      id: Number(result.lastInsertRowid),
+      senderId: userId,
+      senderName: sender?.name || "Colleague",
+      senderImage: sender?.image || null,
+      receiverId: body.receiverId || null,
+      channelType: body.channelType || "organization",
+      departmentId: body.departmentId ? Number(body.departmentId) : null,
+      content: body.content,
+      createdAt: new Date()
+    };
+
+    dispatchMessage(newMsg);
+
+    return c.json(newMsg);
+  })
+
 export type AppType = typeof api;

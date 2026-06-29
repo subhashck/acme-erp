@@ -20,7 +20,15 @@ import {
   X,
   Building,
   Percent,
-  Coins
+  Coins,
+  Syringe,
+  Bell,
+  Check,
+  CheckCircle,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  MessageSquare
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -29,6 +37,7 @@ import { Input } from "../ui/input";
 import * as React from "react";
 import { cn } from "../utils/cn";
 import { useHospitalSettings } from "../lib/settings";
+import { notificationsStore, notificationsActions } from "../lib/notifications-store";
 
 const getBreadcrumbs = (pathname: string) => {
   const items = [{ label: "Dashboard", to: "/" }];
@@ -85,6 +94,17 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Shifts", to: "/masters/shifts" });
     } else if (sub === "salary-templates") {
       items.push({ label: "Salary Templates", to: "/masters/salary-templates" });
+    } else if (sub === "banks") {
+      items.push({ label: "Banks", to: "/masters/banks" });
+    }
+    return items;
+  }
+
+  if (pathname.startsWith("/clinical/")) {
+    items.push({ label: "Clinical", to: "/clinical/immunization" });
+    const sub = pathname.replace("/clinical/", "");
+    if (sub === "immunization") {
+      items.push({ label: "Immunization History", to: "/clinical/immunization" });
     }
     return items;
   }
@@ -114,10 +134,37 @@ export function Shell() {
   const session = authClient.useSession();
   const hospital = useHospitalSettings();
   const [hrOpen, setHrOpen] = React.useState(true);
+  const [clinicalOpen, setClinicalOpen] = React.useState(true);
   const [mastersOpen, setMastersOpen] = React.useState(true);
   const [adminOpen, setAdminOpen] = React.useState(true);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  
+  // Notification system state and hooks
+  const { notifications } = useStore(notificationsStore);
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false);
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    notificationsActions.fetchNotifications();
+    notificationsActions.connectSSE();
+    return () => {
+      notificationsActions.disconnectSSE();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const signOut = async () => {
     await authClient.signOut();
@@ -201,6 +248,16 @@ export function Shell() {
                 Dashboard
               </Link>
 
+              {/* Communication */}
+              <Link
+                to="/communication"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+              >
+                <MessageSquare size={18} />
+                Communication
+              </Link>
+
               {/* Collapsible HR group */}
               <div className="flex flex-col">
                 <button
@@ -250,6 +307,30 @@ export function Shell() {
                       activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                     >
                       Payroll
+                    </Link>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col">
+                <button
+                  onClick={() => setClinicalOpen(!clinicalOpen)}
+                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <Syringe size={18} />
+                    <span>Clinical</span>
+                  </div>
+                  {clinicalOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {clinicalOpen && (
+                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                    <Link
+                      to="/clinical/immunization"
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Immunization History
                     </Link>
                   </div>
                 )}
@@ -305,6 +386,13 @@ export function Shell() {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Salary Templates
+                      </Link>
+                      <Link
+                        to="/masters/banks"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Banks
                       </Link>
                     </div>
                   )}
@@ -381,6 +469,15 @@ export function Shell() {
                 <LayoutDashboard size={20} />
               </Link>
               
+              <Link
+                to="/communication"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Communication"
+              >
+                <MessageSquare size={20} />
+              </Link>
+              
               <div className="w-8 h-px bg-border my-2" />
 
               <Link
@@ -417,6 +514,15 @@ export function Shell() {
                 title="Payroll"
               >
                 <Receipt size={20} />
+              </Link>
+
+              <Link
+                to="/clinical/immunization"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Immunization History"
+              >
+                <Syringe size={20} />
               </Link>
 
               {session.data?.user.role === "admin" && (
@@ -466,6 +572,15 @@ export function Shell() {
                     title="Salary Templates Master"
                   >
                     <Coins size={20} />
+                  </Link>
+
+                  <Link
+                    to="/masters/banks"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Banks Master"
+                  >
+                    <Landmark size={20} />
                   </Link>
 
                   <div className="w-8 h-px bg-border my-2" />
@@ -574,6 +689,110 @@ export function Shell() {
                 <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
                 <Input value={search} onChange={(event) => uiStore.setState((state) => ({ ...state, search: event.target.value }))} className="pl-9" placeholder="Search records" />
               </div>
+              <div className="relative" ref={dropdownRef}>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="relative cursor-pointer"
+                  onClick={() => setNotificationsOpen(!notificationsOpen)}
+                  title="Notifications"
+                >
+                  <Bell size={17} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-background">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+
+                {notificationsOpen && (
+                  <div className="absolute right-0 mt-2 z-50 w-80 sm:w-96 rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
+                    <div className="flex items-center justify-between border-b px-4 py-3">
+                      <div className="font-semibold text-sm">Notifications</div>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={() => notificationsActions.clearAll()}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                        >
+                          <Check className="size-3" /> Mark all read
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
+                      {notifications.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs">
+                          <Bell className="size-8 mb-2 opacity-40" />
+                          No notifications
+                        </div>
+                      ) : (
+                        notifications.map((n) => {
+                          const Icon = {
+                            success: CheckCircle,
+                            error: AlertCircle,
+                            warning: AlertTriangle,
+                            info: Info,
+                          }[n.type] || Info;
+
+                          return (
+                            <div
+                              key={n.id}
+                              className={cn(
+                                "flex items-start gap-3 p-4 transition-colors hover:bg-muted/40",
+                                !n.read && "bg-primary/5 font-medium"
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  "grid size-8 place-items-center rounded-full shrink-0",
+                                  n.type === "success" && "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400",
+                                  n.type === "error" && "bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400",
+                                  n.type === "warning" && "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400",
+                                  n.type === "info" && "bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
+                                )}
+                              >
+                                <Icon className="size-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold truncate text-foreground">{n.title}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">{n.message}</p>
+                                <div className="flex items-center gap-3 mt-1.5">
+                                  {n.link && (
+                                    <Link
+                                      to={n.link}
+                                      onClick={() => {
+                                        setNotificationsOpen(false);
+                                        if (!n.read) {
+                                          notificationsActions.clearNotification(n.id);
+                                        }
+                                      }}
+                                      className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline font-semibold"
+                                    >
+                                      View action
+                                    </Link>
+                                  )}
+                                  <span className="text-[9px] text-muted-foreground">
+                                    {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              </div>
+                              {!n.read && (
+                                <button
+                                  onClick={() => notificationsActions.clearNotification(n.id)}
+                                  className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
+                                  title="Mark as read"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <Button variant="outline" size="icon" title="Sign out" onClick={signOut}>
                 <LogOut size={17} />
               </Button>
@@ -581,7 +800,9 @@ export function Shell() {
           </div>
         </header>
         <section className="px-4 py-6 md:px-8 dark:bg-slate-950">
-          <Outlet />
+          <div key={location.pathname} className="animate-page-transition">
+            <Outlet />
+          </div>
         </section>
       </main>
     </div>

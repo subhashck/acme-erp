@@ -81,6 +81,7 @@ function StaffList() {
             enableSorting
             enablePagination
             filterPlaceholder="Search staff..."
+            isLoading={staffQuery.isLoading}
           />
         </CardContent>
       </Card>

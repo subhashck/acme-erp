@@ -151,8 +151,6 @@ function ViewStaff() {
                   <span className="text-muted-foreground font-medium">PAN Number</span>
                   <span className="font-semibold text-foreground font-mono uppercase">{employee.pan || "N/A"}</span>
 
-                  <span className="text-muted-foreground font-medium">Salary</span>
-                  <span className="font-semibold text-foreground font-mono">₹{employee.salary?.toLocaleString() || "0"}</span>
 
                   <span className="text-muted-foreground font-medium">Last Updated</span>
                   <span className="font-semibold text-foreground">

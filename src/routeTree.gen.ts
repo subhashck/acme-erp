@@ -13,11 +13,13 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
+import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
 import { Route as AuthenticatedHrViewStaffRouteImport } from './routes/_authenticated/hr/view-staff'
 import { Route as AuthenticatedHrViewPayslipRouteImport } from './routes/_authenticated/hr/view-payslip'
 import { Route as AuthenticatedHrStaffListRouteImport } from './routes/_authenticated/hr/staff-list'
@@ -27,6 +29,7 @@ import { Route as AuthenticatedHrPayrollRouteImport } from './routes/_authentica
 import { Route as AuthenticatedHrLeavesRouteImport } from './routes/_authenticated/hr/leaves'
 import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authenticated/hr/attendance'
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
+import { Route as AuthenticatedClinicalImmunizationRouteImport } from './routes/_authenticated/clinical/immunization'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
 import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_authenticated/admin/localization'
@@ -51,6 +54,12 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCommunicationRoute =
+  AuthenticatedCommunicationRouteImport.update({
+    id: '/communication',
+    path: '/communication',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMastersShiftsRoute =
   AuthenticatedMastersShiftsRouteImport.update({
     id: '/masters/shifts',
@@ -79,6 +88,12 @@ const AuthenticatedMastersDepartmentsRoute =
   AuthenticatedMastersDepartmentsRouteImport.update({
     id: '/masters/departments',
     path: '/masters/departments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMastersBanksRoute =
+  AuthenticatedMastersBanksRouteImport.update({
+    id: '/masters/banks',
+    path: '/masters/banks',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedHrViewStaffRoute =
@@ -131,6 +146,12 @@ const AuthenticatedHrAddStaffRoute = AuthenticatedHrAddStaffRouteImport.update({
   path: '/hr/add-staff',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedClinicalImmunizationRoute =
+  AuthenticatedClinicalImmunizationRouteImport.update({
+    id: '/clinical/immunization',
+    path: '/clinical/immunization',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
@@ -158,11 +179,13 @@ const AuthenticatedAdminHospitalRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
+  '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -172,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
@@ -180,12 +204,14 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
+  '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -195,6 +221,7 @@ export interface FileRoutesByTo {
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
@@ -205,12 +232,14 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
+  '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/_authenticated/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/_authenticated/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/_authenticated/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -220,6 +249,7 @@ export interface FileRoutesById {
   '/_authenticated/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/_authenticated/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/_authenticated/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
@@ -231,11 +261,13 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/communication'
     | '/settings'
     | '/admin/hospital'
     | '/admin/localization'
     | '/admin/payroll'
     | '/admin/users'
+    | '/clinical/immunization'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
@@ -245,6 +277,7 @@ export interface FileRouteTypes {
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
+    | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
     | '/masters/roles'
@@ -253,12 +286,14 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
+    | '/communication'
     | '/settings'
     | '/'
     | '/admin/hospital'
     | '/admin/localization'
     | '/admin/payroll'
     | '/admin/users'
+    | '/clinical/immunization'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
@@ -268,6 +303,7 @@ export interface FileRouteTypes {
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
+    | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
     | '/masters/roles'
@@ -277,12 +313,14 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_authenticated'
     | '/login'
+    | '/_authenticated/communication'
     | '/_authenticated/settings'
     | '/_authenticated/'
     | '/_authenticated/admin/hospital'
     | '/_authenticated/admin/localization'
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
+    | '/_authenticated/clinical/immunization'
     | '/_authenticated/hr/add-staff'
     | '/_authenticated/hr/attendance'
     | '/_authenticated/hr/leaves'
@@ -292,6 +330,7 @@ export interface FileRouteTypes {
     | '/_authenticated/hr/staff-list'
     | '/_authenticated/hr/view-payslip'
     | '/_authenticated/hr/view-staff'
+    | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
     | '/_authenticated/masters/roles'
@@ -334,6 +373,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/communication': {
+      id: '/_authenticated/communication'
+      path: '/communication'
+      fullPath: '/communication'
+      preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/masters/shifts': {
       id: '/_authenticated/masters/shifts'
       path: '/masters/shifts'
@@ -367,6 +413,13 @@ declare module '@tanstack/react-router' {
       path: '/masters/departments'
       fullPath: '/masters/departments'
       preLoaderRoute: typeof AuthenticatedMastersDepartmentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/masters/banks': {
+      id: '/_authenticated/masters/banks'
+      path: '/masters/banks'
+      fullPath: '/masters/banks'
+      preLoaderRoute: typeof AuthenticatedMastersBanksRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/hr/view-staff': {
@@ -432,6 +485,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrAddStaffRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/clinical/immunization': {
+      id: '/_authenticated/clinical/immunization'
+      path: '/clinical/immunization'
+      fullPath: '/clinical/immunization'
+      preLoaderRoute: typeof AuthenticatedClinicalImmunizationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/admin/users'
@@ -464,12 +524,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAdminHospitalRoute: typeof AuthenticatedAdminHospitalRoute
   AuthenticatedAdminLocalizationRoute: typeof AuthenticatedAdminLocalizationRoute
   AuthenticatedAdminPayrollRoute: typeof AuthenticatedAdminPayrollRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
   AuthenticatedHrAttendanceRoute: typeof AuthenticatedHrAttendanceRoute
   AuthenticatedHrLeavesRoute: typeof AuthenticatedHrLeavesRoute
@@ -479,6 +541,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHrStaffListRoute: typeof AuthenticatedHrStaffListRoute
   AuthenticatedHrViewPayslipRoute: typeof AuthenticatedHrViewPayslipRoute
   AuthenticatedHrViewStaffRoute: typeof AuthenticatedHrViewStaffRoute
+  AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
@@ -487,12 +550,15 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAdminHospitalRoute: AuthenticatedAdminHospitalRoute,
   AuthenticatedAdminLocalizationRoute: AuthenticatedAdminLocalizationRoute,
   AuthenticatedAdminPayrollRoute: AuthenticatedAdminPayrollRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedClinicalImmunizationRoute:
+    AuthenticatedClinicalImmunizationRoute,
   AuthenticatedHrAddStaffRoute: AuthenticatedHrAddStaffRoute,
   AuthenticatedHrAttendanceRoute: AuthenticatedHrAttendanceRoute,
   AuthenticatedHrLeavesRoute: AuthenticatedHrLeavesRoute,
@@ -502,6 +568,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHrStaffListRoute: AuthenticatedHrStaffListRoute,
   AuthenticatedHrViewPayslipRoute: AuthenticatedHrViewPayslipRoute,
   AuthenticatedHrViewStaffRoute: AuthenticatedHrViewStaffRoute,
+  AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
   AuthenticatedMastersRolesRoute: AuthenticatedMastersRolesRoute,

@@ -41,7 +41,7 @@ function Login() {
 
   return (
     <main className="grid min-h-screen place-items-center bg-background px-4 py-8 text-foreground">
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-sm animate-page-transition">
         <div className="mb-6 flex items-center justify-center gap-3">
           <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground">
             <Activity size={24} />
