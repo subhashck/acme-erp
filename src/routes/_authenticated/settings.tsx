@@ -179,7 +179,7 @@ function SettingsPage() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border bg-muted/35">
                     <div className="flex items-center gap-4">
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-slate-950 dark:bg-slate-800 text-white font-extrabold text-lg shadow-inner">
-                        {session.data?.user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "U"}
+                        {(session.data?.user?.name || "").split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "U"}
                       </div>
                       <div className="flex flex-col">
                         <span className="font-extrabold text-foreground text-base">{session.data?.user.name}</span>

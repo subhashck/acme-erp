@@ -1,9 +1,9 @@
 import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
-import { sqlite } from "./db/client.ts";
+import { pool } from "./db/client.ts";
 
 export const auth = betterAuth({
-  database: sqlite,
+  database: pool,
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:8787",
   basePath: "/api/auth",
   secret: process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me",

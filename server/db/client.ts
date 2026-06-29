@@ -1,40 +1,18 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { Pool } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
 import * as schema from "./schema.ts";
 
-export const databaseUrl = process.env.DATABASE_URL ?? "./data/hospital.sqlite";
+if (!process.env.DATABASE_URL) {
+  try {
+    // @ts-ignore
+    process.loadEnvFile();
+  } catch (e) {
+    // Ignore if .env doesn't exist
+  }
+}
 
-mkdirSync(dirname(databaseUrl), { recursive: true });
+export const databaseUrl = process.env.DATABASE_URL!;
 
-export const sqlite = new Database(databaseUrl);
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
+export const pool = new Pool({ connectionString: databaseUrl });
 
-// Automatically ensure the notifications table exists
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS \`notifications\` (
-    \`id\` integer PRIMARY KEY AUTOINCREMENT,
-    \`user_id\` text NOT NULL REFERENCES \`user\`(\`id\`) ON DELETE CASCADE,
-    \`title\` text NOT NULL,
-    \`message\` text NOT NULL,
-    \`type\` text NOT NULL DEFAULT 'info',
-    \`link\` text,
-    \`read\` integer NOT NULL DEFAULT 0,
-    \`created_at\` integer NOT NULL DEFAULT (unixepoch()),
-    \`updated_at\` integer NOT NULL DEFAULT (unixepoch())
-  );
-
-  CREATE TABLE IF NOT EXISTS \`messages\` (
-    \`id\` integer PRIMARY KEY AUTOINCREMENT,
-    \`sender_id\` text NOT NULL REFERENCES \`user\`(\`id\`) ON DELETE CASCADE,
-    \`receiver_id\` text REFERENCES \`user\`(\`id\`) ON DELETE CASCADE,
-    \`channel_type\` text NOT NULL DEFAULT 'organization',
-    \`department_id\` integer REFERENCES \`departments\`(\`id\`) ON DELETE CASCADE,
-    \`content\` text NOT NULL,
-    \`created_at\` integer NOT NULL DEFAULT (unixepoch())
-  );
-`);
-
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(pool, { schema });

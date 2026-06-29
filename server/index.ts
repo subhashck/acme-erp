@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { auth, type AuthEnv } from "./auth.ts";
 import { api } from "./routes.ts";
+import { serveStatic } from "@hono/node-server/serve-static";
 
 const app = new Hono<AuthEnv>();
 
@@ -33,6 +34,25 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 app.route("/api", api);
+
+//Serve static assets (js, css, images) from the Vite build directory
+// app.use(
+//   "*",
+//   serveStatic({
+//     root: "dist",
+//   })
+// );
+
+// // Fallback: Serve index.html for Single Page Application (SPA) routing
+// app.use(
+//   "/*",
+//   serveStatic({
+//     root: "dist",
+//     path: "index.html",
+//   })
+// );
+
+
 
 serve({ fetch: app.fetch, port: 8787 }, (info) => {
   console.log(`Hono API listening on http://localhost:${info.port}`);
