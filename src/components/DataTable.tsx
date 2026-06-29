@@ -77,11 +77,13 @@ export function DataTable<T extends Record<string, unknown>>({
     }
   };
 
+  const safeRows = rows || [];
+
   // 1. Filtering
   const filteredRows = React.useMemo(() => {
-    if (!enableFiltering || !searchQuery) return rows;
+    if (!enableFiltering || !searchQuery) return safeRows;
     const query = searchQuery.toLowerCase().trim();
-    return rows.filter((row) => {
+    return safeRows.filter((row) => {
       return columns.some((col) => {
         let val: unknown;
         if (Array.isArray(col)) {
@@ -96,7 +98,7 @@ export function DataTable<T extends Record<string, unknown>>({
         return String(val).toLowerCase().includes(query);
       });
     });
-  }, [rows, columns, enableFiltering, searchQuery]);
+  }, [safeRows, columns, enableFiltering, searchQuery]);
 
   // 2. Sorting
   const sortedRows = React.useMemo(() => {

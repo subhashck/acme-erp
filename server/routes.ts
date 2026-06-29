@@ -10,7 +10,7 @@ import {
   leaveRequests,
   leaveTypes,
   patients,
-  roleTypes,
+  designations,
   shifts,
   rosters,
   staff,
@@ -185,7 +185,7 @@ const getCurrentStaff = async (c: Context<AuthEnv>) => {
   if (!session?.user.email) {
     return null;
   }
-  const staffRecord = db.select().from(staff).where(sql`${staff.email} = ${session.user.email} AND ${staff.active} = 1`).get();
+  const staffRecord = await db.select().from(staff).where(sql`${staff.email} = ${session.user.email} AND ${staff.active} = true`).limit(1).then((res: any) => res[0]);
   return staffRecord;
 };
 
@@ -321,11 +321,11 @@ export const api = new Hono<AuthEnv>()
   .get("/dashboard", async (c) => {
     const todayStr = new Date().toISOString().split("T")[0];
     const [staffCount, deptCount, pendingLeaves, attendanceToday, shiftsCount] = await Promise.all([
-      db.select({ value: sql<number>`count(*)` }).from(staff).where(eq(staff.active, true)).get(),
-      db.select({ value: sql<number>`count(*)` }).from(departments).get(),
-      db.select({ value: sql<number>`count(*)` }).from(leaveRequests).where(eq(leaveRequests.status, "Pending")).get(),
-      db.select({ value: sql<number>`count(*)` }).from(attendance).where(eq(attendance.date, todayStr)).get(),
-      db.select({ value: sql<number>`count(*)` }).from(shifts).get(),
+      db.select({ value: sql<number>`count(*)` }).from(staff).where(eq(staff.active, true)).limit(1).then((res: any) => res[0]),
+      db.select({ value: sql<number>`count(*)` }).from(departments).limit(1).then((res: any) => res[0]),
+      db.select({ value: sql<number>`count(*)` }).from(leaveRequests).where(eq(leaveRequests.status, "Pending")).limit(1).then((res: any) => res[0]),
+      db.select({ value: sql<number>`count(*)` }).from(attendance).where(eq(attendance.date, todayStr)).limit(1).then((res: any) => res[0]),
+      db.select({ value: sql<number>`count(*)` }).from(shifts).limit(1).then((res: any) => res[0]),
     ]);
 
     return c.json({
@@ -357,13 +357,13 @@ export const api = new Hono<AuthEnv>()
 
       // Send initial unread notifications
       try {
-        const unreads = db
+        const unreads = await db
           .select()
           .from(notifications)
-          .where(sql`${notifications.userId} = ${userId} AND ${notifications.read} = 0`)
+          .where(sql`${notifications.userId} = ${userId} AND ${notifications.read} = false`)
           .orderBy(desc(notifications.createdAt))
-          .all();
-        
+          .execute();
+
         for (const n of unreads) {
           await stream.writeSSE({ event: "notification", data: JSON.stringify(n) });
         }
@@ -396,12 +396,12 @@ export const api = new Hono<AuthEnv>()
   .get("/notifications", async (c) => {
     const session = c.get("session");
     const userId = session.user.id;
-    const rows = db
+    const rows = await db
       .select()
       .from(notifications)
       .where(eq(notifications.userId, userId))
       .orderBy(desc(notifications.createdAt))
-      .all();
+      .execute();
     return c.json(rows);
   })
   .post("/notifications/:id/clear", async (c) => {
@@ -409,10 +409,10 @@ export const api = new Hono<AuthEnv>()
     const userId = session.user.id;
     const id = Number(c.req.param("id"));
 
-    db.update(notifications)
+    await db.update(notifications)
       .set({ read: true })
       .where(sql`${notifications.id} = ${id} AND ${notifications.userId} = ${userId}`)
-      .run();
+      .execute();
 
     return c.json({ ok: true });
   })
@@ -420,23 +420,23 @@ export const api = new Hono<AuthEnv>()
     const session = c.get("session");
     const userId = session.user.id;
 
-    db.update(notifications)
+    await db.update(notifications)
       .set({ read: true })
       .where(eq(notifications.userId, userId))
-      .run();
+      .execute();
 
     return c.json({ ok: true });
   })
-  .get("/immunization/schedule", (c) => {
-    const rows = db
+  .get("/immunization/schedule", async (c) => {
+    const rows = await db
       .select()
       .from(immunizationSchedules)
       .where(eq(immunizationSchedules.active, true))
       .orderBy(immunizationSchedules.sortOrder, immunizationSchedules.id)
-      .all();
+      .execute();
     return c.json(rows);
   })
-  .get("/immunization/patients", (c) => {
+  .get("/immunization/patients", async (c) => {
     const search = c.req.query("search")?.trim();
     let query = db
       .select({
@@ -454,15 +454,15 @@ export const api = new Hono<AuthEnv>()
       query = query.where(sql`${patients.name} LIKE ${`%${search}%`} OR ${patients.mrn} LIKE ${`%${search}%`} OR ${patients.phone} LIKE ${`%${search}%`}`);
     }
 
-    return c.json(query.orderBy(desc(patients.createdAt)).limit(50).all());
+    return c.json(await query.orderBy(desc(patients.createdAt)).limit(50).execute());
   })
-  .get("/immunization/patients/:id", (c) => {
+  .get("/immunization/patients/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    const patient = db.select().from(patients).where(eq(patients.id, id)).get();
+    const patient = await db.select().from(patients).where(eq(patients.id, id)).limit(1).then((res: any) => res[0]);
     if (!patient) return c.json({ error: "Patient not found" }, 404);
 
-    const schedule = db.select().from(immunizationSchedules).where(eq(immunizationSchedules.active, true)).orderBy(immunizationSchedules.sortOrder).all();
-    const records = db
+    const schedule = await db.select().from(immunizationSchedules).where(eq(immunizationSchedules.active, true)).orderBy(immunizationSchedules.sortOrder).execute();
+    const records = await db
       .select({
         id: immunizationRecords.id,
         patientId: immunizationRecords.patientId,
@@ -485,7 +485,7 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(staff, eq(immunizationRecords.administeredByStaffId, staff.id))
       .where(eq(immunizationRecords.patientId, id))
       .orderBy(desc(immunizationRecords.administeredAt), desc(immunizationRecords.createdAt))
-      .all();
+      .execute();
 
     const completed = new Set(records.map((record) => record.scheduleId).filter(Boolean));
     const dob = inferDateOfBirth(patient);
@@ -505,10 +505,10 @@ export const api = new Hono<AuthEnv>()
   .post("/immunization/records", async (c) => {
     const input = await jsonBody(c, immunizationRecordInput);
     const schedule = input.scheduleId
-      ? db.select().from(immunizationSchedules).where(eq(immunizationSchedules.id, input.scheduleId)).get()
+      ? await db.select().from(immunizationSchedules).where(eq(immunizationSchedules.id, input.scheduleId)).limit(1).then((res: any) => res[0])
       : null;
 
-    const [row] = db
+    const [row] = await db
       .insert(immunizationRecords)
       .values({
         ...input,
@@ -522,49 +522,49 @@ export const api = new Hono<AuthEnv>()
         notes: input.notes ?? null
       })
       .returning()
-      .all();
+      .execute();
     return c.json(row, 201);
   })
-  .get("/masters/roles", (c) => c.json(db.select().from(roleTypes).orderBy(roleTypes.name).all()))
+  .get("/masters/roles", async (c) => c.json(await db.select().from(designations).orderBy(designations.name).execute()))
   .post("/masters/roles", requireAdmin, async (c) => {
     const input = await jsonBody(c, roleTypeInput);
-    const [row] = db.insert(roleTypes).values(input).returning().all();
+    const [row] = await db.insert(designations).values(input).returning().execute();
     return c.json(row, 201);
   })
   .put("/masters/roles/:id", requireAdmin, async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, roleTypeInput);
-    const [row] = db.update(roleTypes).set(input).where(eq(roleTypes.id, id)).returning().all();
+    const [row] = await db.update(designations).set(input).where(eq(designations.id, id)).returning().execute();
     return c.json(row);
   })
-  .get("/masters/leave-types", (c) => c.json(db.select().from(leaveTypes).orderBy(leaveTypes.name).all()))
+  .get("/masters/leave-types", async (c) => c.json(await db.select().from(leaveTypes).orderBy(leaveTypes.name).execute()))
   .post("/masters/leave-types", requireAdmin, async (c) => {
     const input = await jsonBody(c, leaveTypeInput);
-    const [row] = db.insert(leaveTypes).values(input).returning().all();
+    const [row] = await db.insert(leaveTypes).values(input).returning().execute();
     return c.json(row, 201);
   })
   .post("/hr/leaves", async (c) => {
     const input = await jsonBody(c, leaveRequestInput);
-    const [row] = db.insert(leaveRequests).values({
+    const [row] = await db.insert(leaveRequests).values({
       ...input,
       requestNo: code("LV"),
       startDate: new Date(input.startDate),
       endDate: new Date(input.endDate),
       status: "Pending"
-    }).returning().all();
+    }).returning().execute();
 
     // Trigger Notification for Supervisors & Admin
     try {
-      const employee = db.select().from(staff).where(eq(staff.id, input.staffId)).get();
+      const employee = await db.select().from(staff).where(eq(staff.id, input.staffId)).limit(1).then((res: any) => res[0]);
       if (employee) {
         const supervisorIds = [];
         if (employee.supervisorLevel1Id) supervisorIds.push(employee.supervisorLevel1Id);
         if (employee.supervisorLevel2Id) supervisorIds.push(employee.supervisorLevel2Id);
 
         for (const supId of supervisorIds) {
-          const sup = db.select().from(staff).where(eq(staff.id, supId)).get();
+          const sup = await db.select().from(staff).where(eq(staff.id, supId)).limit(1).then((res: any) => res[0]);
           if (sup) {
-            const u = db.select().from(user).where(eq(user.email, sup.email)).get();
+            const u = await db.select().from(user).where(eq(user.email, sup.email)).limit(1).then((res: any) => res[0]);
             if (u) {
               await sendNotification({
                 userId: u.id,
@@ -576,9 +576,9 @@ export const api = new Hono<AuthEnv>()
             }
           }
         }
-        
+
         // Also notify all admins
-        const admins = db.select().from(user).where(eq(user.role, "admin")).all();
+        const admins = await db.select().from(user).where(eq(user.role, "admin")).execute();
         for (const adm of admins) {
           await sendNotification({
             userId: adm.id,
@@ -598,13 +598,13 @@ export const api = new Hono<AuthEnv>()
   .put("/masters/leave-types/:id", requireAdmin, async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, leaveTypeInput);
-    const [row] = db.update(leaveTypes).set(input).where(eq(leaveTypes.id, id)).returning().all();
+    const [row] = await db.update(leaveTypes).set(input).where(eq(leaveTypes.id, id)).returning().execute();
     return c.json(row);
   })
-  .get("/masters/departments", (c) => {
+  .get("/masters/departments", async (c) => {
     const headStaff = aliasedTable(staff, "head_staff");
     const subheadStaff = aliasedTable(staff, "subhead_staff");
-    const rows = db
+    const rows = await db
       .select({
         id: departments.id,
         name: departments.name,
@@ -621,91 +621,91 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(headStaff, eq(departmentLeaders.headStaffId, headStaff.id))
       .leftJoin(subheadStaff, eq(departmentLeaders.subheadStaffId, subheadStaff.id))
       .orderBy(departments.name)
-      .all();
+      .execute();
     return c.json(rows);
   })
   .post("/masters/departments", requireAdmin, async (c) => {
     const input = await jsonBody(c, departmentInput);
     const { headStaffId, subheadStaffId, ...deptData } = input;
-    
+
     let headName = deptData.head || "";
     if (headStaffId) {
-      const hStaff = db.select().from(staff).where(eq(staff.id, headStaffId)).get();
+      const hStaff = await db.select().from(staff).where(eq(staff.id, headStaffId)).limit(1).then((res: any) => res[0]);
       if (hStaff) headName = hStaff.name;
     }
-    
-    const [row] = db.insert(departments).values({ ...deptData, head: headName }).returning().all();
-    
-    db.insert(departmentLeaders).values({
+
+    const [row] = await db.insert(departments).values({ ...deptData, head: headName }).returning().execute();
+
+    await db.insert(departmentLeaders).values({
       departmentId: row.id,
       headStaffId: headStaffId || null,
       subheadStaffId: subheadStaffId || null
-    }).run();
-    
+    }).execute();
+
     return c.json(row, 201);
   })
   .put("/masters/departments/:id", requireAdmin, async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, departmentInput);
     const { headStaffId, subheadStaffId, ...deptData } = input;
-    
+
     let headName = deptData.head || "";
     if (headStaffId) {
-      const hStaff = db.select().from(staff).where(eq(staff.id, headStaffId)).get();
+      const hStaff = await db.select().from(staff).where(eq(staff.id, headStaffId)).limit(1).then((res: any) => res[0]);
       if (hStaff) headName = hStaff.name;
     }
-    
-    const [row] = db.update(departments).set({ ...deptData, head: headName }).where(eq(departments.id, id)).returning().all();
-    
-    const existingLeader = db.select().from(departmentLeaders).where(eq(departmentLeaders.departmentId, id)).get();
+
+    const [row] = await db.update(departments).set({ ...deptData, head: headName }).where(eq(departments.id, id)).returning().execute();
+
+    const existingLeader = await db.select().from(departmentLeaders).where(eq(departmentLeaders.departmentId, id)).limit(1).then((res: any) => res[0]);
     if (existingLeader) {
-      db.update(departmentLeaders)
+      await db.update(departmentLeaders)
         .set({
           headStaffId: headStaffId || null,
           subheadStaffId: subheadStaffId || null
         })
         .where(eq(departmentLeaders.departmentId, id))
-        .run();
+        .execute();
     } else {
-      db.insert(departmentLeaders).values({
+      await db.insert(departmentLeaders).values({
         departmentId: id,
         headStaffId: headStaffId || null,
         subheadStaffId: subheadStaffId || null
-      }).run();
+      }).execute();
     }
-    
+
     return c.json(row);
   })
-  .get("/masters/shifts", (c) => c.json(db.select().from(shifts).orderBy(shifts.sortOrder, shifts.name).all()))
+  .get("/masters/shifts", async (c) => c.json(await db.select().from(shifts).orderBy(shifts.sortOrder, shifts.name).execute()))
   .post("/masters/shifts", requireAdmin, async (c) => {
     const input = await jsonBody(c, shiftInput);
-    const [row] = db.insert(shifts).values(input).returning().all();
+    const [row] = await db.insert(shifts).values(input).returning().execute();
     return c.json(row, 201);
   })
   .put("/masters/shifts/:id", requireAdmin, async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, shiftInput);
-    const [row] = db.update(shifts).set(input).where(eq(shifts.id, id)).returning().all();
+    const [row] = await db.update(shifts).set(input).where(eq(shifts.id, id)).returning().execute();
     return c.json(row);
   })
-  .get("/masters/banks", (c) => c.json(db.select().from(banks).orderBy(banks.name).all()))
+  .get("/masters/banks", async (c) => c.json(await db.select().from(banks).orderBy(banks.name).execute()))
   .post("/masters/banks", requireAdmin, async (c) => {
     const input = await jsonBody(c, bankInput);
-    const [row] = db.insert(banks).values(input).returning().all();
+    const [row] = await db.insert(banks).values(input).returning().execute();
     return c.json(row, 201);
   })
   .put("/masters/banks/:id", requireAdmin, async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, bankInput);
-    const [row] = db.update(banks).set(input).where(eq(banks.id, id)).returning().all();
+    const [row] = await db.update(banks).set(input).where(eq(banks.id, id)).returning().execute();
     return c.json(row);
   })
-  .get("/departments", (c) => c.json(db.select().from(departments).orderBy(departments.name).all()))
-  .get("/hr/staff", (c) => {
+  .get("/departments", async (c) => c.json(await db.select().from(departments).orderBy(departments.name).execute()))
+  .get("/hr/staff", async (c) => {
     const manager = aliasedTable(staff, "manager");
     const director = aliasedTable(staff, "director");
 
-    const rows = db
+    const rows = await db
       .select({
         id: staff.id,
         employeeCode: staff.employeeCode,
@@ -741,13 +741,14 @@ export const api = new Hono<AuthEnv>()
       })
       .from(staff)
       .leftJoin(staffDepartments, sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`)
-      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .leftJoin(manager, eq(staff.supervisorLevel1Id, manager.id))
       .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
       .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
       .where(eq(staff.active, true))
       .orderBy(desc(staff.createdAt))
-      .all();
+      .execute();
     return c.json(rows);
   })
   .post("/hr/staff", async (c) => {
@@ -771,9 +772,9 @@ export const api = new Hono<AuthEnv>()
       hrProfile,
       ...staffData
     } = input;
-    const [row] = db.insert(staff).values({ ...staffData, employeeCode: code("EMP"), version: 1, active: true }).returning().all();
+    const [row] = await db.insert(staff).values({ ...staffData, employeeCode: code("EMP"), version: 1, active: true }).returning().execute();
 
-    db.insert(staffSalaries).values({
+    await db.insert(staffSalaries).values({
       staffId: row.id,
       basicSalary,
       hra,
@@ -787,24 +788,24 @@ export const api = new Hono<AuthEnv>()
       bankName,
       accountNumber,
       ifscCode
-    }).run();
+    }).execute();
 
-    db.insert(staffDepartments).values({
+    await db.insert(staffDepartments).values({
       staffId: row.id,
       departmentId: departmentId,
       version: 1,
       status: "Active",
       changedById: session?.user.id,
       changedByName: session?.user.name,
-    }).run();
+    }).execute();
 
     if (hrProfile) {
-      db.insert(staffHrProfiles).values({
+      await db.insert(staffHrProfiles).values({
         staffId: row.id,
         ...hrProfile,
         educationHistory: hrProfile.educationHistory ? JSON.stringify(hrProfile.educationHistory) : "[]",
         professionalHistory: hrProfile.professionalHistory ? JSON.stringify(hrProfile.professionalHistory) : "[]"
-      }).run();
+      }).execute();
     }
 
     return c.json(row, 201);
@@ -833,7 +834,7 @@ export const api = new Hono<AuthEnv>()
     } = input;
 
     // Get the current version of the staff
-    const currentStaff = db.select().from(staff).where(eq(staff.id, id)).get();
+    const currentStaff = await db.select().from(staff).where(eq(staff.id, id)).limit(1).then((res: any) => res[0]);
     if (!currentStaff) {
       return c.json({ error: "Staff member not found" }, 404);
     }
@@ -846,23 +847,23 @@ export const api = new Hono<AuthEnv>()
     ) as typeof staffData;
 
     // Mark the previous version as inactive
-    db.update(staff)
+    await db.update(staff)
       .set({ active: false })
       .where(eq(staff.id, id))
-      .run();
+      .execute();
 
     // Insert the new active version of the staff
-    const [newStaffRow] = db.insert(staff).values({
+    const [newStaffRow] = await db.insert(staff).values({
       supervisorLevel1Id: currentStaff.supervisorLevel1Id,
       supervisorLevel2Id: currentStaff.supervisorLevel2Id,
       ...cleanStaffData,
       employeeCode: currentStaff.employeeCode,
       version: newVersion,
       active: true,
-    }).returning().all();
+    }).returning().execute();
 
     // Insert a new salary record for the new version
-    db.insert(staffSalaries).values({
+    await db.insert(staffSalaries).values({
       staffId: newStaffRow.id,
       basicSalary,
       hra,
@@ -876,54 +877,54 @@ export const api = new Hono<AuthEnv>()
       bankName,
       accountNumber,
       ifscCode
-    }).run();
+    }).execute();
 
     // Handle department change / update
-    const currentActive = db.select()
+    const currentActive = await db.select()
       .from(staffDepartments)
       .where(sql`${staffDepartments.staffId} = ${id} AND ${staffDepartments.status} = 'Active'`)
-      .get();
+      .limit(1).then((res: any) => res[0]);
 
     if (!currentActive || currentActive.departmentId !== departmentId) {
       if (currentActive) {
-        db.update(staffDepartments)
+        await db.update(staffDepartments)
           .set({ status: "Inactive" })
           .where(eq(staffDepartments.id, currentActive.id))
-          .run();
+          .execute();
       }
 
-      const maxVersionRow = db.select({
+      const maxVersionRow = await db.select({
         maxVersion: sql<number>`max(${staffDepartments.version})`
       })
         .from(staffDepartments)
         .where(eq(staffDepartments.staffId, id))
-        .get();
+        .limit(1).then((res: any) => res[0]);
 
       const newDeptVersion = (maxVersionRow?.maxVersion || 0) + 1;
 
-      db.insert(staffDepartments).values({
+      await db.insert(staffDepartments).values({
         staffId: newStaffRow.id,
         departmentId: departmentId,
         version: newDeptVersion,
         status: "Active",
         changedById: session?.user.id,
         changedByName: session?.user.name,
-      }).run();
+      }).execute();
     } else {
       // Insert matching department mapping for the new staff version (no department change, version remains same)
-      db.insert(staffDepartments).values({
+      await db.insert(staffDepartments).values({
         staffId: newStaffRow.id,
         departmentId: departmentId,
         version: currentActive.version,
         status: "Active",
         changedById: session?.user.id,
         changedByName: session?.user.name,
-      }).run();
+      }).execute();
     }
 
-    const oldProfile = db.select().from(staffHrProfiles).where(eq(staffHrProfiles.staffId, id)).get();
-    
-    db.insert(staffHrProfiles).values({
+    const oldProfile = await db.select().from(staffHrProfiles).where(eq(staffHrProfiles.staffId, id)).limit(1).then((res: any) => res[0]);
+
+    await db.insert(staffHrProfiles).values({
       staffId: newStaffRow.id,
       dateOfBirth: hrProfile?.dateOfBirth ?? oldProfile?.dateOfBirth,
       gender: hrProfile?.gender ?? oldProfile?.gender,
@@ -941,14 +942,14 @@ export const api = new Hono<AuthEnv>()
       esiNumber: hrProfile?.esiNumber ?? oldProfile?.esiNumber,
       educationHistory: hrProfile?.educationHistory ? JSON.stringify(hrProfile.educationHistory) : (oldProfile?.educationHistory ?? "[]"),
       professionalHistory: hrProfile?.professionalHistory ? JSON.stringify(hrProfile.professionalHistory) : (oldProfile?.professionalHistory ?? "[]"),
-    }).run();
+    }).execute();
 
     return c.json(newStaffRow);
   })
   .get("/hr/staff/:id/profile", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    const profile = db.select().from(staffHrProfiles).where(eq(staffHrProfiles.staffId, id)).get();
-    
+    const profile = await db.select().from(staffHrProfiles).where(eq(staffHrProfiles.staffId, id)).limit(1).then((res: any) => res[0]);
+
     if (profile) {
       return c.json({
         ...profile,
@@ -956,7 +957,7 @@ export const api = new Hono<AuthEnv>()
         professionalHistory: JSON.parse(profile.professionalHistory || "[]")
       });
     }
-    
+
     return c.json({
       fatherName: "",
       motherName: "",
@@ -971,7 +972,7 @@ export const api = new Hono<AuthEnv>()
     const manager = aliasedTable(staff, "manager");
     const director = aliasedTable(staff, "director");
 
-    const row = db
+    const row = await db
       .select({
         id: staff.id,
         employeeCode: staff.employeeCode,
@@ -1012,7 +1013,7 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
       .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
       .where(eq(staff.id, id))
-      .get();
+      .limit(1).then((res: any) => res[0]);
 
     if (!row) {
       return c.json({ error: "Staff member not found" }, 404);
@@ -1021,7 +1022,7 @@ export const api = new Hono<AuthEnv>()
   })
   .get("/hr/staff/:id/versions", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    const targetStaff = db.select({ employeeCode: staff.employeeCode }).from(staff).where(eq(staff.id, id)).get();
+    const targetStaff = await db.select({ employeeCode: staff.employeeCode }).from(staff).where(eq(staff.id, id)).limit(1).then((res: any) => res[0]);
     if (!targetStaff) {
       return c.json({ error: "Staff member not found" }, 404);
     }
@@ -1029,7 +1030,7 @@ export const api = new Hono<AuthEnv>()
     const manager = aliasedTable(staff, "manager");
     const director = aliasedTable(staff, "director");
 
-    const rows = db
+    const rows = await db
       .select({
         id: staff.id,
         employeeCode: staff.employeeCode,
@@ -1071,7 +1072,7 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
       .where(eq(staff.employeeCode, targetStaff.employeeCode))
       .orderBy(desc(staff.version))
-      .all();
+      .execute();
     return c.json(rows);
   })
   .get("/hr/staff/:id/leave-balance", async (c) => {
@@ -1080,12 +1081,12 @@ export const api = new Hono<AuthEnv>()
     const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime() / 1000;
     const yearEnd = new Date(`${year}-12-31T23:59:59Z`).getTime() / 1000;
 
-    const allLeaveTypes = db.select().from(leaveTypes).where(eq(leaveTypes.active, true)).all();
-    const approvedLeaves = db
+    const allLeaveTypes = await db.select().from(leaveTypes).where(eq(leaveTypes.active, true)).execute();
+    const approvedLeaves = await db
       .select()
       .from(leaveRequests)
       .where(sql`${leaveRequests.staffId} = ${id} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStart} AND ${leaveRequests.startDate} <= ${yearEnd}`)
-      .all();
+      .execute();
 
     const daysByType: Record<string, number> = {};
     for (const lr of approvedLeaves) {
@@ -1117,7 +1118,7 @@ export const api = new Hono<AuthEnv>()
     const sortBy = c.req.query("sortBy") ?? "createdAt";
     const sortOrder = c.req.query("sortOrder") ?? "desc";
 
-    const rows = db
+    const rows = await db
       .select({
         id: leaveRequests.id,
         requestNo: leaveRequests.requestNo,
@@ -1137,7 +1138,7 @@ export const api = new Hono<AuthEnv>()
       .from(leaveRequests)
       .innerJoin(staff, eq(leaveRequests.staffId, staff.id))
       .orderBy(desc(leaveRequests.createdAt))
-      .all();
+      .execute();
 
     // Filter to only show leaves that the current user can approve (for pending ones)
     let filteredRows = rows.filter(row => {
@@ -1164,9 +1165,9 @@ export const api = new Hono<AuthEnv>()
     // Apply search filter
     if (search) {
       const s = search.toLowerCase();
-      filteredRows = filteredRows.filter(row => 
-        row.staffName.toLowerCase().includes(s) || 
-        row.employeeCode.toLowerCase().includes(s) || 
+      filteredRows = filteredRows.filter(row =>
+        row.staffName.toLowerCase().includes(s) ||
+        row.employeeCode.toLowerCase().includes(s) ||
         row.requestNo.toLowerCase().includes(s) ||
         row.reason.toLowerCase().includes(s)
       );
@@ -1211,7 +1212,7 @@ export const api = new Hono<AuthEnv>()
     const manager = aliasedTable(staff, "manager");
     const director = aliasedTable(staff, "director");
 
-    const row = db
+    const row = await db
       .select({
         id: leaveRequests.id,
         requestNo: leaveRequests.requestNo,
@@ -1245,7 +1246,7 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(manager, eq(staff.supervisorLevel1Id, manager.id))
       .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
       .where(eq(leaveRequests.id, id))
-      .get() as any;
+      .limit(1).then((res: any) => res[0]) as any;
 
     if (!row) {
       return c.json({ error: "Leave request not found" }, 404);
@@ -1264,13 +1265,13 @@ export const api = new Hono<AuthEnv>()
   })
   .post("/hr/leaves", async (c) => {
     const input = await jsonBody(c, leaveRequestInput);
-    const [row] = db.insert(leaveRequests).values({
+    const [row] = await db.insert(leaveRequests).values({
       ...input,
       requestNo: code("LV"),
       startDate: new Date(input.startDate),
       endDate: new Date(input.endDate),
       status: "Pending"
-    }).returning().all();
+    }).returning().execute();
     return c.json(row, 201);
   })
   .post("/hr/leaves/:id/approve", async (c) => {
@@ -1287,12 +1288,12 @@ export const api = new Hono<AuthEnv>()
     }
 
     // Get leave request and employee
-    const leaveRequest = db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).get();
+    const leaveRequest = await db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).limit(1).then((res: any) => res[0]);
     if (!leaveRequest) {
       return c.json({ error: "Leave request not found" }, 404);
     }
 
-    const employee = db.select().from(staff).where(eq(staff.id, leaveRequest.staffId)).get();
+    const employee = await db.select().from(staff).where(eq(staff.id, leaveRequest.staffId)).limit(1).then((res: any) => res[0]);
     if (!employee) {
       return c.json({ error: "Employee not found" }, 404);
     }
@@ -1301,18 +1302,18 @@ export const api = new Hono<AuthEnv>()
 
     let isDeptLeader = false;
     if (currentStaff) {
-      const activeDepts = db
+      const activeDepts = await db
         .select({ departmentId: staffDepartments.departmentId })
         .from(staffDepartments)
         .where(sql`${staffDepartments.staffId} = ${employee.id} AND ${staffDepartments.status} = 'Active'`)
-        .all();
+        .execute();
       const deptIds = activeDepts.map(d => d.departmentId);
       if (deptIds.length > 0) {
-        const leaders = db
+        const leaders = await db
           .select()
           .from(departmentLeaders)
           .where(sql`${departmentLeaders.departmentId} IN ${deptIds}`)
-          .all();
+          .execute();
         isDeptLeader = leaders.some(l => l.headStaffId === currentStaff.id || l.subheadStaffId === currentStaff.id);
       }
     }
@@ -1321,14 +1322,14 @@ export const api = new Hono<AuthEnv>()
       return c.json({ error: "You are not authorized to approve this leave request" }, 403);
     }
 
-    db.update(leaveRequests)
+    await db.update(leaveRequests)
       .set({ status: "Approved", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
-      .run();
+      .execute();
 
     // Trigger Notification for the Employee
     try {
-      const u = db.select().from(user).where(eq(user.email, employee.email)).get();
+      const u = await db.select().from(user).where(eq(user.email, employee.email)).limit(1).then((res: any) => res[0]);
       if (u) {
         await sendNotification({
           userId: u.id,
@@ -1358,12 +1359,12 @@ export const api = new Hono<AuthEnv>()
     }
 
     // Get leave request and employee
-    const leaveRequest = db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).get();
+    const leaveRequest = await db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).limit(1).then((res: any) => res[0]);
     if (!leaveRequest) {
       return c.json({ error: "Leave request not found" }, 404);
     }
 
-    const employee = db.select().from(staff).where(eq(staff.id, leaveRequest.staffId)).get();
+    const employee = await db.select().from(staff).where(eq(staff.id, leaveRequest.staffId)).limit(1).then((res: any) => res[0]);
     if (!employee) {
       return c.json({ error: "Employee not found" }, 404);
     }
@@ -1372,18 +1373,18 @@ export const api = new Hono<AuthEnv>()
 
     let isDeptLeader = false;
     if (currentStaff) {
-      const activeDepts = db
+      const activeDepts = await db
         .select({ departmentId: staffDepartments.departmentId })
         .from(staffDepartments)
         .where(sql`${staffDepartments.staffId} = ${employee.id} AND ${staffDepartments.status} = 'Active'`)
-        .all();
+        .execute();
       const deptIds = activeDepts.map(d => d.departmentId);
       if (deptIds.length > 0) {
-        const leaders = db
+        const leaders = await db
           .select()
           .from(departmentLeaders)
           .where(sql`${departmentLeaders.departmentId} IN ${deptIds}`)
-          .all();
+          .execute();
         isDeptLeader = leaders.some(l => l.headStaffId === currentStaff.id || l.subheadStaffId === currentStaff.id);
       }
     }
@@ -1392,14 +1393,14 @@ export const api = new Hono<AuthEnv>()
       return c.json({ error: "You are not authorized to reject this leave request" }, 403);
     }
 
-    db.update(leaveRequests)
+    await db.update(leaveRequests)
       .set({ status: "Rejected", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
-      .run();
+      .execute();
 
     // Trigger Notification for the Employee
     try {
-      const u = db.select().from(user).where(eq(user.email, employee.email)).get();
+      const u = await db.select().from(user).where(eq(user.email, employee.email)).limit(1).then((res: any) => res[0]);
       if (u) {
         await sendNotification({
           userId: u.id,
@@ -1428,12 +1429,12 @@ export const api = new Hono<AuthEnv>()
       return c.json({ error: "Staff record not found" }, 404);
     }
 
-    const leaveRequest = db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).get();
+    const leaveRequest = await db.select().from(leaveRequests).where(eq(leaveRequests.id, id)).limit(1).then((res: any) => res[0]);
     if (!leaveRequest) {
       return c.json({ error: "Leave request not found" }, 404);
     }
 
-    const employee = db.select().from(staff).where(eq(staff.id, leaveRequest.staffId)).get();
+    const employee = await db.select().from(staff).where(eq(staff.id, leaveRequest.staffId)).limit(1).then((res: any) => res[0]);
     if (!employee) {
       return c.json({ error: "Employee not found" }, 404);
     }
@@ -1446,10 +1447,10 @@ export const api = new Hono<AuthEnv>()
       return c.json({ error: "No next level supervisor configured for this employee" }, 400);
     }
 
-    db.update(leaveRequests)
+    await db.update(leaveRequests)
       .set({ status: "Forwarded", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
-      .run();
+      .execute();
     return c.json({ ok: true });
   })
   .get("/hr/attendance", async (c) => {
@@ -1463,32 +1464,32 @@ export const api = new Hono<AuthEnv>()
       name: staff.name,
       employeeCode: staff.employeeCode,
       status: staff.status
-    }).from(staff).where(sql`${staff.status} = 'Active' AND ${staff.active} = 1`).$dynamic();
+    }).from(staff).where(sql`${staff.status} = 'Active' AND ${staff.active} = true`).$dynamic();
 
     if (staffIdFilter) {
       staffQuery = staffQuery.where(eq(staff.id, parseInt(staffIdFilter)));
     }
 
-    let employees = staffQuery.all();
+    let employees = await staffQuery.execute();
 
     if (departmentId) {
-      const deptStaff = db
+      const deptStaff = await db
         .select({ staffId: staffDepartments.staffId })
         .from(staffDepartments)
         .where(sql`${staffDepartments.departmentId} = ${parseInt(departmentId)} AND ${staffDepartments.status} = 'Active'`)
-        .all();
+        .execute();
       const staffIds = new Set(deptStaff.map(d => d.staffId));
       employees = employees.filter(e => staffIds.has(e.id));
     }
 
-    const attendanceRecords = db
+    const attendanceRecords = await db
       .select()
       .from(attendance)
       .where(eq(attendance.date, date))
-      .all();
+      .execute();
     const attendanceMap = new Map(attendanceRecords.map(r => [r.staffId, r]));
 
-    const activeRosters = db
+    const activeRosters = await db
       .select({
         id: rosters.id,
         staffId: rosters.staffId,
@@ -1500,16 +1501,16 @@ export const api = new Hono<AuthEnv>()
       .from(rosters)
       .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
       .where(sql`${rosters.startDate} <= ${date} AND ${rosters.endDate} >= ${date}`)
-      .all();
+      .execute();
     const rosterMap = new Map(activeRosters.map(r => [r.staffId, r]));
 
     const dateTimestamp = new Date(`${date}T12:00:00Z`);
     const dateSeconds = dateTimestamp.getTime() / 1000;
-    const approvedLeaves = db
+    const approvedLeaves = await db
       .select()
       .from(leaveRequests)
       .where(sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateSeconds} AND ${leaveRequests.endDate} >= ${dateSeconds}`)
-      .all();
+      .execute();
     const leaveMap = new Map(approvedLeaves.map(l => [l.staffId, l]));
 
     const result = employees.map(emp => {
@@ -1564,11 +1565,11 @@ export const api = new Hono<AuthEnv>()
       notes: z.string().optional()
     }).parse(await c.req.json());
 
-    const existing = db
+    const existing = await db
       .select()
       .from(attendance)
       .where(sql`${attendance.staffId} = ${input.staffId} AND ${attendance.date} = ${input.date}`)
-      .get();
+      .limit(1).then((res: any) => res[0]);
 
     if (existing) {
       return c.json({ error: "Attendance record already exists for this date." }, 400);
@@ -1576,12 +1577,12 @@ export const api = new Hono<AuthEnv>()
 
     let finalStatus = input.status || "Present";
     if (!input.status && input.checkIn) {
-      const rost = db
+      const rost = await db
         .select({ startTime: shifts.startTime })
         .from(rosters)
         .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
         .where(sql`${rosters.staffId} = ${input.staffId} AND ${rosters.startDate} <= ${input.date} AND ${rosters.endDate} >= ${input.date}`)
-        .get();
+        .limit(1).then((res: any) => res[0]);
       if (rost) {
         const [shHour, shMin] = rost.startTime.split(":").map(Number);
         const [chHour, chMin] = input.checkIn.split(":").map(Number);
@@ -1593,14 +1594,14 @@ export const api = new Hono<AuthEnv>()
       }
     }
 
-    const [row] = db.insert(attendance).values({
+    const [row] = await db.insert(attendance).values({
       staffId: input.staffId,
       date: input.date,
       checkIn: input.checkIn || null,
       checkOut: input.checkOut || null,
       status: finalStatus,
       notes: input.notes || null
-    }).returning().all();
+    }).returning().execute();
 
     return c.json(row, 201);
   })
@@ -1613,7 +1614,7 @@ export const api = new Hono<AuthEnv>()
       notes: z.string().nullable().optional()
     }).parse(await c.req.json());
 
-    const existing = db.select().from(attendance).where(eq(attendance.id, id)).get();
+    const existing = await db.select().from(attendance).where(eq(attendance.id, id)).limit(1).then((res: any) => res[0]);
     if (!existing) {
       return c.json({ error: "Attendance log not found" }, 404);
     }
@@ -1622,7 +1623,7 @@ export const api = new Hono<AuthEnv>()
     if (input.checkIn !== undefined) updateValues.checkIn = input.checkIn;
     if (input.checkOut !== undefined) updateValues.checkOut = input.checkOut;
     if (input.notes !== undefined) updateValues.notes = input.notes;
-    
+
     if (input.status) {
       updateValues.status = input.status;
     } else if (input.checkOut && !input.status) {
@@ -1639,11 +1640,11 @@ export const api = new Hono<AuthEnv>()
       }
     }
 
-    const [row] = db.update(attendance).set(updateValues).where(eq(attendance.id, id)).returning().all();
+    const [row] = await db.update(attendance).set(updateValues).where(eq(attendance.id, id)).returning().execute();
     return c.json(row);
   })
-  .get("/hr/biometric-mappings", (c) => {
-    const rows = db
+  .get("/hr/biometric-mappings", async (c) => {
+    const rows = await db
       .select({
         id: biometricMappings.id,
         staffId: biometricMappings.staffId,
@@ -1655,7 +1656,7 @@ export const api = new Hono<AuthEnv>()
       .from(biometricMappings)
       .innerJoin(staff, eq(biometricMappings.staffId, staff.id))
       .orderBy(staff.name)
-      .all();
+      .execute();
     return c.json(rows);
   })
   .post("/hr/biometric-mappings", async (c) => {
@@ -1666,49 +1667,49 @@ export const api = new Hono<AuthEnv>()
     }).parse(await c.req.json());
 
     if (input.id) {
-      const dupCode = db.select().from(biometricMappings)
+      const dupCode = await db.select().from(biometricMappings)
         .where(sql`${biometricMappings.biometricCode} = ${input.biometricCode} AND ${biometricMappings.id} != ${input.id}`)
-        .get();
+        .limit(1).then((res: any) => res[0]);
       if (dupCode) {
         return c.json({ error: `Biometric code '${input.biometricCode}' is already mapped to another employee.` }, 400);
       }
 
-      const dupStaff = db.select().from(biometricMappings)
+      const dupStaff = await db.select().from(biometricMappings)
         .where(sql`${biometricMappings.staffId} = ${input.staffId} AND ${biometricMappings.id} != ${input.id}`)
-        .get();
+        .limit(1).then((res: any) => res[0]);
       if (dupStaff) {
         return c.json({ error: `Selected employee is already mapped to another biometric code.` }, 400);
       }
 
-      const [row] = db.update(biometricMappings)
+      const [row] = await db.update(biometricMappings)
         .set({ staffId: input.staffId, biometricCode: input.biometricCode, updatedAt: new Date() })
         .where(eq(biometricMappings.id, input.id))
-        .returning().all();
+        .returning().execute();
       return c.json(row);
     }
 
-    const existingByCode = db.select().from(biometricMappings).where(eq(biometricMappings.biometricCode, input.biometricCode)).get();
+    const existingByCode = await db.select().from(biometricMappings).where(eq(biometricMappings.biometricCode, input.biometricCode)).limit(1).then((res: any) => res[0]);
     if (existingByCode && existingByCode.staffId !== input.staffId) {
       return c.json({ error: `Biometric code '${input.biometricCode}' is already mapped to another employee.` }, 400);
     }
 
-    const existingByStaff = db.select().from(biometricMappings).where(eq(biometricMappings.staffId, input.staffId)).get();
+    const existingByStaff = await db.select().from(biometricMappings).where(eq(biometricMappings.staffId, input.staffId)).limit(1).then((res: any) => res[0]);
     if (existingByStaff) {
-      const [row] = db.update(biometricMappings)
+      const [row] = await db.update(biometricMappings)
         .set({ biometricCode: input.biometricCode, updatedAt: new Date() })
         .where(eq(biometricMappings.id, existingByStaff.id))
-        .returning().all();
+        .returning().execute();
       return c.json(row);
     }
 
-    const [row] = db.insert(biometricMappings)
+    const [row] = await db.insert(biometricMappings)
       .values({ staffId: input.staffId, biometricCode: input.biometricCode })
-      .returning().all();
+      .returning().execute();
     return c.json(row, 201);
   })
   .delete("/hr/biometric-mappings/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    db.delete(biometricMappings).where(eq(biometricMappings.id, id)).run();
+    await db.delete(biometricMappings).where(eq(biometricMappings.id, id)).execute();
     return c.json({ ok: true });
   })
   .post("/hr/attendance/bulk", async (c) => {
@@ -1721,20 +1722,20 @@ export const api = new Hono<AuthEnv>()
       notes: z.string().optional()
     })).parse(await c.req.json());
 
-    db.transaction(() => {
+    await db.transaction(async () => {
       for (const item of input) {
-        const existing = db.select().from(attendance)
+        const existing = await db.select().from(attendance)
           .where(sql`${attendance.staffId} = ${item.staffId} AND ${attendance.date} = ${item.date}`)
-          .get();
+          .limit(1).then((res: any) => res[0]);
 
         let finalStatus = item.status || "Present";
         if (!item.status && item.checkIn) {
-          const rost = db
+          const rost = await db
             .select({ startTime: shifts.startTime })
             .from(rosters)
             .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
             .where(sql`${rosters.staffId} = ${item.staffId} AND ${rosters.startDate} <= ${item.date} AND ${rosters.endDate} >= ${item.date}`)
-            .get();
+            .limit(1).then((res: any) => res[0]);
           if (rost) {
             const [shHour, shMin] = rost.startTime.split(":").map(Number);
             const [chHour, chMin] = item.checkIn.split(":").map(Number);
@@ -1769,12 +1770,12 @@ export const api = new Hono<AuthEnv>()
         };
 
         if (existing) {
-          db.update(attendance)
+          await db.update(attendance)
             .set(updateValues)
             .where(eq(attendance.id, existing.id))
-            .run();
+            .execute();
         } else {
-          db.insert(attendance)
+          await db.insert(attendance)
             .values({
               staffId: item.staffId,
               date: item.date,
@@ -1783,7 +1784,7 @@ export const api = new Hono<AuthEnv>()
               status: finalStatus,
               notes: item.notes || "Biometric Upload"
             })
-            .run();
+            .execute();
         }
       }
     });
@@ -1800,16 +1801,16 @@ export const api = new Hono<AuthEnv>()
     const end = new Date(input.endDate);
     let simulatedCount = 0;
 
-    db.delete(attendance)
+    await db.delete(attendance)
       .where(sql`${attendance.date} >= ${input.startDate} AND ${attendance.date} <= ${input.endDate}`)
-      .run();
+      .execute();
 
-    const allStaff = db.select().from(staff).where(sql`${staff.status} = 'Active' AND ${staff.active} = 1`).all();
+    const allStaff = await db.select().from(staff).where(sql`${staff.status} = 'Active' AND ${staff.active} = true`).execute();
 
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
       const dateStr = d.toISOString().split("T")[0];
 
-      const activeRosters = db
+      const activeRosters = await db
         .select({
           staffId: rosters.staffId,
           shiftName: shifts.name,
@@ -1820,15 +1821,15 @@ export const api = new Hono<AuthEnv>()
         .from(rosters)
         .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
         .where(sql`${rosters.startDate} <= ${dateStr} AND ${rosters.endDate} >= ${dateStr}`)
-        .all();
+        .execute();
       const rosterMap = new Map(activeRosters.map(r => [r.staffId, r]));
 
       const dateSeconds = d.getTime() / 1000;
-      const approvedLeaves = db
+      const approvedLeaves = await db
         .select({ staffId: leaveRequests.staffId })
         .from(leaveRequests)
         .where(sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateSeconds} AND ${leaveRequests.endDate} >= ${dateSeconds}`)
-        .all();
+        .execute();
       const leaveSet = new Set(approvedLeaves.map(l => l.staffId));
 
       for (const emp of allStaff) {
@@ -1852,7 +1853,7 @@ export const api = new Hono<AuthEnv>()
             const addMin = Math.floor(Math.random() * 5);
             const checkInMin = shHour * 60 + shMin + addMin;
             checkIn = `${String(Math.floor(checkInMin / 60)).padStart(2, "0")}:${String(checkInMin % 60).padStart(2, "0")}`;
-            
+
             const addOutMin = Math.floor(Math.random() * 10);
             const checkOutMin = ehHour * 60 + ehMin + addOutMin;
             checkOut = `${String(Math.floor(checkOutMin / 60)).padStart(2, "0")}:${String(checkOutMin % 60).padStart(2, "0")}`;
@@ -1875,14 +1876,14 @@ export const api = new Hono<AuthEnv>()
             notes = "Unexcused absence";
           }
 
-          db.insert(attendance).values({
+          await db.insert(attendance).values({
             staffId: emp.id,
             date: dateStr,
             checkIn,
             checkOut,
             status: attStatus,
             notes
-          }).run();
+          }).execute();
           simulatedCount++;
         }
       }
@@ -1915,18 +1916,18 @@ export const api = new Hono<AuthEnv>()
       query = query.where(eq(rosters.departmentId, parseInt(departmentId)));
     }
 
-    const rows = query.orderBy(desc(rosters.startDate)).all();
+    const rows = await query.orderBy(desc(rosters.startDate)).execute();
     return c.json(rows);
   })
   .post("/hr/roster", async (c) => {
     const input = await jsonBody(c, rosterInput);
 
-    const proposedShift = db.select().from(shifts).where(eq(shifts.id, input.shiftId)).get();
+    const proposedShift = await db.select().from(shifts).where(eq(shifts.id, input.shiftId)).limit(1).then((res: any) => res[0]);
     if (!proposedShift) {
       return c.json({ error: "Shift not found" }, 404);
     }
 
-    const existingRosters = db.select({
+    const existingRosters = await db.select({
       id: rosters.id,
       startDate: rosters.startDate,
       endDate: rosters.endDate,
@@ -1937,7 +1938,7 @@ export const api = new Hono<AuthEnv>()
       .from(rosters)
       .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
       .where(eq(rosters.staffId, input.staffId))
-      .all();
+      .execute();
 
     for (const r of existingRosters) {
       if (doIntervalsOverlap(
@@ -1948,13 +1949,13 @@ export const api = new Hono<AuthEnv>()
       }
     }
 
-    const [row] = db.insert(rosters).values(input).returning().all();
+    const [row] = await db.insert(rosters).values(input).returning().execute();
 
     // Trigger notification for the employee
     try {
-      const employee = db.select().from(staff).where(eq(staff.id, input.staffId)).get();
+      const employee = await db.select().from(staff).where(eq(staff.id, input.staffId)).limit(1).then((res: any) => res[0]);
       if (employee) {
-        const u = db.select().from(user).where(eq(user.email, employee.email)).get();
+        const u = await db.select().from(user).where(eq(user.email, employee.email)).limit(1).then((res: any) => res[0]);
         if (u) {
           await sendNotification({
             userId: u.id,
@@ -1975,12 +1976,12 @@ export const api = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, rosterInput);
 
-    const proposedShift = db.select().from(shifts).where(eq(shifts.id, input.shiftId)).get();
+    const proposedShift = await db.select().from(shifts).where(eq(shifts.id, input.shiftId)).limit(1).then((res: any) => res[0]);
     if (!proposedShift) {
       return c.json({ error: "Shift not found" }, 404);
     }
 
-    const existingRosters = db.select({
+    const existingRosters = await db.select({
       id: rosters.id,
       startDate: rosters.startDate,
       endDate: rosters.endDate,
@@ -1991,7 +1992,7 @@ export const api = new Hono<AuthEnv>()
       .from(rosters)
       .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
       .where(sql`${rosters.staffId} = ${input.staffId} AND ${rosters.id} != ${id}`)
-      .all();
+      .execute();
 
     for (const r of existingRosters) {
       if (doIntervalsOverlap(
@@ -2002,16 +2003,16 @@ export const api = new Hono<AuthEnv>()
       }
     }
 
-    const [row] = db.update(rosters).set(input).where(eq(rosters.id, id)).returning().all();
+    const [row] = await db.update(rosters).set(input).where(eq(rosters.id, id)).returning().execute();
     return c.json(row);
   })
   .delete("/hr/roster/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    db.delete(rosters).where(eq(rosters.id, id)).run();
+    await db.delete(rosters).where(eq(rosters.id, id)).execute();
     return c.json({ ok: true });
   })
-  .get("/hr/payroll/payslips", (c) => {
-    const rows = db
+  .get("/hr/payroll/payslips", async (c) => {
+    const rows = await db
       .select({
         id: payslips.id,
         staffId: payslips.staffId,
@@ -2041,13 +2042,13 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(staffDepartments, sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`)
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .orderBy(desc(payslips.month), desc(payslips.createdAt))
-      .all();
+      .execute();
     return c.json(rows);
   })
-  .get("/hr/payroll/payslips/:id", (c) => {
+  .get("/hr/payroll/payslips/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
 
-    const row = db
+    const row = await db
       .select({
         id: payslips.id,
         staffId: payslips.staffId,
@@ -2077,7 +2078,7 @@ export const api = new Hono<AuthEnv>()
       .leftJoin(staffDepartments, sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`)
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .where(eq(payslips.id, id))
-      .get();
+      .limit(1).then((res: any) => res[0]);
 
     if (!row) return c.json({ error: "Payslip not found" }, 404);
 
@@ -2086,12 +2087,12 @@ export const api = new Hono<AuthEnv>()
     const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime() / 1000;
     const yearEnd = new Date(`${year}-12-31T23:59:59Z`).getTime() / 1000;
 
-    const allLeaveTypes = db.select().from(leaveTypes).where(eq(leaveTypes.active, true)).all();
-    const approvedLeaves = db
+    const allLeaveTypes = await db.select().from(leaveTypes).where(eq(leaveTypes.active, true)).execute();
+    const approvedLeaves = await db
       .select()
       .from(leaveRequests)
       .where(sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStart} AND ${leaveRequests.startDate} <= ${yearEnd}`)
-      .all();
+      .execute();
 
     // Count days taken per leave type
     const daysByType: Record<string, number> = {};
@@ -2127,7 +2128,7 @@ export const api = new Hono<AuthEnv>()
       leaveDeduction: z.number().min(0)
     }).parse(await c.req.json());
 
-    const existing = db.select().from(payslips).where(eq(payslips.id, id)).get();
+    const existing = await db.select().from(payslips).where(eq(payslips.id, id)).limit(1).then((res: any) => res[0]);
     if (!existing) {
       return c.json({ error: "Payslip not found" }, 404);
     }
@@ -2136,9 +2137,9 @@ export const api = new Hono<AuthEnv>()
     const statutoryDeductions = input.epf + input.esi + input.professionalTax + input.otherDeductions;
     const net = Math.max(0, gross - statutoryDeductions - input.leaveDeduction);
 
-    db.update(payslips).set({ status: "Superseded" }).where(eq(payslips.id, id)).run();
+    await db.update(payslips).set({ status: "Superseded" }).where(eq(payslips.id, id)).execute();
 
-    const [newRow] = db.insert(payslips).values({
+    const [newRow] = await db.insert(payslips).values({
       staffId: existing.staffId,
       month: existing.month,
       basicSalary: input.basicSalary,
@@ -2155,7 +2156,7 @@ export const api = new Hono<AuthEnv>()
       netSalary: net,
       version: existing.version + 1,
       status: "Active"
-    }).returning().all();
+    }).returning().execute();
 
     return c.json(newRow);
   })
@@ -2177,20 +2178,20 @@ export const api = new Hono<AuthEnv>()
     // Get active staff matching filters
     let activeStaff: (typeof staff.$inferSelect)[] = [];
     if (staffId) {
-      activeStaff = db.select().from(staff).where(sql`${staff.status} = 'Active' AND ${staff.id} = ${staffId} AND ${staff.active} = 1`).all();
+      activeStaff = await db.select().from(staff).where(sql`${staff.status} = 'Active' AND ${staff.id} = ${staffId} AND ${staff.active} = true`).execute();
     } else if (departmentId) {
-      const rows = db
+      const rows = await db
         .select({ staff })
         .from(staff)
         .innerJoin(staffDepartments, sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`)
-        .where(sql`${staff.status} = 'Active' AND ${staffDepartments.departmentId} = ${departmentId} AND ${staff.active} = 1`)
-        .all();
+        .where(sql`${staff.status} = 'Active' AND ${staffDepartments.departmentId} = ${departmentId} AND ${staff.active} = true`)
+        .execute();
       activeStaff = rows.map(r => r.staff);
     } else {
-      activeStaff = db.select().from(staff).where(sql`${staff.status} = 'Active' AND ${staff.active} = 1`).all();
+      activeStaff = await db.select().from(staff).where(sql`${staff.status} = 'Active' AND ${staff.active} = true`).execute();
     }
     // Get all active leave types for deduction lookup
-    const allLeaveTypes = db.select().from(leaveTypes).all();
+    const allLeaveTypes = await db.select().from(leaveTypes).execute();
     const leaveTypeMap: Record<string, { payable: boolean; paymentRate: number }> = {};
     for (const lt of allLeaveTypes) {
       leaveTypeMap[lt.name] = { payable: lt.payable, paymentRate: lt.paymentRate };
@@ -2200,7 +2201,7 @@ export const api = new Hono<AuthEnv>()
 
     for (const employee of activeStaff) {
       // Get salary structure
-      const structure = db.select().from(staffSalaries).where(eq(staffSalaries.staffId, employee.id)).get();
+      const structure = await db.select().from(staffSalaries).where(eq(staffSalaries.staffId, employee.id)).limit(1).then((res: any) => res[0]);
 
       let basic = 0, hra = 0, conveyance = 0, medical = 0, special = 0;
       let epf = 0, esi = 0, profTax = 0, otherDed = 0;
@@ -2228,11 +2229,11 @@ export const api = new Hono<AuthEnv>()
       const dailyRate = gross / daysInMonth;
 
       // Count approved leave days overlapping with the target month
-      const approvedLeaves = db
+      const approvedLeaves = await db
         .select()
         .from(leaveRequests)
         .where(sql`${leaveRequests.staffId} = ${employee.id} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStart} AND ${leaveRequests.startDate} <= ${monthEnd}`)
-        .all();
+        .execute();
 
       let leaveDaysTaken = 0;
       let leaveDeduction = 0;
@@ -2258,25 +2259,25 @@ export const api = new Hono<AuthEnv>()
       let unexcusedAbsenceDays = 0;
       let halfDayDays = 0;
 
-      const employeeRosters = db
+      const employeeRosters = await db
         .select({
           startDate: rosters.startDate,
           endDate: rosters.endDate
         })
         .from(rosters)
         .where(eq(rosters.staffId, employee.id))
-        .all();
+        .execute();
 
       const monthStartStr = `${month}-01`;
       const monthEndStr = `${month}-${String(daysInMonth).padStart(2, "0")}`;
-      const employeeAttendance = db
+      const employeeAttendance = await db
         .select({
           date: attendance.date,
           status: attendance.status
         })
         .from(attendance)
         .where(sql`${attendance.staffId} = ${employee.id} AND ${attendance.date} >= ${monthStartStr} AND ${attendance.date} <= ${monthEndStr}`)
-        .all();
+        .execute();
       const attendanceStatusMap = new Map(employeeAttendance.map(a => [a.date, a.status]));
 
       for (let day = 1; day <= daysInMonth; day++) {
@@ -2313,11 +2314,11 @@ export const api = new Hono<AuthEnv>()
       const net = Math.max(0, gross - statutoryDeductions - leaveDeduction);
 
       // Versioning: supersede existing active payslip for same month
-      const existing = db
+      const existing = await db
         .select()
         .from(payslips)
         .where(sql`${payslips.staffId} = ${employee.id} AND ${payslips.month} = ${month} AND ${payslips.status} = 'Active'`)
-        .get();
+        .limit(1).then((res: any) => res[0]);
 
       const payslipValues = {
         staffId: employee.id,
@@ -2338,10 +2339,10 @@ export const api = new Hono<AuthEnv>()
       };
 
       if (existing) {
-        db.update(payslips).set({ status: "Superseded" }).where(eq(payslips.id, existing.id)).run();
-        db.insert(payslips).values({ ...payslipValues, version: existing.version + 1 }).run();
+        await db.update(payslips).set({ status: "Superseded" }).where(eq(payslips.id, existing.id)).execute();
+        await db.insert(payslips).values({ ...payslipValues, version: existing.version + 1 }).execute();
       } else {
-        db.insert(payslips).values({ ...payslipValues, version: 1 }).run();
+        await db.insert(payslips).values({ ...payslipValues, version: 1 }).execute();
       }
       generatedCount++;
     }
@@ -2351,15 +2352,15 @@ export const api = new Hono<AuthEnv>()
   .get("/colleagues", async (c) => {
     const session = c.get("session");
     const currentUserId = session.user.id;
-    const rows = db.select({
+    const rows = await db.select({
       id: user.id,
       name: user.name,
       email: user.email,
       image: user.image
     })
-    .from(user)
-    .where(sql`${user.id} != ${currentUserId}`)
-    .all();
+      .from(user)
+      .where(sql`${user.id} != ${currentUserId}`)
+      .execute();
     return c.json(rows);
   })
   .get("/messages/stream", async (c) => {
@@ -2369,9 +2370,9 @@ export const api = new Hono<AuthEnv>()
 
     let deptId: number | null = null;
     try {
-      const staffMember = db.select().from(staff).where(eq(staff.email, email)).get();
+      const staffMember = await db.select().from(staff).where(eq(staff.email, email)).limit(1).then((res: any) => res[0]);
       if (staffMember) {
-        const deptMap = db.select().from(staffDepartments).where(eq(staffDepartments.staffId, staffMember.id)).get();
+        const deptMap = await db.select().from(staffDepartments).where(eq(staffDepartments.staffId, staffMember.id)).limit(1).then((res: any) => res[0]);
         if (deptMap) {
           deptId = deptMap.departmentId;
         }
@@ -2435,7 +2436,7 @@ export const api = new Hono<AuthEnv>()
 
     let rows: any[] = [];
     if (channelType === "organization") {
-      rows = db.select({
+      rows = await db.select({
         id: messages.id,
         senderId: messages.senderId,
         senderName: user.name,
@@ -2443,14 +2444,14 @@ export const api = new Hono<AuthEnv>()
         content: messages.content,
         createdAt: messages.createdAt
       })
-      .from(messages)
-      .innerJoin(user, eq(messages.senderId, user.id))
-      .where(eq(messages.channelType, "organization"))
-      .orderBy(messages.createdAt)
-      .all();
+        .from(messages)
+        .innerJoin(user, eq(messages.senderId, user.id))
+        .where(eq(messages.channelType, "organization"))
+        .orderBy(messages.createdAt)
+        .execute();
     } else if (channelType === "department" && departmentIdStr) {
       const deptId = Number(departmentIdStr);
-      rows = db.select({
+      rows = await db.select({
         id: messages.id,
         senderId: messages.senderId,
         senderName: user.name,
@@ -2458,13 +2459,13 @@ export const api = new Hono<AuthEnv>()
         content: messages.content,
         createdAt: messages.createdAt
       })
-      .from(messages)
-      .innerJoin(user, eq(messages.senderId, user.id))
-      .where(sql`${messages.channelType} = 'department' AND ${messages.departmentId} = ${deptId}`)
-      .orderBy(messages.createdAt)
-      .all();
+        .from(messages)
+        .innerJoin(user, eq(messages.senderId, user.id))
+        .where(sql`${messages.channelType} = 'department' AND ${messages.departmentId} = ${deptId}`)
+        .orderBy(messages.createdAt)
+        .execute();
     } else if (channelType === "direct" && colleagueId) {
-      rows = db.select({
+      rows = await db.select({
         id: messages.id,
         senderId: messages.senderId,
         senderName: user.name,
@@ -2472,11 +2473,11 @@ export const api = new Hono<AuthEnv>()
         content: messages.content,
         createdAt: messages.createdAt
       })
-      .from(messages)
-      .innerJoin(user, eq(messages.senderId, user.id))
-      .where(sql`${messages.channelType} = 'direct' AND ((${messages.senderId} = ${userId} AND ${messages.receiverId} = ${colleagueId}) OR (${messages.senderId} = ${colleagueId} AND ${messages.receiverId} = ${userId}))`)
-      .orderBy(messages.createdAt)
-      .all();
+        .from(messages)
+        .innerJoin(user, eq(messages.senderId, user.id))
+        .where(sql`${messages.channelType} = 'direct' AND ((${messages.senderId} = ${userId} AND ${messages.receiverId} = ${colleagueId}) OR (${messages.senderId} = ${colleagueId} AND ${messages.receiverId} = ${userId}))`)
+        .orderBy(messages.createdAt)
+        .execute();
     }
 
     return c.json(rows);
@@ -2486,17 +2487,17 @@ export const api = new Hono<AuthEnv>()
     const userId = session.user.id;
     const body = await c.req.json();
 
-    const result = db.insert(messages).values({
+    const [inserted] = await db.insert(messages).values({
       senderId: userId,
       receiverId: body.receiverId || null,
       channelType: body.channelType || "organization",
       departmentId: body.departmentId ? Number(body.departmentId) : null,
       content: body.content
-    }).run();
+    }).returning();
 
-    const sender = db.select().from(user).where(eq(user.id, userId)).get();
+    const sender = await db.select().from(user).where(eq(user.id, userId)).limit(1).then((res: any) => res[0]);
     const newMsg = {
-      id: Number(result.lastInsertRowid),
+      id: inserted.id,
       senderId: userId,
       senderName: sender?.name || "Colleague",
       senderImage: sender?.image || null,
@@ -2504,7 +2505,7 @@ export const api = new Hono<AuthEnv>()
       channelType: body.channelType || "organization",
       departmentId: body.departmentId ? Number(body.departmentId) : null,
       content: body.content,
-      createdAt: new Date()
+      createdAt: inserted.createdAt
     };
 
     dispatchMessage(newMsg);

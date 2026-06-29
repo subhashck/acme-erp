@@ -29,7 +29,7 @@ export async function sendNotification(params: CreateNotificationParams) {
     };
 
     // Insert to DB using Drizzle
-    const [inserted] = db.insert(notifications).values(values).returning().all();
+    const [inserted] = await db.insert(notifications).values(values).returning();
 
     if (inserted) {
       // Emit to active SSE listeners
