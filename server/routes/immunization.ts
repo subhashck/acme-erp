@@ -88,7 +88,7 @@ export const immunizationRoutes = new Hono<AuthEnv>()
         staffName: staff.name,
       })
       .from(immunizationRecords)
-      .leftJoin(staff, eq(immunizationRecords.administeredByStaffId, staff.id))
+      .leftJoin(staff, eq(immunizationRecords.administeredByStaffId, staff.staffId))
       .where(eq(immunizationRecords.patientId, id))
       .orderBy(
         desc(immunizationRecords.administeredAt),

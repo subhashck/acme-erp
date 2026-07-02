@@ -1,4 +1,4 @@
-import { aliasedTable, eq } from "drizzle-orm";
+import { aliasedTable, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -120,7 +120,7 @@ export const mastersRoutes = new Hono<AuthEnv>()
       const hStaff = await db
         .select()
         .from(staff)
-        .where(eq(staff.id, headStaffId))
+        .where(sql`${staff.staffId} = ${headStaffId} AND ${staff.active} = true`)
         .limit(1)
         .then((res: any) => res[0]);
       if (hStaff) headName = hStaff.name;
@@ -153,7 +153,7 @@ export const mastersRoutes = new Hono<AuthEnv>()
       const hStaff = await db
         .select()
         .from(staff)
-        .where(eq(staff.id, headStaffId))
+        .where(sql`${staff.staffId} = ${headStaffId} AND ${staff.active} = true`)
         .limit(1)
         .then((res: any) => res[0]);
       if (hStaff) headName = hStaff.name;

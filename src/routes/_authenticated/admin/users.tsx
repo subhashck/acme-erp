@@ -1,7 +1,9 @@
 import * as React from "react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/services/auth";
+import { client } from "../../../services/rpc";
+import { useRpcQuery } from "../../../lib/query";
 import { DataTable } from "@/components/DataTable";
 import { ModuleLayout } from "@/components/ModuleLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -9,6 +11,7 @@ import { Button } from "@/ui/button";
 import { Field } from "@/components/Field";
 import { Select } from "@/ui/select";
 import { Badge } from "@/ui/badge";
+import type { StaffRow } from "@/types";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -23,7 +26,9 @@ import {
   RefreshCw,
   Mail,
   Calendar,
-  User
+  User,
+  Link2,
+  Link2Off
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 
@@ -53,17 +58,18 @@ interface UserRecord {
 
 function UserManagementPage() {
   const [selectedUser, setSelectedUser] = React.useState<UserRecord | null>(null);
-  
+  const queryClient = useQueryClient();
+
   // Create User state
   const [createEmail, setCreateEmail] = React.useState("");
   const [createPassword, setCreatePassword] = React.useState("");
   const [createName, setCreateName] = React.useState("");
-  const [createRole, setCreateRole] = React.useState<"admin" | "staff">("staff");
+  const [createRole, setCreateRole] = React.useState<"admin" | "hr" | "staff">("staff");
   const [createError, setCreateError] = React.useState("");
   const [submittingCreate, setSubmittingCreate] = React.useState(false);
 
   // Manage Role State
-  const [newRole, setNewRole] = React.useState<"admin" | "staff">("staff");
+  const [newRole, setNewRole] = React.useState<"admin" | "hr" | "staff">("staff");
   const [submittingRole, setSubmittingRole] = React.useState(false);
 
   // Manage Ban State
@@ -71,12 +77,19 @@ function UserManagementPage() {
   const [submittingBan, setSubmittingBan] = React.useState(false);
   const [submittingUnban, setSubmittingUnban] = React.useState(false);
 
+  // Link to Staff state
+  const [selectedStaffId, setSelectedStaffId] = React.useState<string>("");
+  const [submittingLink, setSubmittingLink] = React.useState(false);
+
+  const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
+  const staffList = staffQuery.data ?? [];
+
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
       const res = await authClient.admin.listUsers({
         query: {
-          limit: 100
+          limit: 1000
         }
       });
       if (res.error) {
@@ -88,10 +101,14 @@ function UserManagementPage() {
 
   const users = usersQuery.data ?? [];
 
-  // Reset roles when a different user is selected
+  // Reset state when a different user is selected
   React.useEffect(() => {
     if (selectedUser) {
-      setNewRole((selectedUser.role === "admin" ? "admin" : "staff") as "admin" | "staff");
+      // Pre-select any currently linked staff
+      const linked = staffList.find((s) => (s as any).userId === selectedUser.id);
+      setSelectedStaffId(linked ? String(linked.staffId) : "");
+      const validRole = ["admin", "hr", "staff"].includes(selectedUser.role || "") ? selectedUser.role : "staff";
+      setNewRole(validRole as "admin" | "hr" | "staff");
       setBanReason("");
     }
   }, [selectedUser]);
@@ -224,12 +241,15 @@ function UserManagementPage() {
       label: "System Role",
       render: (row: UserRecord) => {
         const isAdmin = row.role === "admin";
+        const isHR = row.role === "hr";
         return (
           <span className={cn(
             "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border transition-all",
             isAdmin
               ? "bg-teal-50 text-teal-700 border-teal-200 ring-1 ring-inset ring-teal-600/10 dark:bg-teal-950/30 dark:text-teal-400 dark:border-teal-900/30"
-              : "bg-slate-50 text-slate-700 border-slate-200 ring-1 ring-inset ring-slate-600/10 dark:bg-slate-800/40 dark:text-slate-300 dark:border-slate-700"
+              : isHR
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200 ring-1 ring-inset ring-indigo-600/10 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/30"
+                : "bg-slate-50 text-slate-700 border-slate-200 ring-1 ring-inset ring-slate-600/10 dark:bg-slate-800/40 dark:text-slate-300 dark:border-slate-700"
           )}>
             {row.role || "staff"}
           </span>
@@ -375,9 +395,10 @@ function UserManagementPage() {
                 <Select
                   label="System Role"
                   value={createRole}
-                  onChange={(e) => setCreateRole(e.target.value as "admin" | "staff")}
+                  onChange={(e) => setCreateRole(e.target.value as "admin" | "hr" | "staff")}
                   options={[
                     ["staff", "Staff Access"],
+                    ["hr", "HR Access"],
                     ["admin", "Admin Access"]
                   ]}
                 />
@@ -478,6 +499,103 @@ function UserManagementPage() {
                 </div>
               </div>
 
+              {/* Link to Staff Record */}
+              {(() => {
+                const linkedStaff = staffList.find((s) => s.userId === selectedUser.id);
+                return (
+                  <div className="space-y-2.5 pb-5 border-b border-border">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <Link2 size={13} /> Link to Staff Record
+                    </h4>
+                    {linkedStaff ? (
+                      <div className="flex items-center justify-between bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/30 rounded-lg px-4 py-3">
+                        <div className="text-xs">
+                          <p className="font-bold text-teal-800 dark:text-teal-300">{linkedStaff.name}</p>
+                          <p className="text-teal-600 dark:text-teal-400 font-mono">{linkedStaff.employeeCode} · {linkedStaff.role}</p>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="default"
+                          className="h-8 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                          disabled={submittingLink}
+                          onClick={async () => {
+                            setSubmittingLink(true);
+                            try {
+                              const res = await fetch(`/api/hr/staff/${linkedStaff.staffId}/link-user`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ userId: null }),
+                              });
+                              if (!res.ok) {
+                                const err = await res.json();
+                                alert(err.error || "Failed to unlink");
+                              } else {
+                                setSelectedStaffId("");
+                                queryClient.invalidateQueries({ queryKey: ["staff"] });
+                              }
+                            } catch (e: any) {
+                              alert(e.message || "Error unlinking");
+                            } finally {
+                              setSubmittingLink(false);
+                            }
+                          }}
+                        >
+                          <Link2Off size={13} className="mr-1" />
+                          {submittingLink ? "Unlinking..." : "Unlink"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-end gap-3">
+                        <div className="flex-1">
+                          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Staff Member</label>
+                          <select
+                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                            value={selectedStaffId}
+                            onChange={(e) => setSelectedStaffId(e.target.value)}
+                          >
+                            <option value="">— Select staff record —</option>
+                            {staffList
+                              .filter((s) => !s.userId)
+                              .map((s) => (
+                                <option key={s.staffId} value={String(s.staffId)}>
+                                  {s.name} ({s.employeeCode})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <Button
+                          className="h-10 font-bold bg-teal-600 hover:bg-teal-700 text-white"
+                          disabled={!selectedStaffId || submittingLink}
+                          onClick={async () => {
+                            setSubmittingLink(true);
+                            try {
+                              const res = await fetch(`/api/hr/staff/${selectedStaffId}/link-user`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ userId: selectedUser.id }),
+                              });
+                              if (!res.ok) {
+                                const err = await res.json();
+                                alert(err.error || "Failed to link");
+                              } else {
+                                queryClient.invalidateQueries({ queryKey: ["staff"] });
+                              }
+                            } catch (e: any) {
+                              alert(e.message || "Error linking");
+                            } finally {
+                              setSubmittingLink(false);
+                            }
+                          }}
+                        >
+                          <Link2 size={13} className="mr-1" />
+                          {submittingLink ? "Linking..." : "Link"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Action 1: Role Configuration */}
               <div className="space-y-2.5 pb-5 border-b border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Configure System Role</h4>
@@ -485,9 +603,10 @@ function UserManagementPage() {
                   <Select
                     label=""
                     value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as "admin" | "staff")}
+                    onChange={(e) => setNewRole(e.target.value as "admin" | "hr" | "staff")}
                     options={[
                       ["staff", "Staff Role"],
+                      ["hr", "HR Role"],
                       ["admin", "Administrator Role"]
                     ]}
                     className="flex-1"
@@ -543,6 +662,30 @@ function UserManagementPage() {
                     </Button>
                   </div>
                 )}
+              </div>
+
+              {/* Action 3: Impersonate User */}
+              <div className="space-y-2.5 pt-5 border-t border-border">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Admin Actions</h4>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const res = await authClient.admin.impersonateUser({
+                        userId: selectedUser.id,
+                      });
+                      if (res.error) {
+                        alert(res.error.message || "Failed to impersonate user");
+                      } else {
+                        window.location.href = "/";
+                      }
+                    } catch (e: any) {
+                      alert(e.message || "Failed to impersonate user");
+                    }
+                  }}
+                  className="w-full font-bold bg-amber-600 hover:bg-amber-700 text-white h-10 flex items-center justify-center gap-1.5"
+                >
+                  <User size={15} /> Impersonate {selectedUser.name}
+                </Button>
               </div>
             </div>
 

@@ -23,6 +23,7 @@ function ReviewLeave() {
   const session = authClient.useSession();
   const [reviewerNote, setReviewerNote] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [forwardToStaffId, setForwardToStaffId] = React.useState<number | "">("");
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const leaveQuery = useRpcQuery<LeaveDetailRow>(
@@ -31,7 +32,17 @@ function ReviewLeave() {
   );
 
   const leave = leaveQuery.data;
-  const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user?.email);
+  const currentStaff = staffQuery.data?.find(
+    (s) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
+  );
+
+  const forwardableStaff = React.useMemo(() => {
+    if (!staffQuery.data) return [];
+    return staffQuery.data.filter(s => {
+      const role = (s.role || "").toLowerCase();
+      return role.includes("supervisor") || role.includes("hr") || role.includes("executive") || role.includes("manager");
+    });
+  }, [staffQuery.data]);
 
   const balanceQuery = useRpcQuery<{ leaveType: string; maxDays: number; takenDays: number; remainingDays: number }[]>(
     ["staff-leave-balance", leave?.staffId],
@@ -68,20 +79,31 @@ function ReviewLeave() {
   }
 
   const isAdmin = session.data?.user?.role === "admin";
-  const isLevel1 = currentStaff && currentStaff.id === leave.supervisorLevel1Id;
-  const isLevel2 = currentStaff && currentStaff.id === leave.supervisorLevel2Id;
-  const isSupervisor = isLevel1 || isLevel2;
-  const isDeptLeader = currentStaff && (currentStaff.id === leave.headStaffId || currentStaff.id === leave.subheadStaffId);
 
-  const canAction =
-    (leave.status === "Pending" || leave.status === "Forwarded") &&
-    (isAdmin || isSupervisor || isDeptLeader);
+  // Is the leave requester the dept head or sub-head of their department?
+  const empIsHead = leave.headStaffId != null && leave.staffId === leave.headStaffId;
+  const empIsSubhead = leave.subheadStaffId != null && leave.staffId === leave.subheadStaffId;
 
-  const canForward =
-    leave.status === "Pending" &&
-    isLevel1 &&
-    leave.supervisorLevel2Id &&
-    leave.supervisorLevel2Id !== leave.supervisorLevel1Id;
+  // Current user's role in the employee's department
+  const isHead = currentStaff != null && leave.headStaffId != null && currentStaff.staffId === leave.headStaffId;
+  const isSubhead = currentStaff != null && leave.subheadStaffId != null && currentStaff.staffId === leave.subheadStaffId;
+  const isDirectSupervisor = currentStaff != null && (currentStaff.staffId === leave.supervisorLevel1Id || currentStaff.staffId === leave.supervisorLevel2Id);
+
+  // Decision panel visibility — mirrors the backend canAct logic
+  const canAction = (() => {
+    if (!["Pending", "Forwarded"].includes(leave.status)) return false;
+    if (isAdmin) return true;
+    if (empIsHead) return isDirectSupervisor;           // Admin or direct supervisor can act on dept head's leave
+    if (empIsSubhead) return isHead || isDirectSupervisor; // Sub-head's leave → dept head or supervisor
+    // Regular staff: head OR sub-head OR supervisor on Pending
+    if (leave.status === "Pending") return isHead || isSubhead || isDirectSupervisor;
+    if (leave.status === "Forwarded") return isHead || isDirectSupervisor;
+    return false;
+  })();
+
+  // Forward button: Any supervisor who can act on the leave can forward it to another supervisor
+  const canForward = canAction;
+
 
   const formatDateForInput = (dateStr: string) => {
     try {
@@ -111,9 +133,14 @@ function ReviewLeave() {
           json: { reviewerNote }
         });
       } else {
+        if (!forwardToStaffId) {
+          alert("Please select a supervisor to forward to.");
+          setSubmitting(false);
+          return;
+        }
         res = await (client.hr.leaves as any)[":id"].forward.$post({
           param: { id: String(leaveId) },
-          json: { reviewerNote }
+          json: { reviewerNote, forwardToStaffId }
         });
       }
 
@@ -135,7 +162,7 @@ function ReviewLeave() {
   const getStatusBadgeClass = (status: string) => {
     switch (status) {
       case "Approved":
-        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-450 dark:border-emerald-900/30";
+        return "bg-emerald-900 text-white border-emerald-200 dark:bg-emerald-900 dark:text-emerald-200 dark:border-lime-900";
       case "Rejected":
         return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-450 dark:border-rose-900/30";
       case "Forwarded":
@@ -161,6 +188,7 @@ function ReviewLeave() {
           <CardContent>
             <form className="grid gap-4 md:grid-cols-2">
               <Field label="Employee" value={leave.staffName} disabled />
+              <Field label="Department" value={leave.departmentName || "—"} disabled />
               <Field label="Leave Type" value={leave.leaveType} disabled />
               <Field label="Start Date" type="date" value={formatDateForInput(leave.startDate)} disabled />
               <Field label="End Date" type="date" value={formatDateForInput(leave.endDate)} disabled />
@@ -273,15 +301,28 @@ function ReviewLeave() {
                 </Button>
 
                 {canForward && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-sky-300 text-sky-700 hover:bg-sky-50"
-                    onClick={() => handleAction("forward")}
-                    disabled={submitting}
-                  >
-                    <ArrowRight size={16} className="mr-1.5" /> Forward to Level 2
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <select
+                      className="h-9 px-3 py-1 rounded-md border border-slate-200 dark:border-slate-800 text-sm bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200"
+                      value={forwardToStaffId}
+                      onChange={(e) => setForwardToStaffId(e.target.value === "" ? "" : Number(e.target.value))}
+                      disabled={submitting}
+                    >
+                      <option value="">Select Target...</option>
+                      {forwardableStaff.map(s => (
+                        <option key={s.staffId} value={s.staffId}>{s.name} ({s.role})</option>
+                      ))}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-sky-300 text-sky-700 hover:bg-sky-50"
+                      onClick={() => handleAction("forward")}
+                      disabled={submitting}
+                    >
+                      Forward <ArrowRight size={16} className="ml-1.5" />
+                    </Button>
+                  </div>
                 )}
 
                 <Button

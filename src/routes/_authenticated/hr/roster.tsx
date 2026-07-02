@@ -213,7 +213,7 @@ function Roster() {
   const deptStaff = (staffQuery.data ?? []).filter((s) => s.departmentId === departmentId);
   const filteredDeptStaff = deptStaff.filter((s) => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
 
-  const staffOptions: [string, string][] = deptStaff.map((s) => [s.id.toString(), `${s.name} (${s.role})`] as [string, string]);
+  const staffOptions: [string, string][] = deptStaff.map((s) => [s.staffId.toString(), `${s.name} (${s.role})`] as [string, string]);
 
   const shiftOptions: [string, string][] = [
     // ["", "Select shift…"],
@@ -501,10 +501,10 @@ function Roster() {
                         {filteredDeptStaff.length > 0 ? (
                           filteredDeptStaff.map((member) => (
                             <div
-                              key={member.id}
+                              key={member.staffId}
                               draggable
                               onDragStart={(e) => {
-                                e.dataTransfer.setData("staffId", member.id.toString());
+                                e.dataTransfer.setData("staffId", member.staffId.toString());
                                 e.dataTransfer.effectAllowed = "move";
                               }}
                               className="flex items-center gap-2 p-2 rounded-xl border border-border bg-card hover:bg-muted hover:border-border transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm min-w-[190px] shrink-0 group"

@@ -667,7 +667,7 @@ export function Shell() {
               <div className="flex items-center">
                 <nav className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground" aria-label="Breadcrumb">
                   {getBreadcrumbs(location.pathname).map((item, idx, arr) => (
-                    <React.Fragment key={item.to}>
+                    <React.Fragment key={item.label}>
                       {idx > 0 && <span className="text-muted-foreground/45 select-none font-normal">/</span>}
                       {idx === arr.length - 1 ? (
                         <span className="text-foreground font-semibold">{item.label}</span>

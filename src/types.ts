@@ -1,5 +1,10 @@
 export type StaffRow = {
-  id: number;
+  /** Stable logical identity — never changes across versions. */
+  staffId: number;
+  /** Version number of this record. Increments on every staff detail update. */
+  version: number;
+  /** True for the latest (current) version of this staff member. */
+  active: boolean;
   employeeCode: string;
   name: string;
   role: string;
@@ -7,14 +12,8 @@ export type StaffRow = {
   aadhar: string;
   phone: string;
   pan: string;
-  version?: number;
-  active?: boolean;
   departmentId?: number | null;
   departmentName?: string | null;
-  supervisorLevel1Id?: number | null;
-  supervisorLevel1Name?: string | null;
-  supervisorLevel2Id?: number | null;
-  supervisorLevel2Name?: string | null;
   email?: string | null;
   basicSalary?: number | null;
   hra?: number | null;
@@ -26,6 +25,7 @@ export type StaffRow = {
   professionalTax?: number | null;
   otherDeductions?: number | null;
   salary?: number | null;
+  userId?: string | null;
   createdAt: string;
 };
 export type PatientRow = { id: number; name: string };
@@ -46,6 +46,7 @@ export type LeaveRow = {
   status: string;
   reviewerNote?: string | null;
   dateRange?: string;
+  departmentName?: string | null;
   staffId?: number;
   supervisorLevel1Id?: number | null;
   supervisorLevel2Id?: number | null;
@@ -76,6 +77,8 @@ export type LeaveDetailRow = {
   supervisorLevel2Name?: string | null;
   headStaffId?: number | null;
   subheadStaffId?: number | null;
+  forwardedToStaffId?: number | null;
+  forwardedToStaffName?: string | null;
 };
 export type RoleTypeRow = { id: number; name: string; active: boolean };
 export type LeaveTypeRow = { id: number; name: string; maxDays: number; active: boolean; payable: boolean; paymentRate: number };

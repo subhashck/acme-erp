@@ -629,7 +629,7 @@ function AttendancePage() {
                       label="Employee"
                       value={selectedLogEmpId}
                       onChange={(val) => setSelectedLogEmpId(val)}
-                      options={(staffQuery.data ?? []).map((s) => [String(s.id), `${s.name} (${s.employeeCode})`])}
+                      options={(staffQuery.data ?? []).map((s) => [String(s.staffId), `${s.name} (${s.employeeCode})`])}
                     />
                     <Field
                       label="Check In Time"
@@ -839,7 +839,7 @@ function AttendancePage() {
                           label="Select Employee"
                           value={quickMapEmpId}
                           onChange={(val) => setQuickMapEmpId(val)}
-                          options={(staffQuery.data ?? []).map((s) => [String(s.id), `${s.name} (${s.employeeCode})`])}
+                          options={(staffQuery.data ?? []).map((s) => [String(s.staffId), `${s.name} (${s.employeeCode})`])}
                         />
                         <div className="flex gap-2">
                           <Button type="submit" size="default" className="flex-1 h-9 text-xs">
@@ -955,7 +955,7 @@ function AttendancePage() {
                     label="Employee"
                     value={mappingEmpId}
                     onChange={(val) => setMappingEmpId(val)}
-                    options={(staffQuery.data ?? []).map((s) => [String(s.id), `${s.name} (${s.employeeCode})`])}
+                    options={(staffQuery.data ?? []).map((s) => [String(s.staffId), `${s.name} (${s.employeeCode})`])}
                   />
                   <Field
                     label="Biometric System Code"

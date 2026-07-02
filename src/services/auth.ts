@@ -8,6 +8,7 @@ export const authClient = createAuthClient({
     adminClient({
       roles: {
         admin: {} as any,
+        hr: {} as any,
         staff: {} as any
       }
     })

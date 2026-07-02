@@ -44,10 +44,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
         departmentName: departments.name,
       })
       .from(payslips)
-      .innerJoin(staff, eq(payslips.staffId, staff.id))
+      .innerJoin(staff, eq(payslips.staffId, staff.staffId))
       .leftJoin(
         staffDepartments,
-        sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .orderBy(desc(payslips.month), desc(payslips.createdAt))
@@ -83,10 +83,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
         departmentName: departments.name,
       })
       .from(payslips)
-      .innerJoin(staff, eq(payslips.staffId, staff.id))
+      .innerJoin(staff, eq(payslips.staffId, staff.staffId))
       .leftJoin(
         staffDepartments,
-        sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .where(eq(payslips.id, id))
@@ -97,8 +97,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
 
     // Leave balance for the employee: current calendar year
     const year = row.month.slice(0, 4);
-    const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime() / 1000;
-    const yearEnd = new Date(`${year}-12-31T23:59:59Z`).getTime() / 1000;
+    const yearStart = new Date(`${year}-01-01T00:00:00Z`);
+    const yearEnd = new Date(`${year}-12-31T23:59:59Z`);
 
     const allLeaveTypes = await db
       .select()
@@ -109,7 +109,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStart} AND ${leaveRequests.startDate} <= ${yearEnd}`
+        sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStart.toISOString()} AND ${leaveRequests.startDate} <= ${yearEnd.toISOString()}`
       )
       .execute();
 
@@ -217,8 +217,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
     const daysInMonth = new Date(year, mon, 0).getDate();
 
     // Month boundaries as Unix seconds
-    const monthStart = new Date(`${month}-01T00:00:00Z`).getTime() / 1000;
-    const monthEnd = new Date(year, mon, 0, 23, 59, 59).getTime() / 1000;
+    const monthStart = new Date(`${month}-01T00:00:00Z`);
+    const monthEnd = new Date(year, mon, 0, 23, 59, 59);
 
     // Get active staff matching filters
     let activeStaff: (typeof staff.$inferSelect)[] = [];
@@ -227,7 +227,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .select()
         .from(staff)
         .where(
-          sql`${staff.status} = 'Active' AND ${staff.id} = ${staffId} AND ${staff.active} = true`
+          sql`${staff.status} = 'Active' AND ${staff.staffId} = ${staffId} AND ${staff.active} = true`
         )
         .execute();
     } else if (departmentId) {
@@ -236,7 +236,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .from(staff)
         .innerJoin(
           staffDepartments,
-          sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+          sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
         )
         .where(
           sql`${staff.status} = 'Active' AND ${staffDepartments.departmentId} = ${departmentId} AND ${staff.active} = true`
@@ -310,7 +310,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .select()
         .from(leaveRequests)
         .where(
-          sql`${leaveRequests.staffId} = ${employee.id} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStart} AND ${leaveRequests.startDate} <= ${monthEnd}`
+          sql`${leaveRequests.staffId} = ${employee.id} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStart.toISOString()} AND ${leaveRequests.startDate} <= ${monthEnd.toISOString()}`
         )
         .execute();
 
@@ -320,8 +320,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
       for (const lr of approvedLeaves) {
         const lrStart = lr.startDate.getTime() / 1000;
         const lrEnd = lr.endDate.getTime() / 1000;
-        const overlapStart = Math.max(lrStart, monthStart);
-        const overlapEnd = Math.min(lrEnd, monthEnd);
+        const overlapStart = Math.max(lrStart, monthStart.getTime() / 1000);
+        const overlapEnd = Math.min(lrEnd, monthEnd.getTime() / 1000);
         const days = Math.max(
           1,
           Math.round((overlapEnd - overlapStart) / 86400) + 1

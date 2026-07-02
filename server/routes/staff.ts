@@ -1,5 +1,6 @@
-import { aliasedTable, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, max } from "drizzle-orm";
 import { Hono } from "hono";
+import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
 import { auth } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -12,27 +13,25 @@ import {
   staffDepartments,
   staffHrProfiles,
   staffSalaries,
+  staffSupervisors,
   user,
 } from "../db/schema.ts";
 import { code, idParam, jsonBody, staffInput } from "./shared.ts";
 
 export const staffRoutes = new Hono<AuthEnv>()
+  /**
+   * GET /hr/staff
+   * Returns all active staff records (latest version for each employee).
+   */
   .get("/hr/staff", async (c) => {
-    const manager = aliasedTable(staff, "manager");
-    const director = aliasedTable(staff, "director");
-
     const rows = await db
       .select({
-        id: staff.id,
+        staffId: staff.staffId,
         employeeCode: staff.employeeCode,
         name: staff.name,
         role: staff.role,
         departmentId: staffDepartments.departmentId,
         departmentName: departments.name,
-        supervisorLevel1Id: staff.supervisorLevel1Id,
-        supervisorLevel1Name: manager.name,
-        supervisorLevel2Id: staff.supervisorLevel2Id,
-        supervisorLevel2Name: director.name,
         phone: staff.phone,
         email: staff.email,
         basicSalary: staffSalaries.basicSalary,
@@ -53,22 +52,32 @@ export const staffRoutes = new Hono<AuthEnv>()
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)
       .leftJoin(
         staffDepartments,
-        sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
-      .leftJoin(manager, eq(staff.supervisorLevel1Id, manager.id))
-      .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
-      .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
+      .leftJoin(
+        staffSalaries,
+        sql`${staff.staffId} = ${staffSalaries.staffId}
+          AND ${staff.version} = ${staffSalaries.staffVersion}`
+      )
       .where(eq(staff.active, true))
       .orderBy(desc(staff.createdAt))
       .execute();
     return c.json(rows);
   })
+
+  /**
+   * POST /hr/staff
+   * Creates a new staff record (version=1, active=true, new staffId).
+   */
   .post("/hr/staff", async (c) => {
     const input = await jsonBody(c, staffInput);
     const session = c.get("session");
@@ -91,16 +100,23 @@ export const staffRoutes = new Hono<AuthEnv>()
       ...staffData
     } = input;
 
+    const [maxStaff] = await db
+      .select({ maxId: sql<number>`MAX(${staff.staffId})` })
+      .from(staff)
+      .execute();
+    const nextStaffId = (maxStaff?.maxId || 0) + 1;
+
     const [row] = await db
       .insert(staff)
-      .values({ ...staffData, employeeCode: code("EMP"), version: 1, active: true })
+      .values({ ...staffData, staffId: nextStaffId, employeeCode: code("EMP"), version: 1, active: true })
       .returning()
       .execute();
 
     await db
       .insert(staffSalaries)
       .values({
-        staffId: row.id,
+        staffId: row.staffId,
+        staffVersion: row.version,
         basicSalary,
         hra,
         conveyance,
@@ -119,7 +135,8 @@ export const staffRoutes = new Hono<AuthEnv>()
     await db
       .insert(staffDepartments)
       .values({
-        staffId: row.id,
+        staffId: row.staffId,
+        staffVersion: row.version,
         departmentId: departmentId,
         version: 1,
         status: "Active",
@@ -132,7 +149,8 @@ export const staffRoutes = new Hono<AuthEnv>()
       await db
         .insert(staffHrProfiles)
         .values({
-          staffId: row.id,
+          staffId: row.staffId,
+          staffVersion: row.version,
           ...hrProfile,
           educationHistory: hrProfile.educationHistory
             ? JSON.stringify(hrProfile.educationHistory)
@@ -146,6 +164,13 @@ export const staffRoutes = new Hono<AuthEnv>()
 
     return c.json(row, 201);
   })
+
+  /**
+   * PUT /hr/staff/:id
+   * Updates staff details by creating a new version row.
+   * :id refers to the stable staffId.
+   * The old active row is marked inactive, and a new row is inserted with version+1.
+   */
   .put("/hr/staff/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, staffInput);
@@ -169,34 +194,37 @@ export const staffRoutes = new Hono<AuthEnv>()
       ...staffData
     } = input;
 
-    // Get the current version of the staff
+    // Fetch the current active version by stable staffId
     const currentStaff = await db
       .select()
       .from(staff)
-      .where(eq(staff.id, id))
+      .where(and(eq(staff.staffId, id), eq(staff.active, true)))
       .limit(1)
       .then((res: any) => res[0]);
+
     if (!currentStaff) {
       return c.json({ error: "Staff member not found" }, 404);
     }
 
-    const newVersion = (currentStaff.version || 1) + 1;
+    const newVersion = currentStaff.version + 1;
 
-    // Filter out undefined properties from staffData to avoid overwriting database values with nulls/undefineds
     const cleanStaffData = Object.fromEntries(
       Object.entries(staffData).filter(([_, v]) => v !== undefined)
     ) as typeof staffData;
 
-    // Mark the previous version as inactive
-    await db.update(staff).set({ active: false }).where(eq(staff.id, id)).execute();
+    // Mark all existing rows for this staffId as inactive
+    await db
+      .update(staff)
+      .set({ active: false })
+      .where(eq(staff.staffId, id))
+      .execute();
 
-    // Insert the new active version of the staff
+    // Insert the new active version with the same stable staffId
     const [newStaffRow] = await db
       .insert(staff)
       .values({
-        supervisorLevel1Id: currentStaff.supervisorLevel1Id,
-        supervisorLevel2Id: currentStaff.supervisorLevel2Id,
         ...cleanStaffData,
+        staffId: id,
         employeeCode: currentStaff.employeeCode,
         version: newVersion,
         active: true,
@@ -204,11 +232,12 @@ export const staffRoutes = new Hono<AuthEnv>()
       .returning()
       .execute();
 
-    // Insert a new salary record for the new version
+    // Insert salary record for the new version
     await db
       .insert(staffSalaries)
       .values({
-        staffId: newStaffRow.id,
+        staffId: newStaffRow.staffId,
+        staffVersion: newStaffRow.version,
         basicSalary,
         hra,
         conveyance,
@@ -224,38 +253,42 @@ export const staffRoutes = new Hono<AuthEnv>()
       })
       .execute();
 
-    // Handle department change / update
-    const currentActive = await db
+    // Handle department assignment for new version
+    const currentActiveDept = await db
       .select()
       .from(staffDepartments)
       .where(
-        sql`${staffDepartments.staffId} = ${id} AND ${staffDepartments.status} = 'Active'`
+        sql`${staffDepartments.staffId} = ${id}
+          AND ${staffDepartments.staffVersion} = ${currentStaff.version}
+          AND ${staffDepartments.status} = 'Active'`
       )
       .limit(1)
       .then((res: any) => res[0]);
 
-    if (!currentActive || currentActive.departmentId !== departmentId) {
-      if (currentActive) {
+    if (!currentActiveDept || currentActiveDept.departmentId !== departmentId) {
+      // Department changed — mark previous entry inactive and create new
+      if (currentActiveDept) {
         await db
           .update(staffDepartments)
           .set({ status: "Inactive" })
-          .where(eq(staffDepartments.id, currentActive.id))
+          .where(eq(staffDepartments.id, currentActiveDept.id))
           .execute();
       }
 
-      const maxVersionRow = await db
+      const maxDeptVersionRow = await db
         .select({ maxVersion: sql<number>`max(${staffDepartments.version})` })
         .from(staffDepartments)
         .where(eq(staffDepartments.staffId, id))
         .limit(1)
         .then((res: any) => res[0]);
 
-      const newDeptVersion = (maxVersionRow?.maxVersion || 0) + 1;
+      const newDeptVersion = (maxDeptVersionRow?.maxVersion || 0) + 1;
 
       await db
         .insert(staffDepartments)
         .values({
-          staffId: newStaffRow.id,
+          staffId: newStaffRow.staffId,
+          staffVersion: newStaffRow.version,
           departmentId: departmentId,
           version: newDeptVersion,
           status: "Active",
@@ -264,13 +297,14 @@ export const staffRoutes = new Hono<AuthEnv>()
         })
         .execute();
     } else {
-      // Insert matching department mapping for the new staff version (no department change)
+      // Department unchanged — carry forward the department assignment for the new version
       await db
         .insert(staffDepartments)
         .values({
-          staffId: newStaffRow.id,
+          staffId: newStaffRow.staffId,
+          staffVersion: newStaffRow.version,
           departmentId: departmentId,
-          version: currentActive.version,
+          version: currentActiveDept.version,
           status: "Active",
           changedById: session?.user.id,
           changedByName: session?.user.name,
@@ -278,17 +312,24 @@ export const staffRoutes = new Hono<AuthEnv>()
         .execute();
     }
 
+    // Copy HR profile to new version (merging any updates from input)
     const oldProfile = await db
       .select()
       .from(staffHrProfiles)
-      .where(eq(staffHrProfiles.staffId, id))
+      .where(
+        and(
+          eq(staffHrProfiles.staffId, id),
+          eq(staffHrProfiles.staffVersion, currentStaff.version)
+        )
+      )
       .limit(1)
       .then((res: any) => res[0]);
 
     await db
       .insert(staffHrProfiles)
       .values({
-        staffId: newStaffRow.id,
+        staffId: newStaffRow.staffId,
+        staffVersion: newStaffRow.version,
         dateOfBirth: hrProfile?.dateOfBirth ?? oldProfile?.dateOfBirth,
         gender: hrProfile?.gender ?? oldProfile?.gender,
         maritalStatus: hrProfile?.maritalStatus ?? oldProfile?.maritalStatus,
@@ -314,16 +355,63 @@ export const staffRoutes = new Hono<AuthEnv>()
       })
       .execute();
 
-    return c.json(newStaffRow);
-  })
-  .get("/hr/staff/:id/profile", async (c) => {
-    const { id } = idParam.parse(c.req.param());
-    const profile = await db
+    // Copy supervisor assignments to new version
+    const oldSupervisors = await db
       .select()
-      .from(staffHrProfiles)
-      .where(eq(staffHrProfiles.staffId, id))
+      .from(staffSupervisors)
+      .where(
+        and(
+          eq(staffSupervisors.staffId, id),
+          eq(staffSupervisors.staffVersion, currentStaff.version)
+        )
+      )
       .limit(1)
       .then((res: any) => res[0]);
+
+    if (oldSupervisors) {
+      await db
+        .insert(staffSupervisors)
+        .values({
+          staffId: newStaffRow.staffId,
+          staffVersion: newStaffRow.version,
+          supervisor1Id: oldSupervisors.supervisor1Id,
+          supervisor2Id: oldSupervisors.supervisor2Id,
+        })
+        .execute();
+    }
+
+    return c.json(newStaffRow);
+  })
+
+  /**
+   * GET /hr/staff/:id/profile
+   * Returns the HR profile for the active version of a staff member.
+   * :id is the stable staffId.
+   */
+  .get("/hr/staff/:id/profile", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    // Get the active version number first
+    const activeStaff = await db
+      .select({ version: staff.version })
+      .from(staff)
+      .where(and(eq(staff.staffId, id), eq(staff.active, true)))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    const profile = activeStaff
+      ? await db
+          .select()
+          .from(staffHrProfiles)
+          .where(
+            and(
+              eq(staffHrProfiles.staffId, id),
+              eq(staffHrProfiles.staffVersion, activeStaff.version)
+            )
+          )
+          .limit(1)
+          .then((res: any) => res[0])
+      : null;
 
     if (profile) {
       return c.json({
@@ -342,23 +430,23 @@ export const staffRoutes = new Hono<AuthEnv>()
       professionalHistory: [],
     });
   })
+
+  /**
+   * GET /hr/staff/:id
+   * Returns the active version of a staff member by stable staffId.
+   * :id is the stable staffId.
+   */
   .get("/hr/staff/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    const manager = aliasedTable(staff, "manager");
-    const director = aliasedTable(staff, "director");
 
     const row = await db
       .select({
-        id: staff.id,
+        staffId: staff.staffId,
         employeeCode: staff.employeeCode,
         name: staff.name,
         role: staff.role,
         departmentId: staffDepartments.departmentId,
         departmentName: departments.name,
-        supervisorLevel1Id: staff.supervisorLevel1Id,
-        supervisorLevel1Name: manager.name,
-        supervisorLevel2Id: staff.supervisorLevel2Id,
-        supervisorLevel2Name: director.name,
         phone: staff.phone,
         email: staff.email,
         basicSalary: staffSalaries.basicSalary,
@@ -384,13 +472,17 @@ export const staffRoutes = new Hono<AuthEnv>()
       .from(staff)
       .leftJoin(
         staffDepartments,
-        sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
-      .leftJoin(manager, eq(staff.supervisorLevel1Id, manager.id))
-      .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
-      .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
-      .where(eq(staff.id, id))
+      .leftJoin(
+        staffSalaries,
+        sql`${staff.staffId} = ${staffSalaries.staffId}
+          AND ${staff.version} = ${staffSalaries.staffVersion}`
+      )
+      .where(and(eq(staff.staffId, id), eq(staff.active, true)))
       .limit(1)
       .then((res: any) => res[0]);
 
@@ -399,33 +491,24 @@ export const staffRoutes = new Hono<AuthEnv>()
     }
     return c.json(row);
   })
-  .get("/hr/staff/:id/versions", async (c) => {
+
+  /**
+   * GET /hr/staff/:id/version/:ver
+   * Returns a specific version of a staff member.
+   * :id is the stable staffId, :ver is the version number.
+   */
+  .get("/hr/staff/:id/version/:ver", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    const targetStaff = await db
-      .select({ employeeCode: staff.employeeCode })
-      .from(staff)
-      .where(eq(staff.id, id))
-      .limit(1)
-      .then((res: any) => res[0]);
-    if (!targetStaff) {
-      return c.json({ error: "Staff member not found" }, 404);
-    }
+    const ver = parseInt(c.req.param("ver"), 10);
 
-    const manager = aliasedTable(staff, "manager");
-    const director = aliasedTable(staff, "director");
-
-    const rows = await db
+    const row = await db
       .select({
-        id: staff.id,
+        staffId: staff.staffId,
         employeeCode: staff.employeeCode,
         name: staff.name,
         role: staff.role,
         departmentId: staffDepartments.departmentId,
         departmentName: departments.name,
-        supervisorLevel1Id: staff.supervisorLevel1Id,
-        supervisorLevel1Name: manager.name,
-        supervisorLevel2Id: staff.supervisorLevel2Id,
-        supervisorLevel2Name: director.name,
         phone: staff.phone,
         email: staff.email,
         basicSalary: staffSalaries.basicSalary,
@@ -451,22 +534,105 @@ export const staffRoutes = new Hono<AuthEnv>()
       .from(staff)
       .leftJoin(
         staffDepartments,
-        sql`${staff.id} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
-      .leftJoin(manager, eq(staff.supervisorLevel1Id, manager.id))
-      .leftJoin(director, eq(staff.supervisorLevel2Id, director.id))
-      .leftJoin(staffSalaries, eq(staff.id, staffSalaries.staffId))
-      .where(eq(staff.employeeCode, targetStaff.employeeCode))
+      .leftJoin(
+        staffSalaries,
+        sql`${staff.staffId} = ${staffSalaries.staffId}
+          AND ${staff.version} = ${staffSalaries.staffVersion}`
+      )
+      .where(and(eq(staff.staffId, id), eq(staff.version, ver)))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!row) {
+      return c.json({ error: "Staff version not found" }, 404);
+    }
+    return c.json(row);
+  })
+
+  /**
+   * GET /hr/staff/:id/versions
+   * Returns all versions of a staff member ordered by version desc.
+   * :id is the stable staffId.
+   */
+  .get("/hr/staff/:id/versions", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    // Verify the staff member exists
+    const exists = await db
+      .select({ staffId: staff.staffId })
+      .from(staff)
+      .where(eq(staff.staffId, id))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!exists) {
+      return c.json({ error: "Staff member not found" }, 404);
+    }
+
+    const rows = await db
+      .select({
+        staffId: staff.staffId,
+        employeeCode: staff.employeeCode,
+        name: staff.name,
+        role: staff.role,
+        departmentId: staffDepartments.departmentId,
+        departmentName: departments.name,
+        phone: staff.phone,
+        email: staff.email,
+        basicSalary: staffSalaries.basicSalary,
+        hra: staffSalaries.hra,
+        conveyance: staffSalaries.conveyance,
+        medical: staffSalaries.medical,
+        special: staffSalaries.special,
+        epf: staffSalaries.epf,
+        esi: staffSalaries.esi,
+        professionalTax: staffSalaries.professionalTax,
+        otherDeductions: staffSalaries.otherDeductions,
+        bankName: staffSalaries.bankName,
+        accountNumber: staffSalaries.accountNumber,
+        ifscCode: staffSalaries.ifscCode,
+        salary: staff.salary,
+        status: staff.status,
+        aadhar: staff.aadhar,
+        pan: staff.pan,
+        version: staff.version,
+        active: staff.active,
+        createdAt: staff.createdAt,
+      })
+      .from(staff)
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
+      )
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .leftJoin(
+        staffSalaries,
+        sql`${staff.staffId} = ${staffSalaries.staffId}
+          AND ${staff.version} = ${staffSalaries.staffVersion}`
+      )
+      .where(eq(staff.staffId, id))
       .orderBy(desc(staff.version))
       .execute();
+
     return c.json(rows);
   })
+
+  /**
+   * GET /hr/staff/:id/leave-balance
+   * Returns leave balance for the current year. :id is stable staffId.
+   */
   .get("/hr/staff/:id/leave-balance", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const year = new Date().getFullYear();
-    const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime() / 1000;
-    const yearEnd = new Date(`${year}-12-31T23:59:59Z`).getTime() / 1000;
+    const yearStart = new Date(`${year}-01-01T00:00:00Z`);
+    const yearEnd = new Date(`${year}-12-31T23:59:59Z`);
 
     const allLeaveTypes = await db
       .select()
@@ -478,7 +644,10 @@ export const staffRoutes = new Hono<AuthEnv>()
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.staffId} = ${id} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStart} AND ${leaveRequests.startDate} <= ${yearEnd}`
+        sql`${leaveRequests.staffId} = ${id}
+          AND ${leaveRequests.status} = 'Approved'
+          AND ${leaveRequests.startDate} >= ${yearStart.toISOString()}
+          AND ${leaveRequests.startDate} <= ${yearEnd.toISOString()}`
       )
       .execute();
 
@@ -501,4 +670,250 @@ export const staffRoutes = new Hono<AuthEnv>()
     }));
 
     return c.json(leaveBalance);
+  })
+
+  /**
+   * PATCH /hr/staff/:id/link-user
+   * Links a user account to the active staff record. :id is stable staffId.
+   */
+  .patch("/hr/staff/:id/link-user", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const { userId } = z
+      .object({ userId: z.string().nullable() })
+      .parse(await c.req.json());
+
+    const existing = await db
+      .select({ staffId: staff.staffId })
+      .from(staff)
+      .where(and(eq(staff.staffId, id), eq(staff.active, true)))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!existing) {
+      return c.json({ error: "Staff member not found" }, 404);
+    }
+
+    if (userId) {
+      const conflict = await db
+        .select({ staffId: staff.staffId })
+        .from(staff)
+        .where(
+          sql`${staff.userId} = ${userId}
+            AND ${staff.active} = true
+            AND ${staff.staffId} != ${id}`
+        )
+        .limit(1)
+        .then((res: any) => res[0]);
+
+      if (conflict) {
+        return c.json(
+          { error: "This user account is already linked to another staff record" },
+          409
+        );
+      }
+    }
+
+    // Update the active version row for this staffId
+    const [updated] = await db
+      .update(staff)
+      .set({ userId: userId ?? null })
+      .where(and(eq(staff.staffId, id), eq(staff.active, true)))
+      .returning()
+      .execute();
+
+    return c.json(updated);
+  })
+
+  /**
+   * GET /hr/staff/:id/supervisors
+   * Returns supervisor info for a specific version or the active version of a staff member.
+   * :id is the stable staffId.
+   */
+  .get("/hr/staff/:id/supervisors", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const versionQuery = c.req.query("version");
+
+    let activeStaffRow;
+    
+    if (versionQuery) {
+      activeStaffRow = await db
+        .select({ version: staff.version, role: staff.role })
+        .from(staff)
+        .where(and(eq(staff.staffId, id), eq(staff.version, parseInt(versionQuery, 10))))
+        .limit(1)
+        .then((res: any) => res[0]);
+    } else {
+      activeStaffRow = await db
+        .select({ version: staff.version, role: staff.role })
+        .from(staff)
+        .where(and(eq(staff.staffId, id), eq(staff.active, true)))
+        .limit(1)
+        .then((res: any) => res[0]);
+    }
+
+    if (!activeStaffRow) {
+      return c.json({ error: "Staff member version not found" }, 404);
+    }
+
+    // Fetch explicit supervisor entry for the version
+    const explicitSup = await db
+      .select()
+      .from(staffSupervisors)
+      .where(
+        and(
+          eq(staffSupervisors.staffId, id),
+          eq(staffSupervisors.staffVersion, activeStaffRow.version)
+        )
+      )
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    // Determine default supervisors from departmentLeaders
+    const depts = await db
+      .select({
+        departmentId: staffDepartments.departmentId,
+        headStaffId: departmentLeaders.headStaffId,
+        subheadStaffId: departmentLeaders.subheadStaffId,
+      })
+      .from(staffDepartments)
+      .leftJoin(
+        departmentLeaders,
+        eq(staffDepartments.departmentId, departmentLeaders.departmentId)
+      )
+      .where(
+        sql`${staffDepartments.staffId} = ${id}
+          AND ${staffDepartments.staffVersion} = ${activeStaffRow.version}
+          AND ${staffDepartments.status} = 'Active'`
+      )
+      .execute();
+
+    const isDeptLeader = await db
+      .select({ id: departmentLeaders.id })
+      .from(departmentLeaders)
+      .where(
+        sql`${departmentLeaders.headStaffId} = ${id}
+          OR ${departmentLeaders.subheadStaffId} = ${id}`
+      )
+      .limit(1)
+      .then((res: any) => !!res[0]);
+
+    const isExecutive =
+      ["Executive", "Director", "CEO", "Admin", "HR"].includes(
+        activeStaffRow?.role
+      ) || isDeptLeader;
+
+    let defaultSupervisor1Id = null;
+    let defaultSupervisor2Id = null;
+    if (depts.length > 0 && !isDeptLeader) {
+      defaultSupervisor1Id = depts[0].headStaffId;
+      defaultSupervisor2Id = depts[0].subheadStaffId;
+      if (defaultSupervisor1Id === id) defaultSupervisor1Id = null;
+      if (defaultSupervisor2Id === id) defaultSupervisor2Id = null;
+    }
+
+    const getSupDetails = async (supStaffId: number | null) => {
+      if (!supStaffId) return null;
+      const s = await db
+        .select({
+          staffId: staff.staffId,
+          name: staff.name,
+          employeeCode: staff.employeeCode,
+        })
+        .from(staff)
+        .where(and(eq(staff.staffId, supStaffId), eq(staff.active, true)))
+        .limit(1)
+        .then((res: any) => res[0]);
+      return s || null;
+    };
+
+    const explicitSup1 = await getSupDetails(explicitSup?.supervisor1Id);
+    const explicitSup2 = await getSupDetails(explicitSup?.supervisor2Id);
+    const defaultSup1 = await getSupDetails(defaultSupervisor1Id);
+    const defaultSup2 = await getSupDetails(defaultSupervisor2Id);
+
+    return c.json({
+      isDeptHeadOrExec: isExecutive,
+      hasExplicitEntry: !!explicitSup,
+      explicitSupervisors: {
+        supervisor1: explicitSup1,
+        supervisor2: explicitSup2,
+      },
+      defaultSupervisors: {
+        supervisor1: defaultSup1,
+        supervisor2: defaultSup2,
+      },
+    });
+  })
+
+  /**
+   * PUT /hr/staff/:id/supervisors
+   * Upserts supervisor assignments for a specific version of a staff member.
+   * :id is the stable staffId.
+   */
+  .put("/hr/staff/:id/supervisors", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const versionQuery = c.req.query("version");
+
+    const body = z
+      .object({
+        supervisor1Id: z.number().nullable(),
+        supervisor2Id: z.number().nullable(),
+      })
+      .parse(await c.req.json());
+
+    let activeStaff;
+    if (versionQuery) {
+      activeStaff = await db
+        .select({ version: staff.version })
+        .from(staff)
+        .where(and(eq(staff.staffId, id), eq(staff.version, parseInt(versionQuery, 10))))
+        .limit(1)
+        .then((res: any) => res[0]);
+    } else {
+      activeStaff = await db
+        .select({ version: staff.version })
+        .from(staff)
+        .where(and(eq(staff.staffId, id), eq(staff.active, true)))
+        .limit(1)
+        .then((res: any) => res[0]);
+    }
+
+    if (!activeStaff) {
+      return c.json({ error: "Staff member not found" }, 404);
+    }
+
+    const existing = await db
+      .select()
+      .from(staffSupervisors)
+      .where(
+        and(
+          eq(staffSupervisors.staffId, id),
+          eq(staffSupervisors.staffVersion, activeStaff.version)
+        )
+      )
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (existing) {
+      await db
+        .update(staffSupervisors)
+        .set({
+          supervisor1Id: body.supervisor1Id,
+          supervisor2Id: body.supervisor2Id,
+        })
+        .where(eq(staffSupervisors.id, existing.id))
+        .execute();
+    } else {
+      await db
+        .insert(staffSupervisors)
+        .values({
+          staffId: id,
+          staffVersion: activeStaff.version,
+          supervisor1Id: body.supervisor1Id,
+          supervisor2Id: body.supervisor2Id,
+        })
+        .execute();
+    }
+
+    return c.json({ success: true });
   });
