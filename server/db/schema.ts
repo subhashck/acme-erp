@@ -1,5 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import { integer, doublePrecision as real, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar } from "drizzle-orm/pg-core";
+import { integer, doublePrecision as real, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -27,6 +27,7 @@ export const session = sqliteTable("session", {
   ipAddress: text("ipAddress"),
   userAgent: text("userAgent"),
   userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  impersonatedBy: text("impersonatedBy"),
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull()
 });
@@ -89,11 +90,49 @@ export const banks = sqliteTable("banks", {
   ...timestamps
 });
 
+/**
+ * staff — versioned employee records.
+ *
+ * PRIMARY KEY: (staffId, version)
+ *   - staffId: stable logical identity of the employee, never changes across updates
+ *   - version: monotonically increasing integer per staffId; starts at 1
+ *
+ * active: exactly one row per staffId has active=true at any time.
+ *         Query `WHERE staffId = X AND active = true` to get the current record.
+ *
+ * On every edit, the old active row is set active=false and a new row is
+ * inserted with the same staffId, version+1, active=true.
+ */
+export const staff = sqliteTable("staff", {
+  staffId: integer("staff_id").notNull(),
+  employeeCode: text("employee_code").notNull(),
+  name: text("name").notNull(),
+  role: text("role").notNull(),
+  phone: text("phone").notNull(),
+  email: text("email").notNull(),
+  salary: real("salary").notNull(),
+  status: text("status").notNull().default("Active"),
+  aadhar: text("aadhar").notNull().default(""),
+  pan: text("pan").notNull().default(""),
+  version: integer("version").notNull().default(1),
+  active: boolean("active").notNull().default(true),
+  userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps
+}, (table) => [
+  primaryKey({ columns: [table.staffId, table.version] })
+]);
+
+/**
+ * departmentLeaders — maps each department to its head and subhead staff.
+ * References stable staffId (logical identity), not a specific version.
+ * FK dropped since staffId is no longer unique in the staff table.
+ */
 export const departmentLeaders = sqliteTable("department_leaders", {
   id: serial("id").primaryKey(),
   departmentId: integer("department_id").notNull().unique().references(() => departments.id, { onDelete: "cascade" }),
-  headStaffId: integer("head_staff_id").references(() => staff.id, { onDelete: "set null" }),
-  subheadStaffId: integer("subhead_staff_id").references(() => staff.id, { onDelete: "set null" }),
+  // Plain integers referencing the stable staffId; no FK since staff PK is composite
+  headStaffId: integer("head_staff_id"),
+  subheadStaffId: integer("subhead_staff_id"),
   ...timestamps
 });
 
@@ -109,27 +148,15 @@ export const shifts = sqliteTable("shifts", {
   ...timestamps
 });
 
-export const staff = sqliteTable("staff", {
-  id: serial("id").primaryKey(),
-  employeeCode: text("employee_code").notNull(),
-  name: text("name").notNull(),
-  role: text("role").notNull(),
-  supervisorLevel1Id: integer("supervisor_level_1_id").references((): any => staff.id),
-  supervisorLevel2Id: integer("supervisor_level_2_id").references((): any => staff.id),
-  phone: text("phone").notNull(),
-  email: text("email").notNull(),
-  salary: real("salary").notNull(),
-  status: text("status").notNull().default("Active"),
-  aadhar: text("aadhar").notNull().default(""),
-  pan: text("pan").notNull().default(""),
-  version: integer("version").notNull().default(1),
-  active: boolean("active").notNull().default(true),
-  ...timestamps
-});
-
+/**
+ * staffSalaries — salary structure for a specific (staffId, version).
+ * Each staff version has its own salary record.
+ * FK: (staffId, staffVersion) → staff(staffId, version)
+ */
 export const staffSalaries = sqliteTable("staff_salaries", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().unique().references(() => staff.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id").notNull(),
+  staffVersion: integer("staff_version").notNull().default(1),
   basicSalary: real("basic_salary").notNull().default(0),
   hra: real("hra").notNull().default(0),
   conveyance: real("conveyance").notNull().default(0),
@@ -143,11 +170,23 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   accountNumber: text("account_number"),
   ifscCode: text("ifsc_code"),
   ...timestamps
-});
+}, (table) => [
+  unique("staff_salaries_staff_id_version_unique").on(table.staffId, table.staffVersion),
+  foreignKey({
+    columns: [table.staffId, table.staffVersion],
+    foreignColumns: [staff.staffId, staff.version],
+  }).onDelete("cascade")
+]);
 
+/**
+ * staffHrProfiles — HR profile for a specific (staffId, version).
+ * Each staff version has its own HR profile record.
+ * FK: (staffId, staffVersion) → staff(staffId, version)
+ */
 export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().unique().references(() => staff.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id").notNull(),
+  staffVersion: integer("staff_version").notNull().default(1),
   dateOfBirth: text("date_of_birth"),
   gender: text("gender"),
   maritalStatus: text("marital_status"),
@@ -167,11 +206,24 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   dateOfJoining: text("date_of_joining"),
   lastWorkingDate: text("last_working_date"),
   ...timestamps
-});
+}, (table) => [
+  unique("staff_hr_profiles_staff_id_version_unique").on(table.staffId, table.staffVersion),
+  foreignKey({
+    columns: [table.staffId, table.staffVersion],
+    foreignColumns: [staff.staffId, staff.version],
+  }).onDelete("cascade")
+]);
 
+/**
+ * staffDepartments — department assignment history, tied to each staff version.
+ * FK: (staffId, staffVersion) → staff(staffId, version)
+ * The `version` field tracks the department-assignment version within a staff version
+ * (e.g. if a department change occurs independently of a staff edit).
+ */
 export const staffDepartments = sqliteTable("staff_departments", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().references(() => staff.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id").notNull(),
+  staffVersion: integer("staff_version").notNull().default(1),
   departmentId: integer("department_id").notNull().references(() => departments.id, { onDelete: "cascade" }),
   version: integer("version").notNull().default(1),
   status: text("status").notNull().default("Active"),
@@ -179,11 +231,41 @@ export const staffDepartments = sqliteTable("staff_departments", {
   changedByName: text("changed_by_name"),
   changedAt: timestamp("changed_at").notNull().defaultNow(),
   ...timestamps
-});
+}, (table) => [
+  foreignKey({
+    columns: [table.staffId, table.staffVersion],
+    foreignColumns: [staff.staffId, staff.version],
+  }).onDelete("cascade")
+]);
 
+/**
+ * staffSupervisors — supervisor assignments for a specific (staffId, version).
+ * supervisor1Id and supervisor2Id are stable staffIds (logical identities).
+ * FK: (staffId, staffVersion) → staff(staffId, version)
+ */
+export const staffSupervisors = sqliteTable("staff_supervisors", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  staffVersion: integer("staff_version").notNull().default(1),
+  // Plain integer stable staffIds for supervisors (no FK since staff PK is composite)
+  supervisor1Id: integer("supervisor1_id"),
+  supervisor2Id: integer("supervisor2_id"),
+  ...timestamps
+}, (table) => [
+  unique("staff_supervisors_staff_id_version_unique").on(table.staffId, table.staffVersion),
+  foreignKey({
+    columns: [table.staffId, table.staffVersion],
+    foreignColumns: [staff.staffId, staff.version],
+  }).onDelete("cascade")
+]);
+
+/**
+ * rosters — shift rosters for staff. References stable staffId only.
+ * Plain integer, no FK (staffId is not unique in staff table after refactor).
+ */
 export const rosters = sqliteTable("rosters", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().references(() => staff.id),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
   departmentId: integer("department_id").notNull().references(() => departments.id),
   shiftId: integer("shift_id").notNull().references(() => shifts.id),
   startDate: text("start_date").notNull(),
@@ -195,7 +277,7 @@ export const rosters = sqliteTable("rosters", {
 export const leaveRequests = sqliteTable("leave_requests", {
   id: serial("id").primaryKey(),
   requestNo: text("request_no").notNull().unique(),
-  staffId: integer("staff_id").notNull().references(() => staff.id),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
   leaveType: text("leave_type").notNull(),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
@@ -203,11 +285,13 @@ export const leaveRequests = sqliteTable("leave_requests", {
   status: text("status").notNull().default("Pending"),
   reviewedAt: timestamp("reviewed_at"),
   reviewerNote: text("reviewer_note"),
+  forwardedToStaffId: integer("forwarded_to_staff_id"), // stable staffId of the targeted supervisor
   ...timestamps
 });
+
 export const payslips = sqliteTable("payslips", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().references(() => staff.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
   month: text("month").notNull(),
   basicSalary: real("basic_salary").notNull().default(0),
   hra: real("hra").notNull().default(0),
@@ -228,7 +312,7 @@ export const payslips = sqliteTable("payslips", {
 
 export const attendance = sqliteTable("attendance", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().references(() => staff.id),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
   date: text("date").notNull(),
   checkIn: text("check_in"),
   checkOut: text("check_out"),
@@ -239,7 +323,7 @@ export const attendance = sqliteTable("attendance", {
 
 export const biometricMappings = sqliteTable("biometric_mappings", {
   id: serial("id").primaryKey(),
-  staffId: integer("staff_id").notNull().unique().references(() => staff.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id").notNull().unique(), // stable staffId, no FK
   biometricCode: text("biometric_code").notNull().unique(),
   ...timestamps
 });
@@ -260,7 +344,7 @@ export const patients = sqliteTable("patients", {
 export const appointments = sqliteTable("appointments", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().references(() => patients.id),
-  doctorId: integer("doctor_id").notNull().references(() => staff.id),
+  doctorId: integer("doctor_id").notNull(), // stable staffId, no FK
   departmentId: integer("department_id").notNull().references(() => departments.id),
   scheduledAt: timestamp("scheduled_at").notNull(),
   reason: text("reason").notNull(),
@@ -311,7 +395,7 @@ export const medicines = sqliteTable("medicines", {
 export const prescriptions = sqliteTable("prescriptions", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().references(() => patients.id),
-  doctorId: integer("doctor_id").notNull().references(() => staff.id),
+  doctorId: integer("doctor_id").notNull(), // stable staffId, no FK
   encounterId: integer("encounter_id").references(() => encounters.id),
   status: text("status").notNull().default("Open"),
   ...timestamps
@@ -355,7 +439,7 @@ export const immunizationRecords = sqliteTable("immunization_records", {
   vaccineName: text("vaccine_name").notNull(),
   doseLabel: text("dose_label").notNull(),
   administeredAt: text("administered_at").notNull(),
-  administeredByStaffId: integer("administered_by_staff_id").references(() => staff.id, { onDelete: "set null" }),
+  administeredByStaffId: integer("administered_by_staff_id"), // stable staffId, no FK
   batchNo: text("batch_no"),
   manufacturer: text("manufacturer"),
   site: text("site"),
@@ -366,37 +450,60 @@ export const immunizationRecords = sqliteTable("immunization_records", {
   ...timestamps
 });
 
+// ---------------------------------------------------------------------------
+// Relations
+// ---------------------------------------------------------------------------
+
 export const staffRelations = relations(staff, ({ many, one }) => ({
   leaveRequests: many(leaveRequests),
-  salaryStructure: one(staffSalaries),
-  hrProfile: one(staffHrProfiles),
+  salaryStructure: one(staffSalaries, {
+    fields: [staff.staffId, staff.version],
+    references: [staffSalaries.staffId, staffSalaries.staffVersion]
+  }),
+  hrProfile: one(staffHrProfiles, {
+    fields: [staff.staffId, staff.version],
+    references: [staffHrProfiles.staffId, staffHrProfiles.staffVersion]
+  }),
   payslips: many(payslips),
   attendanceLogs: many(attendance),
   biometricMapping: one(biometricMappings)
 }));
 
 export const staffSalariesRelations = relations(staffSalaries, ({ one }) => ({
-  staff: one(staff, { fields: [staffSalaries.staffId], references: [staff.id] })
+  staff: one(staff, {
+    fields: [staffSalaries.staffId, staffSalaries.staffVersion],
+    references: [staff.staffId, staff.version]
+  })
 }));
 
 export const staffHrProfilesRelations = relations(staffHrProfiles, ({ one }) => ({
-  staff: one(staff, { fields: [staffHrProfiles.staffId], references: [staff.id] })
+  staff: one(staff, {
+    fields: [staffHrProfiles.staffId, staffHrProfiles.staffVersion],
+    references: [staff.staffId, staff.version]
+  })
+}));
+
+export const staffSupervisorsRelations = relations(staffSupervisors, ({ one }) => ({
+  staff: one(staff, {
+    fields: [staffSupervisors.staffId, staffSupervisors.staffVersion],
+    references: [staff.staffId, staff.version]
+  })
 }));
 
 export const leaveRequestRelations = relations(leaveRequests, ({ one }) => ({
-  staff: one(staff, { fields: [leaveRequests.staffId], references: [staff.id] })
+  staff: one(staff, { fields: [leaveRequests.staffId], references: [staff.staffId] })
 }));
 
 export const payslipsRelations = relations(payslips, ({ one }) => ({
-  staff: one(staff, { fields: [payslips.staffId], references: [staff.id] })
+  staff: one(staff, { fields: [payslips.staffId], references: [staff.staffId] })
 }));
 
 export const attendanceRelations = relations(attendance, ({ one }) => ({
-  staff: one(staff, { fields: [attendance.staffId], references: [staff.id] })
+  staff: one(staff, { fields: [attendance.staffId], references: [staff.staffId] })
 }));
 
 export const biometricMappingsRelations = relations(biometricMappings, ({ one }) => ({
-  staff: one(staff, { fields: [biometricMappings.staffId], references: [staff.id] })
+  staff: one(staff, { fields: [biometricMappings.staffId], references: [staff.staffId] })
 }));
 
 export const patientRelations = relations(patients, ({ many }) => ({
@@ -412,7 +519,6 @@ export const immunizationScheduleRelations = relations(immunizationSchedules, ({
 export const immunizationRecordRelations = relations(immunizationRecords, ({ one }) => ({
   patient: one(patients, { fields: [immunizationRecords.patientId], references: [patients.id] }),
   schedule: one(immunizationSchedules, { fields: [immunizationRecords.scheduleId], references: [immunizationSchedules.id] }),
-  administeredBy: one(staff, { fields: [immunizationRecords.administeredByStaffId], references: [staff.id] })
 }));
 
 export const notifications = sqliteTable("notifications", {
@@ -445,4 +551,3 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   receiver: one(user, { fields: [messages.receiverId], references: [user.id] }),
   department: one(departments, { fields: [messages.departmentId], references: [departments.id] }),
 }));
-

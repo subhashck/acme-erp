@@ -9,21 +9,50 @@ import { Button } from "../../../ui/button";
 import { Card, CardContent } from "../../../ui/card";
 import { cn } from "@/utils/cn";
 import { Badge } from "@/ui/badge";
+import { authClient } from "../../../services/auth";
 
 export const Route = createFileRoute("/_authenticated/hr/staff-list")({
   component: StaffList
 });
 
 function StaffList() {
+  const session = authClient.useSession();
+  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
+  const deptsQuery = useRpcQuery<any[]>(["masters-departments"], () => client.masters.departments.$get());
+
+  const staffData = staffQuery.data ?? [];
+  const deptsData = deptsQuery.data ?? [];
+
+  const currentStaff = staffData.find(s => s.email === session.data?.user?.email || s.userId === session.data?.user?.id);
+  const headOfDeptIds = deptsData
+    .filter(d => currentStaff && (d.headStaffId === currentStaff.staffId || d.subheadStaffId === currentStaff.staffId))
+    .map(d => d.id);
+
+  const filteredStaff = isAdminOrHr 
+    ? staffData 
+    : staffData.filter(s => {
+        if (s.email === session.data?.user?.email || s.userId === session.data?.user?.id) return true;
+        if (s.departmentId && headOfDeptIds.includes(s.departmentId)) return true;
+        return false;
+      });
 
   const staffColumns: ColumnDef<StaffRow>[] = [
     ["employeeCode", "Code"],
     ["name", "Name"],
     ["role", "Role"],
     ["departmentName", "Department"],
-    ["aadhar", "Aadhar"],
-    ["pan", "PAN"],
+    {
+      id: "aadhar",
+      label: "Aadhar",
+      render: (row) => row.aadhar ? `********${row.aadhar.slice(-4)}` : "-"
+    },
+    {
+      id: "pan",
+      label: "PAN",
+      render: (row) => row.pan ? `${row.pan.slice(0, 2)}******${row.pan.slice(-2)}` : "-"
+    },
     {
       id: "status",
       label: "Status",
@@ -46,15 +75,17 @@ function StaffList() {
       render: (row) => (
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" asChild title="View Details">
-            <Link to="/hr/view-staff" search={{ staffId: row.id }}>
+            <Link to="/hr/view-staff" search={{ staffId: row.staffId }}>
               <Eye size={16} />
             </Link>
           </Button>
-          <Button variant="ghost" size="icon" asChild title="Edit Staff">
-            <Link to="/hr/add-staff" search={{ staffId: row.id }}>
-              <Edit2 size={16} />
-            </Link>
-          </Button>
+          {isAdminOrHr && (
+            <Button variant="ghost" size="icon" asChild title="Edit Staff">
+              <Link to="/hr/add-staff" search={{ staffId: row.staffId }}>
+                <Edit2 size={16} />
+              </Link>
+            </Button>
+          )}
         </div>
       )
     }
@@ -65,17 +96,19 @@ function StaffList() {
       title="Employee Details"
       description="Staffing, compensation, and employee records."
       action={
-        <div className="flex flex-wrap gap-2">
-          <Button asChild>
-            <Link to="/hr/add-staff"><Plus size={16} /> Add staff</Link>
-          </Button>
-        </div>
+        isAdminOrHr ? (
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link to="/hr/add-staff"><Plus size={16} /> Add staff</Link>
+            </Button>
+          </div>
+        ) : undefined
       }
     >
       <Card>
         <CardContent className="p-0">
           <DataTable
-            rows={staffQuery.data ?? []}
+            rows={filteredStaff}
             columns={staffColumns}
             enableFiltering
             enableSorting

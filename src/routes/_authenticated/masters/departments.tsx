@@ -130,11 +130,17 @@ function Departments() {
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  const staffOptions = (staffQuery.data ?? []).map((s) => ({
-    id: s.id,
-    name: s.name,
-    code: s.employeeCode
-  }));
+  // When editing, restrict options to staff assigned to that department.
+  // When adding a new department, show all staff (no dept exists to filter against yet).
+  const editingDept = editingId ? (query.data ?? []).find((d) => d.id === editingId) : null;
+
+  const staffOptions = (staffQuery.data ?? [])
+    .filter((s) => !editingDept || s.departmentName === editingDept.name)
+    .map((s) => ({
+      id: s.staffId,
+      name: s.name,
+      code: s.employeeCode
+    }));
 
   const form = useForm<z.input<typeof schema>, unknown, DepartmentInput>({
     resolver: zodResolver(schema),
@@ -204,34 +210,38 @@ function Departments() {
             <form onSubmit={submit} className="grid gap-4">
               <Field label="Name" {...form.register("name")} />
               <Field label="Floor" {...form.register("floor")} />
-              
-              <Controller
-                control={form.control}
-                name="headStaffId"
-                render={({ field }) => (
-                  <Autocomplete
-                    label="Department Head"
-                    value={field.value ?? null}
-                    onChange={field.onChange}
-                    options={staffOptions}
-                    placeholder="Type name or code to search..."
-                  />
-                )}
-              />
 
-              <Controller
-                control={form.control}
-                name="subheadStaffId"
-                render={({ field }) => (
-                  <Autocomplete
-                    label="Department Sub-Head"
-                    value={field.value ?? null}
-                    onChange={field.onChange}
-                    options={staffOptions}
-                    placeholder="Type name or code to search..."
+              {editingId && (
+                <>
+                  <Controller
+                    control={form.control}
+                    name="headStaffId"
+                    render={({ field }) => (
+                      <Autocomplete
+                        label="Department Head"
+                        value={field.value ?? null}
+                        onChange={field.onChange}
+                        options={staffOptions}
+                        placeholder="Type name or code to search..."
+                      />
+                    )}
                   />
-                )}
-              />
+
+                  <Controller
+                    control={form.control}
+                    name="subheadStaffId"
+                    render={({ field }) => (
+                      <Autocomplete
+                        label="Department Sub-Head"
+                        value={field.value ?? null}
+                        onChange={field.onChange}
+                        options={staffOptions}
+                        placeholder="Type name or code to search..."
+                      />
+                    )}
+                  />
+                </>
+              )}
 
               <div className="flex items-center gap-2">
                 <input type="checkbox" id="active" {...form.register("active")} />

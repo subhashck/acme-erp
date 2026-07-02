@@ -219,7 +219,7 @@ function PayrollPage() {
         salary: Math.max(1, gross)
       };
       const res = await client.hr.staff[":id"].$put({
-        param: { id: String(editingSalaryStaff.id) },
+        param: { id: String(editingSalaryStaff.staffId) },
         json: payload
       } as any);
       if (res.ok) {
@@ -572,7 +572,7 @@ function PayrollPage() {
                   label="Employee (Optional)"
                   value={selectedStaffId}
                   onChange={(e) => setSelectedStaffId(e.target.value)}
-                  options={filteredStaff.map(s => [String(s.id), `${s.name} (${s.employeeCode})`])}
+                  options={filteredStaff.map(s => [String(s.staffId), `${s.name} (${s.employeeCode})`])}
                 />
                 <Button type="submit" className="w-full" disabled={generating}>
                   {generating ? (

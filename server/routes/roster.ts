@@ -36,7 +36,7 @@ export const rosterRoutes = new Hono<AuthEnv>()
         createdAt: rosters.createdAt,
       })
       .from(rosters)
-      .innerJoin(staff, eq(rosters.staffId, staff.id))
+      .innerJoin(staff, eq(rosters.staffId, staff.staffId))
       .innerJoin(departments, eq(rosters.departmentId, departments.id))
       .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
       .$dynamic();
@@ -104,7 +104,7 @@ export const rosterRoutes = new Hono<AuthEnv>()
       const employee = await db
         .select()
         .from(staff)
-        .where(eq(staff.id, input.staffId))
+        .where(sql`${staff.staffId} = ${input.staffId} AND ${staff.active} = true`)
         .limit(1)
         .then((res: any) => res[0]);
       if (employee) {

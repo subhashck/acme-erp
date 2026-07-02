@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { CalendarClock, AlertCircle } from "lucide-react";
@@ -9,6 +9,7 @@ import { ModuleLayout } from "../../../components/ModuleLayout";
 import { DataTable } from "../../../components/DataTable";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
+import { authClient } from "../../../services/auth";
 import type { StaffRow, LeaveTypeRow, LeaveRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -48,6 +49,9 @@ function LeaveManagement() {
   const [sortOrder, setSortOrder] = useState("desc");
   const limit = 10;
 
+  const session = authClient.useSession();
+  const isAdmin = session.data?.user?.role === "admin";
+
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const leaveTypesQuery = useRpcQuery<LeaveTypeRow[]>(["masters-leave-types"], () => client.masters["leave-types"].$get());
   const leavesQuery = useRpcQuery<{ data: LeaveRow[]; total: number; page: number; limit: number }>(
@@ -66,18 +70,26 @@ function LeaveManagement() {
   );
 
   const activeLeaveTypes = (leaveTypesQuery.data ?? []).filter((r) => r.active).map((r) => r.name);
-  const staffList = (staffQuery.data ?? []).map((staff) => [String(staff.id), `${staff.employeeCode} - ${staff.name}`] as [string, string]);
+  const staffList = (staffQuery.data ?? []).map((staff) => [String(staff.staffId), `${staff.employeeCode} - ${staff.name}`] as [string, string]);
 
   const leaves = (leavesQuery.data?.data ?? []).map((leave) => ({
     ...leave,
     dateRange: `${formatDate(leave.startDate)} to ${formatDate(leave.endDate)}`
   }));
+  
+  const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user?.email);
   // const pendingLeaves = leaves.filter((leave) => leave.status === "Pending");
 
   const leaveForm = useForm<z.input<typeof leaveSchema>, unknown, z.output<typeof leaveSchema>>({
     resolver: zodResolver(leaveSchema),
     defaultValues: { leaveType: activeLeaveTypes[0] || "Casual Leave" }
   });
+
+  useEffect(() => {
+    if (!isAdmin && currentStaff && !leaveForm.getValues("staffId")) {
+      leaveForm.setValue("staffId", currentStaff.staffId);
+    }
+  }, [isAdmin, currentStaff, leaveForm]);
 
   const selectedStaffId = leaveForm.watch("staffId");
   const selectedLeaveType = leaveForm.watch("leaveType");
@@ -176,12 +188,19 @@ function LeaveManagement() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={submitLeave} className="grid gap-4">
-                  <Select 
-                    label="Employee" 
-                    {...leaveForm.register("staffId")} 
-                    options={staffList} 
-                    error={leaveForm.formState.errors.staffId?.message}
-                  />
+                  {isAdmin ? (
+                    <Select 
+                      label="Employee" 
+                      {...leaveForm.register("staffId")} 
+                      options={staffList} 
+                      error={leaveForm.formState.errors.staffId?.message}
+                    />
+                  ) : (
+                    <>
+                      <input type="hidden" {...leaveForm.register("staffId")} />
+                      <Field label="Employee" value={currentStaff ? `${currentStaff.employeeCode} - ${currentStaff.name}` : "Loading..."} disabled />
+                    </>
+                  )}
 
                   {!!selectedStaffId && selectedTypeBalance && (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1">
@@ -401,6 +420,7 @@ function LeaveManagement() {
                   columns={[
                     ["requestNo", "Request"],
                     ["staffName", "Employee"],
+                    ["departmentName", "Department"],
                     ["leaveType", "Type"],
                     ["dateRange", "Dates"],
                     {
@@ -459,15 +479,15 @@ function LeaveManagement() {
                       </div>
 
                       <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs">
-                        <div>
+                        <div className="col-span-2">
                           <p className="text-muted-foreground font-medium">Employee</p>
-                          <p className="text-foreground font-semibold mt-0.5">{leave.staffName}</p>
+                          <p className="text-foreground font-semibold mt-0.5">{leave.staffName} <span className="text-muted-foreground font-normal">({leave.departmentName || "No Dept"})</span></p>
                         </div>
                         <div>
                           <p className="text-muted-foreground font-medium">Leave Type</p>
                           <p className="text-foreground font-semibold mt-0.5">{leave.leaveType}</p>
                         </div>
-                        <div className="col-span-2">
+                        <div>
                           <p className="text-muted-foreground font-medium">Dates</p>
                           <p className="text-foreground font-semibold mt-0.5">{leave.dateRange}</p>
                         </div>

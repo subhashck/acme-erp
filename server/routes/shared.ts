@@ -32,13 +32,15 @@ export const requireAdmin = async (c: Context<AuthEnv>, next: any) => {
 
 export const getCurrentStaff = async (c: Context<AuthEnv>) => {
   const session = c.get("session");
-  if (!session?.user.email) {
+  if (!session?.user) {
     return null;
   }
   const staffRecord = await db
     .select()
     .from(staff)
-    .where(sql`${staff.email} = ${session.user.email} AND ${staff.active} = true`)
+    .where(
+      sql`(${staff.userId} = ${session.user.id} OR ${staff.email} = ${session.user.email}) AND ${staff.active} = true`
+    )
     .limit(1)
     .then((res: any) => res[0]);
   return staffRecord;
@@ -49,10 +51,9 @@ export const isSupervisorOf = (
   employee: typeof staff.$inferSelect | null | undefined
 ): boolean => {
   if (!supervisor || !employee) return false;
-  return (
-    supervisor.id === employee.supervisorLevel1Id ||
-    supervisor.id === employee.supervisorLevel2Id
-  );
+  // staffSupervisors stores stable staffIds for supervisor references
+  // This check is a fallback — prefer using staffSupervisors table queries
+  return false;
 };
 
 // ---------------------------------------------------------------------------
@@ -247,6 +248,7 @@ export const leaveRequestInput = z
 
 export const leaveDecisionInput = z.object({
   reviewerNote: z.string().optional(),
+  forwardToStaffId: z.number().optional(),
 });
 
 export const patientInput = z.object({

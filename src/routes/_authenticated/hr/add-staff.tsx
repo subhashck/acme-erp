@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
-import { ArrowLeft, BriefcaseBusiness, Check, ChevronLeft, ChevronRight, IdCard, Plus, Save, UserRound, Trash2 } from "lucide-react";
-import { useForm, useFieldArray, type FieldPath } from "react-hook-form";
+import { ArrowLeft, BriefcaseBusiness, Check, ChevronLeft, ChevronRight, IdCard, Plus, Save, UserRound, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { useForm, useFieldArray, Controller, type FieldPath } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
@@ -13,6 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { Select } from "../../../ui/select";
 import type { RoleTypeRow, DepartmentRow, StaffRow } from "../../../types";
 import { cn } from "../../../utils/cn";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Calendar } from "../../../components/ui/calendar";
+import { Label } from "../../../ui/label";
+import { format } from "date-fns";
 
 export const Route = createFileRoute("/_authenticated/hr/add-staff")({
   validateSearch: z.object({ staffId: z.number().optional() }),
@@ -49,37 +53,14 @@ const staffSchema = z.object({
   accountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
   dateOfJoining: z.string().optional(),
-  lastWorkingDate: z.string().optional()
+  lastWorkingDate: z.string().optional(),
+  supervisor1Id: z.string().optional(),
+  supervisor2Id: z.string().optional()
 });
 
 type StaffFormInput = z.input<typeof staffSchema>;
 type StaffFormValues = z.output<typeof staffSchema>;
 
-const steps: {
-  title: string;
-  description: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  fields: FieldPath<StaffFormInput>[];
-}[] = [
-  {
-    title: "Personal",
-    description: "Name, contact, family and history",
-    icon: UserRound,
-    fields: ["name", "phone", "email", "fatherName", "motherName", "educationHistory", "professionalHistory"]
-  },
-  {
-    title: "Employment",
-    description: "Role, department and dates",
-    icon: BriefcaseBusiness,
-    fields: ["role", "departmentId", "status", "dateOfJoining", "lastWorkingDate"]
-  },
-  {
-    title: "Compliance & Bank",
-    description: "Statutory IDs and Bank Details",
-    icon: IdCard,
-    fields: ["aadhar", "pan", "epfNumber", "esiNumber", "bankName", "accountNumber", "ifscCode"]
-  }
-];
 
 const defaultValues: Partial<StaffFormInput> = {
   status: "Active",
@@ -95,15 +76,15 @@ const defaultValues: Partial<StaffFormInput> = {
   accountNumber: "",
   ifscCode: "",
   dateOfJoining: "",
-  lastWorkingDate: ""
+  lastWorkingDate: "",
+  supervisor1Id: "",
+  supervisor2Id: ""
 };
 
 function AddStaff() {
   const navigate = useNavigate();
   const { staffId } = Route.useSearch();
   const isEditing = !!staffId;
-  const [stepIndex, setStepIndex] = React.useState(0);
-
   const rolesQuery = useRpcQuery<RoleTypeRow[]>(["masters-roles"], () => client.masters.roles.$get());
   const activeRoles = (rolesQuery.data ?? []).filter((r) => r.active).map((r) => r.name);
 
@@ -114,10 +95,18 @@ function AddStaff() {
   const deptOptions = (deptsQuery.data ?? []).map((d) => [String(d.id), d.name] as [string, string]);
   const activeBanks = (banksQuery.data ?? []).filter((b) => b.active).map((b) => b.name);
 
-  const existingStaff = staffId ? staffQuery.data?.find((s) => s.id === staffId) : undefined;
-  
-  // Need to fetch hr profile for editing
+  const existingStaff = staffId ? staffQuery.data?.find((s) => s.staffId === staffId) : undefined;
+
   const hrProfileQuery = useRpcQuery<any>(["staff-hr-profile", staffId], () => client.hr.staff[":id"].profile.$get({ param: { id: String(staffId) } }), { enabled: isEditing });
+
+  const supervisorsQuery = useRpcQuery<any>(
+    ["staff-supervisors", staffId, existingStaff?.version],
+    () => (client.hr.staff[":id"].supervisors as any).$get({ 
+      param: { id: String(staffId) },
+      query: { version: existingStaff?.version ? String(existingStaff.version) : undefined }
+    }),
+    { enabled: isEditing && !!existingStaff?.version }
+  );
 
   const form = useForm<StaffFormInput, unknown, StaffFormValues>({
     resolver: zodResolver(staffSchema),
@@ -134,12 +123,13 @@ function AddStaff() {
     name: "professionalHistory"
   });
 
-  const currentStep = steps[stepIndex];
-  const isLastStep = stepIndex === steps.length - 1;
+
   const isLoading = rolesQuery.isLoading || deptsQuery.isLoading || banksQuery.isLoading || (isEditing && (staffQuery.isLoading || hrProfileQuery.isLoading));
 
+  const hasInitialized = React.useRef(false);
+
   React.useEffect(() => {
-    if (existingStaff) {
+    if (existingStaff && !hasInitialized.current && (hrProfileQuery.isSuccess || !isEditing)) {
       const profile = hrProfileQuery.data;
       form.reset({
         name: existingStaff.name,
@@ -160,17 +150,14 @@ function AddStaff() {
         accountNumber: (existingStaff as any).accountNumber ?? "",
         ifscCode: (existingStaff as any).ifscCode ?? "",
         dateOfJoining: profile?.dateOfJoining ?? "",
-        lastWorkingDate: profile?.lastWorkingDate ?? ""
+        lastWorkingDate: profile?.lastWorkingDate ?? "",
+        supervisor1Id: supervisorsQuery.data?.explicitSupervisors?.supervisor1?.staffId?.toString() ?? "",
+        supervisor2Id: supervisorsQuery.data?.explicitSupervisors?.supervisor2?.staffId?.toString() ?? ""
       });
+      hasInitialized.current = true;
     }
-  }, [existingStaff, hrProfileQuery.data, form]);
+  }, [existingStaff, hrProfileQuery.data, hrProfileQuery.isSuccess, supervisorsQuery.data, supervisorsQuery.isSuccess, isEditing, form]);
 
-  const goNext = async () => {
-    const valid = await form.trigger(currentStep.fields);
-    if (valid) setStepIndex((value) => Math.min(value + 1, steps.length - 1));
-  };
-
-  const goBack = () => setStepIndex((value) => Math.max(value - 1, 0));
 
   const submit = form.handleSubmit(async (values) => {
     try {
@@ -197,7 +184,7 @@ function AddStaff() {
           professionalHistory: values.professionalHistory
         }
       };
-      
+
       const res = isEditing
         ? await client.hr.staff[":id"].$put({ param: { id: String(staffId) }, json: payload } as any)
         : await client.hr.staff.$post({ json: payload } as any);
@@ -207,8 +194,22 @@ function AddStaff() {
         throw new Error(errData?.error || `HTTP error ${res.status}`);
       }
 
+      const savedStaff = await res.json() as any;
+      const newStaffId = savedStaff?.staffId || staffId;
+      const newStaffVersion = savedStaff?.version;
+
+      if (newStaffId && (values.supervisor1Id || values.supervisor2Id || isEditing)) {
+        await (client.hr.staff[":id"].supervisors as any).$put({
+          param: { id: String(newStaffId) },
+          query: { version: newStaffVersion ? String(newStaffVersion) : undefined },
+          json: {
+            supervisor1Id: values.supervisor1Id ? Number(values.supervisor1Id) : null,
+            supervisor2Id: values.supervisor2Id ? Number(values.supervisor2Id) : null
+          }
+        });
+      }
+
       form.reset(defaultValues);
-      setStepIndex(0);
       queryClient.invalidateQueries({ queryKey: ["staff"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       navigate({ to: "/hr/staff-list" });
@@ -247,164 +248,216 @@ function AddStaff() {
       title={isEditing ? "Edit Staff" : "Add Staff"}
       description={isEditing ? "Update the employee profile, reporting line, and statutory IDs." : "Create a complete HR staff record."}
     >
-      <form id="staff-form" onSubmit={submit} className="mx-auto max-w-6xl space-y-5">
-        <div className="grid gap-3 md:grid-cols-3">
-          {steps.map((step, index) => {
-            const Icon = step.icon;
-            const active = index === stepIndex;
-            const complete = index < stepIndex;
-            return (
-              <button
-                key={step.title}
-                type="button"
-                onClick={async () => {
-                  if (index <= stepIndex) {
-                    setStepIndex(index);
-                    return;
-                  }
-                  const valid = await form.trigger(steps.slice(0, index).flatMap((item) => item.fields));
-                  if (valid) setStepIndex(index);
-                }}
-                className={cn(
-                  "flex min-h-20 items-center gap-3 rounded-lg border bg-card p-3 text-left transition",
-                  active && "border-primary bg-primary/5",
-                  complete && "border-emerald-500/40 bg-emerald-500/5"
-                )}
-              >
-                <span className={cn(
-                  "grid size-9 shrink-0 place-items-center rounded-md border",
-                  active ? "border-primary bg-primary text-primary-foreground" : complete ? "border-emerald-500 bg-emerald-500 text-white" : "bg-muted text-muted-foreground"
-                )}>
-                  {complete ? <Check size={18} /> : <Icon size={18} />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold">{step.title}</span>
-                  <span className="block text-xs leading-5 text-muted-foreground">{step.description}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      <form
+        id="staff-form"
+        onSubmit={submit}
+        className="mx-auto max-w-6xl space-y-5"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") {
+            e.preventDefault();
+          }
+        }}
+      >
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <UserRound size={18} />
+              Personal Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Full Name" {...form.register("name")} error={form.formState.errors.name?.message} />
+              <Field label="Phone" {...form.register("phone")} error={form.formState.errors.phone?.message} />
+              <Field label="Email" type="email" className="md:col-span-2" {...form.register("email")} error={form.formState.errors.email?.message} />
+              <Field label="Father's Name" {...form.register("fatherName")} error={form.formState.errors.fatherName?.message} />
+              <Field label="Mother's Name" {...form.register("motherName")} error={form.formState.errors.motherName?.message} />
+
+              <div className="md:col-span-2 mt-4">
+                <div className="flex items-center justify-between border-b pb-2 mb-4">
+                  <h3 className="font-semibold">Education History</h3>
+                  <Button type="button" variant="outline" onClick={() => appendEd({ qualification: "", institution: "", year: "", grade: "" })}>
+                    <Plus size={16} className="mr-2" /> Add Education
+                  </Button>
+                </div>
+                <div className="space-y-4">
+                  {edFields.map((field, i) => (
+                    <div key={field.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-start">
+                      <Field placeholder="Qualification (e.g. B.Tech)" {...form.register(`educationHistory.${i}.qualification`)} />
+                      <Field placeholder="Institution" {...form.register(`educationHistory.${i}.institution`)} />
+                      <Field placeholder="Year" {...form.register(`educationHistory.${i}.year`)} />
+                      <Field placeholder="Grade/Score" {...form.register(`educationHistory.${i}.grade`)} />
+                      <Button type="button" variant="ghost" size="icon" className="text-destructive mt-1 md:mt-0" onClick={() => removeEd(i)}>
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
+                  ))}
+                  {edFields.length === 0 && <p className="text-sm text-muted-foreground">No education history added.</p>}
+                </div>
+              </div>
+
+              <div className="md:col-span-2 mt-4">
+                <div className="flex items-center justify-between border-b pb-2 mb-4">
+                  <h3 className="font-semibold">Professional History</h3>
+                  <Button type="button" variant="outline" onClick={() => appendPro({ employer: "", designation: "", from: "", to: "", responsibilities: "" })}>
+                    <Plus size={16} className="mr-2" /> Add Experience
+                  </Button>
+                </div>
+                <div className="space-y-4">
+                  {proFields.map((field, i) => (
+                    <div key={field.id} className="flex flex-col gap-2 p-4 border rounded-lg relative bg-muted/10">
+                      <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive" onClick={() => removePro(i)}>
+                        <Trash2 size={16} />
+                      </Button>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mr-8">
+                        <Field label="Employer" {...form.register(`professionalHistory.${i}.employer`)} />
+                        <Field label="Designation" {...form.register(`professionalHistory.${i}.designation`)} />
+                        <Field label="From (Year/Month)" {...form.register(`professionalHistory.${i}.from`)} />
+                        <Field label="To (Year/Month)" {...form.register(`professionalHistory.${i}.to`)} />
+                        <div className="md:col-span-2">
+                          <Field label="Responsibilities" {...form.register(`professionalHistory.${i}.responsibilities`)} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {proFields.length === 0 && <p className="text-sm text-muted-foreground">No professional history added.</p>}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-base">
-              <currentStep.icon size={18} />
-              {currentStep.title}
+              <BriefcaseBusiness size={18} />
+              Employment Details
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            {stepIndex === 0 && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Full Name" {...form.register("name")} error={form.formState.errors.name?.message} />
-                <Field label="Phone" {...form.register("phone")} error={form.formState.errors.phone?.message} />
-                <Field label="Email" type="email" className="md:col-span-2" {...form.register("email")} error={form.formState.errors.email?.message} />
-                <Field label="Father's Name" {...form.register("fatherName")} error={form.formState.errors.fatherName?.message} />
-                <Field label="Mother's Name" {...form.register("motherName")} error={form.formState.errors.motherName?.message} />
-                
-                <div className="md:col-span-2 mt-4">
-                  <div className="flex items-center justify-between border-b pb-2 mb-4">
-                    <h3 className="font-semibold">Education History</h3>
-                    <Button type="button" variant="outline" onClick={() => appendEd({ qualification: "", institution: "", year: "", grade: "" })}>
-                      <Plus size={16} className="mr-2" /> Add Education
-                    </Button>
-                  </div>
-                  <div className="space-y-4">
-                    {edFields.map((field, i) => (
-                      <div key={field.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-start">
-                        <Field placeholder="Qualification (e.g. B.Tech)" {...form.register(`educationHistory.${i}.qualification`)} />
-                        <Field placeholder="Institution" {...form.register(`educationHistory.${i}.institution`)} />
-                        <Field placeholder="Year" {...form.register(`educationHistory.${i}.year`)} />
-                        <Field placeholder="Grade/Score" {...form.register(`educationHistory.${i}.grade`)} />
-                        <Button type="button" variant="ghost" size="icon" className="text-destructive mt-1 md:mt-0" onClick={() => removeEd(i)}>
-                          <Trash2 size={16} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <Select label="Role" {...form.register("role")} options={activeRoles} error={form.formState.errors.role?.message} />
+              <Select label="Department" {...form.register("departmentId")} options={deptOptions} error={form.formState.errors.departmentId?.message} />
+
+
+              <Select
+                label="Supervisor 1"
+                {...form.register("supervisor1Id")}
+                options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
+                error={form.formState.errors.supervisor1Id?.message}
+              />
+              <Select
+                label="Supervisor 2"
+                {...form.register("supervisor2Id")}
+                options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
+                error={form.formState.errors.supervisor2Id?.message}
+              />
+
+              <Select label="Employment Status" {...form.register("status")} options={["Active", "Terminated", "Long Leave", "Resigned"]} error={form.formState.errors.status?.message} />
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Date of Joining</Label>
+                <Controller
+                  control={form.control}
+                  name="dateOfJoining"
+                  render={({ field }) => (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-background px-3",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                          {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
                         </Button>
-                      </div>
-                    ))}
-                    {edFields.length === 0 && <p className="text-sm text-muted-foreground">No education history added.</p>}
-                  </div>
-                </div>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          captionLayout="dropdown"
+                          selected={field.value ? new Date(field.value) : undefined}
+                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+                {form.formState.errors.dateOfJoining && <p className="text-xs text-destructive">{form.formState.errors.dateOfJoining.message}</p>}
+              </div>
 
-                <div className="md:col-span-2 mt-4">
-                  <div className="flex items-center justify-between border-b pb-2 mb-4">
-                    <h3 className="font-semibold">Professional History</h3>
-                    <Button type="button" variant="outline" onClick={() => appendPro({ employer: "", designation: "", from: "", to: "", responsibilities: "" })}>
-                      <Plus size={16} className="mr-2" /> Add Experience
-                    </Button>
-                  </div>
-                  <div className="space-y-4">
-                    {proFields.map((field, i) => (
-                      <div key={field.id} className="flex flex-col gap-2 p-4 border rounded-lg relative bg-muted/10">
-                        <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive" onClick={() => removePro(i)}>
-                          <Trash2 size={16} />
+              <div className="flex flex-col gap-1.5">
+                <Label>Last Working Date</Label>
+                <Controller
+                  control={form.control}
+                  name="lastWorkingDate"
+                  render={({ field }) => (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-background px-3",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                          {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
                         </Button>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mr-8">
-                           <Field label="Employer" {...form.register(`professionalHistory.${i}.employer`)} />
-                           <Field label="Designation" {...form.register(`professionalHistory.${i}.designation`)} />
-                           <Field label="From (Year/Month)" {...form.register(`professionalHistory.${i}.from`)} />
-                           <Field label="To (Year/Month)" {...form.register(`professionalHistory.${i}.to`)} />
-                           <div className="md:col-span-2">
-                             <Field label="Responsibilities" {...form.register(`professionalHistory.${i}.responsibilities`)} />
-                           </div>
-                        </div>
-                      </div>
-                    ))}
-                    {proFields.length === 0 && <p className="text-sm text-muted-foreground">No professional history added.</p>}
-                  </div>
-                </div>
-
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          captionLayout="dropdown"
+                          selected={field.value ? new Date(field.value) : undefined}
+                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+                {form.formState.errors.lastWorkingDate && <p className="text-xs text-destructive">{form.formState.errors.lastWorkingDate.message}</p>}
               </div>
-            )}
-
-            {stepIndex === 1 && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Select label="Role" {...form.register("role")} options={activeRoles} error={form.formState.errors.role?.message} />
-                <Select label="Department" {...form.register("departmentId")} options={deptOptions} error={form.formState.errors.departmentId?.message} />
-                <Select label="Employment Status" {...form.register("status")} options={["Active", "Terminated", "Long Leave", "Resigned"]} error={form.formState.errors.status?.message} />
-                <Field label="Date of Joining" type="date" {...form.register("dateOfJoining")} error={form.formState.errors.dateOfJoining?.message} />
-                <Field label="Last Working Date" type="date" {...form.register("lastWorkingDate")} error={form.formState.errors.lastWorkingDate?.message} />
-              </div>
-            )}
-
-            {stepIndex === 2 && (
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Aadhar Number" className="uppercase" {...form.register("aadhar")} error={form.formState.errors.aadhar?.message} />
-                <Field label="PAN Number" className="uppercase" {...form.register("pan")} error={form.formState.errors.pan?.message} />
-                <Field label="EPF Number" {...form.register("epfNumber")} error={form.formState.errors.epfNumber?.message} />
-                <Field label="ESI Number" {...form.register("esiNumber")} error={form.formState.errors.esiNumber?.message} />
-                <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
-                  <h3 className="font-semibold md:col-span-2">Bank Details</h3>
-                  <Select label="Bank Name" {...form.register("bankName")} options={activeBanks} error={form.formState.errors.bankName?.message} />
-                  <Field label="Account Number" {...form.register("accountNumber")} error={form.formState.errors.accountNumber?.message} />
-                  <Field label="IFSC Code" className="uppercase" {...form.register("ifscCode")} error={form.formState.errors.ifscCode?.message} />
-                </div>
-                <div className="md:col-span-2 rounded-lg border bg-muted/35 p-4 text-sm text-muted-foreground mt-4">
-                  Aadhar, PAN, EPF, and ESI are stored against the active employee version and carried forward when HR edits create a new staff version.
-                </div>
-              </div>
-            )}
+            </div>
           </CardContent>
         </Card>
 
-        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <IdCard size={18} />
+              Compliance & Bank Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Aadhar Number" className="uppercase" {...form.register("aadhar")} error={form.formState.errors.aadhar?.message} />
+              <Field label="PAN Number" className="uppercase" {...form.register("pan")} error={form.formState.errors.pan?.message} />
+              <Field label="EPF Number" {...form.register("epfNumber")} error={form.formState.errors.epfNumber?.message} />
+              <Field label="ESI Number" {...form.register("esiNumber")} error={form.formState.errors.esiNumber?.message} />
+              <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
+                <h3 className="font-semibold md:col-span-2">Bank Details</h3>
+                <Select label="Bank Name" {...form.register("bankName")} options={activeBanks} error={form.formState.errors.bankName?.message} />
+                <Field label="Account Number" {...form.register("accountNumber")} error={form.formState.errors.accountNumber?.message} />
+                <Field label="IFSC Code" className="uppercase" {...form.register("ifscCode")} error={form.formState.errors.ifscCode?.message} />
+              </div>
+              <div className="md:col-span-2 rounded-lg border bg-muted/35 p-4 text-sm text-muted-foreground mt-4">
+                Aadhar, PAN, EPF, and ESI are stored against the active employee version and carried forward when HR edits create a new staff version.
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-end">
           <Button type="button" variant="outline" onClick={() => navigate({ to: "/hr/staff-list" })}>
             Cancel
           </Button>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={goBack} disabled={stepIndex === 0}>
-              <ChevronLeft size={16} className="mr-2" /> Back
-            </Button>
-            {isLastStep ? (
-              <Button type="submit">
-                {isEditing ? <Save size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />}
-                {isEditing ? "Save Changes" : "Add Staff"}
-              </Button>
-            ) : (
-              <Button type="button" onClick={goNext}>
-                Continue <ChevronRight size={16} className="ml-2" />
-              </Button>
-            )}
-          </div>
+          <Button type="submit">
+            {isEditing ? <Save size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />}
+            {isEditing ? "Save Changes" : "Add Staff"}
+          </Button>
         </div>
       </form>
     </ModuleLayout>

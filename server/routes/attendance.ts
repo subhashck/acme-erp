@@ -23,7 +23,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
 
     let staffQuery = db
       .select({
-        id: staff.id,
+        id: staff.staffId,
         name: staff.name,
         employeeCode: staff.employeeCode,
         status: staff.status,
@@ -33,7 +33,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
       .$dynamic();
 
     if (staffIdFilter) {
-      staffQuery = staffQuery.where(eq(staff.id, parseInt(staffIdFilter)));
+      staffQuery = staffQuery.where(eq(staff.staffId, parseInt(staffIdFilter)));
     }
 
     let employees = await staffQuery.execute();
@@ -253,7 +253,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
         createdAt: biometricMappings.createdAt,
       })
       .from(biometricMappings)
-      .innerJoin(staff, eq(biometricMappings.staffId, staff.id))
+      .innerJoin(staff, eq(biometricMappings.staffId, staff.staffId))
       .orderBy(staff.name)
       .execute();
     return c.json(rows);
@@ -508,8 +508,8 @@ export const attendanceRoutes = new Hono<AuthEnv>()
       const leaveSet = new Set(approvedLeaves.map((l) => l.staffId));
 
       for (const emp of allStaff) {
-        const rost = rosterMap.get(emp.id);
-        const onLeave = leaveSet.has(emp.id);
+        const rost = rosterMap.get(emp.staffId);
+        const onLeave = leaveSet.has(emp.staffId);
 
         if (onLeave) continue;
         if (rost?.isOffDay) continue;
@@ -554,7 +554,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
           await db
             .insert(attendance)
             .values({
-              staffId: emp.id,
+              staffId: emp.staffId,
               date: dateStr,
               checkIn,
               checkOut,

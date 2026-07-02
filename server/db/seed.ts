@@ -147,7 +147,7 @@ async function seedPatientData() {
 
   const schedules = await db.select().from(immunizationSchedules).execute();
   const staffRows = await db.select().from(staff).execute();
-  const defaultStaffId = staffRows[0]?.id ?? null;
+  const defaultStaffId = staffRows[0]?.staffId ?? null;
   const scheduleFor = (code: string, doseLabel: string) =>
     schedules.find((item) => item.vaccineCode === code && item.doseLabel === doseLabel);
 
@@ -211,11 +211,13 @@ async function seedEmployeeUsers() {
     { employeeCode: "EMP-2006", name: "Rohan Kulkarni", role: "Pharmacy Assistant", departmentName: "General Medicine", phone: "9876500216", email: "rohan.kulkarni@acmehospital.local", shift: "Morning", salary: 47000 }
   ];
 
+  let nextStaffId = 1;
   for (const employee of employees) {
     const [existingStaff] = await db.select().from(staff).where(eq(staff.employeeCode, employee.employeeCode)).limit(1);
     const department = deptRows.find((row) => row.name === employee.departmentName) ?? deptRows[0];
     if (!existingStaff) {
       const [newStaff] = await db.insert(staff).values({
+        staffId: nextStaffId++,
         employeeCode: employee.employeeCode,
         name: employee.name,
         role: employee.role,
@@ -228,7 +230,7 @@ async function seedEmployeeUsers() {
       }).returning().execute();
 
       await db.insert(staffDepartments).values({
-        staffId: newStaff.id,
+        staffId: newStaff.staffId,
         departmentId: department.id,
         version: 1,
         status: "Active"
