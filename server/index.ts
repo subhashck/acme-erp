@@ -22,7 +22,16 @@ app.use(
 app.use("/api/*", async (c, next) => {
   // Auth endpoints: delegate directly to better-auth and return its response
   if (c.req.path.startsWith("/api/auth/")) {
-    return auth.handler(c.req.raw);
+    let req = c.req.raw;
+    const proto = c.req.header("x-forwarded-proto");
+    const host = c.req.header("x-forwarded-host") || c.req.header("host");
+    if (proto && host) {
+      const url = new URL(c.req.raw.url);
+      url.protocol = proto + ":";
+      url.host = host;
+      req = new Request(url.toString(), c.req.raw);
+    }
+    return auth.handler(req);
   }
   const session = await auth.api.getSession({
     headers: c.req.raw.headers
