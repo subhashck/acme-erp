@@ -64,6 +64,7 @@ export type LeaveRow = {
   supervisorLevel1Id?: number | null;
   supervisorLevel2Id?: number | null;
   approverIds?: string | null;
+  supportingDocument?: string | null;
 };
 
 export type LeaveDetailRow = {
@@ -94,6 +95,7 @@ export type LeaveDetailRow = {
   forwardedToStaffId?: number | null;
   forwardedToStaffName?: string | null;
   approverIds?: string | null;
+  supportingDocument?: string | null;
 };
 export type RoleTypeRow = { id: number; name: string; active: boolean };
 export type LeaveTypeRow = { id: number; name: string; maxDays: number; active: boolean; payable: boolean; paymentRate: number };

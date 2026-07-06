@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarClock, AlertCircle, Calendar as CalendarIcon, X, Plus } from "lucide-react";
+import { CalendarClock, AlertCircle, Calendar as CalendarIcon, X, Plus, Paperclip } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
@@ -57,6 +57,65 @@ function LeaveManagement() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
+  const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    setFileError(null);
+    if (!file) {
+      setFileBase64(null);
+      setFileName(null);
+      return;
+    }
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "application/pdf",
+      "application/zip",
+      "application/x-zip-compressed",
+      "application/octet-stream"
+    ];
+
+    const extension = file.name.split('.').pop()?.toLowerCase();
+    const isAllowedExtension = ["jpg", "jpeg", "png", "gif", "webp", "pdf", "zip"].includes(extension || "");
+
+    if (!allowedTypes.includes(file.type) && !isAllowedExtension) {
+      setFileError("Supported formats: Images, PDF, ZIP.");
+      setFileBase64(null);
+      setFileName(null);
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setFileError("File size exceeds 5MB limit.");
+      setFileBase64(null);
+      setFileName(null);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setFileBase64(reader.result as string);
+      setFileName(file.name);
+    };
+    reader.onerror = () => {
+      setFileError("Error reading file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleCloseForm = () => {
+    leaveForm.reset({ leaveType: activeLeaveTypes[0] || "Casual Leave" });
+    setFileBase64(null);
+    setFileName(null);
+    setFileError(null);
+    setShowForm(false);
+  };
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
@@ -154,7 +213,8 @@ function LeaveManagement() {
         json: {
           ...values,
           startDate: new Date(values.startDate).toISOString(),
-          endDate: new Date(finalEndDate).toISOString()
+          endDate: new Date(finalEndDate).toISOString(),
+          supportingDocument: fileBase64 || null
         }
       });
       if (!res.ok) {
@@ -162,6 +222,9 @@ function LeaveManagement() {
         throw new Error(errData?.error || `HTTP error ${res.status}`);
       }
       leaveForm.reset({ leaveType: activeLeaveTypes[0] || "Casual Leave" });
+      setFileBase64(null);
+      setFileName(null);
+      setFileError(null);
       setPage(1);
       setSearch("");
       setStatusFilter("All");
@@ -414,7 +477,7 @@ function LeaveManagement() {
         <>
           <div 
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setShowForm(false)}
+            onClick={handleCloseForm}
           />
           <div 
             className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"
@@ -425,7 +488,7 @@ function LeaveManagement() {
                 <h3 className="font-semibold text-lg text-foreground">New Leave Request</h3>
               </div>
               <button 
-                onClick={() => setShowForm(false)}
+                onClick={handleCloseForm}
                 className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer animate-in duration-100"
                 type="button"
                 aria-label="Close"
@@ -590,8 +653,30 @@ function LeaveManagement() {
                     {...leaveForm.register("reason")} 
                     error={leaveForm.formState.errors.reason?.message}
                   />
+
+                  {/* Supporting Document file upload input */}
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="supporting-doc" className="text-xs font-semibold text-slate-700 dark:text-slate-350">Supporting Document (Optional)</Label>
+                    <input
+                      id="supporting-doc"
+                      type="file"
+                      accept="image/*,application/pdf,application/zip,application/x-zip-compressed"
+                      onChange={handleFileChange}
+                      className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 file:cursor-pointer cursor-pointer border border-input rounded-lg p-1"
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Images, PDF, and ZIP formats up to 5MB are supported.</p>
+                    {fileName && !fileError && (
+                      <p className="text-xs text-emerald-650 dark:text-emerald-400 font-semibold flex items-center gap-1 mt-1">
+                        <Paperclip size={12} /> Selected: {fileName}
+                      </p>
+                    )}
+                    {fileError && (
+                      <p className="text-xs text-red-500 font-semibold mt-1">{fileError}</p>
+                    )}
+                  </div>
+
                   <div className="flex gap-2 pt-2">
-                    <Button type="button" variant="outline" className="flex-1" onClick={() => setShowForm(false)}>
+                    <Button type="button" variant="outline" className="flex-1" onClick={handleCloseForm}>
                       Cancel
                     </Button>
                     <Button type="submit" className="flex-1">

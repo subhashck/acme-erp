@@ -52,7 +52,7 @@ const DEFAULT_PAYROLL: PayrollSettings = {
 
 const DEFAULT_SYSTEM: SystemSettings = {
   currencySymbol: "₹",
-  theme: "light",
+  theme: "dark",
   language: "en",
 };
 

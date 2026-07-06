@@ -19,7 +19,7 @@ import { client } from "../../../services/rpc";
 import { authClient } from "../../../services/auth";
 import { Button } from "../../../ui/button";
 import { Badge } from "../../../ui/badge";
-import { useSystemSettings } from "../../../lib/settings";
+import { useSystemSettings, useHospitalSettings } from "../../../lib/settings";
 
 export const Route = createFileRoute("/_authenticated/hr/view-payslip")({
   validateSearch: z.object({ payslipId: z.number().int().positive() }),
@@ -131,6 +131,7 @@ function PrintButton({ userEmail }: { userEmail: string }) {
 function ViewPayslipPage() {
   const { payslipId } = Route.useSearch();
   const { currencySymbol } = useSystemSettings();
+  const hospital = useHospitalSettings();
   const fmt = (n: number) => `${currencySymbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
   const session = authClient.useSession();
   const currentUserEmail = session.data?.user.email || "Unknown User";
@@ -274,6 +275,65 @@ function ViewPayslipPage() {
           if (watermark) {
             watermark.style.display = "block";
           }
+          // Force a stylesheet to override all dark mode backgrounds to light for PDF generation
+          const style = clonedDoc.createElement("style");
+          style.innerHTML = `
+            #printable-payslip {
+              background-color: #f8fafc !important;
+              color: #0f172a !important;
+            }
+            #printable-payslip .bg-card, #printable-payslip > div {
+              background-color: white !important;
+              color: #0f172a !important;
+              border-color: #e2e8f0 !important;
+            }
+            #printable-payslip .bg-slate-50\\/50, 
+            #printable-payslip .dark\\:bg-slate-900\\/50, 
+            #printable-payslip .bg-slate-50, 
+            #printable-payslip .dark\\:bg-slate-900\\/40 {
+              background-color: #f8fafc !important;
+              border-color: #e2e8f0 !important;
+            }
+            #printable-payslip .text-foreground, 
+            #printable-payslip td, 
+            #printable-payslip th, 
+            #printable-payslip h1, 
+            #printable-payslip h2, 
+            #printable-payslip h3, 
+            #printable-payslip h4, 
+            #printable-payslip p, 
+            #printable-payslip span {
+              color: #0f172a !important;
+            }
+            #printable-payslip .text-muted-foreground, 
+            #printable-payslip .text-slate-500 {
+              color: #64748b !important;
+            }
+            #printable-payslip .border-border, 
+            #printable-payslip .border-border\\/60, 
+            #printable-payslip tr, 
+            #printable-payslip td {
+              border-color: #e2e8f0 !important;
+            }
+            #printable-payslip .bg-muted {
+              background-color: #f1f5f9 !important;
+            }
+            #printable-payslip .payslip-header, 
+            #printable-payslip .payslip-footer {
+              background-color: #f1f5f9 !important;
+              color: #0f172a !important;
+              border-color: #e2e8f0 !important;
+            }
+            #printable-payslip .payslip-header *, 
+            #printable-payslip .payslip-footer * {
+              color: #0f172a !important;
+            }
+            #printable-payslip .payslip-leave-balance {
+              break-before: page !important;
+              page-break-before: always !important;
+            }
+          `;
+          clonedDoc.head.appendChild(style);
         }
       });
 
@@ -314,6 +374,81 @@ function ViewPayslipPage() {
       title="Salary Slip"
       description={`${p.name} · ${p.month}`}
     >
+      {/* Print-only CSS block to force light-mode colors and save printer ink */}
+      <style>{`
+        @media print {
+          body, html, #root, #printable-payslip {
+            background-color: white !important;
+            color: #0f172a !important;
+          }
+          
+          .bg-card, [id="printable-payslip"] > div {
+            background-color: white !important;
+            color: #0f172a !important;
+            border-color: #e2e8f0 !important;
+          }
+
+          .bg-slate-50\\/50, .dark\\:bg-slate-900\\/50, .bg-slate-50, .dark\\:bg-slate-900\\/40, tr.border-b.border-border {
+            background-color: #f8fafc !important;
+            border-color: #e2e8f0 !important;
+          }
+
+          .text-foreground, td, th, h1, h2, h3, h4, p, span {
+            color: #0f172a !important;
+          }
+
+          .text-muted-foreground, .text-slate-500 {
+            color: #64748b !important;
+          }
+
+          .text-amber-600, .text-amber-700, .text-amber-305 {
+            color: #b45309 !important;
+          }
+
+          .text-emerald-600, .text-emerald-750, .text-emerald-305 {
+            color: #047857 !important;
+          }
+
+          .text-red-650, .text-red-600, .text-red-500 {
+            color: #be123c !important;
+          }
+
+          .border-border, .border-border\\/60, tr, td {
+            border-color: #e2e8f0 !important;
+          }
+
+          .bg-amber-500\\/5, .dark\\:bg-amber-950\\/10 {
+            background-color: #fffbeb !important;
+            border-color: #fef3c7 !important;
+            color: #b45309 !important;
+          }
+
+          .bg-muted {
+            background-color: #f1f5f9 !important;
+          }
+          
+          .payslip-header, .payslip-footer {
+            background-color: #f1f5f9 !important;
+            color: #0f172a !important;
+            border-color: #e2e8f0 !important;
+          }
+          
+          .payslip-header *, .payslip-footer * {
+            color: #0f172a !important;
+          }
+          
+          .payslip-leave-balance {
+            break-before: page !important;
+            page-break-before: always !important;
+          }
+          
+          #print-watermark, #pdf-watermark {
+            color: #64748b !important;
+            background-color: transparent !important;
+          }
+        }
+      `}</style>
+
       {/* Action Bar (hidden on print) */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
         <Link to="/hr/payroll">
@@ -384,12 +519,12 @@ function ViewPayslipPage() {
       <div id="printable-payslip" className="max-w-4xl mx-auto space-y-6">
 
         {/* ── Corporate Payslip Card ── */}
-        <div className="rounded-xl border bg-white text-slate-900 shadow-sm overflow-hidden">
+        <div className="rounded-xl border bg-card text-foreground border-border shadow-sm overflow-hidden">
           {/* Header band */}
-          <div className="bg-slate-900 text-white px-4 sm:px-8 py-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 print:bg-white print:text-slate-900 print:border-b print:border-slate-200">
+          <div className="payslip-header bg-slate-900 dark:bg-slate-950 text-white px-4 sm:px-8 py-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 print:border-b print:border-slate-200">
             <div>
-              <h1 className="text-xl font-extrabold tracking-tight">ACME HOSPITAL GROUP</h1>
-              <p className="text-xs text-slate-400 mt-0.5 print:text-slate-500">12, Healthcare Blvd, Medical District, New Delhi – 110001</p>
+              <h1 className="text-xl font-extrabold tracking-tight">{hospital.name.toUpperCase()}</h1>
+              <p className="text-xs text-slate-400 mt-0.5 print:text-slate-500">{hospital.address}</p>
             </div>
             <div className="text-left sm:text-right w-full sm:w-auto">
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest print:text-slate-500">Salary Slip</p>
@@ -403,7 +538,7 @@ function ViewPayslipPage() {
           </div>
 
           {/* Employee meta */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-4 sm:px-8 py-5 border-b bg-slate-50 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-4 sm:px-8 py-5 border-b border-border bg-slate-50/50 dark:bg-slate-900/50 text-xs">
             <table>
               <tbody>
                 {[
@@ -413,8 +548,8 @@ function ViewPayslipPage() {
                   ["Department", p.departmentName ?? "General"],
                 ].map(([label, value]) => (
                   <tr key={label}>
-                    <td className="text-slate-500 font-semibold py-1 pr-4 w-32">{label}</td>
-                    <td className="text-slate-800 py-1 font-medium">{value}</td>
+                    <td className="text-muted-foreground font-semibold py-1 pr-4 w-32">{label}</td>
+                    <td className="text-foreground py-1 font-medium">{value}</td>
                   </tr>
                 ))}
               </tbody>
@@ -427,8 +562,8 @@ function ViewPayslipPage() {
                   ["Leave Days Taken", String(currentLeaveDays)],
                 ].map(([label, value]) => (
                   <tr key={label}>
-                    <td className="text-slate-500 font-semibold py-1 pr-4 w-32">{label}</td>
-                    <td className={`py-1 font-medium ${label === "Leave Days Taken" && currentLeaveDays > 0 ? "text-amber-600" : "text-slate-800"}`}>{value}</td>
+                    <td className="text-muted-foreground font-semibold py-1 pr-4 w-32">{label}</td>
+                    <td className={`py-1 font-medium ${label === "Leave Days Taken" && currentLeaveDays > 0 ? "text-amber-600 font-bold" : "text-foreground"}`}>{value}</td>
                   </tr>
                 ))}
               </tbody>
@@ -436,10 +571,10 @@ function ViewPayslipPage() {
           </div>
 
           {/* Earnings & Deductions */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-0 px-4 sm:px-8 py-6 text-xs border-b">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-0 px-4 sm:px-8 py-6 text-xs border-b border-border">
             {/* Earnings */}
-            <div className="pr-0 md:pr-8 border-b md:border-b-0 md:border-r pb-6 md:pb-0">
-              <h4 className="font-bold uppercase tracking-widest text-slate-500 mb-3">Earnings</h4>
+            <div className="pr-0 md:pr-8 border-b md:border-b-0 md:border-r border-border pb-6 md:pb-0">
+              <h4 className="font-bold uppercase tracking-widest text-muted-foreground mb-3">Earnings</h4>
               <table className="w-full">
                 <tbody>
                   {([
@@ -449,9 +584,9 @@ function ViewPayslipPage() {
                     ["Medical Reimbursement", currentMedical, setMedical],
                     ["Special Allowance", currentSpecial, setSpecial],
                   ] as SalaryTuple[]).map(([label, val, setter]) => (
-                    <tr key={label as string} className="border-b border-slate-100">
-                      <td className="py-1.5 text-slate-600">{label}</td>
-                      <td className="py-1.5 text-right text-slate-800 font-medium">
+                    <tr key={label as string} className="border-b border-border/60">
+                      <td className="py-1.5 text-muted-foreground">{label}</td>
+                      <td className="py-1.5 text-right text-foreground font-medium">
                         {isEditing ? (
                           <input
                             type="number"
@@ -459,7 +594,7 @@ function ViewPayslipPage() {
                             step="any"
                             value={val as number}
                             onChange={(e) => (setter as any)(Number(e.target.value))}
-                            className="w-24 text-right border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary text-xs"
+                            className="w-24 text-right border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary text-xs bg-background text-foreground"
                           />
                         ) : (
                           fmt(val as number)
@@ -467,7 +602,7 @@ function ViewPayslipPage() {
                       </td>
                     </tr>
                   ))}
-                  <tr className="font-bold text-slate-800 border-t border-slate-300">
+                  <tr className="font-bold text-foreground border-t border-border">
                     <td className="pt-3 pb-1">Gross Earnings (A)</td>
                     <td className="pt-3 pb-1 text-right">{fmt(gross)}</td>
                   </tr>
@@ -477,7 +612,7 @@ function ViewPayslipPage() {
 
             {/* Deductions */}
             <div className="pl-0 md:pl-8 pt-6 md:pt-0">
-              <h4 className="font-bold uppercase tracking-widest text-slate-500 mb-3">Deductions</h4>
+              <h4 className="font-bold uppercase tracking-widest text-muted-foreground mb-3">Deductions</h4>
               <table className="w-full">
                 <tbody>
                   {([
@@ -486,9 +621,9 @@ function ViewPayslipPage() {
                     ["Professional Tax (PT)", currentProfTax, setProfessionalTax],
                     ["Other Deductions", currentOtherDed, setOtherDeductions],
                   ] as SalaryTuple[]).map(([label, val, setter]) => (
-                    <tr key={label as string} className="border-b border-slate-100">
-                      <td className="py-1.5 text-slate-600">{label}</td>
-                      <td className="py-1.5 text-right text-slate-800 font-medium">
+                    <tr key={label as string} className="border-b border-border/60">
+                      <td className="py-1.5 text-muted-foreground">{label}</td>
+                      <td className="py-1.5 text-right text-foreground font-medium">
                         {isEditing ? (
                           <input
                             type="number"
@@ -496,7 +631,7 @@ function ViewPayslipPage() {
                             step="any"
                             value={val as number}
                             onChange={(e) => (setter as any)(Number(e.target.value))}
-                            className="w-24 text-right border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary text-xs"
+                            className="w-24 text-right border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary text-xs bg-background text-foreground"
                           />
                         ) : (
                           fmt(val as number)
@@ -520,8 +655,8 @@ function ViewPayslipPage() {
                           />
                         </td>
                       </tr>
-                      <tr className="border-b border-amber-100 bg-amber-50/50">
-                        <td className="py-1.5 text-amber-700 font-medium">
+                      <tr className="border-b border-amber-250/30 bg-amber-500/5 dark:bg-amber-950/10 text-amber-700 dark:text-amber-300">
+                        <td className="py-1.5 font-medium">
                           Leave Deduction
                         </td>
                         <td className="py-1.5 text-right font-medium">
@@ -531,24 +666,24 @@ function ViewPayslipPage() {
                             step="any"
                             value={currentLeaveDeduction}
                             onChange={(e) => setLeaveDeduction(Number(e.target.value))}
-                            className="w-24 text-right border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary text-xs"
+                            className="w-24 text-right border border-border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary text-xs bg-background text-foreground"
                           />
                         </td>
                       </tr>
                     </>
                   ) : (
                     currentLeaveDays > 0 && (
-                      <tr className="border-b border-amber-100 bg-amber-50/50">
-                        <td className="py-1.5 text-amber-700 font-medium">
+                      <tr className="border-b border-amber-250/30 bg-amber-500/5 dark:bg-amber-950/10 text-amber-700 dark:text-amber-300">
+                        <td className="py-1.5 font-medium">
                           Leave Deduction ({currentLeaveDays} day{currentLeaveDays !== 1 ? "s" : ""})
                         </td>
-                        <td className="py-1.5 text-right text-amber-700 font-semibold">
+                        <td className="py-1.5 text-right font-semibold">
                           {fmt(currentLeaveDeduction)}
                         </td>
                       </tr>
                     )
                   )}
-                  <tr className="font-bold text-slate-800 border-t border-slate-300">
+                  <tr className="font-bold text-foreground border-t border-border">
                     <td className="pt-3 pb-1">Total Deductions (B)</td>
                     <td className="pt-3 pb-1 text-right">{fmt(totalDeductions)}</td>
                   </tr>
@@ -558,7 +693,7 @@ function ViewPayslipPage() {
           </div>
 
           {/* Net Salary */}
-          <div className="px-4 sm:px-8 py-5 bg-slate-900 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 print:bg-slate-50 print:text-slate-900 print:border-t print:border-slate-200">
+          <div className="payslip-footer px-4 sm:px-8 py-5 bg-slate-900 dark:bg-slate-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0 print:border-t print:border-slate-200">
             <div>
               <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest print:text-slate-500">
                 Net Take-Home (A − B)
@@ -572,10 +707,10 @@ function ViewPayslipPage() {
         </div>
 
         {/* ── Leave Balance Card ── */}
-        <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-          <div className="px-4 sm:px-8 py-4 border-b flex items-center gap-2">
+        <div className="rounded-xl border bg-card border-border shadow-sm overflow-hidden payslip-leave-balance print:break-before-page">
+          <div className="px-4 sm:px-8 py-4 border-b border-border flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-primary" />
-            <h2 className="font-semibold text-sm text-slate-800">
+            <h2 className="font-semibold text-sm text-foreground">
               Annual Leave Balance — {p.month.slice(0, 4)}
             </h2>
           </div>
@@ -585,11 +720,11 @@ function ViewPayslipPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b bg-slate-50">
-                    <th className="text-left px-4 sm:px-8 py-3 font-semibold text-slate-500 uppercase tracking-wider">Leave Type</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Entitlement</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Taken (YTD)</th>
-                    <th className="text-center px-4 py-3 font-semibold text-slate-500 uppercase tracking-wider">Remaining</th>
+                  <tr className="border-b border-border bg-slate-50/50 dark:bg-slate-900/50">
+                    <th className="text-left px-4 sm:px-8 py-3 font-semibold text-muted-foreground uppercase tracking-wider">Leave Type</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground uppercase tracking-wider">Entitlement</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground uppercase tracking-wider">Taken (YTD)</th>
+                    <th className="text-center px-4 py-3 font-semibold text-muted-foreground uppercase tracking-wider">Remaining</th>
                     <th className="hidden sm:table-cell px-4 sm:px-8 py-3" />
                   </tr>
                 </thead>
@@ -598,22 +733,22 @@ function ViewPayslipPage() {
                     const pct = lb.maxDays > 0 ? Math.min(100, (lb.takenDays / lb.maxDays) * 100) : 0;
                     const isExhausted = lb.remainingDays === 0 && lb.maxDays > 0;
                     return (
-                      <tr key={lb.leaveType} className="border-b last:border-0 hover:bg-slate-50/60 transition-colors">
-                        <td className="px-4 sm:px-8 py-3 font-medium text-slate-800">{lb.leaveType}</td>
-                        <td className="text-center px-4 py-3 text-slate-600">{lb.maxDays}</td>
+                      <tr key={lb.leaveType} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
+                        <td className="px-4 sm:px-8 py-3 font-medium text-foreground">{lb.leaveType}</td>
+                        <td className="text-center px-4 py-3 text-muted-foreground">{lb.maxDays}</td>
                         <td className="text-center px-4 py-3">
-                          <span className={lb.takenDays > 0 ? "font-semibold text-amber-600" : "text-slate-400"}>
+                          <span className={lb.takenDays > 0 ? "font-semibold text-amber-600" : "text-muted-foreground"}>
                             {lb.takenDays}
                           </span>
                         </td>
                         <td className="text-center px-4 py-3">
-                          <span className={`font-semibold ${isExhausted ? "text-red-600" : "text-emerald-600"}`}>
+                          <span className={`font-semibold ${isExhausted ? "text-red-650" : "text-emerald-600"}`}>
                             {lb.remainingDays}
                           </span>
                         </td>
                         <td className="hidden sm:table-cell px-4 sm:px-8 py-3 w-48">
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
+                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all ${isExhausted ? "bg-red-500" : pct > 75 ? "bg-amber-400" : "bg-emerald-500"}`}
                                 style={{ width: `${pct}%` }}

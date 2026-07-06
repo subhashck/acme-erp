@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { z } from "zod";
-import { Check, X, ArrowRight, ArrowLeft, AlertCircle, AlertTriangle } from "lucide-react";
+import { Check, X, ArrowRight, ArrowLeft, AlertCircle, AlertTriangle, Paperclip, FileText, Download } from "lucide-react";
 import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
@@ -11,6 +11,7 @@ import type { StaffRow, LeaveDetailRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { cn } from "../../../utils/cn";
+import { Select } from "../../../ui/select";
 
 function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; staffList: StaffRow[] }) {
   const approversNames = React.useMemo(() => {
@@ -27,11 +28,11 @@ function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; st
   }, [leave.approverIds, staffList]);
 
   const status = leave.status;
-  
-  let step1 = "completed"; 
-  let step2 = "pending";   
-  let step3 = "pending";   
-  let step4 = "pending";   
+
+  let step1 = "completed";
+  let step2 = "pending";
+  let step3 = "pending";
+  let step4 = "pending";
 
   if (status === "Pending") {
     step2 = "active";
@@ -80,7 +81,7 @@ function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; st
           <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-medium">{leave.requestNo}</span>
         </div>
         <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-4">
-          
+
           <div className="absolute top-4 left-4 right-4 hidden md:block h-0.5 bg-slate-200 dark:bg-slate-850 -z-10" />
 
           <div className="flex md:flex-col items-center gap-3 md:gap-2 text-left md:text-center flex-1">
@@ -334,6 +335,50 @@ function ReviewLeave() {
               <Field label="Start Date" type="date" value={formatDateForInput(leave.startDate)} disabled />
               <Field label="End Date" type="date" value={formatDateForInput(leave.endDate)} disabled />
               <Field label="Reason" className="md:col-span-2" value={leave.reason} disabled />
+              {leave.supportingDocument && (
+                <div className="md:col-span-2 flex flex-col gap-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-2">
+                  <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                    <Paperclip size={16} className="text-primary" /> Supporting Document
+                  </span>
+                  
+                  {/* File preview based on content type */}
+                  {leave.supportingDocument.startsWith("data:image/") ? (
+                    <div className="mt-1 relative rounded-lg border border-border overflow-hidden bg-card max-h-[300px] w-full flex items-center justify-center p-2">
+                      <img 
+                        src={leave.supportingDocument} 
+                        alt="Supporting document preview" 
+                        className="max-h-[280px] max-w-full object-contain rounded-md"
+                      />
+                    </div>
+                  ) : (
+                    <div className="mt-1 p-4 border border-dashed rounded-lg border-border bg-card flex items-center gap-3">
+                      <div className="p-2.5 rounded-lg bg-primary/5 text-primary">
+                        <FileText size={20} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">
+                          {leave.supportingDocument.startsWith("data:application/pdf") ? "PDF Document" : "Compressed File (ZIP)"}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                          {leave.supportingDocument.startsWith("data:application/pdf") ? "Portable Document Format" : "ZIP Archive File"}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 mt-1">
+                    <a
+                      href={leave.supportingDocument}
+                      download={`supporting-doc-${leave.requestNo}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-semibold bg-primary/5 hover:bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Download size={13} /> Download File
+                    </a>
+                  </div>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -436,53 +481,60 @@ function ReviewLeave() {
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2 justify-end mt-2">
-                <Button variant="outline" onClick={() => navigate({ to: "/hr/leaves" })} disabled={submitting}>
+              <div className="flex flex-col md:flex-row md:items-center justify-between md:justify-end gap-3 mt-2">
+
+                <Button variant="outline" onClick={() => navigate({ to: "/hr/leaves" })} disabled={submitting} className="flex-1 md:flex-initial">
                   Cancel
                 </Button>
 
                 {canForward && (
-                  <div className="flex items-center gap-2">
-                    <select
-                      className="h-9 px-3 py-1 rounded-md border border-slate-200 dark:border-slate-800 text-sm bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200"
+                  <div className="w-full md:w-auto">
+                    <Select
+                      label=""
                       value={forwardToStaffId}
                       onChange={(e) => setForwardToStaffId(e.target.value === "" ? "" : Number(e.target.value))}
                       disabled={submitting}
-                    >
-                      <option value="">Select Target...</option>
-                      {forwardableStaff.map(s => (
-                        <option key={s.staffId} value={s.staffId}>{s.name} ({s.role})</option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-sky-300 text-sky-700 hover:bg-sky-50"
-                      onClick={() => handleAction("forward")}
-                      disabled={submitting}
-                    >
-                      Forward <ArrowRight size={16} className="ml-1.5" />
-                    </Button>
+                      options={forwardableStaff.map(s => [String(s.staffId), `${s.name} (${s.role})`])}
+                      className="w-full md:w-56 [&>label]:hidden select-none"
+                    />
                   </div>
                 )}
 
-                <Button
-                  type="button"
-                  className="bg-rose-600 hover:bg-rose-700 text-white"
-                  onClick={() => handleAction("reject")}
-                  disabled={submitting}
-                >
-                  <X size={16} className="mr-1.5" /> Reject
-                </Button>
 
-                <Button
-                  type="button"
-                  className="bg-[hsl(174_88%_26%)] hover:bg-[hsl(174_88%_26%)/90%] text-white"
-                  onClick={() => handleAction("approve")}
-                  disabled={submitting}
-                >
-                  <Check size={16} className="mr-1.5" /> Approve
-                </Button>
+
+                <div className="flex flex-row items-center gap-2 w-full md:w-auto justify-end">
+
+
+                  {canForward && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="bg-indigo-600 hover:bg-indigo-800 text-white flex-1 md:flex-initial"
+                      onClick={() => handleAction("forward")}
+                      disabled={submitting || !forwardToStaffId}
+                    >
+                      Forward <ArrowRight size={16} className="ml-1.5" />
+                    </Button>
+                  )}
+
+                  <Button
+                    type="button"
+                    className="bg-rose-600 hover:bg-rose-700 text-white flex-1 md:flex-initial"
+                    onClick={() => handleAction("reject")}
+                    disabled={submitting}
+                  >
+                    <X size={16} className="mr-1.5" /> Reject
+                  </Button>
+
+                  <Button
+                    type="button"
+                    className="bg-[hsl(174_88%_26%)] hover:bg-[hsl(174_88%_26%)/90%] text-white flex-1 md:flex-initial"
+                    onClick={() => handleAction("approve")}
+                    disabled={submitting}
+                  >
+                    <Check size={16} className="mr-1.5" /> Approve
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -507,18 +559,18 @@ function ReviewLeave() {
             </Button>
           </div>
         )}
-        
+
         {canCancel && canAction && (
-           <div className="flex justify-end mt-4">
-             <Button
-                type="button"
-                className="bg-rose-600 hover:bg-rose-700 text-white"
-                onClick={() => handleAction("cancel")}
-                disabled={submitting}
-              >
-                <X size={16} className="mr-1.5" /> Cancel My Leave Request
-              </Button>
-           </div>
+          <div className="flex justify-end mt-4">
+            <Button
+              type="button"
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+              onClick={() => handleAction("cancel")}
+              disabled={submitting}
+            >
+              <X size={16} className="mr-1.5" /> Cancel My Leave Request
+            </Button>
+          </div>
         )}
       </div>
     </ModuleLayout>
