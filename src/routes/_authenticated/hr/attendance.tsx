@@ -707,45 +707,45 @@ function AttendancePage() {
 
             {/* Logs list (Right column) */}
             <div className="xl:col-span-3">
-              <Card>
-                <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-border flex-wrap gap-4">
+              <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
+                <CardHeader className="pb-3 flex flex-row items-center justify-between border-b border-border flex-wrap gap-4 px-0 md:px-6">
                   <div>
                     <CardTitle className="text-base">Attendance logs</CardTitle>
                     <CardDescription>Daily check-ins showing punches and computed compliance status.</CardDescription>
                   </div>
-                  <div className="flex gap-2 items-center flex-wrap">
+                  <div className="flex gap-2 items-center flex-wrap w-full sm:w-auto">
                     <Field
                       label=""
                       type="date"
                       value={date}
                       onChange={(e) => setDate(e.target.value)}
-                      className="w-full sm:w-auto"
+                      className="w-full sm:w-auto h-9 [&>label]:hidden [&>input]:h-9"
                     />
-                    <select
-                      className="h-9 rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    <Select
+                      label=""
                       value={departmentId}
                       onChange={(e) => setDepartmentId(e.target.value)}
-                    >
-                      <option value="All" className="bg-background text-foreground">All Departments</option>
-                      {(departmentsQuery.data ?? []).map((d) => (
-                        <option key={d.id} value={String(d.id)} className="bg-background text-foreground">
-                          {d.name}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      className="h-9 rounded-md border border-input bg-background text-foreground px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      options={[
+                        ["All", "All Departments"],
+                        ...(departmentsQuery.data ?? []).map((d) => [String(d.id), d.name] as [string, string])
+                      ]}
+                      className="w-full sm:w-auto h-9 [&>label]:hidden select-none"
+                    />
+                    <Select
+                      label=""
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                    >
-                      <option value="All" className="bg-background text-foreground">All Statuses</option>
-                      <option value="Present" className="bg-background text-foreground">Present</option>
-                      <option value="Late" className="bg-background text-foreground">Late</option>
-                      <option value="Half-day" className="bg-background text-foreground">Half-day</option>
-                      <option value="Absent" className="bg-background text-foreground">Absent</option>
-                      <option value="Approved Leave" className="bg-background text-foreground">Approved Leave</option>
-                      <option value="Off Duty" className="bg-background text-foreground">Off Duty</option>
-                    </select>
+                      options={[
+                        ["All", "All Statuses"],
+                        ["Present", "Present"],
+                        ["Late", "Late"],
+                        ["Half-day", "Half-day"],
+                        ["Absent", "Absent"],
+                        ["Approved Leave", "Approved Leave"],
+                        ["Off Duty", "Off Duty"]
+                      ]}
+                      className="w-full sm:w-auto h-9 [&>label]:hidden select-none"
+                    />
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -757,6 +757,94 @@ function AttendancePage() {
                     enableFiltering
                     filterPlaceholder="Search logs..."
                     isLoading={attendanceQuery.isLoading}
+                    renderMobileCard={(row: AttendanceLog) => {
+                      let badgeStyle = "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-800/40 dark:text-slate-350 dark:border-slate-700";
+                      if (row.status === "Present") badgeStyle = "bg-emerald-50 text-emerald-700 border-emerald-200 ring-1 ring-inset ring-emerald-600/10 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/30 font-bold";
+                      if (row.status === "Late") badgeStyle = "bg-amber-50 text-amber-700 border-amber-200 ring-1 ring-inset ring-amber-600/10 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900/30 font-bold";
+                      if (row.status === "Half-day") badgeStyle = "bg-indigo-50 text-indigo-700 border-indigo-200 ring-1 ring-inset ring-indigo-600/10 dark:bg-indigo-950/30 dark:text-indigo-400 dark:border-indigo-900/30 font-bold";
+                      if (row.status === "Absent") badgeStyle = "bg-rose-50 text-rose-700 border-rose-200 ring-1 ring-inset ring-rose-600/10 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-900/30 font-bold";
+                      if (row.status === "Approved Leave") badgeStyle = "bg-sky-50 text-sky-700 border-sky-200 ring-1 ring-inset ring-sky-600/10 dark:bg-sky-950/30 dark:text-sky-400 dark:border-sky-900/30 font-bold";
+
+                      return (
+                        <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
+                          <CardContent className="p-4 space-y-3.5">
+                            {/* Header: Name, Code & Status */}
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-350 font-bold text-xs border shadow-inner">
+                                {row.name.split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "S"}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-extrabold text-foreground text-sm truncate">{row.name}</h4>
+                                <p className="text-xs text-muted-foreground font-mono mt-0.5">{row.employeeCode}</p>
+                              </div>
+                              <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border", badgeStyle)}>
+                                {row.status}
+                              </span>
+                            </div>
+
+                            {/* Details Grid */}
+                            <div className="grid grid-cols-2 gap-3 text-xs pt-3 border-t border-border/60">
+                              <div className="space-y-1 col-span-2">
+                                <span className="text-muted-foreground font-semibold flex items-center gap-1">
+                                  <Clock size={13} /> Rostered Shift
+                                </span>
+                                <span className="font-medium text-foreground block">
+                                  {row.rosteredShift ? (
+                                    `${row.rosteredShift.name} (${row.rosteredShift.startTime} - ${row.rosteredShift.endTime})`
+                                  ) : (
+                                    "—"
+                                  )}
+                                </span>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-muted-foreground font-semibold flex items-center gap-1">
+                                  <Clock size={13} /> In Time
+                                </span>
+                                <span className="font-mono font-medium text-foreground block">{row.checkIn || "—"}</span>
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-muted-foreground font-semibold flex items-center gap-1">
+                                  <Clock size={13} /> Out Time
+                                </span>
+                                <span className="font-mono font-medium text-foreground block">{row.checkOut || "—"}</span>
+                              </div>
+                              {row.notes && (
+                                <div className="space-y-1 col-span-2">
+                                  <span className="text-muted-foreground font-semibold block">Notes</span>
+                                  <span className="text-muted-foreground block whitespace-pre-wrap">{row.notes}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Quick Actions */}
+                            {((row.status === "Absent") || ((row.status === "Present" || row.status === "Late") && !row.checkOut && row.attendanceId)) && (
+                              <div className="pt-3 border-t border-border/60 flex justify-end">
+                                {row.status === "Absent" && (
+                                  <Button
+                                    variant="outline"
+                                    size="default"
+                                    className="w-full font-semibold h-9"
+                                    onClick={() => handleQuickCheckIn(row.staffId, "09:00")}
+                                  >
+                                    <UserCheck size={14} className="mr-1.5 text-emerald-600" /> Log In (09:00)
+                                  </Button>
+                                )}
+                                {(row.status === "Present" || row.status === "Late") && !row.checkOut && row.attendanceId && (
+                                  <Button
+                                    variant="outline"
+                                    size="default"
+                                    className="w-full font-semibold h-9"
+                                    onClick={() => handleQuickCheckOut(row.attendanceId!, "17:00")}
+                                  >
+                                    <UserMinus size={14} className="mr-1.5 text-rose-600" /> Log Out (17:00)
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    }}
                   />
                 </CardContent>
               </Card>
@@ -885,8 +973,8 @@ function AttendancePage() {
 
             {/* Preview Sheet Data */}
             <div className="xl:col-span-3">
-              <Card>
-                <CardHeader>
+              <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
+                <CardHeader className="pb-3 border-b border-border px-0 md:px-6">
                   <CardTitle className="text-base">Spreadsheet Preview</CardTitle>
                   <CardDescription>Preview of parsed attendance logs before final upload.</CardDescription>
                 </CardHeader>
@@ -932,6 +1020,48 @@ function AttendancePage() {
                       }
                     ] as any}
                     enablePagination
+                    renderMobileCard={(row: any) => (
+                      <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
+                        <CardContent className="p-4 space-y-3.5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-muted-foreground font-semibold">Biometric Code</span>
+                              <span className="font-mono text-xs bg-slate-105 dark:bg-slate-800 border px-1.5 py-0.5 rounded text-foreground font-bold mt-0.5">{row.biometricCode}</span>
+                            </div>
+                            {row.isMapped ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/30 font-bold">
+                                Matched
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-900/30 font-bold">
+                                Unmapped
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 text-xs pt-3 border-t border-border/60">
+                            <div className="space-y-1 col-span-2">
+                              <span className="text-muted-foreground font-semibold block">Matched Employee</span>
+                              {row.isMapped ? (
+                                <div className="flex flex-col">
+                                  <span className="font-extrabold text-foreground">{row.staffName}</span>
+                                  <span className="text-[10px] text-muted-foreground font-mono mt-0.5">{row.employeeCode}</span>
+                                </div>
+                              ) : (
+                                <span className="text-rose-600 dark:text-rose-400 italic font-bold">No match found</span>
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-muted-foreground font-semibold block">Date</span>
+                              <span className="font-medium text-foreground block">{row.date}</span>
+                            </div>
+                            <div className="space-y-1">
+                              <span className="text-muted-foreground font-semibold block">Punch Times</span>
+                              <span className="font-mono text-foreground block">{row.checkIn || "—"} - {row.checkOut || "—"}</span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   />
                 </CardContent>
               </Card>
@@ -993,8 +1123,8 @@ function AttendancePage() {
 
           {/* Mappings List */}
           <div className="xl:col-span-3">
-            <Card>
-              <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between flex-wrap gap-4">
+            <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
+              <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between flex-wrap gap-4 px-0 md:px-6">
                 <div>
                   <CardTitle className="text-base">Active Mappings</CardTitle>
                   <CardDescription>Mapped biometric codes are used to identify employees in uploaded logs.</CardDescription>
@@ -1055,6 +1185,46 @@ function AttendancePage() {
                     }
                   ] as any}
                   enablePagination
+                  renderMobileCard={(row: any) => (
+                    <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
+                      <CardContent className="p-4 space-y-3.5">
+                        {/* Header: Avatar, Name & Code */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs border shadow-inner">
+                            {row.staffName.split(" ").map((n: string) => n[0] || "").join("").toUpperCase().slice(0, 2) || "S"}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-extrabold text-foreground text-sm truncate">{row.staffName}</h4>
+                            <p className="text-xs text-muted-foreground font-mono mt-0.5">{row.employeeCode}</p>
+                          </div>
+                          <div className="flex flex-col items-end shrink-0">
+                            <span className="text-[10px] text-muted-foreground font-semibold mb-0.5">Biometric Code</span>
+                            <span className="font-mono bg-slate-100 dark:bg-slate-800 border border-border px-1.5 py-0.5 rounded text-xs text-foreground font-bold">{row.biometricCode}</span>
+                          </div>
+                        </div>
+
+                        {/* Actions buttons */}
+                        <div className="flex gap-2 pt-3 border-t border-border/60">
+                          <Button
+                            variant="outline"
+                            size="default"
+                            className="flex-1 font-semibold h-9"
+                            onClick={() => handleEditMapping(row)}
+                          >
+                            <Edit size={14} className="mr-1.5 text-muted-foreground" /> Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="default"
+                            className="flex-1 font-semibold h-9 text-rose-600 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 border-rose-200"
+                            onClick={() => handleDeleteMapping(row.id)}
+                          >
+                            <Trash2 size={14} className="mr-1.5" /> Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 />
               </CardContent>
             </Card>

@@ -66,6 +66,7 @@ function UserManagementPage() {
   const [createRole, setCreateRole] = React.useState<"admin" | "hr" | "staff">("staff");
   const [createError, setCreateError] = React.useState("");
   const [submittingCreate, setSubmittingCreate] = React.useState(false);
+  const [isFormExpanded, setIsFormExpanded] = React.useState(false);
 
   // Manage Role State
   const [newRole, setNewRole] = React.useState<"admin" | "hr" | "staff">("staff");
@@ -376,18 +377,28 @@ function UserManagementPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-4">
+      <div className="grid xl:gap-6 xl:grid-cols-4 grid-cols-1">
         {/* Left Side: Create User Form */}
         <div className="xl:col-span-1">
-          <Card className="shadow-sm border border-slate-100 dark:border-slate-800 bg-white/70 dark:bg-slate-900/40 backdrop-blur">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base font-bold flex items-center gap-2">
-                <UserPlus size={18} className="text-teal-600" />
-                Add User Account
-              </CardTitle>
-              <CardDescription>Register a new system login with standard permissions.</CardDescription>
+          <Card className="shadow-sm border border-slate-100 dark:border-slate-800 bg-white/70 dark:bg-slate-900/40 backdrop-blur max-w-md xl:max-w-none w-full">
+            <CardHeader className="pb-4 flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  <UserPlus size={18} className="text-teal-600" />
+                  Add User Account
+                </CardTitle>
+                <CardDescription className="hidden sm:block">Register a new system login with standard permissions.</CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setIsFormExpanded(!isFormExpanded)}
+                className="xl:hidden h-8 text-xs font-semibold px-3"
+              >
+                {isFormExpanded ? "Collapse" : "Expand"}
+              </Button>
             </CardHeader>
-            <CardContent>
+            <CardContent className={cn("xl:block", !isFormExpanded && "hidden")}>
               <form onSubmit={handleCreateUser} className="space-y-4">
                 <Autocomplete
                   label="Staff Member"
@@ -422,7 +433,7 @@ function UserManagementPage() {
         </div>
 
         {/* Right Side: Users DataTable */}
-        <div className="xl:col-span-3">
+        <div className="xl:col-span-3 col-span-1">
           <Card className="shadow-sm border border-slate-100 dark:border-slate-800">
             <CardHeader className="pb-2 flex flex-row items-center justify-between border-b border-border flex-wrap gap-4">
               <div>
@@ -482,7 +493,7 @@ function UserManagementPage() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 max-h-[calc(100vh-14rem)] overflow-y-auto custom-scrollbar">
               {/* Account Meta Section */}
               <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900 rounded-lg p-4 text-xs">
                 <div className="space-y-1">
@@ -514,7 +525,7 @@ function UserManagementPage() {
                       <Link2 size={13} /> Link to Staff Record
                     </h4>
                     {linkedStaff ? (
-                      <div className="flex items-center justify-between bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/30 rounded-lg px-4 py-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/30 rounded-lg px-4 py-3 gap-3">
                         <div className="text-xs">
                           <p className="font-bold text-teal-800 dark:text-teal-300">{linkedStaff.name}</p>
                           <p className="text-teal-600 dark:text-teal-400 font-mono">{linkedStaff.employeeCode} · {linkedStaff.role}</p>
@@ -522,7 +533,7 @@ function UserManagementPage() {
                         <Button
                           variant="outline"
                           size="default"
-                          className="h-8 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/20"
+                          className="h-8 text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950/20 w-full sm:w-auto"
                           disabled={submittingLink}
                           onClick={async () => {
                             setSubmittingLink(true);
@@ -551,8 +562,8 @@ function UserManagementPage() {
                         </Button>
                       </div>
                     ) : (
-                      <div className="flex items-end gap-3">
-                        <div className="flex-1">
+                      <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                        <div className="flex-1 w-full">
                           <Autocomplete
                             label="Staff Member"
                             placeholder="— Select staff record —"
@@ -564,7 +575,7 @@ function UserManagementPage() {
                           />
                         </div>
                         <Button
-                          className="h-10 font-bold bg-teal-600 hover:bg-teal-700 text-white"
+                          className="h-10 font-bold bg-teal-600 hover:bg-teal-700 text-white w-full sm:w-auto"
                           disabled={!selectedStaffId || submittingLink}
                           onClick={async () => {
                             setSubmittingLink(true);
@@ -599,7 +610,7 @@ function UserManagementPage() {
               {/* Action 1: Role Configuration */}
               <div className="space-y-2.5 pb-5 border-b border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Configure System Role</h4>
-                <div className="flex items-end gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-end gap-3">
                   <Select
                     label=""
                     value={newRole}
@@ -609,12 +620,12 @@ function UserManagementPage() {
                       ["hr", "HR Role"],
                       ["admin", "Administrator Role"]
                     ]}
-                    className="flex-1"
+                    className="flex-1 w-full"
                   />
                   <Button
                     onClick={handleChangeRole}
                     disabled={submittingRole || selectedUser.role === newRole}
-                    className="h-10 font-bold bg-slate-850 dark:bg-slate-800 hover:bg-slate-900 dark:hover:bg-slate-700 border border-slate-700 text-white"
+                    className="h-10 font-bold bg-slate-850 dark:bg-slate-800 hover:bg-slate-900 dark:hover:bg-slate-700 border border-slate-700 text-white w-full sm:w-auto"
                   >
                     {submittingRole ? "Updating..." : "Update Role"}
                   </Button>

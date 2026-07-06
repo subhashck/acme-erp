@@ -99,6 +99,23 @@ select {
 }
 
 @media print {
+  /* Hide typical browser UI and navigation layout */
+  aside, 
+  header, 
+  nav, 
+  footer, 
+  .print\:hidden {
+    display: none !important;
+  }
+
+  body, html, #root, main, section {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
 
   /* Make everything invisible, then reveal only the payslip */
   body * {
@@ -111,14 +128,14 @@ select {
   }
 
   #printable-payslip {
-    position: fixed;
-    inset: 0;
-    padding: 24px;
-    background: white;
-  }
-
-  .print\:hidden {
-    display: none !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    background: white !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
 
   .print\:block {

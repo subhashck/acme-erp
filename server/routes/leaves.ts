@@ -251,6 +251,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         departmentName: departments.name,
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
         approverIds: leaveRequests.approverIds,
+        supportingDocument: leaveRequests.supportingDocument,
       })
       .from(leaveRequests)
       .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))
@@ -385,6 +386,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
         forwardedToStaffName: forwardedTarget.name,
         approverIds: leaveRequests.approverIds,
+        supportingDocument: leaveRequests.supportingDocument,
       })
       .from(leaveRequests)
       .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))

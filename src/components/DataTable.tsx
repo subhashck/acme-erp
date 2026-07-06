@@ -12,6 +12,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from "lucide-react";
+import { cn } from "@/utils/cn";
 
 export type ColumnDef<T> =
   | [keyof T & string, string]
@@ -35,6 +36,7 @@ export interface DataTableProps<T> {
   filterPlaceholder?: string;
   defaultPageSize?: number;
   isLoading?: boolean;
+  renderMobileCard?: (row: T) => React.ReactNode;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -47,12 +49,23 @@ export function DataTable<T extends Record<string, unknown>>({
   filterPlaceholder = "Search...",
   defaultPageSize = 10,
   isLoading = false,
+  renderMobileCard,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [sortKey, setSortKey] = React.useState<string | null>(null);
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc" | null>(null);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(defaultPageSize);
+
+  const getRowKey = (row: any, index: number) => {
+    if (row && typeof row === "object") {
+      if (row.id !== undefined && row.id !== null) return `row-id-${row.id}-${index}`;
+      if (row.staffId !== undefined && row.staffId !== null) return `row-staff-${row.staffId}-${index}`;
+      if (row.attendanceId !== undefined && row.attendanceId !== null) return `row-att-${row.attendanceId}-${index}`;
+      if (row.userId !== undefined && row.userId !== null) return `row-user-${row.userId}-${index}`;
+    }
+    return `row-idx-${index}`;
+  };
 
   // Reset page when search query changes
   React.useEffect(() => {
@@ -139,20 +152,54 @@ export function DataTable<T extends Record<string, unknown>>({
 
   return (
     <div className="flex flex-col gap-4">
-      {enableFiltering && (
-        <div className="relative px-4 pt-4 flex items-center max-w-sm">
-          <Search className="absolute left-7  h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={filterPlaceholder} 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 h-9"
-          />
+      {(enableFiltering || (renderMobileCard && enablePagination)) && (
+        <div className="flex flex-col sm:flex-row gap-3 px-4 pt-4">
+          {enableFiltering && (
+            <div className="relative flex-1 max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={filterPlaceholder} 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 w-full"
+              />
+            </div>
+          )}
+          {renderMobileCard && enablePagination && sortedRows.length > 0 && (
+            <div className="flex md:hidden items-center justify-between gap-4 p-2 bg-slate-50 dark:bg-slate-900 border border-border rounded-lg text-xs shrink-0 h-9 px-3">
+              <span className="text-muted-foreground font-semibold">
+                Showing {startRowIndex} - {endRowIndex} of {sortedRows.length}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="default"
+                  className="h-7 w-7 p-0 flex items-center justify-center shrink-0 border-slate-300 dark:border-slate-700"
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft size={14} />
+                </Button>
+                <span className="font-bold whitespace-nowrap">
+                  {currentPage} / {totalPages || 1}
+                </span>
+                <Button
+                  variant="outline"
+                  size="default"
+                  className="h-7 w-7 p-0 flex items-center justify-center shrink-0 border-slate-300 dark:border-slate-700"
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages || totalPages === 0}
+                >
+                  <ChevronRight size={14} />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full md:min-w-[720px] text-sm">
+      <div className={cn(renderMobileCard ? "hidden md:block overflow-x-auto" : "overflow-x-auto")}>
+        <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b bg-muted/45 text-left text-xs uppercase text-muted-foreground">
               {columns.map((col) => {
@@ -202,7 +249,7 @@ export function DataTable<T extends Record<string, unknown>>({
             ) : (
               <>
                 {paginatedRows.map((row, index) => (
-                  <tr key={String(row.id ?? index)} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <tr key={getRowKey(row, index)} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                     {columns.map((col) => {
                       if (!Array.isArray(col)) {
                         return (
@@ -242,8 +289,31 @@ export function DataTable<T extends Record<string, unknown>>({
         </table>
       </div>
 
+      {renderMobileCard && (
+        <div className="block md:hidden">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              <span className="text-sm text-muted-foreground font-medium animate-pulse">Loading data...</span>
+            </div>
+          ) : !paginatedRows.length ? (
+            <div className="text-center py-8 text-muted-foreground text-sm border border-dashed rounded-lg bg-card/20 border-border mx-4">
+              No records yet
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 px-4 pb-4">
+              {paginatedRows.map((row, index) => (
+                <React.Fragment key={getRowKey(row, index)}>
+                  {renderMobileCard(row)}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {enablePagination && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-4 pb-4 text-sm text-muted-foreground">
+        <div className={cn("flex flex-col sm:flex-row items-center justify-between gap-4 px-4 pb-4 text-sm text-muted-foreground", renderMobileCard && "hidden md:flex")}>
           <div className="flex items-center gap-2">
             <span>Show</span>
             <select

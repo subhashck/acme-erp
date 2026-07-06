@@ -289,6 +289,7 @@ export const leaveRequests = sqliteTable("leave_requests", {
   reviewerNote: text("reviewer_note"),
   forwardedToStaffId: integer("forwarded_to_staff_id"), // stable staffId of the targeted supervisor
   approverIds: text("approver_ids").notNull().default("[]"),
+  supportingDocument: text("supporting_document"),
   ...timestamps
 });
 

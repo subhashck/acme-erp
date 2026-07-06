@@ -288,7 +288,10 @@ export function Shell() {
               {/* Collapsible HR group */}
               <div className="flex flex-col">
                 <button
-                  onClick={() => setHrOpen(!hrOpen)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setHrOpen(!hrOpen);
+                  }}
                   className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
                 >
                   <div className="flex items-center gap-3">
@@ -341,7 +344,10 @@ export function Shell() {
 
               <div className="flex flex-col">
                 <button
-                  onClick={() => setClinicalOpen(!clinicalOpen)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setClinicalOpen(!clinicalOpen);
+                  }}
                   className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
                 >
                   <div className="flex items-center gap-3">
@@ -367,7 +373,10 @@ export function Shell() {
               {session.data?.user.role === "admin" && (
                 <div className="flex flex-col">
                   <button
-                    onClick={() => setMastersOpen(!mastersOpen)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMastersOpen(!mastersOpen);
+                    }}
                     className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
                   >
                     <div className="flex items-center gap-3">
@@ -430,7 +439,10 @@ export function Shell() {
               {session.data?.user.role === "admin" && (
                 <div className="flex flex-col">
                   <button
-                    onClick={() => setAdminOpen(!adminOpen)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAdminOpen(!adminOpen);
+                    }}
                     className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
                   >
                     <div className="flex items-center gap-3">

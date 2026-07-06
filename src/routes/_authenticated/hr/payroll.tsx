@@ -15,6 +15,7 @@ import { exportPayrollToExcel } from "../../../lib/payroll-export";
 import type { StaffRow } from "../../../types";
 import { authClient } from "../../../services/auth";
 import { Autocomplete } from "../../../ui/autocomplete";
+import { cn } from "@/utils/cn";
 
 export const Route = createFileRoute("/_authenticated/hr/payroll")({
   component: PayrollPage,
@@ -472,8 +473,8 @@ function PayrollPage() {
 
         {/* Payslip Register Tab */}
         {activeTab === "payslips" && (
-          <Card>
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 gap-4 border-b">
+          <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 gap-4 border-b px-0 md:px-6">
               <div>
                 <CardTitle className="text-base">Payslip Register</CardTitle>
                 <CardDescription>View, print, and search generated payslips.</CardDescription>
@@ -519,6 +520,60 @@ function PayrollPage() {
                 enableFiltering
                 filterPlaceholder="Search payslips..."
                 isLoading={payslipsQuery.isLoading}
+                renderMobileCard={(row: PayslipRow) => (
+                  <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
+                    <CardContent className="p-4 space-y-3.5">
+                      {/* Header: Name, Code & Month */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-350 font-bold text-xs border shadow-inner">
+                          {row.name.split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "P"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-extrabold text-foreground text-sm truncate">{row.name}</h4>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{row.employeeCode} &middot; {row.month}</p>
+                        </div>
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border ${
+                          row.status === "Active"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-250 ring-1 ring-inset ring-emerald-600/10 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/30 font-bold"
+                            : "bg-slate-50 text-slate-600 border-slate-200 ring-1 ring-inset ring-slate-500/10 dark:bg-slate-850 dark:text-slate-400 dark:border-slate-800 font-semibold"
+                        }`}>
+                          {row.status}
+                        </span>
+                      </div>
+
+                      {/* Details Grid */}
+                      <div className="grid grid-cols-2 gap-3 text-xs pt-3 border-t border-border/60">
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground font-semibold block">Net Salary</span>
+                          <span className="font-extrabold text-emerald-600 block">{currencySymbol}{row.netSalary.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground font-semibold block">Leave Days Taken</span>
+                          <span className={cn("font-medium block", row.leaveDaysTaken > 0 ? "text-amber-600 font-bold" : "text-muted-foreground")}>
+                            {row.leaveDaysTaken} days
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground font-semibold block">Version</span>
+                          <span className="text-foreground block font-medium">v{row.version}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-muted-foreground font-semibold block">Role</span>
+                          <span className="text-foreground block truncate font-medium">{row.role}</span>
+                        </div>
+                      </div>
+
+                      {/* Actions buttons */}
+                      <div className="pt-3 border-t border-border/60">
+                        <Button variant="outline" size="default" asChild className="w-full font-semibold h-9" title="View Payslip">
+                          <Link to="/hr/view-payslip" search={{ payslipId: row.id }}>
+                            <Eye size={14} className="mr-1.5 text-muted-foreground" /> View Payslip
+                          </Link>
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               />
             </CardContent>
           </Card>
@@ -526,8 +581,8 @@ function PayrollPage() {
 
         {/* Salary Structures Tab */}
         {activeTab === "salaries" && isAdminOrHr && (
-          <Card>
-            <CardHeader className="border-b pb-4">
+          <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
+            <CardHeader className="border-b pb-4 px-0 md:px-6">
               <CardTitle className="text-base">Employee Salary Structures</CardTitle>
               <CardDescription>Configure monthly earnings allowances and statutory deductions for staff.</CardDescription>
             </CardHeader>
@@ -540,6 +595,83 @@ function PayrollPage() {
                 enableFiltering
                 filterPlaceholder="Search staff salaries..."
                 isLoading={staffQuery.isLoading}
+                renderMobileCard={(row: StaffRow) => {
+                  const b = row.basicSalary ?? 0;
+                  const h = row.hra ?? 0;
+                  const c = row.conveyance ?? 0;
+                  const m = row.medical ?? 0;
+                  const s = row.special ?? 0;
+                  const gross = b + h + c + m + s;
+
+                  const ep = row.epf ?? 0;
+                  const es = row.esi ?? 0;
+                  const p = row.professionalTax ?? 0;
+                  const od = row.otherDeductions ?? 0;
+                  const net = Math.max(0, gross - (ep + es + p + od));
+
+                  return (
+                    <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
+                      <CardContent className="p-4 space-y-3.5">
+                        {/* Header: Name, Code & Role */}
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-350 font-bold text-xs border shadow-inner">
+                            {row.name.split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "S"}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-extrabold text-foreground text-sm truncate">{row.name}</h4>
+                            <p className="text-xs text-muted-foreground font-mono mt-0.5">{row.employeeCode} &middot; {row.role}</p>
+                          </div>
+                          {gross === 0 ? (
+                            <span className="inline-flex items-center rounded-full bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 text-xs font-semibold text-amber-850 dark:text-amber-300 ring-1 ring-inset ring-amber-600/10 font-bold border border-amber-200">
+                              Unconfigured
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/10 font-bold border border-emerald-250">
+                              Configured
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Details Grid */}
+                        <div className="grid grid-cols-2 gap-3 text-xs pt-3 border-t border-border/60">
+                          <div className="space-y-1">
+                            <span className="text-muted-foreground font-semibold block">Gross Salary</span>
+                            {gross === 0 ? (
+                              <span className="font-semibold text-slate-400 block">—</span>
+                            ) : (
+                              <span className="font-bold text-foreground block">{currencySymbol}{gross.toLocaleString("en-IN")}</span>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-muted-foreground font-semibold block">Net Take-Home</span>
+                            {gross === 0 ? (
+                              <span className="font-semibold text-slate-400 block">—</span>
+                            ) : (
+                              <span className="font-bold text-emerald-650 block">{currencySymbol}{net.toLocaleString("en-IN")}</span>
+                            )}
+                          </div>
+                          <div className="space-y-1 col-span-2">
+                            <span className="text-muted-foreground font-semibold block">Department</span>
+                            <span className="text-foreground block truncate font-medium">{row.departmentName || "No Department assigned"}</span>
+                          </div>
+                        </div>
+
+                        {/* Actions buttons */}
+                        <div className="pt-3 border-t border-border/60">
+                          <Button 
+                            onClick={() => setEditingSalaryStaff(row)} 
+                            variant={gross > 0 ? "outline" : "default"} 
+                            size="default" 
+                            className="w-full font-semibold h-9 gap-1.5"
+                          >
+                            {gross > 0 ? <Edit2 size={14} /> : <Plus size={14} />}
+                            {gross > 0 ? "Manage Salary Structure" : "Setup Salary Structure"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }}
               />
             </CardContent>
           </Card>

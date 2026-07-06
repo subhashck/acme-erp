@@ -242,6 +242,7 @@ export const leaveRequestInput = z
     startDate: z.string().datetime(),
     endDate: z.string().datetime(),
     reason: z.string().min(3),
+    supportingDocument: z.string().optional().nullable(),
   })
   .refine(
     (value) => {
