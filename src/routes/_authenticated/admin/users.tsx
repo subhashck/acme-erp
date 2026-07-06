@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/
 import { Button } from "@/ui/button";
 import { Field } from "@/components/Field";
 import { Select } from "@/ui/select";
+import { Autocomplete } from "@/ui/autocomplete";
 import { Badge } from "@/ui/badge";
 import type { StaffRow } from "@/types";
 import {
@@ -61,9 +62,7 @@ function UserManagementPage() {
   const queryClient = useQueryClient();
 
   // Create User state
-  const [createEmail, setCreateEmail] = React.useState("");
-  const [createPassword, setCreatePassword] = React.useState("");
-  const [createName, setCreateName] = React.useState("");
+  const [createSelectedStaffId, setCreateSelectedStaffId] = React.useState("");
   const [createRole, setCreateRole] = React.useState<"admin" | "hr" | "staff">("staff");
   const [createError, setCreateError] = React.useState("");
   const [submittingCreate, setSubmittingCreate] = React.useState(false);
@@ -115,28 +114,47 @@ function UserManagementPage() {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createEmail || !createPassword || !createName || !createRole) {
-      setCreateError("All fields are required");
+    if (!createSelectedStaffId || !createRole) {
+      setCreateError("Please select a staff member and role");
       return;
     }
+    
+    const selectedStaff = staffList.find(s => String(s.staffId) === createSelectedStaffId);
+    if (!selectedStaff || !selectedStaff.email) {
+      setCreateError("Selected staff does not have an email address configured");
+      return;
+    }
+
     setSubmittingCreate(true);
     setCreateError("");
     try {
       const res = await authClient.admin.createUser({
-        email: createEmail,
-        password: createPassword,
-        name: createName,
+        email: selectedStaff.email,
+        password: "Welcome@123", // Default password
+        name: selectedStaff.name,
         role: createRole
       });
       if (res.error) {
         setCreateError(res.error.message || "Failed to create user");
       } else {
-        setCreateEmail("");
-        setCreatePassword("");
-        setCreateName("");
+        // Attempt to link the user to the staff profile
+        if (res.data?.user?.id) {
+          try {
+            await fetch(`/api/hr/staff/${selectedStaff.staffId}/link-user`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId: res.data.user.id }),
+            });
+            queryClient.invalidateQueries({ queryKey: ["staff"] });
+          } catch (e) {
+            console.error("Failed to link user to staff", e);
+          }
+        }
+        
+        setCreateSelectedStaffId("");
         setCreateRole("staff");
         usersQuery.refetch();
-        alert("User created successfully!");
+        alert("User created successfully! Default password is Welcome@123");
       }
     } catch (err: any) {
       setCreateError(err.message || "Error creating user");
@@ -371,26 +389,14 @@ function UserManagementPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleCreateUser} className="space-y-4">
-                <Field
-                  label="Full Name"
-                  type="text"
-                  placeholder="e.g. John Doe"
-                  value={createName}
-                  onChange={(e) => setCreateName(e.target.value)}
-                />
-                <Field
-                  label="Email Address"
-                  type="email"
-                  placeholder="e.g. john@acme.com"
-                  value={createEmail}
-                  onChange={(e) => setCreateEmail(e.target.value)}
-                />
-                <Field
-                  label="Password"
-                  type="password"
-                  placeholder="Min 8 characters"
-                  value={createPassword}
-                  onChange={(e) => setCreatePassword(e.target.value)}
+                <Autocomplete
+                  label="Staff Member"
+                  placeholder="— Select staff record —"
+                  value={createSelectedStaffId}
+                  onChange={setCreateSelectedStaffId}
+                  options={staffList
+                    .filter((s) => !s.userId)
+                    .map((s) => [String(s.staffId), `${s.name} (${s.email || "No Email"})`])}
                 />
                 <Select
                   label="System Role"
@@ -547,21 +553,15 @@ function UserManagementPage() {
                     ) : (
                       <div className="flex items-end gap-3">
                         <div className="flex-1">
-                          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 block mb-1">Staff Member</label>
-                          <select
-                            className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          <Autocomplete
+                            label="Staff Member"
+                            placeholder="— Select staff record —"
                             value={selectedStaffId}
-                            onChange={(e) => setSelectedStaffId(e.target.value)}
-                          >
-                            <option value="">— Select staff record —</option>
-                            {staffList
+                            onChange={setSelectedStaffId}
+                            options={staffList
                               .filter((s) => !s.userId)
-                              .map((s) => (
-                                <option key={s.staffId} value={String(s.staffId)}>
-                                  {s.name} ({s.employeeCode})
-                                </option>
-                              ))}
-                          </select>
+                              .map((s) => [String(s.staffId), `${s.name} (${s.employeeCode})`])}
+                          />
                         </div>
                         <Button
                           className="h-10 font-bold bg-teal-600 hover:bg-teal-700 text-white"

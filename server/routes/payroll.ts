@@ -14,10 +14,22 @@ import {
   rosters,
   attendance,
 } from "../db/schema.ts";
-import { idParam } from "./shared.ts";
+import { idParam, getCurrentStaff } from "./shared.ts";
 
 export const payrollRoutes = new Hono<AuthEnv>()
   .get("/hr/payroll/payslips", async (c) => {
+    const session = c.get("session");
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const currentStaff = await getCurrentStaff(c);
+
+    let whereClause = undefined;
+    if (!isHrOrAdmin) {
+      if (!currentStaff) {
+        return c.json([]);
+      }
+      whereClause = eq(payslips.staffId, currentStaff.staffId);
+    }
+
     const rows = await db
       .select({
         id: payslips.id,
@@ -50,6 +62,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(whereClause)
       .orderBy(desc(payslips.month), desc(payslips.createdAt))
       .execute();
     return c.json(rows);
@@ -95,6 +108,16 @@ export const payrollRoutes = new Hono<AuthEnv>()
 
     if (!row) return c.json({ error: "Payslip not found" }, 404);
 
+    const session = c.get("session");
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const currentStaff = await getCurrentStaff(c);
+
+    if (!isHrOrAdmin) {
+      if (!currentStaff || row.staffId !== currentStaff.staffId) {
+        return c.json({ error: "Unauthorized" }, 403);
+      }
+    }
+
     // Leave balance for the employee: current calendar year
     const year = row.month.slice(0, 4);
     const yearStart = new Date(`${year}-01-01T00:00:00Z`);
@@ -118,10 +141,9 @@ export const payrollRoutes = new Hono<AuthEnv>()
     for (const lr of approvedLeaves) {
       const start = lr.startDate;
       const end = lr.endDate;
-      const days = Math.max(
-        1,
-        Math.round((end.getTime() - start.getTime()) / 86400000) + 1
-      );
+      const days = lr.isHalfDay
+        ? 0.5
+        : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
       daysByType[lr.leaveType] = (daysByType[lr.leaveType] ?? 0) + days;
     }
 
@@ -135,6 +157,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
     return c.json({ ...row, leaveBalance });
   })
   .post("/hr/payroll/payslips/:id/edit", async (c) => {
+    const session = c.get("session");
+    if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
     const { id } = idParam.parse(c.req.param());
     const input = z
       .object({
@@ -204,6 +230,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
     return c.json(newRow);
   })
   .post("/hr/payroll/generate", async (c) => {
+    const session = c.get("session");
+    if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
     const { month, staffId, departmentId } = z
       .object({
         month: z.string().regex(/^\d{4}-\d{2}$/, "Format: YYYY-MM"),
@@ -265,11 +295,26 @@ export const payrollRoutes = new Hono<AuthEnv>()
     let generatedCount = 0;
 
     for (const employee of activeStaff) {
+      // Check if employee has any pending leaves
+      const pendingLeaves = await db
+        .select()
+        .from(leaveRequests)
+        .where(
+          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} IN ('Pending', 'Forwarded', 'Pending Payroll Approval')`
+        )
+        .limit(1)
+        .execute();
+
+      if (pendingLeaves.length > 0) {
+        // Skip payroll processing for this employee
+        continue;
+      }
+
       // Get salary structure
       const structure = await db
         .select()
         .from(staffSalaries)
-        .where(eq(staffSalaries.staffId, employee.id))
+        .where(eq(staffSalaries.staffId, employee.staffId))
         .limit(1)
         .then((res: any) => res[0]);
 
@@ -310,7 +355,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .select()
         .from(leaveRequests)
         .where(
-          sql`${leaveRequests.staffId} = ${employee.id} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStart.toISOString()} AND ${leaveRequests.startDate} <= ${monthEnd.toISOString()}`
+          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStart.toISOString()} AND ${leaveRequests.startDate} <= ${monthEnd.toISOString()}`
         )
         .execute();
 
@@ -340,7 +385,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
       const employeeRosters = await db
         .select({ startDate: rosters.startDate, endDate: rosters.endDate })
         .from(rosters)
-        .where(eq(rosters.staffId, employee.id))
+        .where(eq(rosters.staffId, employee.staffId))
         .execute();
 
       const monthStartStr = `${month}-01`;
@@ -349,7 +394,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .select({ date: attendance.date, status: attendance.status })
         .from(attendance)
         .where(
-          sql`${attendance.staffId} = ${employee.id} AND ${attendance.date} >= ${monthStartStr} AND ${attendance.date} <= ${monthEndStr}`
+          sql`${attendance.staffId} = ${employee.staffId} AND ${attendance.date} >= ${monthStartStr} AND ${attendance.date} <= ${monthEndStr}`
         )
         .execute();
       const attendanceStatusMap = new Map(
@@ -398,13 +443,13 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .select()
         .from(payslips)
         .where(
-          sql`${payslips.staffId} = ${employee.id} AND ${payslips.month} = ${month} AND ${payslips.status} = 'Active'`
+          sql`${payslips.staffId} = ${employee.staffId} AND ${payslips.month} = ${month} AND ${payslips.status} = 'Active'`
         )
         .limit(1)
         .then((res: any) => res[0]);
 
       const payslipValues = {
-        staffId: employee.id,
+        staffId: employee.staffId,
         month,
         basicSalary: basic,
         hra,

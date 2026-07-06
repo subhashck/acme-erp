@@ -101,4 +101,30 @@ export const notificationRoutes = new Hono<AuthEnv>()
       .execute();
 
     return c.json({ ok: true });
+  })
+  .delete("/notifications/:id", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const id = Number(c.req.param("id"));
+
+    await db
+      .delete(notifications)
+      .where(
+        sql`${notifications.id} = ${id} AND ${notifications.userId} = ${userId}`
+      )
+      .execute();
+
+    return c.json({ ok: true });
+  })
+  .delete("/notifications", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+
+    await db
+      .delete(notifications)
+      .where(eq(notifications.userId, userId))
+      .execute();
+
+    return c.json({ ok: true });
   });
+

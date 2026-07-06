@@ -19,6 +19,16 @@ export interface Colleague {
   image: string | null;
 }
 
+export interface Conversation {
+  id: string;         // user id of the partner
+  name: string;
+  email: string;
+  image: string | null;
+  lastMessage: string;
+  lastMessageAt: string;
+  unread: number;
+}
+
 export interface ChatChannel {
   id: string; // e.g. "org", "dept:1", "direct:user-id"
   name: string;
@@ -32,6 +42,7 @@ interface ChatState {
   messages: Message[];
   isConnected: boolean;
   colleagues: Colleague[];
+  conversations: Conversation[];
 }
 
 export const chatStore = new Store<ChatState>({
@@ -41,7 +52,8 @@ export const chatStore = new Store<ChatState>({
   activeChannel: { id: "org", name: "Organization Announcements", type: "organization" },
   messages: [],
   isConnected: false,
-  colleagues: []
+  colleagues: [],
+  conversations: [],
 });
 
 let chatEventSource: EventSource | null = null;
@@ -60,6 +72,69 @@ export const chatActions = {
     } catch (err) {
       console.error("Failed to fetch colleagues:", err);
     }
+  },
+
+  fetchConversations: async () => {
+    try {
+      const res = await fetch("/api/messages/conversations");
+      if (res.ok) {
+        const conversations: Conversation[] = await res.json();
+        chatStore.setState((state) => ({
+          ...state,
+          conversations
+        }));
+      }
+    } catch (err) {
+      console.error("Failed to fetch conversations:", err);
+    }
+  },
+
+  markConversationRead: async (partnerId: string) => {
+    try {
+      await fetch(`/api/messages/read/${partnerId}`, { method: "POST" });
+      // Zero out unread locally so badge clears immediately
+      chatStore.setState((state) => ({
+        ...state,
+        conversations: state.conversations.map((c) =>
+          c.id === partnerId ? { ...c, unread: 0 } : c
+        )
+      }));
+    } catch (err) {
+      console.error("Failed to mark read:", err);
+    }
+  },
+
+  /** Open a direct conversation (adds it to conversations list if it wasn't there yet) */
+  openDirectChat: (partner: { id: string; name: string; email: string; image: string | null }) => {
+    const channel: ChatChannel = {
+      id: `direct:${partner.id}`,
+      name: partner.name,
+      type: "direct",
+      targetId: partner.id,
+    };
+    // Ensure partner is in conversations list
+    chatStore.setState((state) => {
+      const exists = state.conversations.some((c) => c.id === partner.id);
+      return {
+        ...state,
+        conversations: exists
+          ? state.conversations
+          : [
+              {
+                id: partner.id,
+                name: partner.name,
+                email: partner.email,
+                image: partner.image,
+                lastMessage: "",
+                lastMessageAt: new Date().toISOString(),
+                unread: 0,
+              },
+              ...state.conversations,
+            ],
+      };
+    });
+    chatActions.setActiveChannel(channel);
+    chatActions.markConversationRead(partner.id);
   },
 
   fetchMessages: async (channel: ChatChannel) => {
@@ -90,6 +165,10 @@ export const chatActions = {
       activeChannel: channel
     }));
     chatActions.fetchMessages(channel);
+    // Mark read when opening a direct channel
+    if (channel.type === "direct" && channel.targetId) {
+      chatActions.markConversationRead(String(channel.targetId));
+    }
   },
 
   sendMessage: async (content: string) => {
@@ -113,6 +192,10 @@ export const chatActions = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+      // Refresh conversations so last message updates
+      if (state.activeChannel.type === "direct") {
+        setTimeout(() => chatActions.fetchConversations(), 300);
+      }
     } catch (err) {
       console.error("Failed to send message:", err);
     }
@@ -149,13 +232,59 @@ export const chatActions = {
             }
           }
 
+          // If it's a direct message NOT in the active channel, bump unread and update conversation preview
+          if (newMsg.channelType === "direct" && !isMatch) {
+            const partnerId = newMsg.senderId; // incoming: sender is the partner
+            const updated = state.conversations.map((c) =>
+              c.id === partnerId
+                ? {
+                    ...c,
+                    unread: c.unread + 1,
+                    lastMessage: newMsg.content,
+                    lastMessageAt: newMsg.createdAt,
+                  }
+                : c
+            );
+            // Add conversation if not yet in list
+            const exists = updated.some((c) => c.id === partnerId);
+            return {
+              ...state,
+              conversations: exists ? updated : [
+                {
+                  id: partnerId,
+                  name: newMsg.senderName,
+                  email: "",
+                  image: newMsg.senderImage,
+                  lastMessage: newMsg.content,
+                  lastMessageAt: newMsg.createdAt,
+                  unread: 1,
+                },
+                ...state.conversations,
+              ],
+            };
+          }
+
           if (!isMatch) return state;
 
           const exists = state.messages.some((m) => m.id === newMsg.id);
           if (exists) return state;
 
+          // Also refresh conversation preview if it's the active direct channel
+          let conversations = state.conversations;
+          if (newMsg.channelType === "direct" && current?.type === "direct") {
+            const partnerId = newMsg.senderId === state.conversations[0]?.id
+              ? newMsg.senderId
+              : newMsg.receiverId ?? "";
+            conversations = state.conversations.map((c) =>
+              c.id === (current?.targetId)
+                ? { ...c, lastMessage: newMsg.content, lastMessageAt: newMsg.createdAt }
+                : c
+            );
+          }
+
           return {
             ...state,
+            conversations,
             messages: [...state.messages, newMsg]
           };
         });

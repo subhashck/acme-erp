@@ -101,7 +101,16 @@ function Shifts() {
         <Card className="xl:col-span-1">
           <CardHeader><CardTitle>{editingId ? "Edit Shift" : "Add Shift"}</CardTitle></CardHeader>
           <CardContent>
-            <form onSubmit={submit} className="grid gap-4">
+            <form onSubmit={submit} className="relative">
+              {form.formState.isSubmitting && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-lg">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+                    <p className="text-sm font-medium">Submitting...</p>
+                  </div>
+                </div>
+              )}
+              <fieldset disabled={form.formState.isSubmitting} className="grid gap-4">
               <Field label="Shift Name" {...form.register("name")} placeholder="e.g., Morning" />
               <Field label="Short Code" {...form.register("code")} placeholder="e.g., M" />
               <Field label="Start Time" {...form.register("startTime")} placeholder="HH:MM" />
@@ -126,6 +135,7 @@ function Shifts() {
                   }}>Cancel</Button>
                 )}
               </div>
+              </fieldset>
             </form>
           </CardContent>
         </Card>

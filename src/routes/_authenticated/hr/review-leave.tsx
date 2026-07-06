@@ -12,6 +12,136 @@ import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { cn } from "../../../utils/cn";
 
+function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; staffList: StaffRow[] }) {
+  const approversNames = React.useMemo(() => {
+    if (!leave.approverIds) return "Supervisors";
+    try {
+      const ids = JSON.parse(leave.approverIds);
+      if (!Array.isArray(ids) || ids.length === 0) return "Supervisors";
+      return ids
+        .map((id) => staffList.find((s) => s.staffId === id)?.name ?? `Staff #${id}`)
+        .join(", ");
+    } catch (e) {
+      return "Supervisors";
+    }
+  }, [leave.approverIds, staffList]);
+
+  const status = leave.status;
+  
+  let step1 = "completed"; 
+  let step2 = "pending";   
+  let step3 = "pending";   
+  let step4 = "pending";   
+
+  if (status === "Pending") {
+    step2 = "active";
+  } else if (status === "Forwarded") {
+    step2 = "forwarded";
+  } else if (status === "Pending Payroll Approval") {
+    step2 = "completed";
+    step3 = "active";
+  } else if (status === "Approved") {
+    step2 = "completed";
+    step3 = "completed";
+    step4 = "approved";
+  } else if (status === "Rejected") {
+    step2 = "rejected";
+    step4 = "rejected";
+  } else if (status === "Cancelled") {
+    step2 = "cancelled";
+    step4 = "cancelled";
+  }
+
+  const getStepIcon = (state: string, num: number) => {
+    if (state === "completed" || state === "approved") {
+      return <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-white font-bold text-sm">✓</div>;
+    }
+    if (state === "active" || state === "forwarded") {
+      return <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-white font-bold text-sm animate-pulse">{num}</div>;
+    }
+    if (state === "rejected" || state === "cancelled") {
+      return <div className="flex h-8 w-8 items-center justify-center rounded-full bg-rose-600 text-white font-bold text-sm">✗</div>;
+    }
+    return <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 font-bold text-sm">{num}</div>;
+  };
+
+  const getStepLabelClass = (state: string) => {
+    if (state === "completed" || state === "approved") return "text-emerald-600 dark:text-emerald-450 font-semibold";
+    if (state === "active" || state === "forwarded") return "text-indigo-600 dark:text-indigo-400 font-bold";
+    if (state === "rejected" || state === "cancelled") return "text-rose-600 dark:text-rose-450 font-semibold";
+    return "text-muted-foreground font-medium";
+  };
+
+  return (
+    <Card className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
+      <CardContent className="pt-6 pb-6">
+        <div className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-6 flex items-center justify-between tracking-wider">
+          <span>LEAVE WORKFLOW TIMELINE</span>
+          <span className="text-xs px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono font-medium">{leave.requestNo}</span>
+        </div>
+        <div className="relative flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-4">
+          
+          <div className="absolute top-4 left-4 right-4 hidden md:block h-0.5 bg-slate-200 dark:bg-slate-850 -z-10" />
+
+          <div className="flex md:flex-col items-center gap-3 md:gap-2 text-left md:text-center flex-1">
+            {getStepIcon(step1, 1)}
+            <div className="md:mt-1">
+              <p className={getStepLabelClass(step1)}>1. Submitted</p>
+              <p className="text-xs text-muted-foreground mt-0.5">By requester</p>
+            </div>
+          </div>
+
+          <div className="flex md:flex-col items-center gap-3 md:gap-2 text-left md:text-center flex-1">
+            {getStepIcon(step2, 2)}
+            <div className="md:mt-1">
+              <p className={getStepLabelClass(step2)}>2. Supervisor Review</p>
+              {status === "Pending" && (
+                <p className="text-xs text-muted-foreground mt-0.5">Pending: {approversNames}</p>
+              )}
+              {status === "Forwarded" && (
+                <p className="text-xs text-indigo-500 font-medium mt-0.5">Forwarded to {leave.forwardedToStaffName || "Executive"}</p>
+              )}
+              {(status === "Pending Payroll Approval" || status === "Approved") && (
+                <p className="text-xs text-emerald-500 font-medium mt-0.5">Supervisor Cleared</p>
+              )}
+              {status === "Rejected" && (
+                <p className="text-xs text-rose-500 font-medium mt-0.5">Supervisor Rejected</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex md:flex-col items-center gap-3 md:gap-2 text-left md:text-center flex-1">
+            {getStepIcon(step3, 3)}
+            <div className="md:mt-1">
+              <p className={getStepLabelClass(step3)}>3. Payroll Approval</p>
+              {status === "Pending Payroll Approval" && (
+                <p className="text-xs text-indigo-500 font-medium mt-0.5">Pending HR Clearance</p>
+              )}
+              {status === "Approved" && (
+                <p className="text-xs text-emerald-500 font-medium mt-0.5">Audit Cleared</p>
+              )}
+              {["Pending", "Forwarded"].includes(status) && (
+                <p className="text-xs text-muted-foreground mt-0.5">Awaiting supervisor</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex md:flex-col items-center gap-3 md:gap-2 text-left md:text-center flex-1">
+            {getStepIcon(step4, 4)}
+            <div className="md:mt-1">
+              <p className={getStepLabelClass(step4)}>4. Final Status</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {status === "Approved" ? "Fully Approved" : status === "Rejected" ? "Rejected" : "In Progress"}
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export const Route = createFileRoute("/_authenticated/hr/review-leave")({
   validateSearch: z.object({ leaveId: z.number() }),
   component: ReviewLeave
@@ -37,12 +167,12 @@ function ReviewLeave() {
   );
 
   const forwardableStaff = React.useMemo(() => {
-    if (!staffQuery.data) return [];
+    if (!staffQuery.data || !leave) return [];
     return staffQuery.data.filter(s => {
-      const role = (s.role || "").toLowerCase();
-      return role.includes("supervisor") || role.includes("hr") || role.includes("executive") || role.includes("manager");
+      const isEligibleRole = s.isExecutive || s.role === "admin" || s.role === "hr";
+      return isEligibleRole && s.staffId !== leave.staffId;
     });
-  }, [staffQuery.data]);
+  }, [staffQuery.data, leave]);
 
   const balanceQuery = useRpcQuery<{ leaveType: string; maxDays: number; takenDays: number; remainingDays: number }[]>(
     ["staff-leave-balance", leave?.staffId],
@@ -78,32 +208,35 @@ function ReviewLeave() {
     );
   }
 
-  const isAdmin = session.data?.user?.role === "admin";
+  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
 
-  // Is the leave requester the dept head or sub-head of their department?
-  const empIsHead = leave.headStaffId != null && leave.staffId === leave.headStaffId;
-  const empIsSubhead = leave.subheadStaffId != null && leave.staffId === leave.subheadStaffId;
+  const isApprover = (() => {
+    if (!currentStaff || !leave.approverIds) return false;
+    try {
+      const apps = JSON.parse(leave.approverIds);
+      return Array.isArray(apps) && apps.includes(currentStaff.staffId);
+    } catch (e) {
+      return false;
+    }
+  })();
 
-  // Current user's role in the employee's department
-  const isHead = currentStaff != null && leave.headStaffId != null && currentStaff.staffId === leave.headStaffId;
-  const isSubhead = currentStaff != null && leave.subheadStaffId != null && currentStaff.staffId === leave.subheadStaffId;
-  const isDirectSupervisor = currentStaff != null && (currentStaff.staffId === leave.supervisorLevel1Id || currentStaff.staffId === leave.supervisorLevel2Id);
+  const isForwardedTarget = currentStaff != null && leave.forwardedToStaffId != null && currentStaff.staffId === leave.forwardedToStaffId;
 
   // Decision panel visibility — mirrors the backend canAct logic
   const canAction = (() => {
-    if (!["Pending", "Forwarded"].includes(leave.status)) return false;
-    if (isAdmin) return true;
-    if (empIsHead) return isDirectSupervisor;           // Admin or direct supervisor can act on dept head's leave
-    if (empIsSubhead) return isHead || isDirectSupervisor; // Sub-head's leave → dept head or supervisor
-    // Regular staff: head OR sub-head OR supervisor on Pending
-    if (leave.status === "Pending") return isHead || isSubhead || isDirectSupervisor;
-    if (leave.status === "Forwarded") return isHead || isDirectSupervisor;
+    if (["Approved", "Rejected", "Cancelled"].includes(leave.status)) return false;
+    if (isAdminOrHr) return true;
+    if (leave.status === "Pending Payroll Approval") return false;
+
+    if (leave.status === "Pending") return isApprover;
+    if (leave.status === "Forwarded") return isForwardedTarget;
     return false;
   })();
 
-  // Forward button: Any supervisor who can act on the leave can forward it to another supervisor
-  const canForward = canAction;
+  const canCancel = currentStaff?.staffId === leave.staffId && !["Approved", "Rejected", "Cancelled"].includes(leave.status);
 
+  // Forward button: Only allowed on Pending leaves by an authorized supervisor
+  const canForward = canAction && leave.status === "Pending";
 
   const formatDateForInput = (dateStr: string) => {
     try {
@@ -113,8 +246,8 @@ function ReviewLeave() {
     }
   };
 
-  const handleAction = async (action: "approve" | "reject" | "forward") => {
-    if (!reviewerNote.trim()) {
+  const handleAction = async (action: "approve" | "reject" | "forward" | "cancel") => {
+    if (action !== "cancel" && !reviewerNote.trim()) {
       alert("Please provide a reviewer note / reason for your decision.");
       return;
     }
@@ -131,6 +264,11 @@ function ReviewLeave() {
         res = await (client.hr.leaves[":id"].reject as any).$post({
           param: { id: String(leaveId) },
           json: { reviewerNote }
+        });
+      } else if (action === "cancel") {
+        if (!confirm("Are you sure you want to cancel this leave request?")) return;
+        res = await (client.hr.leaves as any)[":id"].cancel.$post({
+          param: { id: String(leaveId) }
         });
       } else {
         if (!forwardToStaffId) {
@@ -163,6 +301,8 @@ function ReviewLeave() {
     switch (status) {
       case "Approved":
         return "bg-emerald-900 text-white border-emerald-200 dark:bg-emerald-900 dark:text-emerald-200 dark:border-lime-900";
+      case "Pending Payroll Approval":
+        return "bg-indigo-900 text-white border-indigo-200 dark:bg-indigo-950 dark:text-indigo-200 dark:border-indigo-900";
       case "Rejected":
         return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-450 dark:border-rose-900/30";
       case "Forwarded":
@@ -178,6 +318,7 @@ function ReviewLeave() {
       description={`Review request details for ${leave.staffName} (${leave.requestNo})`}
     >
       <div className="max-w-3xl mx-auto flex flex-col gap-4">
+        <LeaveWorkflowTimeline leave={leave} staffList={staffQuery.data || []} />
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Leave Details</CardTitle>
@@ -351,6 +492,33 @@ function ReviewLeave() {
               <ArrowLeft size={16} className="mr-1.5" /> Back to Leaves
             </Button>
           </div>
+        )}
+
+        {/* Floating Cancel Button for Requester outside Decision Panel */}
+        {canCancel && !canAction && (
+          <div className="flex justify-end mt-2">
+            <Button
+              type="button"
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+              onClick={() => handleAction("cancel")}
+              disabled={submitting}
+            >
+              <X size={16} className="mr-1.5" /> Cancel Leave
+            </Button>
+          </div>
+        )}
+        
+        {canCancel && canAction && (
+           <div className="flex justify-end mt-4">
+             <Button
+                type="button"
+                className="bg-rose-600 hover:bg-rose-700 text-white"
+                onClick={() => handleAction("cancel")}
+                disabled={submitting}
+              >
+                <X size={16} className="mr-1.5" /> Cancel My Leave Request
+              </Button>
+           </div>
         )}
       </div>
     </ModuleLayout>

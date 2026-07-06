@@ -75,7 +75,7 @@ function Roster() {
   const [staffSearch, setStaffSearch] = React.useState("");
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
-  const deptsQuery = useRpcQuery<DepartmentRow[]>(["departments"], () => client.departments.$get());
+  const deptsQuery = useRpcQuery<DepartmentRow[]>(["masters-departments"], () => client.masters.departments.$get());
   const shiftsQuery = useRpcQuery<ShiftRow[]>(["masters-shifts"], () => client.masters.shifts.$get());
   const rostersQuery = useRpcQuery<RosterRow[]>(
     ["rosters", departmentId],
@@ -104,20 +104,36 @@ function Roster() {
     }
   };
 
-  const departments = deptsQuery.data ?? [];
+  const allDepartments = deptsQuery.data ?? [];
+  const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user.email);
+  const isAdmin = session.data?.user.role === "admin";
+  const isHrOrAdmin = isAdmin || session.data?.user.role === "hr";
+
+  const departments = isHrOrAdmin
+    ? allDepartments
+    : allDepartments.filter((d) => currentStaff?.departmentId && d.id === currentStaff.departmentId);
+
+  const selectedDept = departments.find((d) => d.id === departmentId);
+  const isDeptHead = currentStaff && selectedDept && selectedDept.headStaffId === currentStaff.staffId;
+  const isSubHead = currentStaff && selectedDept && selectedDept.subheadStaffId === currentStaff.staffId;
+  const canAssign = isAdmin || isDeptHead || isSubHead;
+
   const rosters = rostersQuery.data ?? [];
   const shifts = shiftsQuery.data ?? [];
   const todayStr = today();
   const week = rollingWeek(weekOffset * 7 - 1, 8);
 
-  // Auto-select first department when data arrives
+  // Auto-select department when data arrives
   React.useEffect(() => {
-    if (!departmentId && departments.length > 0) {
-      navigate({ to: "/hr/roster", search: { departmentId: departments[0].id } });
+    if (departments.length > 0) {
+      if (!departmentId) {
+        navigate({ to: "/hr/roster", search: { departmentId: departments[0].id } });
+      } else if (!isHrOrAdmin && departments.every(d => d.id !== departmentId)) {
+        // If a non-admin user tries to access a department they aren't allowed to, redirect them
+        navigate({ to: "/hr/roster", search: { departmentId: departments[0].id }, replace: true });
+      }
     }
-  }, [departments, departmentId, navigate]);
-
-  const selectedDept = departments.find((d) => d.id === departmentId);
+  }, [departments, departmentId, navigate, isHrOrAdmin]);
 
   // ── Form ──────────────────────────────────────────────────────────────────
 
@@ -229,15 +245,17 @@ function Roster() {
       action={
         departmentId ? (
           <div className="flex gap-2 items-center flex-wrap">
-            <Button onClick={() => {
-              if (showForm) {
-                setEditingId(null);
-                form.reset({ departmentId: departmentId || 0, shiftId: 0, startDate: todayStr, endDate: isoDate(7), notes: "" });
-              }
-              setShowForm((v) => !v);
-            }}>
-              {showForm ? <><span className="text-lg leading-none">×</span> Cancel</> : <><Plus size={16} /> Add Assignment</>}
-            </Button>
+            {canAssign && (
+              <Button onClick={() => {
+                if (showForm) {
+                  setEditingId(null);
+                  form.reset({ departmentId: departmentId || 0, shiftId: 0, startDate: todayStr, endDate: isoDate(7), notes: "" });
+                }
+                setShowForm((v) => !v);
+              }}>
+                {showForm ? <><span className="text-lg leading-none">×</span> Cancel</> : <><Plus size={16} /> Add Assignment</>}
+              </Button>
+            )}
 
             <div className="flex gap-1.5 items-center ml-2">
               <MonthPicker
@@ -448,7 +466,7 @@ function Roster() {
                   const name = shiftData.name;
                   const cfg = getShiftConfig(name);
                   const Icon = cfg.Icon;
-                  const isDraggable = viewMode === "monthly";
+                  const isDraggable = viewMode === "monthly" && canAssign;
 
                   return (
                     <span
@@ -502,24 +520,29 @@ function Roster() {
                           filteredDeptStaff.map((member) => (
                             <div
                               key={member.staffId}
-                              draggable
+                              draggable={canAssign}
                               onDragStart={(e) => {
+                                if (!canAssign) return;
                                 e.dataTransfer.setData("staffId", member.staffId.toString());
                                 e.dataTransfer.effectAllowed = "move";
                               }}
-                              className="flex items-center gap-2 p-2 rounded-xl border border-border bg-card hover:bg-muted hover:border-border transition-all duration-150 cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm min-w-[190px] shrink-0 group"
+                              className={`flex items-center gap-2 p-2 rounded-xl border border-border bg-card transition-all duration-150 min-w-[190px] shrink-0 group ${
+                                canAssign ? "hover:bg-muted hover:border-border cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm" : "opacity-75"
+                              }`}
                             >
                               {/* Visual indicator for drag handle */}
-                              <div className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors shrink-0">
-                                <svg width="8" height="12" viewBox="0 0 8 12" fill="none" className="stroke-current">
-                                  <circle cx="2" cy="2" r="1" fill="currentColor" />
-                                  <circle cx="2" cy="6" r="1" fill="currentColor" />
-                                  <circle cx="2" cy="10" r="1" fill="currentColor" />
-                                  <circle cx="6" cy="2" r="1" fill="currentColor" />
-                                  <circle cx="6" cy="6" r="1" fill="currentColor" />
-                                  <circle cx="6" cy="10" r="1" fill="currentColor" />
-                                </svg>
-                              </div>
+                              {canAssign && (
+                                <div className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors shrink-0">
+                                  <svg width="8" height="12" viewBox="0 0 8 12" fill="none" className="stroke-current">
+                                    <circle cx="2" cy="2" r="1" fill="currentColor" />
+                                    <circle cx="2" cy="6" r="1" fill="currentColor" />
+                                    <circle cx="2" cy="10" r="1" fill="currentColor" />
+                                    <circle cx="6" cy="2" r="1" fill="currentColor" />
+                                    <circle cx="6" cy="6" r="1" fill="currentColor" />
+                                    <circle cx="6" cy="10" r="1" fill="currentColor" />
+                                  </svg>
+                                </div>
+                              )}
 
                               {/* Initial circle */}
                               <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-foreground shrink-0">
@@ -549,6 +572,7 @@ function Roster() {
                         shifts={shifts}
                         onDropStaff={handleDropStaff}
                         onDeleteRoster={deleteRoster}
+                        canAssign={canAssign}
                       />
                     ))}
                   </div>
@@ -563,6 +587,7 @@ function Roster() {
                     allStaff={deptStaff}
                     onDropShift={handleDropStaff}
                     onDeleteRoster={deleteRoster}
+                    canAssign={canAssign}
                   />
                 </div>
               )}

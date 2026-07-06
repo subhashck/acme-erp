@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CalendarClock, AlertCircle } from "lucide-react";
+import { CalendarClock, AlertCircle, Calendar as CalendarIcon, X, Plus } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
@@ -14,6 +14,7 @@ import type { StaffRow, LeaveTypeRow, LeaveRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { Select } from "../../../ui/select";
+import { Autocomplete } from "../../../ui/autocomplete";
 import { formatDate } from "../../../utils/format";
 import { cn } from "../../../utils/cn";
 import { Badge } from "../../../ui/badge";
@@ -21,7 +22,6 @@ import { Label } from "../../../ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Calendar } from "../../../components/ui/calendar";
 import { format } from "date-fns";
-import { Calendar as CalendarIcon } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/hr/leaves")({
   component: LeaveManagement
@@ -31,11 +31,26 @@ const leaveSchema = z.object({
   staffId: z.coerce.number().int().positive("Select an employee"),
   leaveType: z.string().min(2, "Select leave type"),
   startDate: z.string().min(1, "Select start date"),
-  endDate: z.string().min(1, "Select end date"),
+  endDate: z.string().optional(),
+  isHalfDay: z.boolean().default(false),
   reason: z.string().min(3, "Reason must be at least 3 characters")
-}).refine((value) => new Date(value.endDate) >= new Date(value.startDate), {
+}).refine((value) => {
+  if (!value.isHalfDay && !value.endDate) return false;
+  return true;
+}, {
   path: ["endDate"],
-  message: "End date must be on or after start date"
+  message: "Select end date"
+}).refine((value) => {
+  if (!value.startDate) return true;
+  if (value.isHalfDay) return true;
+  if (!value.endDate) return true;
+  
+  const start = new Date(value.startDate);
+  const end = new Date(value.endDate);
+  return end >= start;
+}, {
+  path: ["endDate"],
+  message: "End date must be on or after start date."
 });
 
 function LeaveManagement() {
@@ -78,6 +93,7 @@ function LeaveManagement() {
   }));
   
   const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user?.email);
+  const canSelectStaff = isAdmin || session.data?.user?.role === "hr" || currentStaff?.isExecutive === true;
   // const pendingLeaves = leaves.filter((leave) => leave.status === "Pending");
 
   const leaveForm = useForm<z.input<typeof leaveSchema>, unknown, z.output<typeof leaveSchema>>({
@@ -86,10 +102,10 @@ function LeaveManagement() {
   });
 
   useEffect(() => {
-    if (!isAdmin && currentStaff && !leaveForm.getValues("staffId")) {
+    if (!canSelectStaff && currentStaff && !leaveForm.getValues("staffId")) {
       leaveForm.setValue("staffId", currentStaff.staffId);
     }
-  }, [isAdmin, currentStaff, leaveForm]);
+  }, [canSelectStaff, currentStaff, leaveForm]);
 
   const selectedStaffId = leaveForm.watch("staffId");
   const selectedLeaveType = leaveForm.watch("leaveType");
@@ -107,18 +123,24 @@ function LeaveManagement() {
   const startDateVal = leaveForm.watch("startDate");
   const endDateVal = leaveForm.watch("endDate");
 
+  const isHalfDayVal = leaveForm.watch("isHalfDay");
+
   const requestedDays = useMemo(() => {
-    if (!startDateVal || !endDateVal) return 0;
+    if (!startDateVal) return 0;
+    if (isHalfDayVal) return 0.5;
+    if (!endDateVal) return 0;
     const start = new Date(startDateVal);
     const end = new Date(endDateVal);
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
-  }, [startDateVal, endDateVal]);
+  }, [startDateVal, endDateVal, isHalfDayVal]);
 
   const submitLeave = leaveForm.handleSubmit(async (values) => {
+    // Force end date to be equal to start date for half day leaves
+    const finalEndDate = values.isHalfDay ? values.startDate : values.endDate!;
     const start = new Date(values.startDate);
-    const end = new Date(values.endDate);
-    const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+    const end = new Date(finalEndDate);
+    const days = values.isHalfDay ? 0.5 : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
 
     const balance = (balanceQuery.data ?? []).find(b => b.leaveType === values.leaveType);
     if (balance && days > balance.remainingDays) {
@@ -132,7 +154,7 @@ function LeaveManagement() {
         json: {
           ...values,
           startDate: new Date(values.startDate).toISOString(),
-          endDate: new Date(values.endDate).toISOString()
+          endDate: new Date(finalEndDate).toISOString()
         }
       });
       if (!res.ok) {
@@ -161,186 +183,14 @@ function LeaveManagement() {
       title="Leave Management"
       description="Request time off and manage employee leave approvals."
       action={
-        !showForm ? (
-          <Button onClick={() => setShowForm(true)}>
-            <CalendarClock size={16} className="mr-2" /> Request Leave
-          </Button>
-        ) : (
-          <Button variant="outline" onClick={() => setShowForm(false)}>
-            Hide Form
-          </Button>
-        )
+        <Button onClick={() => setShowForm(true)}>
+          <CalendarClock size={16} className="mr-2" /> Request Leave
+        </Button>
       }
     >
-      <div className="grid gap-6 xl:grid-cols-3">
-        {/* Left: Request Form */}
-        {showForm && (
-          <div className="xl:col-span-1 space-y-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <CalendarClock className="text-primary" size={18} />
-                  New Leave Request
-                </CardTitle>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setShowForm(false)}>
-                  ✕
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={submitLeave} className="grid gap-4">
-                  {isAdmin ? (
-                    <Select 
-                      label="Employee" 
-                      {...leaveForm.register("staffId")} 
-                      options={staffList} 
-                      error={leaveForm.formState.errors.staffId?.message}
-                    />
-                  ) : (
-                    <>
-                      <input type="hidden" {...leaveForm.register("staffId")} />
-                      <Field label="Employee" value={currentStaff ? `${currentStaff.employeeCode} - ${currentStaff.name}` : "Loading..."} disabled />
-                    </>
-                  )}
-
-                  {!!selectedStaffId && selectedTypeBalance && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1">
-                      <p className="font-semibold text-slate-700 flex justify-between">
-                        <span>{selectedLeaveType} Balance:</span>
-                        <span className={cn(
-                          selectedTypeBalance.remainingDays > 0 ? "text-emerald-600 font-bold" : "text-destructive font-bold"
-                        )}>
-                          {selectedTypeBalance.remainingDays} days remaining
-                        </span>
-                      </p>
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Allocated: {selectedTypeBalance.maxDays} days</span>
-                        <span>Taken: {selectedTypeBalance.takenDays} days</span>
-                      </div>
-                    </div>
-                  )}
-
-                  <Select 
-                    label="Type" 
-                    {...leaveForm.register("leaveType")} 
-                    options={activeLeaveTypes} 
-                    error={leaveForm.formState.errors.leaveType?.message}
-                  />
-                  <div className="flex flex-col gap-1">
-                    <Label>Start Date</Label>
-                    <Controller
-                      control={leaveForm.control}
-                      name="startDate"
-                      render={({ field }) => (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal border border-input h-10 px-3 py-2 bg-background hover:bg-muted/30 text-sm rounded-lg cursor-pointer",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
-                              // initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    />
-                    {leaveForm.formState.errors.startDate?.message && (
-                      <p className="text-xs text-red-500 mt-1">{leaveForm.formState.errors.startDate.message}</p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <Label>End Date</Label>
-                    <Controller
-                      control={leaveForm.control}
-                      name="endDate"
-                      render={({ field }) => (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal border border-input h-10 px-3 py-2 bg-background hover:bg-muted/30 text-sm rounded-lg cursor-pointer",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
-                              // initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                    />
-                    {leaveForm.formState.errors.endDate?.message && (
-                      <p className="text-xs text-red-500 mt-1">{leaveForm.formState.errors.endDate.message}</p>
-                    )}
-                  </div>
-
-                  {requestedDays > 0 && selectedTypeBalance && (
-                    <div className={cn(
-                      "p-3 rounded-lg border text-xs flex gap-2 items-start",
-                      requestedDays > selectedTypeBalance.remainingDays
-                        ? "bg-red-50 border-red-200 text-red-800"
-                        : "bg-emerald-50 border-emerald-200 text-emerald-800"
-                    )}>
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold">
-                          Requested duration: {requestedDays} {requestedDays === 1 ? "day" : "days"}
-                        </p>
-                        {requestedDays > selectedTypeBalance.remainingDays ? (
-                          <p className="mt-0.5">
-                            Warning: Exceeds remaining balance by {requestedDays - selectedTypeBalance.remainingDays} {requestedDays - selectedTypeBalance.remainingDays === 1 ? "day" : "days"}.
-                          </p>
-                        ) : (
-                          <p className="mt-0.5">
-                            Within remaining balance. New remaining: {selectedTypeBalance.remainingDays - requestedDays} days.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <Field 
-                    label="Reason" 
-                    {...leaveForm.register("reason")} 
-                    error={leaveForm.formState.errors.reason?.message}
-                  />
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" className="flex-1" onClick={() => setShowForm(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" className="flex-1">
-                      Submit
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Right: Lists */}
-        <div className={showForm ? "xl:col-span-2 space-y-6" : "xl:col-span-3 space-y-6"}>
+      <div className="space-y-6">
+        {/* Lists */}
+        <div className="space-y-6">
         { /* {pendingLeaves.length > 0 && (
             <Card className="border-amber-200 bg-amber-50/10">
               <CardHeader>
@@ -377,6 +227,7 @@ function LeaveManagement() {
                   <option value="All">All Statuses</option>
                   <option value="Pending">Pending</option>
                   <option value="Forwarded">Forwarded</option>
+                  <option value="Pending Payroll Approval">Pending Payroll Approval</option>
                   <option value="Approved">Approved</option>
                   <option value="Rejected">Rejected</option>
                 </select>
@@ -421,7 +272,18 @@ function LeaveManagement() {
                     ["requestNo", "Request"],
                     ["staffName", "Employee"],
                     ["departmentName", "Department"],
-                    ["leaveType", "Type"],
+                    {
+                      id: "leaveType",
+                      label: "Type",
+                      render: (row) => (
+                        <div className="flex items-center gap-2">
+                          <span>{row.leaveType}</span>
+                          {(row as any).isHalfDay && (
+                            <Badge variant="default" className="text-[10px] py-0 px-1 border-primary/30 text-primary/80">Half Day</Badge>
+                          )}
+                        </div>
+                      )
+                    },
                     ["dateRange", "Dates"],
                     {
                       id: "status",
@@ -431,6 +293,7 @@ function LeaveManagement() {
                           className={cn(
                             row.status === "Approved" && "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/30",
                             row.status === "Pending" && "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/30",
+                            row.status === "Pending Payroll Approval" && "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:border-indigo-900/30",
                             row.status === "Rejected" && "bg-destructive/10 text-destructive border-destructive/20 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/30",
                             row.status === "Forwarded" && "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/30"
                           )}
@@ -470,6 +333,7 @@ function LeaveManagement() {
                           className={cn(
                             leave.status === "Approved" && "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/30",
                             leave.status === "Pending" && "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/30",
+                            leave.status === "Pending Payroll Approval" && "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:border-indigo-900/30",
                             leave.status === "Rejected" && "bg-destructive/10 text-destructive border-destructive/20 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/30",
                             leave.status === "Forwarded" && "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-900/30"
                           )}
@@ -544,6 +408,202 @@ function LeaveManagement() {
           </Card>
         </div>
       </div>
+
+      {/* Leave Request Left-side Panel */}
+      {showForm && (
+        <>
+          <div 
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+            onClick={() => setShowForm(false)}
+          />
+          <div 
+            className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"
+          >
+            <div className="p-6 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarClock className="text-primary" size={18} />
+                <h3 className="font-semibold text-lg text-foreground">New Leave Request</h3>
+              </div>
+              <button 
+                onClick={() => setShowForm(false)}
+                className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted transition-colors cursor-pointer animate-in duration-100"
+                type="button"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <form onSubmit={submitLeave} className="relative">
+                {leaveForm.formState.isSubmitting && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-lg">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+                      <p className="text-sm font-medium">Submitting...</p>
+                    </div>
+                  </div>
+                )}
+                <fieldset disabled={leaveForm.formState.isSubmitting} className="space-y-4">
+                  {canSelectStaff ? (
+                    <Autocomplete 
+                      label="Employee" 
+                      value={leaveForm.watch("staffId")?.toString() ?? ""}
+                      onChange={(val) => leaveForm.setValue("staffId", val ? Number(val) : 0, { shouldValidate: true })}
+                      options={staffList} 
+                      placeholder="Search employee by name or code..."
+                      error={leaveForm.formState.errors.staffId?.message}
+                    />
+                  ) : (
+                    <>
+                      <input type="hidden" {...leaveForm.register("staffId")} />
+                      <Field label="Employee" value={currentStaff ? `${currentStaff.employeeCode} - ${currentStaff.name}` : "Loading..."} disabled />
+                    </>
+                  )}
+
+                  {!!selectedStaffId && selectedTypeBalance && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs space-y-1">
+                      <p className="font-semibold text-slate-700 flex justify-between">
+                        <span>{selectedLeaveType} Balance:</span>
+                        <span className={cn(
+                          selectedTypeBalance.remainingDays > 0 ? "text-emerald-600 font-bold" : "text-destructive font-bold"
+                        )}>
+                          {selectedTypeBalance.remainingDays} days remaining
+                        </span>
+                      </p>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Allocated: {selectedTypeBalance.maxDays} days</span>
+                        <span>Taken: {selectedTypeBalance.takenDays} days</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <Select 
+                    label="Type" 
+                    {...leaveForm.register("leaveType")} 
+                    options={activeLeaveTypes} 
+                    error={leaveForm.formState.errors.leaveType?.message}
+                  />
+
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" id="isHalfDay" {...leaveForm.register("isHalfDay")} />
+                    <label htmlFor="isHalfDay" className="text-sm font-medium">Half Day Leave</label>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label>Start Date</Label>
+                    <Controller
+                      control={leaveForm.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal border border-input h-10 px-3 py-2 bg-background hover:bg-muted/30 text-sm rounded-lg cursor-pointer",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {leaveForm.formState.errors.startDate?.message && (
+                      <p className="text-xs text-red-500 mt-1">{leaveForm.formState.errors.startDate.message}</p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <Label>End Date</Label>
+                    <Controller
+                      control={leaveForm.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              disabled={isHalfDayVal}
+                              className={cn(
+                                "w-full justify-start text-left font-normal border border-input h-10 px-3 py-2 bg-background hover:bg-muted/30 text-sm rounded-lg cursor-pointer",
+                                !field.value && "text-muted-foreground",
+                                isHalfDayVal && "opacity-50 cursor-not-allowed"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {isHalfDayVal && startDateVal
+                                ? format(new Date(startDateVal), "PPP")
+                                : field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {leaveForm.formState.errors.endDate?.message && (
+                      <p className="text-xs text-red-500 mt-1">{leaveForm.formState.errors.endDate.message}</p>
+                    )}
+                  </div>
+
+                  {requestedDays > 0 && selectedTypeBalance && (
+                    <div className={cn(
+                      "p-3 rounded-lg border text-xs flex gap-2 items-start",
+                      requestedDays > selectedTypeBalance.remainingDays
+                        ? "bg-red-50 border-red-200 text-red-800"
+                        : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    )}>
+                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-semibold">
+                          Requested duration: {requestedDays} {requestedDays === 1 ? "day" : "days"}
+                        </p>
+                        {requestedDays > selectedTypeBalance.remainingDays ? (
+                          <p className="mt-0.5">
+                            Warning: Exceeds remaining balance by {requestedDays - selectedTypeBalance.remainingDays} {requestedDays - selectedTypeBalance.remainingDays === 1 ? "day" : "days"}.
+                          </p>
+                        ) : (
+                          <p className="mt-0.5">
+                            Within remaining balance. New remaining: {selectedTypeBalance.remainingDays - requestedDays} days.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <Field 
+                    label="Reason" 
+                    {...leaveForm.register("reason")} 
+                    error={leaveForm.formState.errors.reason?.message}
+                  />
+                  <div className="flex gap-2 pt-2">
+                    <Button type="button" variant="outline" className="flex-1" onClick={() => setShowForm(false)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" className="flex-1">
+                      Submit Request
+                    </Button>
+                  </div>
+                </fieldset>
+              </form>
+            </div>
+          </div>
+        </>
+      )}
     </ModuleLayout>
   );
 }

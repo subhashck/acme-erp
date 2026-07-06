@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/
 import { Calendar } from "../../../components/ui/calendar";
 import { Label } from "../../../ui/label";
 import { format } from "date-fns";
+import { authClient } from "../../../services/auth";
 
 export const Route = createFileRoute("/_authenticated/hr/add-staff")({
   validateSearch: z.object({ staffId: z.number().optional() }),
@@ -54,6 +55,7 @@ const staffSchema = z.object({
   ifscCode: z.string().optional(),
   dateOfJoining: z.string().optional(),
   lastWorkingDate: z.string().optional(),
+  isExecutive: z.boolean().optional(),
   supervisor1Id: z.string().optional(),
   supervisor2Id: z.string().optional()
 });
@@ -77,6 +79,7 @@ const defaultValues: Partial<StaffFormInput> = {
   ifscCode: "",
   dateOfJoining: "",
   lastWorkingDate: "",
+  isExecutive: false,
   supervisor1Id: "",
   supervisor2Id: ""
 };
@@ -113,6 +116,8 @@ function AddStaff() {
     defaultValues
   });
 
+  const isExecutiveVal = form.watch("isExecutive");
+
   const { fields: edFields, append: appendEd, remove: removeEd } = useFieldArray({
     control: form.control,
     name: "educationHistory"
@@ -124,7 +129,10 @@ function AddStaff() {
   });
 
 
-  const isLoading = rolesQuery.isLoading || deptsQuery.isLoading || banksQuery.isLoading || (isEditing && (staffQuery.isLoading || hrProfileQuery.isLoading));
+  const session = authClient.useSession();
+  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+
+  const isLoading = rolesQuery.isLoading || deptsQuery.isLoading || banksQuery.isLoading || (isEditing && (staffQuery.isLoading || hrProfileQuery.isLoading)) || session.isPending;
 
   const hasInitialized = React.useRef(false);
 
@@ -151,6 +159,7 @@ function AddStaff() {
         ifscCode: (existingStaff as any).ifscCode ?? "",
         dateOfJoining: profile?.dateOfJoining ?? "",
         lastWorkingDate: profile?.lastWorkingDate ?? "",
+        isExecutive: existingStaff.isExecutive ?? false,
         supervisor1Id: supervisorsQuery.data?.explicitSupervisors?.supervisor1?.staffId?.toString() ?? "",
         supervisor2Id: supervisorsQuery.data?.explicitSupervisors?.supervisor2?.staffId?.toString() ?? ""
       });
@@ -173,6 +182,7 @@ function AddStaff() {
         bankName: values.bankName,
         accountNumber: values.accountNumber,
         ifscCode: values.ifscCode,
+        isExecutive: !!values.isExecutive,
         hrProfile: {
           fatherName: values.fatherName,
           motherName: values.motherName,
@@ -203,8 +213,8 @@ function AddStaff() {
           param: { id: String(newStaffId) },
           query: { version: newStaffVersion ? String(newStaffVersion) : undefined },
           json: {
-            supervisor1Id: values.supervisor1Id ? Number(values.supervisor1Id) : null,
-            supervisor2Id: values.supervisor2Id ? Number(values.supervisor2Id) : null
+            supervisor1Id: values.isExecutive && values.supervisor1Id ? Number(values.supervisor1Id) : null,
+            supervisor2Id: values.isExecutive && values.supervisor2Id ? Number(values.supervisor2Id) : null
           }
         });
       }
@@ -217,6 +227,23 @@ function AddStaff() {
       alert("Failed to save staff details: " + (err instanceof Error ? err.message : String(err)));
     }
   });
+
+  if (!isLoading && !isAdminOrHr) {
+    return (
+      <ModuleLayout title="Unauthorized" description="Access Denied">
+        <Card className="mx-auto mt-8 max-w-2xl border-destructive/20 bg-destructive/5">
+          <CardContent className="pt-6 text-center">
+            <p className="mb-4 text-muted-foreground text-destructive font-medium">
+              You do not have permission to add or edit staff members. Only HR personnel or administrators can access this page.
+            </p>
+            <Button onClick={() => navigate({ to: "/hr/staff-list" })}>
+              <ArrowLeft size={16} className="mr-2" /> Back to HR Management
+            </Button>
+          </CardContent>
+        </Card>
+      </ModuleLayout>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -251,13 +278,22 @@ function AddStaff() {
       <form
         id="staff-form"
         onSubmit={submit}
-        className="mx-auto max-w-6xl space-y-5"
+        className="mx-auto max-w-6xl relative"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.target as HTMLElement).tagName !== "TEXTAREA") {
             e.preventDefault();
           }
         }}
       >
+        {form.formState.isSubmitting && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-lg">
+            <div className="flex flex-col items-center gap-2">
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+              <p className="text-sm font-medium">{isEditing ? "Saving Changes..." : "Adding Staff..."}</p>
+            </div>
+          </div>
+        )}
+        <fieldset disabled={form.formState.isSubmitting} className="space-y-5">
         <Card>
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -340,18 +376,34 @@ function AddStaff() {
               <Select label="Department" {...form.register("departmentId")} options={deptOptions} error={form.formState.errors.departmentId?.message} />
 
 
-              <Select
-                label="Supervisor 1"
-                {...form.register("supervisor1Id")}
-                options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
-                error={form.formState.errors.supervisor1Id?.message}
-              />
-              <Select
-                label="Supervisor 2"
-                {...form.register("supervisor2Id")}
-                options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
-                error={form.formState.errors.supervisor2Id?.message}
-              />
+              <div className="flex items-center gap-2 md:col-span-2 py-2">
+                <input
+                  type="checkbox"
+                  id="isExecutive"
+                  className="rounded border-input text-primary focus:ring-ring h-4 w-4"
+                  {...form.register("isExecutive")}
+                />
+                <Label htmlFor="isExecutive" className="text-sm font-medium cursor-pointer select-none">
+                  Executive Level Staff (has direct supervisors)
+                </Label>
+              </div>
+
+              {isExecutiveVal && (
+                <>
+                  <Select
+                    label="Supervisor 1"
+                    {...form.register("supervisor1Id")}
+                    options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
+                    error={form.formState.errors.supervisor1Id?.message}
+                  />
+                  <Select
+                    label="Supervisor 2"
+                    {...form.register("supervisor2Id")}
+                    options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
+                    error={form.formState.errors.supervisor2Id?.message}
+                  />
+                </>
+              )}
 
               <Select label="Employment Status" {...form.register("status")} options={["Active", "Terminated", "Long Leave", "Resigned"]} error={form.formState.errors.status?.message} />
 
@@ -454,11 +506,12 @@ function AddStaff() {
           <Button type="button" variant="outline" onClick={() => navigate({ to: "/hr/staff-list" })}>
             Cancel
           </Button>
-          <Button type="submit">
+          <Button type="submit" disabled={form.formState.isSubmitting}>
             {isEditing ? <Save size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />}
             {isEditing ? "Save Changes" : "Add Staff"}
           </Button>
         </div>
+        </fieldset>
       </form>
     </ModuleLayout>
   );

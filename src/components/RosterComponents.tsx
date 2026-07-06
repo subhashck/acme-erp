@@ -39,23 +39,27 @@ interface ShiftSlotProps {
   assignments: RosterRow[];
   onDropStaff: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
+  canAssign?: boolean;
 }
 
-export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoster }: ShiftSlotProps) {
+export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoster, canAssign }: ShiftSlotProps) {
   const [isOver, setIsOver] = React.useState(false);
   const cfg = getShiftConfig(shift.name);
   const Icon = cfg.Icon;
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (!canAssign) return;
     e.preventDefault();
     setIsOver(true);
   };
 
   const handleDragLeave = () => {
+    if (!canAssign) return;
     setIsOver(false);
   };
 
   const handleDrop = (e: React.DragEvent) => {
+    if (!canAssign) return;
     e.preventDefault();
     setIsOver(false);
     const staffIdStr = e.dataTransfer.getData("staffId");
@@ -98,13 +102,15 @@ export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoste
                 <span className={`font-semibold truncate pr-2 ${cfg.textColorClass}`} title={assignment.staffName}>
                   {assignment.staffName}
                 </span>
-                <button
-                  onClick={() => onDeleteRoster(assignment.id)}
-                  className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity p-0.5 rounded-md hover:bg-destructive/15 dark:hover:bg-red-950/30 cursor-pointer border-0 bg-transparent shrink-0"
-                  title="Remove assignment"
-                >
-                  <Trash2 size={12} />
-                </button>
+                {canAssign && (
+                  <button
+                    onClick={() => onDeleteRoster(assignment.id)}
+                    className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity p-0.5 rounded-md hover:bg-destructive/15 dark:hover:bg-red-950/30 cursor-pointer border-0 bg-transparent shrink-0"
+                    title="Remove assignment"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -119,13 +125,15 @@ export function DayColumn({
   rosters,
   shifts,
   onDropStaff,
-  onDeleteRoster
+  onDeleteRoster,
+  canAssign
 }: {
   date: string;
   rosters: RosterRow[];
   shifts: ShiftRow[];
   onDropStaff: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
+  canAssign?: boolean;
 }) {
   const isToday = date === today();
   const isPast = date < today();
@@ -178,6 +186,7 @@ export function DayColumn({
               assignments={assignments}
               onDropStaff={onDropStaff}
               onDeleteRoster={onDeleteRoster}
+              canAssign={canAssign}
             />
           );
         })}
@@ -193,7 +202,8 @@ function MonthlyTableCell({
   shiftCode,
   cfg,
   onDropShift,
-  onDeleteRoster
+  onDeleteRoster,
+  canAssign
 }: {
   dateStr: string;
   staffId: number;
@@ -202,17 +212,23 @@ function MonthlyTableCell({
   cfg?: any;
   onDropShift: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
+  canAssign?: boolean;
 }) {
   const [isOver, setIsOver] = React.useState(false);
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (!canAssign) return;
     e.preventDefault();
     setIsOver(true);
   };
 
-  const handleDragLeave = () => setIsOver(false);
+  const handleDragLeave = () => {
+    if (!canAssign) return;
+    setIsOver(false);
+  };
 
   const handleDrop = (e: React.DragEvent) => {
+    if (!canAssign) return;
     e.preventDefault();
     setIsOver(false);
     const shiftIdStr = e.dataTransfer.getData("shiftId");
@@ -235,13 +251,15 @@ function MonthlyTableCell({
         >
           {shiftCode}
         </div>
-        <button
-          onClick={() => onDeleteRoster(activeAssignment.id)}
-          className="absolute inset-0 flex items-center justify-center w-full h-full opacity-0 group-hover:opacity-100 bg-destructive/80 text-destructive-foreground cursor-pointer transition-opacity"
-          title="Remove assignment"
-        >
-          <Trash2 size={14} />
-        </button>
+        {canAssign && (
+          <button
+            onClick={() => onDeleteRoster(activeAssignment.id)}
+            className="absolute inset-0 flex items-center justify-center w-full h-full opacity-0 group-hover:opacity-100 bg-destructive/80 text-destructive-foreground cursor-pointer transition-opacity"
+            title="Remove assignment"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </td>
     );
   }
@@ -266,7 +284,8 @@ export function MonthlyTableView({
   shifts,
   allStaff,
   onDropShift,
-  onDeleteRoster
+  onDeleteRoster,
+  canAssign
 }: {
   exportMonth: string;
   rosters: RosterRow[];
@@ -274,6 +293,7 @@ export function MonthlyTableView({
   allStaff: StaffRow[];
   onDropShift: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
+  canAssign?: boolean;
 }) {
   const [year, month] = exportMonth.split("-").map(Number);
   if (!year || !month) return <div className="p-8 text-center text-muted-foreground">Invalid month selected</div>;
@@ -324,9 +344,9 @@ export function MonthlyTableView({
         </thead>
         <tbody className="divide-y divide-border">
           {staffList.map((staff) => {
-            const staffRosters = monthRosters.filter((r) => r.staffId === staff.id);
+            const staffRosters = monthRosters.filter((r) => r.staffId === staff.staffId);
             return (
-              <tr key={staff.id} className="hover:bg-muted/30">
+              <tr key={staff.staffId} className="hover:bg-muted/30">
                 <td className="px-3 py-2 font-medium sticky left-0 bg-card z-10 shadow-[1px_0_0_rgba(0,0,0,0.1)] truncate border-r border-border">
                   {staff.name}
                 </td>
@@ -347,12 +367,13 @@ export function MonthlyTableView({
                     <MonthlyTableCell
                       key={dateStr}
                       dateStr={dateStr}
-                      staffId={staff.id}
+                      staffId={staff.staffId}
                       activeAssignment={activeAssignment}
                       shiftCode={shiftCode}
                       cfg={cfg}
                       onDropShift={onDropShift}
                       onDeleteRoster={onDeleteRoster}
+                      canAssign={canAssign}
                     />
                   );
                 })}

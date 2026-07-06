@@ -28,7 +28,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Info,
-  MessageSquare
+  MessageSquare,
+  Trash2
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -38,6 +39,9 @@ import * as React from "react";
 import { cn } from "../utils/cn";
 import { useHospitalSettings } from "../lib/settings";
 import { notificationsStore, notificationsActions } from "../lib/notifications-store";
+import { useRpcQuery } from "../lib/query";
+import { client } from "../services/rpc";
+import { chatStore, chatActions } from "../lib/chat-store";
 
 const getBreadcrumbs = (pathname: string) => {
   const items = [{ label: "Dashboard", to: "/" }];
@@ -140,17 +144,33 @@ export function Shell() {
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   
+  const staffQuery = useRpcQuery<any[]>(["staff"], () => client.hr.staff.$get());
+  const currentStaff = staffQuery.data?.find(
+    (s: any) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
+  );
+  
+  const displayName = currentStaff?.name || session.data?.user?.name;
+  
   // Notification system state and hooks
   const { notifications } = useStore(notificationsStore);
   const unreadCount = notifications.filter((n) => !n.read).length;
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
 
+  // Chat system global state and unread count
+  const chatState = useStore(chatStore);
+  const totalChatUnread = chatState.conversations.reduce((sum, c) => sum + c.unread, 0);
+
   React.useEffect(() => {
     notificationsActions.fetchNotifications();
     notificationsActions.connectSSE();
+
+    chatActions.fetchConversations();
+    chatActions.connectSSE();
+
     return () => {
       notificationsActions.disconnectSSE();
+      chatActions.disconnectSSE();
     };
   }, []);
 
@@ -251,11 +271,18 @@ export function Shell() {
               {/* Communication */}
               <Link
                 to="/communication"
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                className="flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
               >
-                <MessageSquare size={18} />
-                Communication
+                <div className="flex items-center gap-3">
+                  <MessageSquare size={18} />
+                  <span>Communication</span>
+                </div>
+                {totalChatUnread > 0 && (
+                  <span className="h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
+                    {totalChatUnread > 99 ? "99+" : totalChatUnread}
+                  </span>
+                )}
               </Link>
 
               {/* Collapsible HR group */}
@@ -471,11 +498,16 @@ export function Shell() {
               
               <Link
                 to="/communication"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
                 title="Communication"
               >
                 <MessageSquare size={20} />
+                {totalChatUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
+                    {totalChatUnread > 99 ? "99+" : totalChatUnread}
+                  </span>
+                )}
               </Link>
               
               <div className="w-8 h-px bg-border my-2" />
@@ -642,6 +674,7 @@ export function Shell() {
               <ShieldCheck size={16} />
               {session.data?.user.role === "admin" ? "Admin console" : "Staff console"}
             </div>
+            {displayName && <p className="font-semibold text-sm mb-1 truncate">{displayName}</p>}
             <p className="text-xs leading-5 text-muted-foreground truncate">{session.data?.user.email}</p>
           </div>
         ) : (
@@ -709,14 +742,24 @@ export function Shell() {
                   <div className="absolute right-0 mt-2 z-50 w-80 sm:w-96 rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <div className="font-semibold text-sm">Notifications</div>
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={() => notificationsActions.clearAll()}
-                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-                        >
-                          <Check className="size-3" /> Mark all read
-                        </button>
-                      )}
+                      <div className="flex items-center gap-3">
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={() => notificationsActions.clearAll()}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                          >
+                            <Check className="size-3" /> Mark all read
+                          </button>
+                        )}
+                        {notifications.length > 0 && (
+                          <button
+                            onClick={() => notificationsActions.deleteAll()}
+                            className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="size-3" /> Delete all
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
                       {notifications.length === 0 ? (
@@ -775,15 +818,24 @@ export function Shell() {
                                   </span>
                                 </div>
                               </div>
-                              {!n.read && (
+                              <div className="flex items-center gap-1 shrink-0">
+                                {!n.read && (
+                                  <button
+                                    onClick={() => notificationsActions.clearNotification(n.id)}
+                                    className="p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
+                                    title="Mark as read"
+                                  >
+                                    <Check className="size-3" />
+                                  </button>
+                                )}
                                 <button
-                                  onClick={() => notificationsActions.clearNotification(n.id)}
-                                  className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
-                                  title="Mark as read"
+                                  onClick={() => notificationsActions.deleteNotification(n.id)}
+                                  className="p-1 rounded-md text-muted-foreground hover:text-rose-500 cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
+                                  title="Delete notification"
                                 >
-                                  <X className="size-3" />
+                                  <Trash2 className="size-3" />
                                 </button>
-                              )}
+                              </div>
                             </div>
                           );
                         })

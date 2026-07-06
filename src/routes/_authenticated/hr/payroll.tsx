@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Receipt, RefreshCw, Eye, AlertCircle, FileDown, Plus, X, Edit2, DollarSign } from "lucide-react";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { useSystemSettings, usePayrollSettings, useSalaryTemplates } from "../../../lib/settings";
@@ -13,6 +13,8 @@ import { Select } from "../../../ui/select";
 import { Field } from "../../../components/Field";
 import { exportPayrollToExcel } from "../../../lib/payroll-export";
 import type { StaffRow } from "../../../types";
+import { authClient } from "../../../services/auth";
+import { Autocomplete } from "../../../ui/autocomplete";
 
 export const Route = createFileRoute("/_authenticated/hr/payroll")({
   component: PayrollPage,
@@ -44,6 +46,10 @@ interface PayslipRow extends Record<string, unknown> {
 }
 
 function PayrollPage() {
+  const navigate = useNavigate();
+  const session = authClient.useSession();
+  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+
   const { currencySymbol } = useSystemSettings();
   const [activeTab, setActiveTab] = React.useState<"payslips" | "salaries">("payslips");
   const [selectedMonth, setSelectedMonth] = React.useState(() => {
@@ -255,6 +261,16 @@ function PayrollPage() {
     }
   };
 
+  if (session.isPending) {
+    return (
+      <ModuleLayout title="Payroll Management" description="Loading...">
+        <div className="flex min-h-[300px] items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+        </div>
+      </ModuleLayout>
+    );
+  }
+
   const columns = [
     {
       id: "employeeCode",
@@ -420,7 +436,7 @@ function PayrollPage() {
       title="Payroll & Payslips"
       description="Generate monthly payroll, access generated payslips, and manage employee salary structures."
       action={
-        activeTab === "payslips" ? (
+        isAdminOrHr && activeTab === "payslips" ? (
           <Button onClick={() => { setGenerationResult(null); setShowForm(true); }} className="gap-2">
             <Plus size={16} /> Generate Payroll
           </Button>
@@ -440,16 +456,18 @@ function PayrollPage() {
           >
             Payslip Register
           </button>
-          <button
-            onClick={() => setActiveTab("salaries")}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer ${
-              activeTab === "salaries"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Salary Structures
-          </button>
+          {isAdminOrHr && (
+            <button
+              onClick={() => setActiveTab("salaries")}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer ${
+                activeTab === "salaries"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Salary Structures
+            </button>
+          )}
         </div>
 
         {/* Payslip Register Tab */}
@@ -467,25 +485,29 @@ function PayrollPage() {
                   placeholder="All months"
                   clearable
                 />
-                <Button
-                  variant="outline"
-                  size="default"
-                  className="gap-1.5 h-8 text-xs"
-                  onClick={handleExportExcel}
-                  disabled={exporting || filteredPayslips.length === 0}
-                >
-                  <FileDown size={14} className={exporting ? "animate-bounce" : ""} />
-                  {exporting ? "Exporting..." : "Export Excel"}
-                </Button>
-                <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={showSuperseded}
-                    onChange={(e) => setShowSuperseded(e.target.checked)}
-                    className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
-                  />
-                  <span>Show superseded</span>
-                </label>
+                {isAdminOrHr && (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="gap-1.5 h-8 text-xs"
+                    onClick={handleExportExcel}
+                    disabled={exporting || filteredPayslips.length === 0}
+                  >
+                    <FileDown size={14} className={exporting ? "animate-bounce" : ""} />
+                    {exporting ? "Exporting..." : "Export Excel"}
+                  </Button>
+                )}
+                {isAdminOrHr && (
+                  <label className="inline-flex items-center gap-2 text-xs font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showSuperseded}
+                      onChange={(e) => setShowSuperseded(e.target.checked)}
+                      className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                    />
+                    <span>Show superseded</span>
+                  </label>
+                )}
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -503,7 +525,7 @@ function PayrollPage() {
         )}
 
         {/* Salary Structures Tab */}
-        {activeTab === "salaries" && (
+        {activeTab === "salaries" && isAdminOrHr && (
           <Card>
             <CardHeader className="border-b pb-4">
               <CardTitle className="text-base">Employee Salary Structures</CardTitle>
@@ -524,15 +546,15 @@ function PayrollPage() {
         )}
       </div>
 
-      {/* Generate Payroll Modal */}
+      {/* Generate Payroll Left-side Panel */}
       {showForm && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200"
-          onClick={() => setShowForm(false)}
-        >
+        <>
           <div 
-            className="relative bg-background rounded-xl border border-border shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+            onClick={() => setShowForm(false)}
+          />
+          <div 
+            className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"
           >
             <div className="p-6 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -548,12 +570,12 @@ function PayrollPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="p-6">
-              <p className="text-sm text-muted-foreground mb-4">
+            <div className="flex-1 overflow-y-auto p-6">
+              <p className="text-sm text-muted-foreground mb-6">
                 Process salary components and generate payslips for all active staff. Approved leaves are automatically factored in.
               </p>
-              <form onSubmit={handleGenerate} className="space-y-4">
-                <div className="space-y-1">
+              <form onSubmit={handleGenerate} className="space-y-5">
+                <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground">Select Month</label>
                   <MonthPicker
                     value={selectedMonth}
@@ -562,19 +584,21 @@ function PayrollPage() {
                     className="w-full"
                   />
                 </div>
-                <Select
+                <Autocomplete
                   label="Department (Optional)"
                   value={selectedDeptId}
-                  onChange={(e) => setSelectedDeptId(e.target.value)}
+                  onChange={setSelectedDeptId}
                   options={(departmentsQuery.data ?? []).map(d => [String(d.id), d.name])}
+                  placeholder="Select department..."
                 />
-                <Select
+                <Autocomplete
                   label="Employee (Optional)"
                   value={selectedStaffId}
-                  onChange={(e) => setSelectedStaffId(e.target.value)}
+                  onChange={setSelectedStaffId}
                   options={filteredStaff.map(s => [String(s.staffId), `${s.name} (${s.employeeCode})`])}
+                  placeholder="Select employee..."
                 />
-                <Button type="submit" className="w-full" disabled={generating}>
+                <Button type="submit" className="w-full mt-4" disabled={generating}>
                   {generating ? (
                     <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
                   ) : "Generate Payroll"}
@@ -592,7 +616,7 @@ function PayrollPage() {
               </form>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Edit Salary Structure Modal */}

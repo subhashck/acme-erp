@@ -180,6 +180,7 @@ export const staffInput = z.object({
   ifscCode: z.string().optional(),
   salary: z.number().positive().default(1),
   status: z.string().default("Active"),
+  isExecutive: z.boolean().optional().default(false),
   aadhar: z
     .string()
     .regex(
@@ -237,14 +238,26 @@ export const leaveRequestInput = z
   .object({
     staffId: z.number().int().positive(),
     leaveType: z.string().min(2),
+    isHalfDay: z.boolean().default(false),
     startDate: z.string().datetime(),
     endDate: z.string().datetime(),
     reason: z.string().min(3),
   })
-  .refine((value) => new Date(value.endDate) >= new Date(value.startDate), {
-    path: ["endDate"],
-    message: "End date must be on or after start date",
-  });
+  .refine(
+    (value) => {
+      const start = new Date(value.startDate);
+      const end = new Date(value.endDate);
+      if (value.isHalfDay) {
+        // For half day leaves, start and end dates must be the exact same calendar day
+        return start.toISOString().split("T")[0] === end.toISOString().split("T")[0];
+      }
+      return end >= start;
+    },
+    {
+      path: ["endDate"],
+      message: "End date must be on or after start date. For half-day leaves, they must be the same date.",
+    }
+  );
 
 export const leaveDecisionInput = z.object({
   reviewerNote: z.string().optional(),
