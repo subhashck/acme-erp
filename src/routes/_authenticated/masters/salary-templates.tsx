@@ -18,6 +18,7 @@ function SalaryTemplatesPage() {
   const templates = useSalaryTemplates();
 
   const [showModal, setShowModal] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [editingTemplate, setEditingTemplate] = React.useState<SalaryTemplate | null>(null);
 
   // Form states
@@ -137,9 +138,13 @@ function SalaryTemplatesPage() {
       updated = [...templates, payload];
     }
 
-    saveSalaryTemplates(updated);
-    setShowModal(false);
-    setEditingTemplate(null);
+    setIsSubmitting(true);
+    setTimeout(() => {
+      saveSalaryTemplates(updated);
+      setIsSubmitting(false);
+      setShowModal(false);
+      setEditingTemplate(null);
+    }, 400); // Simulate network delay for UI consistency
   };
 
   const handleDelete = (id: string) => {
@@ -265,7 +270,16 @@ function SalaryTemplatesPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="p-6 max-h-[80vh] overflow-y-auto space-y-6">
+            <div className="p-6 max-h-[80vh] overflow-y-auto space-y-6 relative">
+              {isSubmitting && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-lg">
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
+                    <p className="text-sm font-medium">Submitting...</p>
+                  </div>
+                </div>
+              )}
+              <fieldset disabled={isSubmitting}>
               <form onSubmit={handleSave} className="space-y-6">
                 <div>
                   <Field
@@ -372,6 +386,7 @@ function SalaryTemplatesPage() {
                   <Button type="submit">Save Template</Button>
                 </div>
               </form>
+              </fieldset>
             </div>
           </div>
         </div>

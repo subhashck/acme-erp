@@ -117,6 +117,7 @@ export const staff = sqliteTable("staff", {
   version: integer("version").notNull().default(1),
   active: boolean("active").notNull().default(true),
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+  isExecutive: boolean("is_executive").notNull().default(false),
   ...timestamps
 }, (table) => [
   primaryKey({ columns: [table.staffId, table.version] })
@@ -279,6 +280,7 @@ export const leaveRequests = sqliteTable("leave_requests", {
   requestNo: text("request_no").notNull().unique(),
   staffId: integer("staff_id").notNull(), // stable staffId, no FK
   leaveType: text("leave_type").notNull(),
+  isHalfDay: boolean("is_half_day").notNull().default(false),
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date").notNull(),
   reason: text("reason").notNull(),
@@ -286,6 +288,7 @@ export const leaveRequests = sqliteTable("leave_requests", {
   reviewedAt: timestamp("reviewed_at"),
   reviewerNote: text("reviewer_note"),
   forwardedToStaffId: integer("forwarded_to_staff_id"), // stable staffId of the targeted supervisor
+  approverIds: text("approver_ids").notNull().default("[]"),
   ...timestamps
 });
 
@@ -543,6 +546,7 @@ export const messages = sqliteTable("messages", {
   channelType: text("channel_type").notNull().default("organization"), // "direct" | "department" | "organization"
   departmentId: integer("department_id").references(() => departments.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
+  readAt: timestamp("read_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

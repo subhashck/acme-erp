@@ -134,6 +134,7 @@ function ViewPayslipPage() {
   const fmt = (n: number) => `${currencySymbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
   const session = authClient.useSession();
   const currentUserEmail = session.data?.user.email || "Unknown User";
+  const isHrOrAdmin = session.data?.user.role === "admin" || session.data?.user.role === "hr";
 
   const query = useRpcQuery<PayslipDetail>(["payslip", payslipId], () =>
     (client.hr.payroll.payslips as any)[":id"].$get({ param: { id: String(payslipId) } })
@@ -353,7 +354,7 @@ function ViewPayslipPage() {
               >
                 {p.status} (v{p.version})
               </Badge>
-              {p.status === "Active" && (
+              {isHrOrAdmin && p.status === "Active" && (
                 <Button
                   variant="outline"
                   size="default"

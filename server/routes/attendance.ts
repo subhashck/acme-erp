@@ -75,12 +75,11 @@ export const attendanceRoutes = new Hono<AuthEnv>()
     const rosterMap = new Map(activeRosters.map((r) => [r.staffId, r]));
 
     const dateTimestamp = new Date(`${date}T12:00:00Z`);
-    const dateSeconds = dateTimestamp.getTime() / 1000;
     const approvedLeaves = await db
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateSeconds} AND ${leaveRequests.endDate} >= ${dateSeconds}`
+        sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateTimestamp} AND ${leaveRequests.endDate} >= ${dateTimestamp}`
       )
       .execute();
     const leaveMap = new Map(approvedLeaves.map((l) => [l.staffId, l]));
@@ -189,6 +188,130 @@ export const attendanceRoutes = new Hono<AuthEnv>()
       .execute();
 
     return c.json(row, 201);
+  })
+  .get("/hr/attendance/my-punch-status", async (c) => {
+    const userId = c.var.session?.user?.id;
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    
+    // Find staffId mapped to this user
+    const [staffRecord] = await db
+      .select({ staffId: staff.staffId })
+      .from(staff)
+      .where(sql`${staff.userId} = ${userId} AND ${staff.active} = true`)
+      .limit(1);
+
+    if (!staffRecord) {
+      return c.json({ error: "No staff record associated with this user" }, 404);
+    }
+
+    const today = new Date().toLocaleDateString("en-CA"); // "YYYY-MM-DD" local time
+    
+    const [att] = await db
+      .select()
+      .from(attendance)
+      .where(
+        sql`${attendance.staffId} = ${staffRecord.staffId} AND ${attendance.date} = ${today}`
+      )
+      .limit(1);
+      
+    if (!att) {
+      return c.json({ status: "not_punched" });
+    }
+    if (att.checkIn && !att.checkOut) {
+      return c.json({ status: "punched_in", checkInTime: att.checkIn });
+    }
+    return c.json({ status: "punched_out", checkInTime: att.checkIn, checkOutTime: att.checkOut });
+  })
+  .post("/hr/attendance/punch", async (c) => {
+    const userId = c.var.session?.user?.id;
+    if (!userId) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    
+    // Find staffId mapped to this user
+    const [staffRecord] = await db
+      .select({ staffId: staff.staffId })
+      .from(staff)
+      .where(sql`${staff.userId} = ${userId} AND ${staff.active} = true`)
+      .limit(1);
+
+    if (!staffRecord) {
+      return c.json({ error: "No staff record associated with this user" }, 404);
+    }
+
+    const now = new Date();
+    // Use local time formatted strings (e.g., India timezone given +05:30)
+    // For simplicity, falling back to basic locale formatting which is often browser/server specific.
+    // Assuming the server timezone is correct, or just extracting parts.
+    const today = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
+    const currentTime = now.toLocaleTimeString("en-GB", { hour: '2-digit', minute: '2-digit' }); // HH:mm
+
+    const [existingAtt] = await db
+      .select()
+      .from(attendance)
+      .where(
+        sql`${attendance.staffId} = ${staffRecord.staffId} AND ${attendance.date} = ${today}`
+      )
+      .limit(1);
+
+    if (!existingAtt) {
+      // Punch In logic (Create new attendance record)
+      let finalStatus = "Present";
+      
+      const rost = await db
+        .select({ startTime: shifts.startTime })
+        .from(rosters)
+        .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
+        .where(
+          sql`${rosters.staffId} = ${staffRecord.staffId} AND ${rosters.startDate} <= ${today} AND ${rosters.endDate} >= ${today}`
+        )
+        .limit(1)
+        .then((res: any) => res[0]);
+        
+      if (rost) {
+        const [shHour, shMin] = rost.startTime.split(":").map(Number);
+        const [chHour, chMin] = currentTime.split(":").map(Number);
+        const shiftMinutes = shHour * 60 + shMin;
+        const checkMinutes = chHour * 60 + chMin;
+        if (checkMinutes > shiftMinutes + 15) {
+          finalStatus = "Late";
+        }
+      }
+
+      const [newAtt] = await db
+        .insert(attendance)
+        .values({
+          staffId: staffRecord.staffId,
+          date: today,
+          checkIn: currentTime,
+          checkOut: null,
+          status: finalStatus,
+          notes: "Punched in via dashboard",
+        })
+        .returning()
+        .execute();
+      
+      return c.json({ message: "Punched in successfully", record: newAtt, status: "punched_in" });
+    } else {
+      // Punch Out logic (Update existing attendance record)
+      if (existingAtt.checkOut) {
+         return c.json({ error: "Already punched out for today." }, 400);
+      }
+      
+      const [updatedAtt] = await db
+        .update(attendance)
+        .set({ 
+          checkOut: currentTime, 
+          notes: existingAtt.notes ? existingAtt.notes + " | Punched out via dashboard" : "Punched out via dashboard" 
+        })
+        .where(eq(attendance.id, existingAtt.id))
+        .returning()
+        .execute();
+        
+      return c.json({ message: "Punched out successfully", record: updatedAtt, status: "punched_out" });
+    }
   })
   .put("/hr/attendance/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
@@ -497,12 +620,11 @@ export const attendanceRoutes = new Hono<AuthEnv>()
         .execute();
       const rosterMap = new Map(activeRosters.map((r) => [r.staffId, r]));
 
-      const dateSeconds = d.getTime() / 1000;
       const approvedLeaves = await db
         .select({ staffId: leaveRequests.staffId })
         .from(leaveRequests)
         .where(
-          sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateSeconds} AND ${leaveRequests.endDate} >= ${dateSeconds}`
+          sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${d} AND ${leaveRequests.endDate} >= ${d}`
         )
         .execute();
       const leaveSet = new Set(approvedLeaves.map((l) => l.staffId));

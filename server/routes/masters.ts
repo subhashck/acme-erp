@@ -1,4 +1,4 @@
-import { aliasedTable, eq, sql } from "drizzle-orm";
+import { aliasedTable, eq, sql, and } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -105,8 +105,8 @@ export const mastersRoutes = new Hono<AuthEnv>()
       })
       .from(departments)
       .leftJoin(departmentLeaders, eq(departments.id, departmentLeaders.departmentId))
-      .leftJoin(headStaff, eq(departmentLeaders.headStaffId, headStaff.id))
-      .leftJoin(subheadStaff, eq(departmentLeaders.subheadStaffId, subheadStaff.id))
+      .leftJoin(headStaff, and(eq(departmentLeaders.headStaffId, headStaff.staffId), eq(headStaff.active, true)))
+      .leftJoin(subheadStaff, and(eq(departmentLeaders.subheadStaffId, subheadStaff.staffId), eq(subheadStaff.active, true)))
       .orderBy(departments.name)
       .execute();
     return c.json(rows);

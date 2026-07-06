@@ -26,10 +26,23 @@ export type StaffRow = {
   otherDeductions?: number | null;
   salary?: number | null;
   userId?: string | null;
+  isExecutive?: boolean;
+  supervisorLevel1Id?: number | null;
+  supervisorLevel2Id?: number | null;
   createdAt: string;
 };
 export type PatientRow = { id: number; name: string };
-export type DepartmentRow = { id: number; name: string };
+export type DepartmentRow = {
+  id: number;
+  name: string;
+  floor?: string;
+  head?: string;
+  active?: boolean;
+  headStaffId?: number | null;
+  headName?: string | null;
+  subheadStaffId?: number | null;
+  subheadName?: string | null;
+};
 export type ScheduleRow = { id: number; token: string; patient: string; doctor: string; department: string; status: string };
 export type InventoryRow = { id: number; sku: string; name: string; category: string; quantity: number; reorderLevel: number; location: string };
 export type MedicineRow = { id: number; sku: string; name: string; genericName: string; stock: number; reorderLevel: number; price: number };
@@ -50,6 +63,7 @@ export type LeaveRow = {
   staffId?: number;
   supervisorLevel1Id?: number | null;
   supervisorLevel2Id?: number | null;
+  approverIds?: string | null;
 };
 
 export type LeaveDetailRow = {
@@ -79,6 +93,7 @@ export type LeaveDetailRow = {
   subheadStaffId?: number | null;
   forwardedToStaffId?: number | null;
   forwardedToStaffName?: string | null;
+  approverIds?: string | null;
 };
 export type RoleTypeRow = { id: number; name: string; active: boolean };
 export type LeaveTypeRow = { id: number; name: string; maxDays: number; active: boolean; payable: boolean; paymentRate: number };

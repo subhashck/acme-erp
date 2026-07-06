@@ -1,4 +1,4 @@
-import { aliasedTable, desc, eq, sql, and, lte, gte, ne } from "drizzle-orm";
+import { aliasedTable, desc, eq, sql, and, lte, gte, ne, like } from "drizzle-orm";
 import { Hono } from "hono";
 import { auth } from "../auth.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -12,6 +12,8 @@ import {
   staffDepartments,
   staffSupervisors,
   user,
+  shifts,
+  rosters,
 } from "../db/schema.ts";
 import { sendNotification } from "../utils/notifier.ts";
 import {
@@ -150,6 +152,39 @@ export const leavesRoutes = new Hono<AuthEnv>()
       return c.json({ error: "You already have a leave request overlapping with these dates." }, 400);
     }
 
+    const employee = await db
+      .select()
+      .from(staff)
+      .where(sql`${staff.staffId} = ${input.staffId} AND ${staff.active} = true`)
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!employee) {
+      return c.json({ error: "Employee not found" }, 404);
+    }
+
+    const leaders = await getDeptLeaders(employee.staffId);
+    const empIsHead = leaders?.headStaffId === employee.staffId;
+
+    let computedApproverIds: number[] = [];
+    if (empIsHead) {
+      const supervisors = await db
+        .select()
+        .from(staffSupervisors)
+        .where(sql`${staffSupervisors.staffId} = ${employee.staffId} AND ${staffSupervisors.staffVersion} = ${employee.version}`)
+        .limit(1)
+        .then((res: any) => res[0]);
+      if (supervisors) {
+        if (supervisors.supervisor1Id) computedApproverIds.push(supervisors.supervisor1Id);
+        if (supervisors.supervisor2Id) computedApproverIds.push(supervisors.supervisor2Id);
+      }
+    } else {
+      if (leaders?.headStaffId) computedApproverIds.push(leaders.headStaffId);
+      if (leaders?.subheadStaffId) computedApproverIds.push(leaders.subheadStaffId);
+    }
+
+    computedApproverIds = Array.from(new Set(computedApproverIds)).filter(id => id !== employee.staffId);
+
     const [row] = await db
       .insert(leaveRequests)
       .values({
@@ -158,49 +193,19 @@ export const leavesRoutes = new Hono<AuthEnv>()
         startDate: new Date(input.startDate),
         endDate: new Date(input.endDate),
         status: "Pending",
+        approverIds: JSON.stringify(computedApproverIds),
       })
       .returning()
       .execute();
 
     try {
-      const employee = await db
-        .select()
-        .from(staff)
-        .where(sql`${staff.staffId} = ${input.staffId} AND ${staff.active} = true`)
-        .limit(1)
-        .then((res: any) => res[0]);
-
-      if (employee) {
-        const leaders = await getDeptLeaders(employee.staffId);
-        const empIsHead = leaders?.headStaffId === employee.staffId;
-        const empIsSubhead = leaders?.subheadStaffId === employee.staffId;
-        const msg = `${employee.name} requested leave: ${row.requestNo} (${input.leaveType})`;
-
-        if (empIsHead) {
-          // Dept head's leave → notify admins
-          await notifyAdmins("New Leave Request", msg);
-        } else if (empIsSubhead) {
-          // Sub-head's leave → notify dept head (fallback: admins)
-          if (leaders?.headStaffId) {
-            await notifyStaffById(leaders.headStaffId, "New Leave Request", msg);
-          } else {
-            await notifyAdmins("New Leave Request", msg);
-          }
-        } else {
-          // Regular staff → notify head + sub-head (fallback: admins)
-          let notified = false;
-          if (leaders?.headStaffId) {
-            await notifyStaffById(leaders.headStaffId, "New Leave Request", msg);
-            notified = true;
-          }
-          if (leaders?.subheadStaffId) {
-            await notifyStaffById(leaders.subheadStaffId, "New Leave Request", msg);
-            notified = true;
-          }
-          if (!notified) {
-            await notifyAdmins("New Leave Request", msg);
-          }
+      const msg = `${employee.name} requested leave: ${row.requestNo} (${input.leaveType})`;
+      if (computedApproverIds.length > 0) {
+        for (const appRowId of computedApproverIds) {
+          await notifyStaffById(appRowId, "New Leave Request", msg);
         }
+      } else {
+        await notifyAdmins("New Leave Request", msg);
       }
     } catch (err) {
       console.error("Failed to send leave submission notification:", err);
@@ -213,7 +218,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
   // -------------------------------------------------------------------------
   .get("/hr/leaves", async (c) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isAdmin = session?.user.role === "admin";
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
     const currentStaff = await getCurrentStaff(c);
 
     const page = Math.max(1, parseInt(c.req.query("page") ?? "1", 10));
@@ -245,6 +250,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         subheadStaffId: departmentLeaders.subheadStaffId,
         departmentName: departments.name,
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
+        approverIds: leaveRequests.approverIds,
       })
       .from(leaveRequests)
       .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))
@@ -263,42 +269,39 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .execute();
 
     // Visibility rules:
-    //   Admin           → all leaves
-    //   Dept head       → Pending (regular staff + sub-head) + Forwarded from their dept + all history
-    //   Dept sub-head   → Pending (regular staff only) from their dept + all history
-    //   Others          → Approved / Rejected history iewonly
+    //   Admin/HR        → all leaves
+    //   Requester       → their own leaves
+    //   Approver        → Pending or Pending Payroll Approval leaves where they are in approverIds
+    //   Forward Target  → Forwarded leaves where they are the forwardedToStaffId
+    //   Resolved        → Approved/Rejected history visible to all staff
     let filteredRows = rows.filter((row) => {
-      if (isAdmin) return true;
-      if (!currentStaff) return row.status !== "Pending" && row.status !== "Forwarded";
+      if (isHrOrAdmin) return true;
+      if (!currentStaff) return false;
 
-      // Staff always see their own leaves regardless of status
+      // Requester sees their own leaves
       if (currentStaff.staffId === row.staffId) return true;
 
-      const empIsHead = row.headStaffId !== null && row.headStaffId === row.staffId;
-      const empIsSubhead = row.subheadStaffId !== null && row.subheadStaffId === row.staffId;
-      const currentIsHead = currentStaff.staffId === row.headStaffId;
-      const currentIsSubhead = currentStaff.staffId === row.subheadStaffId;
-      const currentIsDirectSupervisor =
-        currentStaff.staffId === row.supervisorLevel1Id ||
-        currentStaff.staffId === row.supervisorLevel2Id;
+      // Dept head/subhead sees their department's leaves
+      const isDeptLeader = currentStaff.staffId === row.headStaffId || currentStaff.staffId === row.subheadStaffId;
+      if (isDeptLeader) return true;
 
-      const currentIsForwardedTarget = row.forwardedToStaffId !== null && currentStaff.staffId === row.forwardedToStaffId;
+      // Supervisor sees their subordinates' leaves
+      const isSupervisor = currentStaff.staffId === row.supervisorLevel1Id || currentStaff.staffId === row.supervisorLevel2Id;
+      if (isSupervisor) return true;
 
-      // Supervisor or Forwarded Target sees all leaves for their subordinates
-      if (currentIsDirectSupervisor || currentIsForwardedTarget) return true;
+      // Check if current staff is in approverIds list
+      let isApprover = false;
+      try {
+        const apps = JSON.parse(row.approverIds ?? "[]");
+        if (Array.isArray(apps) && apps.includes(currentStaff.staffId)) {
+          isApprover = true;
+        }
+      } catch (e) {}
 
-      if (row.status === "Pending") {
-        if (empIsHead) return false; 
-        if (empIsSubhead) return currentIsHead;
-        // Regular staff: both head and sub-head see it
-        return currentIsHead || currentIsSubhead;
-      }
+      // Forward target sees forwarded leaves
+      const isForwardedTarget = row.forwardedToStaffId !== null && currentStaff.staffId === row.forwardedToStaffId;
 
-      if (row.status === "Forwarded") {
-        return currentIsHead; 
-      }
-
-      return true; // Approved / Rejected: visible to all
+      return isApprover || isForwardedTarget;
     });
 
     if (status && status !== "All") {
@@ -347,7 +350,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
   .get("/hr/leaves/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isAdmin = session?.user.role === "admin";
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
     const currentStaff = await getCurrentStaff(c);
 
     const manager = aliasedTable(staff, "manager");
@@ -381,6 +384,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         subheadStaffId: departmentLeaders.subheadStaffId,
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
         forwardedToStaffName: forwardedTarget.name,
+        approverIds: leaveRequests.approverIds,
       })
       .from(leaveRequests)
       .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))
@@ -405,15 +409,18 @@ export const leavesRoutes = new Hono<AuthEnv>()
       return c.json({ error: "Leave request not found" }, 404);
     }
 
-    const isEmployee = currentStaff?.id === row.staffId;
-    const isDeptLeader =
-      currentStaff &&
-      (currentStaff.staffId === row.headStaffId || currentStaff.staffId === row.subheadStaffId);
-    const isSupervisor =
-      currentStaff &&
-      (currentStaff.staffId === row.supervisorLevel1Id || currentStaff.staffId === row.supervisorLevel2Id || currentStaff.staffId === row.forwardedToStaffId);
+    const isEmployee = currentStaff && currentStaff.staffId === row.staffId;
+    let isApprover = false;
+    try {
+      const apps = JSON.parse(row.approverIds ?? "[]");
+      if (Array.isArray(apps) && currentStaff && apps.includes(currentStaff.staffId)) {
+        isApprover = true;
+      }
+    } catch (e) {}
 
-    if (!isAdmin && !isEmployee && !isSupervisor && !isDeptLeader) {
+    const isForwardedTarget = currentStaff && row.forwardedToStaffId !== null && currentStaff.staffId === row.forwardedToStaffId;
+
+    if (!isHrOrAdmin && !isEmployee && !isApprover && !isForwardedTarget) {
       return c.json({ error: "You are not authorized to view this leave request" }, 403);
     }
 
@@ -430,10 +437,10 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = leaveDecisionInput.parse(await c.req.json().catch(() => ({})));
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isAdmin = session?.user.role === "admin";
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
     const currentStaff = await getCurrentStaff(c);
 
-    if (!currentStaff && !isAdmin) return c.json({ error: "Staff record not found" }, 404);
+    if (!currentStaff && !isHrOrAdmin) return c.json({ error: "Staff record not found" }, 404);
 
     const leaveRequest = await db
       .select()
@@ -451,42 +458,93 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .then((res: any) => res[0]);
     if (!employee) return c.json({ error: "Employee not found" }, 404);
 
-    const leaders = await getDeptLeaders(employee.staffId);
-    const empIsHead = leaders?.headStaffId === employee.staffId;
-    const empIsSubhead = leaders?.subheadStaffId === employee.staffId;
-
-    const supervisors = await db
-      .select()
-      .from(staffSupervisors)
-      .where(sql`${staffSupervisors.staffId} = ${employee.staffId} AND ${staffSupervisors.staffVersion} = ${employee.version}`)
-      .limit(1)
-      .then((res: any) => res[0]);
-
-    const isDirectSupervisor = currentStaff && (
-      (supervisors && (currentStaff.staffId === supervisors.supervisor1Id || currentStaff.staffId === supervisors.supervisor2Id)) ||
-      currentStaff.staffId === leaveRequest.forwardedToStaffId
-    );
-
     const canAct = (() => {
-      if (isAdmin) return true;
+      if (isHrOrAdmin) return true;
       if (!currentStaff) return false;
-      if (empIsHead) return isDirectSupervisor; // Supervisor or Admin acts on dept head's leave
-      if (empIsSubhead) return isDirectSupervisor || currentStaff.staffId === leaders?.headStaffId;
-      // Regular staff
-      if (leaveRequest.status === "Pending")
-        return isDirectSupervisor || currentStaff.staffId === leaders?.headStaffId || currentStaff.staffId === leaders?.subheadStaffId;
-      if (leaveRequest.status === "Forwarded")
-        return isDirectSupervisor || currentStaff.staffId === leaders?.headStaffId;
+
+      if (leaveRequest.status === "Pending") {
+        try {
+          const apps = JSON.parse(leaveRequest.approverIds ?? "[]");
+          return Array.isArray(apps) && apps.includes(currentStaff.staffId);
+        } catch (e) {
+          return false;
+        }
+      }
+
+      if (leaveRequest.status === "Forwarded") {
+        return leaveRequest.forwardedToStaffId !== null && currentStaff.staffId === leaveRequest.forwardedToStaffId;
+      }
+
       return false;
     })();
 
     if (!canAct) return c.json({ error: "You are not authorized to approve this leave request" }, 403);
 
+    let nextStatus = "Approved";
+    if (!isHrOrAdmin) {
+      nextStatus = "Pending Payroll Approval";
+    }
+
     await db
       .update(leaveRequests)
-      .set({ status: "Approved", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
+      .set({ status: nextStatus, reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
       .execute();
+
+    try {
+      const shiftName = leaveRequest.isHalfDay ? 'Half Day Leave' : 'Leave';
+      const shiftCode = leaveRequest.isHalfDay ? 'HDLV' : 'LV';
+      const isOffDay = !leaveRequest.isHalfDay;
+
+      let leaveShift = await db.select().from(shifts).where(eq(shifts.name, shiftName)).limit(1).then((res: any) => res[0]);
+      if (!leaveShift) {
+        const [insertedShift] = await db.insert(shifts).values({
+          name: shiftName,
+          code: shiftCode,
+          startTime: '00:00',
+          endTime: '23:59',
+          active: true,
+          isOffDay: isOffDay,
+        }).returning().execute();
+        leaveShift = insertedShift;
+      }
+
+      const activeDept = await db
+        .select({ departmentId: staffDepartments.departmentId })
+        .from(staffDepartments)
+        .where(
+          sql`${staffDepartments.staffId} = ${employee.staffId}
+            AND ${staffDepartments.staffVersion} = ${employee.version}
+            AND ${staffDepartments.status} = 'Active'`
+        )
+        .limit(1)
+        .then((res: any) => res[0]);
+
+      if (leaveShift && activeDept) {
+        // Fix for one day gap: use local date string instead of toISOString() which returns UTC
+        const getLocalDateStr = (d: string | Date) => {
+          const date = new Date(d);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        const startDateStr = getLocalDateStr(leaveRequest.startDate);
+        const endDateStr = getLocalDateStr(leaveRequest.endDate);
+
+        await db.insert(rosters).values({
+          staffId: employee.staffId,
+          departmentId: activeDept.departmentId,
+          shiftId: leaveShift.id,
+          startDate: startDateStr,
+          endDate: endDateStr,
+          notes: `Leave Request: ${leaveRequest.requestNo}`,
+        }).execute();
+      }
+    } catch (err) {
+      console.error("Failed to add leave to shift roster:", err);
+    }
 
     try {
       let u: any = null;
@@ -497,7 +555,18 @@ export const leavesRoutes = new Hono<AuthEnv>()
         u = await db.select().from(user).where(eq(user.email, employee.email)).limit(1).then((res: any) => res[0]);
       }
       if (u) {
-        await sendNotification({ userId: u.id, title: "Leave Approved", message: `Your leave request ${leaveRequest.requestNo} has been approved.`, type: "success", link: "/hr/leaves" });
+        const title = nextStatus === "Approved" ? "Leave Approved" : "Leave Approved by Supervisor";
+        const message = nextStatus === "Approved"
+          ? `Your leave request ${leaveRequest.requestNo} has been fully approved.`
+          : `Your leave request ${leaveRequest.requestNo} has been approved by your supervisor and is pending final HR/payroll clearance.`;
+        await sendNotification({ userId: u.id, title, message, type: "success", link: "/hr/leaves" });
+      }
+
+      if (nextStatus === "Pending Payroll Approval") {
+        await notifyAdmins(
+          "Leave Pending HR Approval",
+          `Supervisor approved leave request ${leaveRequest.requestNo} for ${employee.name}. It is now pending HR/payroll clearance.`
+        );
       }
     } catch (err) {
       console.error("Failed to send leave approval notification:", err);
@@ -512,10 +581,10 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = leaveDecisionInput.parse(await c.req.json().catch(() => ({})));
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isAdmin = session?.user.role === "admin";
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
     const currentStaff = await getCurrentStaff(c);
 
-    if (!currentStaff && !isAdmin) return c.json({ error: "Staff record not found" }, 404);
+    if (!currentStaff && !isHrOrAdmin) return c.json({ error: "Staff record not found" }, 404);
 
     const leaveRequest = await db
       .select()
@@ -533,31 +602,23 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .then((res: any) => res[0]);
     if (!employee) return c.json({ error: "Employee not found" }, 404);
 
-    const leaders = await getDeptLeaders(employee.staffId);
-    const empIsHead = leaders?.headStaffId === employee.staffId;
-    const empIsSubhead = leaders?.subheadStaffId === employee.staffId;
-
-    const supervisors = await db
-      .select()
-      .from(staffSupervisors)
-      .where(sql`${staffSupervisors.staffId} = ${employee.staffId} AND ${staffSupervisors.staffVersion} = ${employee.version}`)
-      .limit(1)
-      .then((res: any) => res[0]);
-
-    const isDirectSupervisor = currentStaff && (
-      (supervisors && (currentStaff.staffId === supervisors.supervisor1Id || currentStaff.staffId === supervisors.supervisor2Id)) ||
-      currentStaff.staffId === leaveRequest.forwardedToStaffId
-    );
-
     const canAct = (() => {
-      if (isAdmin) return true;
+      if (isHrOrAdmin) return true;
       if (!currentStaff) return false;
-      if (empIsHead) return isDirectSupervisor;
-      if (empIsSubhead) return isDirectSupervisor || currentStaff.staffId === leaders?.headStaffId;
-      if (leaveRequest.status === "Pending")
-        return isDirectSupervisor || currentStaff.staffId === leaders?.headStaffId || currentStaff.staffId === leaders?.subheadStaffId;
-      if (leaveRequest.status === "Forwarded")
-        return isDirectSupervisor || currentStaff.staffId === leaders?.headStaffId;
+
+      if (leaveRequest.status === "Pending") {
+        try {
+          const apps = JSON.parse(leaveRequest.approverIds ?? "[]");
+          return Array.isArray(apps) && apps.includes(currentStaff.staffId);
+        } catch (e) {
+          return false;
+        }
+      }
+
+      if (leaveRequest.status === "Forwarded") {
+        return leaveRequest.forwardedToStaffId !== null && currentStaff.staffId === leaveRequest.forwardedToStaffId;
+      }
+
       return false;
     })();
 
@@ -568,6 +629,9 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .set({ status: "Rejected", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
       .where(eq(leaveRequests.id, id))
       .execute();
+
+    // Remove any shift roster entry if it was previously approved
+    await db.delete(rosters).where(like(rosters.notes, `Leave Request: ${leaveRequest.requestNo}`)).execute();
 
     try {
       let u: any = null;
@@ -587,6 +651,47 @@ export const leavesRoutes = new Hono<AuthEnv>()
     return c.json({ ok: true });
   })
   // -------------------------------------------------------------------------
+  // POST /hr/leaves/:id/cancel
+  // -------------------------------------------------------------------------
+  .post("/hr/leaves/:id/cancel", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    const currentStaff = await getCurrentStaff(c);
+
+    if (!currentStaff) return c.json({ error: "Staff record not found" }, 404);
+
+    const leaveRequest = await db
+      .select()
+      .from(leaveRequests)
+      .where(eq(leaveRequests.id, id))
+      .limit(1)
+      .then((res: any) => res[0]);
+    if (!leaveRequest) return c.json({ error: "Leave request not found" }, 404);
+
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+
+    if (leaveRequest.staffId !== currentStaff.staffId && !isHrOrAdmin) {
+      return c.json({ error: "You are not authorized to cancel this leave request" }, 403);
+    }
+
+    if (["Approved", "Rejected", "Cancelled"].includes(leaveRequest.status)) {
+      if (!isHrOrAdmin) {
+        return c.json({ error: "Cannot cancel a leave that is already processed" }, 400);
+      }
+    }
+
+    await db
+      .update(leaveRequests)
+      .set({ status: "Cancelled", reviewedAt: new Date(), reviewerNote: "Cancelled" })
+      .where(eq(leaveRequests.id, id))
+      .execute();
+
+    // Remove any shift roster entry if it was previously approved
+    await db.delete(rosters).where(like(rosters.notes, `Leave Request: ${leaveRequest.requestNo}`)).execute();
+
+    return c.json({ ok: true });
+  })
+  // -------------------------------------------------------------------------
   // POST /hr/leaves/:id/forward
   // Only the dept sub-head can forward a regular staff member's Pending leave
   // to the dept head for final review.
@@ -595,10 +700,10 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = leaveDecisionInput.parse(await c.req.json().catch(() => ({})));
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isAdmin = session?.user.role === "admin";
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
     const currentStaff = await getCurrentStaff(c);
 
-    if (!currentStaff && !isAdmin) return c.json({ error: "Staff record not found" }, 404);
+    if (!currentStaff && !isHrOrAdmin) return c.json({ error: "Staff record not found" }, 404);
 
     const leaveRequest = await db
       .select()
@@ -620,30 +725,35 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .then((res: any) => res[0]);
     if (!employee) return c.json({ error: "Employee not found" }, 404);
 
-    const leaders = await getDeptLeaders(employee.staffId);
-    const empIsHead = leaders?.headStaffId === employee.staffId;
-    const empIsSubhead = leaders?.subheadStaffId === employee.staffId;
-
-    const supervisors = await db
-      .select()
-      .from(staffSupervisors)
-      .where(sql`${staffSupervisors.staffId} = ${employee.staffId} AND ${staffSupervisors.staffVersion} = ${employee.version}`)
-      .limit(1)
-      .then((res: any) => res[0]);
-
-    const isDirectSupervisor = currentStaff && (
-      (supervisors && (currentStaff.staffId === supervisors.supervisor1Id || currentStaff.staffId === supervisors.supervisor2Id)) ||
-      currentStaff.staffId === leaveRequest.forwardedToStaffId
-    );
-
     if (!input.forwardToStaffId) {
       return c.json({ error: "Missing target supervisor to forward to" }, 400);
     }
 
-    // Any supervisor (or admin) can forward
-    const isCurrentSubhead = currentStaff?.staffId === leaders?.subheadStaffId;
-    if (!isAdmin && !isCurrentSubhead && !isDirectSupervisor) {
-      return c.json({ error: "Only a supervisor can forward a leave request" }, 403);
+    // Verify target staff is an active executive level staff
+    const targetStaff = await db
+      .select()
+      .from(staff)
+      .where(sql`${staff.staffId} = ${input.forwardToStaffId} AND ${staff.active} = true AND ${staff.isExecutive} = true`)
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!targetStaff) {
+      return c.json({ error: "Target staff must be an active executive level staff member" }, 400);
+    }
+
+    const canAct = (() => {
+      if (isHrOrAdmin) return true;
+      if (!currentStaff) return false;
+      try {
+        const apps = JSON.parse(leaveRequest.approverIds ?? "[]");
+        return Array.isArray(apps) && apps.includes(currentStaff.staffId);
+      } catch (e) {
+        return false;
+      }
+    })();
+
+    if (!canAct) {
+      return c.json({ error: "Only an authorized approver can forward this leave request" }, 403);
     }
 
     await db

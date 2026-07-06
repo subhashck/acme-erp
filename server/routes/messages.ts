@@ -170,6 +170,75 @@ export const messagesRoutes = new Hono<AuthEnv>()
 
     return c.json(rows);
   })
+  // ── GET /messages/conversations ──────────────────────────────────────────
+  // Returns all users the current user has had a direct message exchange with,
+  // plus the latest message preview and number of unread messages.
+  .get("/messages/conversations", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+
+    // Find every distinct user that has sent to or received from the current user
+    const rows = await db.execute(sql`
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.image,
+        lm.content   AS "lastMessage",
+        lm.created_at AS "lastMessageAt",
+        COALESCE(ur.unread, 0) AS unread
+      FROM (
+        SELECT DISTINCT
+          CASE WHEN sender_id = ${userId} THEN receiver_id ELSE sender_id END AS partner_id
+        FROM messages
+        WHERE channel_type = 'direct'
+          AND (sender_id = ${userId} OR receiver_id = ${userId})
+      ) AS partners
+      INNER JOIN "user" u ON u.id = partners.partner_id
+      -- latest message in this conversation
+      INNER JOIN LATERAL (
+        SELECT content, created_at
+        FROM messages
+        WHERE channel_type = 'direct'
+          AND (
+            (sender_id = ${userId} AND receiver_id = partners.partner_id)
+            OR (sender_id = partners.partner_id AND receiver_id = ${userId})
+          )
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) lm ON true
+      -- unread: messages sent TO current user that are unread
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS unread
+        FROM messages
+        WHERE channel_type = 'direct'
+          AND sender_id = partners.partner_id
+          AND receiver_id = ${userId}
+          AND read_at IS NULL
+      ) ur ON true
+      ORDER BY lm.created_at DESC
+    `);
+
+    return c.json(rows.rows ?? rows);
+  })
+  // ── POST /messages/read/:userId ──────────────────────────────────────────
+  // Marks all unread direct messages from a specific user as read.
+  .post("/messages/read/:userId", async (c) => {
+    const session = c.get("session");
+    const currentUserId = session.user.id;
+    const { userId: senderId } = c.req.param();
+
+    await db.execute(sql`
+      UPDATE messages
+      SET read_at = NOW()
+      WHERE channel_type = 'direct'
+        AND sender_id = ${senderId}
+        AND receiver_id = ${currentUserId}
+        AND read_at IS NULL
+    `);
+
+    return c.json({ ok: true });
+  })
   .post("/messages", async (c) => {
     const session = c.get("session");
     const userId = session.user.id;

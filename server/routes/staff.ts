@@ -52,6 +52,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
         userId: staff.userId,
         createdAt: staff.createdAt,
       })
@@ -79,8 +80,11 @@ export const staffRoutes = new Hono<AuthEnv>()
    * Creates a new staff record (version=1, active=true, new staffId).
    */
   .post("/hr/staff", async (c) => {
-    const input = await jsonBody(c, staffInput);
     const session = c.get("session");
+    if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
+    const input = await jsonBody(c, staffInput);
 
     const {
       departmentId,
@@ -172,9 +176,12 @@ export const staffRoutes = new Hono<AuthEnv>()
    * The old active row is marked inactive, and a new row is inserted with version+1.
    */
   .put("/hr/staff/:id", async (c) => {
+    const session = c.get("session");
+    if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, staffInput);
-    const session = c.get("session");
 
     const {
       departmentId,
@@ -226,6 +233,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         ...cleanStaffData,
         staffId: id,
         employeeCode: currentStaff.employeeCode,
+        userId: currentStaff.userId,
         version: newVersion,
         active: true,
       })
@@ -655,10 +663,9 @@ export const staffRoutes = new Hono<AuthEnv>()
     for (const lr of approvedLeaves) {
       const start = lr.startDate;
       const end = lr.endDate;
-      const days = Math.max(
-        1,
-        Math.round((end.getTime() - start.getTime()) / 86400000) + 1
-      );
+      const days = lr.isHalfDay 
+        ? 0.5 
+        : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
       daysByType[lr.leaveType] = (daysByType[lr.leaveType] ?? 0) + days;
     }
 
@@ -737,14 +744,14 @@ export const staffRoutes = new Hono<AuthEnv>()
     
     if (versionQuery) {
       activeStaffRow = await db
-        .select({ version: staff.version, role: staff.role })
+        .select({ version: staff.version, role: staff.role, isExecutive: staff.isExecutive })
         .from(staff)
         .where(and(eq(staff.staffId, id), eq(staff.version, parseInt(versionQuery, 10))))
         .limit(1)
         .then((res: any) => res[0]);
     } else {
       activeStaffRow = await db
-        .select({ version: staff.version, role: staff.role })
+        .select({ version: staff.version, role: staff.role, isExecutive: staff.isExecutive })
         .from(staff)
         .where(and(eq(staff.staffId, id), eq(staff.active, true)))
         .limit(1)
@@ -797,10 +804,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       .limit(1)
       .then((res: any) => !!res[0]);
 
-    const isExecutive =
-      ["Executive", "Director", "CEO", "Admin", "HR"].includes(
-        activeStaffRow?.role
-      ) || isDeptLeader;
+    const isExecutive = activeStaffRow?.isExecutive || isDeptLeader;
 
     let defaultSupervisor1Id = null;
     let defaultSupervisor2Id = null;
@@ -851,6 +855,10 @@ export const staffRoutes = new Hono<AuthEnv>()
    * :id is the stable staffId.
    */
   .put("/hr/staff/:id/supervisors", async (c) => {
+    const session = c.get("session");
+    if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
     const { id } = idParam.parse(c.req.param());
     const versionQuery = c.req.query("version");
 

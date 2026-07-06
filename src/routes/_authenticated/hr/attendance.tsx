@@ -12,6 +12,7 @@ import { Autocomplete } from "../../../ui/autocomplete";
 import { Field } from "../../../components/Field";
 import { cn } from "../../../utils/cn";
 import XLSX from "xlsx-js-style";
+import type { StaffRow } from "../../../types";
 
 export const Route = createFileRoute("/_authenticated/hr/attendance")({
   component: AttendancePage,
@@ -31,13 +32,17 @@ type AttendanceLog = {
     name: string;
     startTime: string;
     endTime: string;
+    isOffDay: boolean;
   } | null;
 };
 
 function AttendancePage() {
   const [currentTab, setCurrentTab] = React.useState<"logs" | "import" | "mappings">("logs");
-  const [date, setDate] = React.useState(() => new Date().toISOString().split("T")[0]);
-  const [departmentId, setDepartmentId] = React.useState("All");
+  const [date, setDate] = React.useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [departmentId, setDepartmentId] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("All");
 
   // Simulating ranges state
@@ -50,8 +55,8 @@ function AttendancePage() {
 
   // Manual log state
   const [selectedLogEmpId, setSelectedLogEmpId] = React.useState("");
-  const [manualCheckIn, setManualCheckIn] = React.useState("09:00");
-  const [manualCheckOut, setManualCheckOut] = React.useState("17:00");
+  const [manualCheckIn, setManualCheckIn] = React.useState("");
+  const [manualCheckOut, setManualCheckOut] = React.useState("");
   const [manualStatus, setManualStatus] = React.useState("Present");
   const [manualNotes, setManualNotes] = React.useState("");
   const [submittingManual, setSubmittingManual] = React.useState(false);
@@ -73,7 +78,7 @@ function AttendancePage() {
     client.departments.$get()
   );
 
-  const staffQuery = useRpcQuery<{ id: number; name: string; employeeCode: string }[]>(["staff"], () =>
+  const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () =>
     client.hr.staff.$get()
   );
 

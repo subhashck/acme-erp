@@ -137,4 +137,45 @@ export const notificationsActions = {
       notificationsActions.fetchNotifications();
     }
   },
+
+  // Delete single notification
+  deleteNotification: async (id: number) => {
+    try {
+      // Optimistically update
+      notificationsStore.setState((state) => ({
+        ...state,
+        notifications: state.notifications.filter((n) => n.id !== id),
+      }));
+
+      const res = await fetch(`/api/notifications/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        // Rollback on error
+        notificationsActions.fetchNotifications();
+      }
+    } catch (err) {
+      console.error("Failed to delete notification:", err);
+      notificationsActions.fetchNotifications();
+    }
+  },
+
+  // Delete all notifications
+  deleteAll: async () => {
+    try {
+      // Optimistically update
+      notificationsStore.setState((state) => ({
+        ...state,
+        notifications: [],
+      }));
+
+      const res = await fetch("/api/notifications", { method: "DELETE" });
+      if (!res.ok) {
+        // Rollback on error
+        notificationsActions.fetchNotifications();
+      }
+    } catch (err) {
+      console.error("Failed to delete all notifications:", err);
+      notificationsActions.fetchNotifications();
+    }
+  },
 };
+
