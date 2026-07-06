@@ -6,7 +6,7 @@ import { auth, type AuthEnv } from "./auth.ts";
 import { api } from "./routes.ts";
 import { serveStatic } from "@hono/node-server/serve-static";
 
-const app = new Hono<AuthEnv>();
+export const app = new Hono<AuthEnv>();
 
 app.use(logger());
 app.use(

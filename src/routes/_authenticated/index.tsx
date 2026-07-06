@@ -63,7 +63,7 @@ function Dashboard() {
     ["my-punch-status"],
     // @ts-ignore - this endpoint exists but might not be in the generated types yet
     () => client.hr.attendance["my-punch-status"].$get(),
-    { enabled: !isAdminOrHr }
+    { enabled: !!session.data && !isAdminOrHr }
   );
 
   const punchMutation = useMutation({
