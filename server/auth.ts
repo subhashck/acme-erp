@@ -2,12 +2,15 @@ import { betterAuth } from "better-auth";
 import { admin } from "better-auth/plugins";
 import { pool } from "./db/client.ts";
 
+const rawAuthUrl = process.env.BETTER_AUTH_URL ?? "http://localhost:8787";
+const cleanAuthUrl = rawAuthUrl.replace(/\/$/, "");
+
 export const auth = betterAuth({
   database: pool,
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:8787",
+  baseURL: cleanAuthUrl,
   basePath: "/api/auth",
   secret: process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me",
-  trustedOrigins: [process.env.BETTER_AUTH_URL ?? "http://localhost:8787", "http://localhost:5173"],
+  trustedOrigins: [cleanAuthUrl, "http://localhost:5173"],
   emailAndPassword: {
     enabled: true
   },

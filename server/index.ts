@@ -12,7 +12,7 @@ app.use(logger());
 app.use(
   "/api/*",
   cors({
-    origin: ["http://localhost:5173"],
+    origin: (origin) => origin,
     credentials: true,
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
