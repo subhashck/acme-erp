@@ -52,9 +52,9 @@ app.use(
   })
 );
 
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 8787;
 
-
-serve({ fetch: app.fetch, port: 8787 }, (info) => {
+serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
   console.log(`Hono API listening on http://localhost:${info.port}`);
 });
 
