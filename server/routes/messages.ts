@@ -50,6 +50,11 @@ export const messagesRoutes = new Hono<AuthEnv>()
       console.error("Error retrieving user department:", err);
     }
 
+    c.header("Content-Type", "text/event-stream");
+    c.header("Cache-Control", "no-cache, no-transform");
+    c.header("Connection", "keep-alive");
+    c.header("X-Accel-Buffering", "no");
+
     return streamSSE(c, async (stream) => {
       const orgListener = async (msg: any) => {
         try {
