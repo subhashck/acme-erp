@@ -36,21 +36,21 @@ app.use("/api/*", async (c, next) => {
 app.route("/api", api);
 
 //Serve static assets (js, css, images) from the Vite build directory
-// app.use(
-//   "*",
-//   serveStatic({
-//     root: "dist",
-//   })
-// );
+app.use(
+  "*",
+  serveStatic({
+    root: "dist",
+  })
+);
 
-// // Fallback: Serve index.html for Single Page Application (SPA) routing
-// app.use(
-//   "/*",
-//   serveStatic({
-//     root: "dist",
-//     path: "index.html",
-//   })
-// );
+// Fallback: Serve index.html for Single Page Application (SPA) routing
+app.use(
+  "/*",
+  serveStatic({
+    root: "dist",
+    path: "index.html",
+  })
+);
 
 
 
