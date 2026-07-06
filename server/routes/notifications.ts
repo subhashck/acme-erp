@@ -11,6 +11,11 @@ export const notificationRoutes = new Hono<AuthEnv>()
     const session = c.get("session");
     const userId = session.user.id;
 
+    c.header("Content-Type", "text/event-stream");
+    c.header("Cache-Control", "no-cache, no-transform");
+    c.header("Connection", "keep-alive");
+    c.header("X-Accel-Buffering", "no");
+
     return streamSSE(c, async (stream) => {
       const eventName = `user:${userId}`;
 
