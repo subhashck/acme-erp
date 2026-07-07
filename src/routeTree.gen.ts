@@ -14,6 +14,9 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
+import { Route as AuthenticatedReportsIndexRouteImport } from './routes/_authenticated/reports/index'
+import { Route as AuthenticatedReportsNewRouteImport } from './routes/_authenticated/reports/new'
+import { Route as AuthenticatedReportsIdRouteImport } from './routes/_authenticated/reports/$id'
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
@@ -34,6 +37,9 @@ import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authentic
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
 import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_authenticated/admin/localization'
 import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authenticated/admin/hospital'
+import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
+import { Route as AuthenticatedAccountsConsultantChargesRouteImport } from './routes/_authenticated/accounts/consultant-charges'
+import { Route as AuthenticatedReportsEditIdRouteImport } from './routes/_authenticated/reports/edit.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -60,6 +66,22 @@ const AuthenticatedCommunicationRoute =
     path: '/communication',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedReportsIndexRoute =
+  AuthenticatedReportsIndexRouteImport.update({
+    id: '/reports/',
+    path: '/reports/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedReportsNewRoute = AuthenticatedReportsNewRouteImport.update({
+  id: '/reports/new',
+  path: '/reports/new',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedReportsIdRoute = AuthenticatedReportsIdRouteImport.update({
+  id: '/reports/$id',
+  path: '/reports/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMastersShiftsRoute =
   AuthenticatedMastersShiftsRouteImport.update({
     id: '/masters/shifts',
@@ -175,12 +197,32 @@ const AuthenticatedAdminHospitalRoute =
     path: '/admin/hospital',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAccountsServiceChargesRoute =
+  AuthenticatedAccountsServiceChargesRouteImport.update({
+    id: '/accounts/service-charges',
+    path: '/accounts/service-charges',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAccountsConsultantChargesRoute =
+  AuthenticatedAccountsConsultantChargesRouteImport.update({
+    id: '/accounts/consultant-charges',
+    path: '/accounts/consultant-charges',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedReportsEditIdRoute =
+  AuthenticatedReportsEditIdRouteImport.update({
+    id: '/reports/edit/$id',
+    path: '/reports/edit/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
@@ -201,12 +243,18 @@ export interface FileRoutesByFullPath {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/reports/$id': typeof AuthenticatedReportsIdRoute
+  '/reports/new': typeof AuthenticatedReportsNewRoute
+  '/reports/': typeof AuthenticatedReportsIndexRoute
+  '/reports/edit/$id': typeof AuthenticatedReportsEditIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
@@ -227,6 +275,10 @@ export interface FileRoutesByTo {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/reports/$id': typeof AuthenticatedReportsIdRoute
+  '/reports/new': typeof AuthenticatedReportsNewRoute
+  '/reports': typeof AuthenticatedReportsIndexRoute
+  '/reports/edit/$id': typeof AuthenticatedReportsEditIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -235,6 +287,8 @@ export interface FileRoutesById {
   '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/_authenticated/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/_authenticated/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/_authenticated/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
@@ -255,6 +309,10 @@ export interface FileRoutesById {
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/_authenticated/reports/$id': typeof AuthenticatedReportsIdRoute
+  '/_authenticated/reports/new': typeof AuthenticatedReportsNewRoute
+  '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
+  '/_authenticated/reports/edit/$id': typeof AuthenticatedReportsEditIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -263,6 +321,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/communication'
     | '/settings'
+    | '/accounts/consultant-charges'
+    | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
     | '/admin/payroll'
@@ -283,12 +343,18 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/reports/$id'
+    | '/reports/new'
+    | '/reports/'
+    | '/reports/edit/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/communication'
     | '/settings'
     | '/'
+    | '/accounts/consultant-charges'
+    | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
     | '/admin/payroll'
@@ -309,6 +375,10 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/reports/$id'
+    | '/reports/new'
+    | '/reports'
+    | '/reports/edit/$id'
   id:
     | '__root__'
     | '/_authenticated'
@@ -316,6 +386,8 @@ export interface FileRouteTypes {
     | '/_authenticated/communication'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/accounts/consultant-charges'
+    | '/_authenticated/accounts/service-charges'
     | '/_authenticated/admin/hospital'
     | '/_authenticated/admin/localization'
     | '/_authenticated/admin/payroll'
@@ -336,6 +408,10 @@ export interface FileRouteTypes {
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
+    | '/_authenticated/reports/$id'
+    | '/_authenticated/reports/new'
+    | '/_authenticated/reports/'
+    | '/_authenticated/reports/edit/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -378,6 +454,27 @@ declare module '@tanstack/react-router' {
       path: '/communication'
       fullPath: '/communication'
       preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/reports/': {
+      id: '/_authenticated/reports/'
+      path: '/reports'
+      fullPath: '/reports/'
+      preLoaderRoute: typeof AuthenticatedReportsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/reports/new': {
+      id: '/_authenticated/reports/new'
+      path: '/reports/new'
+      fullPath: '/reports/new'
+      preLoaderRoute: typeof AuthenticatedReportsNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/reports/$id': {
+      id: '/_authenticated/reports/$id'
+      path: '/reports/$id'
+      fullPath: '/reports/$id'
+      preLoaderRoute: typeof AuthenticatedReportsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/masters/shifts': {
@@ -520,6 +617,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminHospitalRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/accounts/service-charges': {
+      id: '/_authenticated/accounts/service-charges'
+      path: '/accounts/service-charges'
+      fullPath: '/accounts/service-charges'
+      preLoaderRoute: typeof AuthenticatedAccountsServiceChargesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/accounts/consultant-charges': {
+      id: '/_authenticated/accounts/consultant-charges'
+      path: '/accounts/consultant-charges'
+      fullPath: '/accounts/consultant-charges'
+      preLoaderRoute: typeof AuthenticatedAccountsConsultantChargesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/reports/edit/$id': {
+      id: '/_authenticated/reports/edit/$id'
+      path: '/reports/edit/$id'
+      fullPath: '/reports/edit/$id'
+      preLoaderRoute: typeof AuthenticatedReportsEditIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
@@ -527,6 +645,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAccountsConsultantChargesRoute: typeof AuthenticatedAccountsConsultantChargesRoute
+  AuthenticatedAccountsServiceChargesRoute: typeof AuthenticatedAccountsServiceChargesRoute
   AuthenticatedAdminHospitalRoute: typeof AuthenticatedAdminHospitalRoute
   AuthenticatedAdminLocalizationRoute: typeof AuthenticatedAdminLocalizationRoute
   AuthenticatedAdminPayrollRoute: typeof AuthenticatedAdminPayrollRoute
@@ -547,12 +667,20 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
   AuthenticatedMastersSalaryTemplatesRoute: typeof AuthenticatedMastersSalaryTemplatesRoute
   AuthenticatedMastersShiftsRoute: typeof AuthenticatedMastersShiftsRoute
+  AuthenticatedReportsIdRoute: typeof AuthenticatedReportsIdRoute
+  AuthenticatedReportsNewRoute: typeof AuthenticatedReportsNewRoute
+  AuthenticatedReportsIndexRoute: typeof AuthenticatedReportsIndexRoute
+  AuthenticatedReportsEditIdRoute: typeof AuthenticatedReportsEditIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAccountsConsultantChargesRoute:
+    AuthenticatedAccountsConsultantChargesRoute,
+  AuthenticatedAccountsServiceChargesRoute:
+    AuthenticatedAccountsServiceChargesRoute,
   AuthenticatedAdminHospitalRoute: AuthenticatedAdminHospitalRoute,
   AuthenticatedAdminLocalizationRoute: AuthenticatedAdminLocalizationRoute,
   AuthenticatedAdminPayrollRoute: AuthenticatedAdminPayrollRoute,
@@ -575,6 +703,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMastersSalaryTemplatesRoute:
     AuthenticatedMastersSalaryTemplatesRoute,
   AuthenticatedMastersShiftsRoute: AuthenticatedMastersShiftsRoute,
+  AuthenticatedReportsIdRoute: AuthenticatedReportsIdRoute,
+  AuthenticatedReportsNewRoute: AuthenticatedReportsNewRoute,
+  AuthenticatedReportsIndexRoute: AuthenticatedReportsIndexRoute,
+  AuthenticatedReportsEditIdRoute: AuthenticatedReportsEditIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

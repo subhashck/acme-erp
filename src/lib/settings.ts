@@ -147,6 +147,7 @@ export interface SalaryTemplate {
   esi: number;
   professionalTax: number;
   otherDeductions: number;
+  lateAttendance?: number;
 }
 
 export function getSalaryTemplates(): SalaryTemplate[] {

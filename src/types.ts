@@ -24,6 +24,7 @@ export type StaffRow = {
   esi?: number | null;
   professionalTax?: number | null;
   otherDeductions?: number | null;
+  lateAttendance?: number | null;
   salary?: number | null;
   userId?: string | null;
   isExecutive?: boolean;

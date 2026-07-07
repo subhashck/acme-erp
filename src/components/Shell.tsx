@@ -137,10 +137,11 @@ export function Shell() {
   const search = useStore(uiStore, (state) => state.search);
   const session = authClient.useSession();
   const hospital = useHospitalSettings();
-  const [hrOpen, setHrOpen] = React.useState(true);
-  const [clinicalOpen, setClinicalOpen] = React.useState(true);
-  const [mastersOpen, setMastersOpen] = React.useState(true);
-  const [adminOpen, setAdminOpen] = React.useState(true);
+  const [hrOpen, setHrOpen] = React.useState(false);
+  const [clinicalOpen, setClinicalOpen] = React.useState(false);
+  const [accountsOpen, setAccountsOpen] = React.useState(false);
+  const [mastersOpen, setMastersOpen] = React.useState(false);
+  const [adminOpen, setAdminOpen] = React.useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   
@@ -369,6 +370,48 @@ export function Shell() {
                 )}
               </div>
 
+              {/* Collapsible Accounts group */}
+              <div className="flex flex-col">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAccountsOpen(!accountsOpen);
+                  }}
+                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                >
+                  <div className="flex items-center gap-3">
+                    <Landmark size={18} />
+                    <span>Accounts</span>
+                  </div>
+                  {accountsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {accountsOpen && (
+                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                    <Link
+                      to="/accounts/consultant-charges"
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Consultant Charges
+                    </Link>
+                    <Link
+                      to="/accounts/service-charges"
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Service Charges
+                    </Link>
+                    <Link
+                      to="/reports"
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Daily Closing
+                    </Link>
+                  </div>
+                )}
+              </div>
+
               {/* Collapsible Masters group */}
               {session.data?.user.role === "admin" && (
                 <div className="flex flex-col">
@@ -569,6 +612,36 @@ export function Shell() {
                 <Syringe size={20} />
               </Link>
 
+              <div className="w-8 h-px bg-border my-2" />
+
+
+              <Link
+                to="/accounts/consultant-charges"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Consultant Charges"
+              >
+                <Landmark size={20} />
+              </Link>
+
+              <Link
+                to="/accounts/service-charges"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Service Charges"
+              >
+                <Coins size={20} />
+              </Link>
+
+              <Link
+                to="/reports"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Daily Closing Reports"
+              >
+                <CalendarClock size={20} />
+              </Link>
+
               {session.data?.user.role === "admin" && (
                 <>
                   <div className="w-8 h-px bg-border my-2" />
@@ -679,21 +752,7 @@ export function Shell() {
           )}
         </nav>
 
-        {/* Footer Session details */}
-        {!isSidebarMinimized ? (
-          <div className="absolute inset-x-5 bottom-6 rounded-lg border bg-card p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-              <ShieldCheck size={16} />
-              {session.data?.user.role === "admin" ? "Admin console" : "Staff console"}
-            </div>
-            {displayName && <p className="font-semibold text-sm mb-1 truncate">{displayName}</p>}
-            <p className="text-xs leading-5 text-muted-foreground truncate">{session.data?.user.email}</p>
-          </div>
-        ) : (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-muted-foreground" title={session.data?.user.email || ""}>
-            <ShieldCheck size={20} />
-          </div>
-        )}
+
       </aside>
       
       <main className={cn("transition-all duration-300", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")}>
@@ -730,10 +789,10 @@ export function Shell() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative w-full md:w-72">
+              {/* <div className="relative w-full md:w-72">
                 <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
                 <Input value={search} onChange={(event) => uiStore.setState((state) => ({ ...state, search: event.target.value }))} className="pl-9" placeholder="Search records" />
-              </div>
+              </div> */}
               <div className="relative" ref={dropdownRef}>
                 <Button
                   variant="outline"
@@ -786,7 +845,7 @@ export function Shell() {
                             error: AlertCircle,
                             warning: AlertTriangle,
                             info: Info,
-                          }[n.type] || Info;
+                          }[n.type as "success" | "error" | "warning" | "info"] || Info;
 
                           return (
                             <div
@@ -855,6 +914,16 @@ export function Shell() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              <div className="flex items-center gap-2.5 rounded-lg border bg-muted/50 px-3 py-1.5" title={session.data?.user.email}>
+                <ShieldCheck size={14} className="shrink-0 text-muted-foreground" />
+                <div className="flex flex-col leading-tight">
+                  {displayName && <span className="text-xs font-semibold truncate max-w-[120px]">{displayName}</span>}
+                  <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                    {session.data?.user.role === "admin" ? "Admin" : "Staff"}
+                  </span>
+                </div>
               </div>
 
               <Button variant="outline" size="icon" title="Sign out" onClick={signOut}>

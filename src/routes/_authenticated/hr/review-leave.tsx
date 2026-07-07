@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { z } from "zod";
-import { Check, X, ArrowRight, ArrowLeft, AlertCircle, AlertTriangle, Paperclip, FileText, Download } from "lucide-react";
+import { Check, X, ArrowRight, ArrowLeft, AlertCircle, AlertTriangle, Paperclip, FileText, Download, Maximize2 } from "lucide-react";
 import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
@@ -12,6 +12,84 @@ import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { cn } from "../../../utils/cn";
 import { Select } from "../../../ui/select";
+
+// ---------------------------------------------------------------------------
+// Lightbox
+// ---------------------------------------------------------------------------
+
+function DocumentLightbox({
+  url,
+  type,
+  onClose,
+}: {
+  url: string;
+  type: "image" | "pdf";
+  onClose: () => void;
+}) {
+  // Close on ESC key
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 backdrop-blur-sm animate-in fade-in duration-150"
+      onClick={onClose}
+    >
+      {/* Panel — stop click from bubbling to backdrop */}
+      <div
+        className="relative w-full h-full max-w-5xl max-h-[95vh] mx-4 my-4 flex flex-col animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-t-xl bg-black/60 border border-white/10">
+          <span className="text-xs font-semibold text-white/70 uppercase tracking-widest">
+            {type === "image" ? "Image Preview" : "PDF Preview"}
+          </span>
+          <div className="flex items-center gap-2">
+            <a
+              href={`${url}?download=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white font-semibold px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Download size={13} /> Download
+            </a>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+              aria-label="Close preview"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden rounded-b-xl bg-black/40 border border-t-0 border-white/10 flex items-center justify-center">
+          {type === "image" ? (
+            <img
+              src={url}
+              alt="Supporting document"
+              className="max-h-full max-w-full object-contain select-none p-4"
+              draggable={false}
+            />
+          ) : (
+            <iframe
+              src={url}
+              title="PDF Preview"
+              className="w-full h-full border-0"
+              allow="fullscreen"
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; staffList: StaffRow[] }) {
   const approversNames = React.useMemo(() => {
@@ -155,6 +233,7 @@ function ReviewLeave() {
   const [reviewerNote, setReviewerNote] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [forwardToStaffId, setForwardToStaffId] = React.useState<number | "">("");
+  const [lightboxOpen, setLightboxOpen] = React.useState(false);
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const leaveQuery = useRpcQuery<LeaveDetailRow>(
@@ -335,50 +414,101 @@ function ReviewLeave() {
               <Field label="Start Date" type="date" value={formatDateForInput(leave.startDate)} disabled />
               <Field label="End Date" type="date" value={formatDateForInput(leave.endDate)} disabled />
               <Field label="Reason" className="md:col-span-2" value={leave.reason} disabled />
-              {leave.supportingDocument && (
-                <div className="md:col-span-2 flex flex-col gap-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-2">
-                  <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-                    <Paperclip size={16} className="text-primary" /> Supporting Document
-                  </span>
-                  
-                  {/* File preview based on content type */}
-                  {leave.supportingDocument.startsWith("data:image/") ? (
-                    <div className="mt-1 relative rounded-lg border border-border overflow-hidden bg-card max-h-[300px] w-full flex items-center justify-center p-2">
-                      <img 
-                        src={leave.supportingDocument} 
-                        alt="Supporting document preview" 
-                        className="max-h-[280px] max-w-full object-contain rounded-md"
-                      />
-                    </div>
-                  ) : (
-                    <div className="mt-1 p-4 border border-dashed rounded-lg border-border bg-card flex items-center gap-3">
-                      <div className="p-2.5 rounded-lg bg-primary/5 text-primary">
-                        <FileText size={20} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-foreground truncate">
-                          {leave.supportingDocument.startsWith("data:application/pdf") ? "PDF Document" : "Compressed File (ZIP)"}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">
-                          {leave.supportingDocument.startsWith("data:application/pdf") ? "Portable Document Format" : "ZIP Archive File"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+              {leave.supportingDocument && (() => {
+                  const docUrl = `/api/hr/leaves/${leave.id}/document`;
+                  const ext = leave.supportingDocument.split('.').pop()?.toLowerCase() ?? "";
+                  const isImage = ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+                  const isPdf = ext === "pdf";
+                  const canPreview = isImage || isPdf;
 
-                  <div className="flex items-center gap-2 mt-1">
-                    <a
-                      href={leave.supportingDocument}
-                      download={`supporting-doc-${leave.requestNo}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-semibold bg-primary/5 hover:bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Download size={13} /> Download File
-                    </a>
-                  </div>
-                </div>
-              )}
+                  return (
+                    <>
+                      {/* Lightbox */}
+                      {lightboxOpen && canPreview && (
+                        <DocumentLightbox
+                          url={docUrl}
+                          type={isImage ? "image" : "pdf"}
+                          onClose={() => setLightboxOpen(false)}
+                        />
+                      )}
+
+                      <div className="md:col-span-2 flex flex-col gap-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mt-2">
+                        <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                          <Paperclip size={16} className="text-primary" /> Supporting Document
+                        </span>
+
+                        {/* File preview based on extension */}
+                        {isImage ? (
+                          <div
+                            className="mt-1 relative rounded-lg border border-border overflow-hidden bg-card max-h-[300px] w-full flex items-center justify-center p-2 cursor-zoom-in group"
+                            onClick={() => setLightboxOpen(true)}
+                            title="Click to enlarge"
+                          >
+                            <img
+                              src={docUrl}
+                              alt="Supporting document preview"
+                              className="max-h-[280px] max-w-full object-contain rounded-md transition-transform duration-200 group-hover:scale-[1.02]"
+                            />
+                            {/* Enlarge hint overlay */}
+                            <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-black/20 rounded-lg">
+                              <div className="bg-black/60 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
+                                <Maximize2 size={12} /> Click to enlarge
+                              </div>
+                            </div>
+                          </div>
+                        ) : isPdf ? (
+                          <div
+                            className="mt-1 p-4 border border-dashed rounded-lg border-border bg-card flex items-center gap-3 cursor-pointer hover:bg-muted/30 transition-colors group"
+                            onClick={() => setLightboxOpen(true)}
+                            title="Click to preview PDF"
+                          >
+                            <div className="p-2.5 rounded-lg bg-primary/5 text-primary">
+                              <FileText size={20} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-foreground truncate">PDF Document</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">Portable Document Format</p>
+                            </div>
+                            <div className="flex items-center gap-1 text-xs text-primary font-semibold opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Maximize2 size={13} /> Preview
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-1 p-4 border border-dashed rounded-lg border-border bg-card flex items-center gap-3">
+                            <div className="p-2.5 rounded-lg bg-primary/5 text-primary">
+                              <FileText size={20} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-foreground truncate">Compressed File (ZIP)</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5">ZIP Archive File</p>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2 mt-1">
+                          {canPreview && (
+                            <button
+                              type="button"
+                              onClick={() => setLightboxOpen(true)}
+                              className="inline-flex items-center gap-1.5 text-xs text-foreground hover:text-primary font-semibold bg-muted/50 hover:bg-muted border border-border px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                              <Maximize2 size={13} /> Full Screen Preview
+                            </button>
+                          )}
+                          <a
+                            href={`${docUrl}?download=1`}
+                            download={`supporting-doc-${leave.requestNo}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-semibold bg-primary/5 hover:bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Download size={13} /> Download File
+                          </a>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
             </form>
           </CardContent>
         </Card>

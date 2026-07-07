@@ -15,6 +15,7 @@ interface PayslipRow {
   esi: number;
   professionalTax: number;
   otherDeductions: number;
+  lateAttendance: number;
   leaveDaysTaken: number;
   leaveDeduction: number;
   netSalary: number;
@@ -71,6 +72,7 @@ const COLUMNS: { key: string; label: string; group: ColGroup }[] = [
   { key: "ESI",              label: "ESI (₹)",              group: "deduction"       },
   { key: "Professional Tax", label: "Professional Tax (₹)", group: "deduction"       },
   { key: "Other Deductions", label: "Other Deductions (₹)", group: "deduction"       },
+  { key: "Late Attendance",  label: "Late Attendance (₹)",  group: "deduction"       },
   { key: "Leave Days Taken", label: "Leave Days Taken",     group: "deduction"       },
   { key: "Leave Deduction",  label: "Leave Deduction (₹)",  group: "deduction"       },
   { key: "Total Deductions", label: "Total Deductions (₹)", group: "deduction-total" },
@@ -99,9 +101,10 @@ function buildDataRows(payslips: PayslipRow[]): DataRow[] {
     "ESI":              p.esi,
     "Professional Tax": p.professionalTax,
     "Other Deductions": p.otherDeductions,
+    "Late Attendance":  p.lateAttendance,
     "Leave Days Taken": p.leaveDaysTaken,
     "Leave Deduction":  p.leaveDeduction,
-    "Total Deductions": p.epf + p.esi + p.professionalTax + p.otherDeductions + p.leaveDeduction,
+    "Total Deductions": p.epf + p.esi + p.professionalTax + p.otherDeductions + p.lateAttendance + p.leaveDeduction,
     "Net Salary":       p.netSalary,
     "Status":           p.status,
     "Version":          `v${p.version}`,
