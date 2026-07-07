@@ -1,4 +1,7 @@
 import { aliasedTable, desc, eq, sql, and, lte, gte, ne, like } from "drizzle-orm";
+import { createReadStream, existsSync } from "node:fs";
+import { lookup as mimeLookup } from "mime-types";
+import path from "node:path";
 import { Hono } from "hono";
 import { auth } from "../auth.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -16,11 +19,11 @@ import {
   rosters,
 } from "../db/schema.ts";
 import { sendNotification } from "../utils/notifier.ts";
+import { saveLeaveDocument, resolveUploadPath } from "../utils/upload.ts";
 import {
   code,
   getCurrentStaff,
   idParam,
-  jsonBody,
   leaveDecisionInput,
   leaveRequestInput,
 } from "./shared.ts";
@@ -127,12 +130,24 @@ export const leavesRoutes = new Hono<AuthEnv>()
   //   Regular staff's leave → notify both head & sub-head (fallback: admins)
   // -------------------------------------------------------------------------
   .post("/hr/leaves", async (c) => {
-    const input = await jsonBody(c, leaveRequestInput);
-    
+    // Use Hono's parseBody() — compatible with @hono/node-server multipart handling
+    const body = await c.req.parseBody();
+
+    const rawInput = {
+      staffId: Number(body["staffId"]),
+      leaveType: String(body["leaveType"] ?? ""),
+      isHalfDay: body["isHalfDay"] === "true",
+      startDate: String(body["startDate"] ?? ""),
+      endDate: String(body["endDate"] ?? ""),
+      reason: String(body["reason"] ?? ""),
+    };
+
+    const input = leaveRequestInput.parse(rawInput);
+
     // Check for overlapping leaves
     const reqStart = new Date(input.startDate);
     const reqEnd = new Date(input.endDate);
-    
+
     const existingLeaves = await db
       .select()
       .from(leaveRequests)
@@ -185,15 +200,31 @@ export const leavesRoutes = new Hono<AuthEnv>()
 
     computedApproverIds = Array.from(new Set(computedApproverIds)).filter(id => id !== employee.staffId);
 
+    // Generate request number first so we can use it in the filename
+    const requestNo = code("LV");
+
+    // Handle optional file upload — save to disk, store relative path
+    let supportingDocumentPath: string | null = null;
+    const fileEntry = body["supportingDocument"];
+    if (fileEntry && fileEntry instanceof File && fileEntry.size > 0) {
+      try {
+        supportingDocumentPath = await saveLeaveDocument(fileEntry, requestNo);
+      } catch (err) {
+        console.error("Failed to save supporting document:", err);
+        return c.json({ error: "Failed to save supporting document" }, 500);
+      }
+    }
+
     const [row] = await db
       .insert(leaveRequests)
       .values({
         ...input,
-        requestNo: code("LV"),
+        requestNo,
         startDate: new Date(input.startDate),
         endDate: new Date(input.endDate),
         status: "Pending",
         approverIds: JSON.stringify(computedApproverIds),
+        supportingDocument: supportingDocumentPath,
       })
       .returning()
       .execute();
@@ -427,6 +458,74 @@ export const leavesRoutes = new Hono<AuthEnv>()
     }
 
     return c.json(row);
+  })
+  // -------------------------------------------------------------------------
+  // GET /hr/leaves/:id/document — stream the supporting document file
+  // -------------------------------------------------------------------------
+  .get("/hr/leaves/:id/document", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const currentStaff = await getCurrentStaff(c);
+
+    const leaveRequest = await db
+      .select({
+        id: leaveRequests.id,
+        staffId: leaveRequests.staffId,
+        approverIds: leaveRequests.approverIds,
+        forwardedToStaffId: leaveRequests.forwardedToStaffId,
+        supportingDocument: leaveRequests.supportingDocument,
+      })
+      .from(leaveRequests)
+      .where(eq(leaveRequests.id, id))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!leaveRequest) {
+      return c.json({ error: "Leave request not found" }, 404);
+    }
+
+    // Auth: same rules as GET /hr/leaves/:id
+    const isEmployee = currentStaff && currentStaff.staffId === leaveRequest.staffId;
+    let isApprover = false;
+    try {
+      const apps = JSON.parse(leaveRequest.approverIds ?? "[]");
+      if (Array.isArray(apps) && currentStaff && apps.includes(currentStaff.staffId)) {
+        isApprover = true;
+      }
+    } catch (e) {}
+    const isForwardedTarget =
+      currentStaff &&
+      leaveRequest.forwardedToStaffId !== null &&
+      currentStaff.staffId === leaveRequest.forwardedToStaffId;
+
+    if (!isHrOrAdmin && !isEmployee && !isApprover && !isForwardedTarget) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
+
+    if (!leaveRequest.supportingDocument) {
+      return c.json({ error: "No supporting document attached" }, 404);
+    }
+
+    const absPath = resolveUploadPath(leaveRequest.supportingDocument);
+    if (!existsSync(absPath)) {
+      return c.json({ error: "Document file not found on server" }, 404);
+    }
+
+    const ext = path.extname(absPath).toLowerCase();
+    const mimeType = (mimeLookup(ext) as string | false) || "application/octet-stream";
+    const filename = path.basename(absPath);
+    const isDownload = c.req.query("download") === "1";
+
+    const stream = createReadStream(absPath);
+    const headers: Record<string, string> = {
+      "Content-Type": mimeType,
+      "Content-Disposition": isDownload
+        ? `attachment; filename="${filename}"`
+        : `inline; filename="${filename}"`,
+    };
+
+    return new Response(stream as any, { headers });
   })
   // -------------------------------------------------------------------------
   // POST /hr/leaves/:id/approve

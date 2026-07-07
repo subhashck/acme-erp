@@ -44,6 +44,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         esi: payslips.esi,
         professionalTax: payslips.professionalTax,
         otherDeductions: payslips.otherDeductions,
+        lateAttendance: payslips.lateAttendance,
         leaveDaysTaken: payslips.leaveDaysTaken,
         leaveDeduction: payslips.leaveDeduction,
         netSalary: payslips.netSalary,
@@ -56,12 +57,9 @@ export const payrollRoutes = new Hono<AuthEnv>()
         departmentName: departments.name,
       })
       .from(payslips)
-      .innerJoin(staff, eq(payslips.staffId, staff.staffId))
-      .leftJoin(
-        staffDepartments,
-        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
-      )
-      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .innerJoin(staff, sql`${payslips.staffId} = ${staff.staffId} AND ${staff.active} = true`)
+      .leftJoin(staffDepartments, sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active' AND ${staffDepartments.staffVersion} = ${staff.version}`)
+      .leftJoin(departments, sql`${staffDepartments.departmentId} = ${departments.id} AND ${departments.active} = true`)
       .where(whereClause)
       .orderBy(desc(payslips.month), desc(payslips.createdAt))
       .execute();
@@ -84,6 +82,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         esi: payslips.esi,
         professionalTax: payslips.professionalTax,
         otherDeductions: payslips.otherDeductions,
+        lateAttendance: payslips.lateAttendance,
         leaveDaysTaken: payslips.leaveDaysTaken,
         leaveDeduction: payslips.leaveDeduction,
         netSalary: payslips.netSalary,
@@ -96,7 +95,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         departmentName: departments.name,
       })
       .from(payslips)
-      .innerJoin(staff, eq(payslips.staffId, staff.staffId))
+      .innerJoin(staff, sql`${payslips.staffId} = ${staff.staffId} AND ${staff.active} = true`)
       .leftJoin(
         staffDepartments,
         sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
@@ -173,6 +172,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         esi: z.number().min(0),
         professionalTax: z.number().min(0),
         otherDeductions: z.number().min(0),
+        lateAttendance: z.number().min(0),
         leaveDaysTaken: z.number().min(0),
         leaveDeduction: z.number().min(0),
       })
@@ -195,7 +195,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
       input.medical +
       input.special;
     const statutoryDeductions =
-      input.epf + input.esi + input.professionalTax + input.otherDeductions;
+      input.epf + input.esi + input.professionalTax + input.otherDeductions + input.lateAttendance;
     const net = Math.max(0, gross - statutoryDeductions - input.leaveDeduction);
 
     await db
@@ -218,6 +218,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         esi: input.esi,
         professionalTax: input.professionalTax,
         otherDeductions: input.otherDeductions,
+        lateAttendance: input.lateAttendance,
         leaveDaysTaken: input.leaveDaysTaken,
         leaveDeduction: input.leaveDeduction,
         netSalary: net,
@@ -293,6 +294,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
     }
 
     let generatedCount = 0;
+    const skippedEmployees: string[] = [];
 
     for (const employee of activeStaff) {
       // Check if employee has any pending leaves
@@ -307,6 +309,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
 
       if (pendingLeaves.length > 0) {
         // Skip payroll processing for this employee
+        skippedEmployees.push(employee.name);
         continue;
       }
 
@@ -326,7 +329,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
       let epf = 0,
         esi = 0,
         profTax = 0,
-        otherDed = 0;
+        otherDed = 0,
+        lateAtt = 0;
 
       if (structure) {
         basic = structure.basicSalary;
@@ -338,6 +342,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         esi = structure.esi;
         profTax = structure.professionalTax;
         otherDed = structure.otherDeductions;
+        lateAtt = structure.lateAttendance;
       } else {
         const total = employee.salary || 0;
         basic = Math.round(total * 0.5);
@@ -435,7 +440,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
       leaveDeduction += attendanceDeduction;
 
       leaveDeduction = Math.round(leaveDeduction * 100) / 100;
-      const statutoryDeductions = epf + esi + profTax + otherDed;
+      const statutoryDeductions = epf + esi + profTax + otherDed + lateAtt;
       const net = Math.max(0, gross - statutoryDeductions - leaveDeduction);
 
       // Versioning: supersede existing active payslip for same month
@@ -460,6 +465,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         esi,
         professionalTax: profTax,
         otherDeductions: otherDed,
+        lateAttendance: lateAtt,
         leaveDaysTaken,
         leaveDeduction,
         netSalary: net,
@@ -485,5 +491,5 @@ export const payrollRoutes = new Hono<AuthEnv>()
       generatedCount++;
     }
 
-    return c.json({ ok: true, generatedCount });
+    return c.json({ ok: true, generatedCount, skippedEmployees });
   });

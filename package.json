@@ -41,6 +41,7 @@
     "html2canvas-pro": "^1.5.8",
     "jspdf": "^2.5.2",
     "lucide-react": "^1.17.0",
+    "mime-types": "^3.0.2",
     "radix-ui": "^1.6.0",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
@@ -58,6 +59,7 @@
   },
   "devDependencies": {
     "@tanstack/router-plugin": "1.168.18",
+    "@types/mime-types": "^3.0.1",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

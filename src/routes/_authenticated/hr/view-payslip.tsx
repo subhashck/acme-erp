@@ -46,6 +46,7 @@ interface PayslipDetail {
   esi: number;
   professionalTax: number;
   otherDeductions: number;
+  lateAttendance: number;
   leaveDaysTaken: number;
   leaveDeduction: number;
   netSalary: number;
@@ -158,6 +159,7 @@ function ViewPayslipPage() {
   const [esi, setEsi] = React.useState(0);
   const [professionalTax, setProfessionalTax] = React.useState(0);
   const [otherDeductions, setOtherDeductions] = React.useState(0);
+  const [lateAttendance, setLateAttendance] = React.useState(0);
   const [leaveDaysTaken, setLeaveDaysTaken] = React.useState(0);
   const [leaveDeduction, setLeaveDeduction] = React.useState(0);
 
@@ -173,6 +175,7 @@ function ViewPayslipPage() {
       setEsi(p.esi);
       setProfessionalTax(p.professionalTax);
       setOtherDeductions(p.otherDeductions);
+      setLateAttendance(p.lateAttendance);
       setLeaveDaysTaken(p.leaveDaysTaken);
       setLeaveDeduction(p.leaveDeduction);
     }
@@ -211,11 +214,12 @@ function ViewPayslipPage() {
   const currentEsi = isEditing ? esi : p.esi;
   const currentProfTax = isEditing ? professionalTax : p.professionalTax;
   const currentOtherDed = isEditing ? otherDeductions : p.otherDeductions;
+  const currentLateAttendance = isEditing ? lateAttendance : p.lateAttendance;
   const currentLeaveDays = isEditing ? leaveDaysTaken : p.leaveDaysTaken;
   const currentLeaveDeduction = isEditing ? leaveDeduction : p.leaveDeduction;
 
   const gross = currentBasic + currentHra + currentConveyance + currentMedical + currentSpecial;
-  const statutoryDeductions = currentEpf + currentEsi + currentProfTax + currentOtherDed;
+  const statutoryDeductions = currentEpf + currentEsi + currentProfTax + currentOtherDed + currentLateAttendance;
   const totalDeductions = statutoryDeductions + currentLeaveDeduction;
   const netSalary = Math.max(0, gross - totalDeductions);
 
@@ -234,6 +238,7 @@ function ViewPayslipPage() {
           esi,
           professionalTax,
           otherDeductions,
+          lateAttendance,
           leaveDaysTaken,
           leaveDeduction
         }
@@ -620,6 +625,7 @@ function ViewPayslipPage() {
                     ["Employee State Insurance (ESI)", currentEsi, setEsi],
                     ["Professional Tax (PT)", currentProfTax, setProfessionalTax],
                     ["Other Deductions", currentOtherDed, setOtherDeductions],
+                    ["Late Attendance", currentLateAttendance, setLateAttendance],
                   ] as SalaryTuple[]).map(([label, val, setter]) => (
                     <tr key={label as string} className="border-b border-border/60">
                       <td className="py-1.5 text-muted-foreground">{label}</td>
@@ -700,7 +706,7 @@ function ViewPayslipPage() {
               </p>
               <p className="text-2xl font-extrabold mt-0.5 print:text-slate-950">{fmt(netSalary)}</p>
             </div>
-            <p className="text-[10px] text-slate-500 max-w-xs text-left sm:text-right leading-relaxed print:text-slate-600">
+            <p className="text-[12px] italic text-slate-300 max-w-xs text-left sm:text-right leading-relaxed print:text-slate-600">
               This is a computer-generated payslip and does not require a physical signature.
             </p>
           </div>

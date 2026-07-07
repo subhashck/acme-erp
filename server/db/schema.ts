@@ -167,6 +167,7 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   esi: real("esi").notNull().default(0),
   professionalTax: real("professional_tax").notNull().default(0),
   otherDeductions: real("other_deductions").notNull().default(0),
+  lateAttendance: real("late_attendance").notNull().default(0),
   bankName: text("bank_name"),
   accountNumber: text("account_number"),
   ifscCode: text("ifsc_code"),
@@ -306,6 +307,7 @@ export const payslips = sqliteTable("payslips", {
   esi: real("esi").notNull().default(0),
   professionalTax: real("professional_tax").notNull().default(0),
   otherDeductions: real("other_deductions").notNull().default(0),
+  lateAttendance: real("late_attendance").notNull().default(0),
   leaveDaysTaken: integer("leave_days_taken").notNull().default(0),
   leaveDeduction: real("leave_deduction").notNull().default(0),
   netSalary: real("net_salary").notNull().default(0),
@@ -555,4 +557,175 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   sender: one(user, { fields: [messages.senderId], references: [user.id] }),
   receiver: one(user, { fields: [messages.receiverId], references: [user.id] }),
   department: one(departments, { fields: [messages.departmentId], references: [departments.id] }),
+}));
+
+export const transactions = sqliteTable("transactions", {
+  id: serial("id").primaryKey(),
+  date: text("date").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull(),
+  type: text("type").notNull(),
+  amount: real("amount").notNull(),
+  paymentMethod: text("payment_method").notNull(),
+  notes: text("notes"),
+  ...timestamps
+});
+
+export const transactionsRelations = relations(transactions, ({}) => ({}));
+
+export const consultantRates = sqliteTable("consultant_rates", {
+  id: serial("id").primaryKey(),
+  doctorId: integer("doctor_id").notNull().unique(),
+  baseRate: real("base_rate").notNull().default(500),
+  doctorSharePercent: real("doctor_share_percent").notNull().default(70),
+  ...timestamps
+});
+
+export const consultantRatesRelations = relations(consultantRates, ({ one }) => ({
+  doctor: one(staff, {
+    fields: [consultantRates.doctorId],
+    references: [staff.staffId]
+  })
+}));
+
+export const dailyClosingReports = sqliteTable("daily_closing_reports", {
+  id: serial("id").primaryKey(),
+  reportDate: text("report_date").notNull().unique(),
+  createdBy: text("created_by").notNull().references(() => user.id),
+  openingBalance: real("opening_balance").notNull().default(0),
+  bankDeposit: real("bank_deposit").notNull().default(0),
+  fundHandoverSir: real("fund_handover_sir").notNull().default(0),
+  fundHandoverMadam: real("fund_handover_madam").notNull().default(0),
+  totalIncome: real("total_income").notNull().default(0),
+  totalExpenditure: real("total_expenditure").notNull().default(0),
+  closingBalance: real("closing_balance").notNull().default(0),
+  status: text("status").notNull().default("draft"),
+  ...timestamps
+});
+
+export const serviceCatalog = sqliteTable("service_catalog", {
+  id: serial("id").primaryKey(),
+  department: text("department").notNull(),
+  serviceName: text("service_name").notNull(),
+  defaultRate: real("default_rate").notNull().default(0),
+  sortOrder: integer("sort_order").notNull().default(0),
+  defaultShow: boolean("default_show").notNull().default(true),
+  ...timestamps
+});
+
+export const dailyServiceLines = sqliteTable("daily_service_lines", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  serviceId: integer("service_id").references(() => serviceCatalog.id, { onDelete: "set null" }),
+  rate: real("rate").notNull(),
+  quantity: integer("quantity").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyPharmacyIncome = sqliteTable("daily_pharmacy_income", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().unique().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  otWardTotal: real("ot_ward_total").notNull().default(0),
+  acmeNewTotal: real("acme_new_total").notNull().default(0),
+  parking: real("parking").notNull().default(0),
+  coffeeShop: real("coffee_shop").notNull().default(0),
+  canteenIncome: real("canteen_income").notNull().default(0),
+  creditCardChargesNight: real("credit_card_charges_night").notNull().default(0),
+  trainingFee: real("training_fee").notNull().default(0),
+  humankindSales: real("humankind_sales").notNull().default(0),
+  miscIncome: text("misc_income").notNull().default("[]")
+});
+
+export const dailyExpenditures = sqliteTable("daily_expenditures", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  category: text("category").notNull(),
+  details: text("details").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyStaffAdvances = sqliteTable("daily_staff_advances", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  staffName: text("staff_name").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyIpdAdmissions = sqliteTable("daily_ipd_admissions", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  patientName: text("patient_name").notNull(),
+  type: text("type").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyIpdDischarges = sqliteTable("daily_ipd_discharges", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  patientName: text("patient_name").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyAdditionalIncome = sqliteTable("daily_additional_income", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyPaymentChannels = sqliteTable("daily_payment_channels", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  bank: text("bank").notNull(),
+  channel: text("channel").notNull(),
+  sourceLabel: text("source_label").notNull(),
+  amount: real("amount").notNull()
+});
+
+export const dailyClosingReportsRelations = relations(dailyClosingReports, ({ many, one }) => ({
+  creator: one(user, { fields: [dailyClosingReports.createdBy], references: [user.id] }),
+  serviceLines: many(dailyServiceLines),
+  pharmacyIncome: one(dailyPharmacyIncome, {
+    fields: [dailyClosingReports.id],
+    references: [dailyPharmacyIncome.reportId]
+  }),
+  expenditures: many(dailyExpenditures),
+  staffAdvances: many(dailyStaffAdvances),
+  ipdAdmissions: many(dailyIpdAdmissions),
+  ipdDischarges: many(dailyIpdDischarges),
+  additionalIncome: many(dailyAdditionalIncome),
+  paymentChannels: many(dailyPaymentChannels)
+}));
+
+export const dailyServiceLinesRelations = relations(dailyServiceLines, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyServiceLines.reportId], references: [dailyClosingReports.id] }),
+  service: one(serviceCatalog, { fields: [dailyServiceLines.serviceId], references: [serviceCatalog.id] })
+}));
+
+export const dailyPharmacyIncomeRelations = relations(dailyPharmacyIncome, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyPharmacyIncome.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyExpendituresRelations = relations(dailyExpenditures, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyExpenditures.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyStaffAdvancesRelations = relations(dailyStaffAdvances, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyStaffAdvances.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyIpdAdmissionsRelations = relations(dailyIpdAdmissions, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyIpdAdmissions.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyIpdDischargesRelations = relations(dailyIpdDischarges, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyIpdDischarges.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyAdditionalIncomeRelations = relations(dailyAdditionalIncome, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyAdditionalIncome.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyPaymentChannelsRelations = relations(dailyPaymentChannels, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyPaymentChannels.reportId], references: [dailyClosingReports.id] })
 }));

@@ -10,6 +10,8 @@ import { notificationRoutes } from "./routes/notifications.ts";
 import { payrollRoutes } from "./routes/payroll.ts";
 import { rosterRoutes } from "./routes/roster.ts";
 import { staffRoutes } from "./routes/staff.ts";
+import { accountsRoutes } from "./routes/accounts.ts";
+import { dailyClosingRoutes } from "./routes/daily-closing.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
@@ -21,6 +23,8 @@ export const api = new Hono<AuthEnv>()
   .route("/", attendanceRoutes)
   .route("/", rosterRoutes)
   .route("/", payrollRoutes)
-  .route("/", messagesRoutes);
+  .route("/", messagesRoutes)
+  .route("/", accountsRoutes)
+  .route("/", dailyClosingRoutes);
 
 export type AppType = typeof api;

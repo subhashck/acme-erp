@@ -34,6 +34,7 @@ interface PayslipRow extends Record<string, unknown> {
   esi: number;
   professionalTax: number;
   otherDeductions: number;
+  lateAttendance: number;
   leaveDaysTaken: number;
   leaveDeduction: number;
   netSalary: number;
@@ -81,6 +82,7 @@ function PayrollPage() {
   const [esi, setEsi] = React.useState(0);
   const [pt, setPt] = React.useState(0);
   const [other, setOther] = React.useState(0);
+  const [lateAttendance, setLateAttendance] = React.useState(0);
 
   const [targetGross, setTargetGross] = React.useState(0);
   const [allowDeductions, setAllowDeductions] = React.useState(true);
@@ -152,6 +154,7 @@ function PayrollPage() {
       setEsi(editingSalaryStaff.esi ?? 0);
       setPt(editingSalaryStaff.professionalTax ?? 0);
       setOther(editingSalaryStaff.otherDeductions ?? 0);
+      setLateAttendance(editingSalaryStaff.lateAttendance ?? 0);
 
       setTargetGross(bVal + hVal + cVal + mVal + sVal);
       setAllowDeductions(true);
@@ -186,7 +189,11 @@ function PayrollPage() {
       });
       const data = (await res.json()) as any;
       if (res.ok) {
-        setGenerationResult({ success: true, message: `Successfully generated ${data.generatedCount} payslips for ${selectedMonth}.` });
+        let msg = `Successfully generated ${data.generatedCount} payslips for ${selectedMonth}.`;
+        if (data.skippedEmployees && data.skippedEmployees.length > 0) {
+          msg += ` Warning: Skipped ${data.skippedEmployees.length} employees due to pending leaves (${data.skippedEmployees.join(', ')}).`;
+        }
+        setGenerationResult({ success: true, message: msg });
         queryClient.invalidateQueries({ queryKey: ["payslips"] });
       } else {
         setGenerationResult({ success: false, message: data.error || "Failed to generate payroll." });
@@ -223,6 +230,7 @@ function PayrollPage() {
         esi,
         professionalTax: pt,
         otherDeductions: other,
+        lateAttendance,
         salary: Math.max(1, gross)
       };
       const res = await client.hr.staff[":id"].$put({
@@ -404,11 +412,12 @@ function PayrollPage() {
         const es = row.esi ?? 0;
         const p = row.professionalTax ?? 0;
         const od = row.otherDeductions ?? 0;
+        const la = row.lateAttendance ?? 0;
         const gross = b + h + c + m + s;
         if (gross === 0) {
           return <span className="text-muted-foreground text-xs">—</span>;
         }
-        const net = Math.max(0, gross - (ep + es + p + od));
+        const net = Math.max(0, gross - (ep + es + p + od + la));
         return <span className="font-semibold text-emerald-600">{currencySymbol}{net.toLocaleString("en-IN")}</span>;
       }
     },
@@ -607,7 +616,8 @@ function PayrollPage() {
                   const es = row.esi ?? 0;
                   const p = row.professionalTax ?? 0;
                   const od = row.otherDeductions ?? 0;
-                  const net = Math.max(0, gross - (ep + es + p + od));
+                  const la = row.lateAttendance ?? 0;
+                  const net = Math.max(0, gross - (ep + es + p + od + la));
 
                   return (
                     <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
@@ -836,6 +846,7 @@ function PayrollPage() {
                         setEsi(tpl.esi);
                         setPt(tpl.professionalTax);
                         setOther(tpl.otherDeductions);
+                        setLateAttendance(tpl.lateAttendance ?? 0);
                         setTargetGross(tpl.basicSalary + tpl.hra + tpl.conveyance + tpl.medical + tpl.special);
                       }
                     }}
@@ -866,6 +877,7 @@ function PayrollPage() {
                     <Field label="ESI (State Insurance)" type="number" value={esi} onChange={(e) => setEsi(Number(e.target.value))} />
                     <Field label="Professional Tax" type="number" value={pt} onChange={(e) => setPt(Number(e.target.value))} />
                     <Field label="Other Deductions" type="number" value={other} onChange={(e) => setOther(Number(e.target.value))} />
+                    <Field label="Late Attendance" type="number" value={lateAttendance} onChange={(e) => setLateAttendance(Number(e.target.value))} />
                   </div>
                 </div>
 
@@ -882,13 +894,13 @@ function PayrollPage() {
                     <div className="border-x">
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Total Deductions</p>
                       <p className="text-base font-bold text-rose-600 dark:text-rose-400 mt-0.5">
-                        {currencySymbol}{(epf + esi + pt + other).toLocaleString("en-IN")}
+                        {currencySymbol}{(epf + esi + pt + other + lateAttendance).toLocaleString("en-IN")}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-primary uppercase font-semibold">Net Take-Home</p>
                       <p className="text-base font-extrabold text-primary mt-0.5">
-                        {currencySymbol}{Math.max(0, (basic + hra + conveyance + medical + special) - (epf + esi + pt + other)).toLocaleString("en-IN")}
+                        {currencySymbol}{Math.max(0, (basic + hra + conveyance + medical + special) - (epf + esi + pt + other + lateAttendance)).toLocaleString("en-IN")}
                       </p>
                     </div>
                   </div>

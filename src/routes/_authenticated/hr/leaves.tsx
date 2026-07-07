@@ -57,15 +57,15 @@ function LeaveManagement() {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
-  const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const selectedFile = e.target.files?.[0];
     setFileError(null);
-    if (!file) {
-      setFileBase64(null);
+    if (!selectedFile) {
+      setFile(null);
       setFileName(null);
       return;
     }
@@ -81,37 +81,30 @@ function LeaveManagement() {
       "application/octet-stream"
     ];
 
-    const extension = file.name.split('.').pop()?.toLowerCase();
+    const extension = selectedFile.name.split('.').pop()?.toLowerCase();
     const isAllowedExtension = ["jpg", "jpeg", "png", "gif", "webp", "pdf", "zip"].includes(extension || "");
 
-    if (!allowedTypes.includes(file.type) && !isAllowedExtension) {
+    if (!allowedTypes.includes(selectedFile.type) && !isAllowedExtension) {
       setFileError("Supported formats: Images, PDF, ZIP.");
-      setFileBase64(null);
+      setFile(null);
       setFileName(null);
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (selectedFile.size > 5 * 1024 * 1024) {
       setFileError("File size exceeds 5MB limit.");
-      setFileBase64(null);
+      setFile(null);
       setFileName(null);
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFileBase64(reader.result as string);
-      setFileName(file.name);
-    };
-    reader.onerror = () => {
-      setFileError("Error reading file.");
-    };
-    reader.readAsDataURL(file);
+    setFile(selectedFile);
+    setFileName(selectedFile.name);
   };
 
   const handleCloseForm = () => {
     leaveForm.reset({ leaveType: activeLeaveTypes[0] || "Casual Leave" });
-    setFileBase64(null);
+    setFile(null);
     setFileName(null);
     setFileError(null);
     setShowForm(false);
@@ -209,20 +202,31 @@ function LeaveManagement() {
     }
 
     try {
-      const res = await client.hr.leaves.$post({
-        json: {
-          ...values,
-          startDate: new Date(values.startDate).toISOString(),
-          endDate: new Date(finalEndDate).toISOString(),
-          supportingDocument: fileBase64 || null
-        }
+      // Build multipart FormData — file goes as binary, not base64
+      const formData = new FormData();
+      formData.append("staffId", String(values.staffId));
+      formData.append("leaveType", values.leaveType);
+      formData.append("isHalfDay", String(values.isHalfDay));
+      formData.append("startDate", new Date(values.startDate).toISOString());
+      formData.append("endDate", new Date(finalEndDate).toISOString());
+      formData.append("reason", values.reason);
+      if (file) {
+        formData.append("supportingDocument", file);
+      }
+
+      const res = await fetch("/api/hr/leaves", {
+        method: "POST",
+        body: formData,
+        // Do NOT set Content-Type — browser sets it with boundary automatically
+        credentials: "include",
       });
+
       if (!res.ok) {
         const errData = (await res.json().catch(() => null)) as any;
         throw new Error(errData?.error || `HTTP error ${res.status}`);
       }
       leaveForm.reset({ leaveType: activeLeaveTypes[0] || "Casual Leave" });
-      setFileBase64(null);
+      setFile(null);
       setFileName(null);
       setFileError(null);
       setPage(1);
