@@ -603,6 +603,15 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   ...timestamps
 });
 
+export const serviceCategories = sqliteTable("service_categories", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
 export const serviceCatalog = sqliteTable("service_catalog", {
   id: serial("id").primaryKey(),
   department: text("department").notNull(),
