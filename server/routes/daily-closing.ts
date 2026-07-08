@@ -6,6 +6,7 @@ import { auth } from "../auth.ts";
 import { db } from "../db/client.ts";
 import {
   dailyClosingReports,
+  serviceCategories,
   serviceCatalog,
   dailyServiceLines,
   dailyPharmacyIncome,
@@ -20,6 +21,70 @@ import {
 import { jsonBody } from "./shared.ts";
 
 export const dailyClosingRoutes = new Hono<AuthEnv>()
+  // -------------------------------------------------------------------------
+  // Service Categories Master
+  // -------------------------------------------------------------------------
+  .get("/daily-closing/categories", async (c) => {
+    const rows = await db
+      .select()
+      .from(serviceCategories)
+      .orderBy(serviceCategories.sortOrder, serviceCategories.code)
+      .execute();
+    return c.json(rows);
+  })
+
+  .post("/daily-closing/categories", async (c) => {
+    const input = await jsonBody(
+      c,
+      z.object({
+        code: z.string().min(1).toUpperCase(),
+        label: z.string().min(1),
+        sortOrder: z.number().int().default(0),
+      })
+    );
+    const [row] = await db
+      .insert(serviceCategories)
+      .values(input)
+      .returning()
+      .execute();
+    return c.json(row, 201);
+  })
+
+  .put("/daily-closing/categories/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const input = await jsonBody(
+      c,
+      z.object({
+        code: z.string().min(1).optional(),
+        label: z.string().min(1).optional(),
+        sortOrder: z.number().int().optional(),
+        active: z.boolean().optional(),
+      })
+    );
+    const [row] = await db
+      .update(serviceCategories)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(serviceCategories.id, id))
+      .returning()
+      .execute();
+    if (!row) return c.json({ error: "Category not found" }, 404);
+    return c.json(row);
+  })
+
+  .delete("/daily-closing/categories/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const [row] = await db
+      .update(serviceCategories)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(serviceCategories.id, id))
+      .returning()
+      .execute();
+    if (!row) return c.json({ error: "Category not found" }, 404);
+    return c.json({ success: true, deactivated: row });
+  })
+
   // -------------------------------------------------------------------------
   // Service Catalog Master
   // -------------------------------------------------------------------------

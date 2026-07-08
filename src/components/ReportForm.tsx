@@ -10,6 +10,8 @@ import { Label } from "../ui/label";
 import { cn } from "../utils/cn";
 import { Autocomplete } from "../ui/autocomplete";
 
+type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean };
+
 // ─────────────────────────── constants ───────────────────────────
 
 const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
@@ -28,7 +30,7 @@ const DEFAULT_PAYMENT_CHANNELS = [
 // ─────────────────────────── types ───────────────────────────────
 
 type ServiceQty = Record<number, { rate: number; quantity: number; amount: number }>;
-type CustomLine = { serviceName: string; department: "OPD_GYNAE" | "DENTAL" | "PHARMACY" | "OTHER"; rate: number; quantity: number; amount: number };
+type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number };
 type MiscIncome = { label: string; amount: number };
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
@@ -91,16 +93,19 @@ export function ReportForm({
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
-    opd: true,
-    dental: false,
-    pharmacy: false,
-    general: false,
     ipd: false,
     exp: false,
     add: false,
     reconcile: false,
   });
   const toggleSection = (s: string) => setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
+
+  // ── categories master query ───────────────────────────────────
+  const categoriesQuery = useRpcQuery<ServiceCategory[]>(
+    ["service-categories"],
+    () => (client["daily-closing"] as any).categories.$get()
+  );
+  const activeCategories: ServiceCategory[] = (categoriesQuery.data ?? []).filter((c) => c.active);
 
   // ── catalog query ─────────────────────────────────────────────
   const catalogQuery = useRpcQuery<any[]>(
@@ -130,18 +135,13 @@ export function ReportForm({
   const [customLines, setCustomLines] = React.useState<CustomLine[]>([]);
 
   const catalogList = catalogQuery.data ?? [];
-  const opdCatalog = catalogList.filter(
-    (item) => item.department === "OPD_GYNAE" && (item.defaultShow !== false || serviceQuantities[item.id] !== undefined)
-  );
-  const dentalCatalog = catalogList.filter(
-    (item) => item.department === "DENTAL" && (item.defaultShow !== false || serviceQuantities[item.id] !== undefined)
-  );
-  const pharmacyCatalog = catalogList.filter(
-    (item) => item.department === "PHARMACY" && (item.defaultShow !== false || serviceQuantities[item.id] !== undefined)
-  );
-  const generalCatalog = catalogList.filter(
-    (item) => item.department === "OTHER" && (item.defaultShow !== false || serviceQuantities[item.id] !== undefined)
-  );
+
+  /** Returns catalog items visible for a given category code */
+  const getCatalogForDept = (code: string) =>
+    catalogList.filter(
+      (item) => item.department === code &&
+        (item.defaultShow !== false || serviceQuantities[item.id] !== undefined)
+    );
 
   // ── other form state ──────────────────────────────────────────
   const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
@@ -214,30 +214,23 @@ export function ReportForm({
       rate: data.rate,
       quantity: data.quantity,
       amount: data.amount,
-      department: catalogList.find((c) => c.id === parseInt(serviceId, 10))?.department,
+      department: catalogList.find((c) => c.id === parseInt(serviceId, 10))?.department ?? "",
     }));
 
-  const allOPDLines = [
-    ...catalogServiceLines.filter((l) => l.department === "OPD_GYNAE"),
-    ...customLines.filter((l) => l.department === "OPD_GYNAE"),
-  ];
-  const allDentalLines = [
-    ...catalogServiceLines.filter((l) => l.department === "DENTAL"),
-    ...customLines.filter((l) => l.department === "DENTAL"),
-  ];
-  const allPharmacyLines = [
-    ...catalogServiceLines.filter((l) => l.department === "PHARMACY"),
-    ...customLines.filter((l) => l.department === "PHARMACY"),
-  ];
-  const allGeneralLines = [
-    ...catalogServiceLines.filter((l) => l.department === "OTHER"),
-    ...customLines.filter((l) => l.department === "OTHER"),
-  ];
+  /** Per-category totals driven by master list */
+  const categoryTotals: Record<string, number> = React.useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const cat of activeCategories) {
+      const catLines = [
+        ...catalogServiceLines.filter((l) => l.department === cat.code),
+        ...customLines.filter((l) => l.department === cat.code),
+      ];
+      totals[cat.code] = catLines.reduce((sum, l) => sum + l.amount, 0);
+    }
+    return totals;
+  }, [catalogServiceLines, customLines, activeCategories]);
 
-  const opdTotal = allOPDLines.reduce((sum, line) => sum + line.amount, 0);
-  const dentalTotal = allDentalLines.reduce((sum, line) => sum + line.amount, 0);
-  const pharmacyTotal = allPharmacyLines.reduce((sum, line) => sum + line.amount, 0);
-  const generalTotal = allGeneralLines.reduce((sum, line) => sum + line.amount, 0);
+  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
 
   const expTotal = expenditures.reduce((sum, item) => sum + item.amount, 0);
   const advTotal = staffAdvances.reduce((sum, item) => sum + item.amount, 0);
@@ -248,7 +241,7 @@ export function ReportForm({
   const additionalTotal = additionalIncome.reduce((sum, item) => sum + item.amount, 0);
 
   const openBal = parseFloat(openingBalance) || 0;
-  const totalIncome = openBal + opdTotal + dentalTotal + pharmacyTotal + generalTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal;
+  const totalIncome = openBal + totalCategoryIncome + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal;
   const netBalance = totalIncome - totalExpenditures;
 
   const depositVal = parseFloat(bankDeposit) || 0;
@@ -294,7 +287,7 @@ export function ReportForm({
     });
   };
 
-  const handleAddCustomLine = (dept: "OPD_GYNAE" | "DENTAL" | "PHARMACY" | "OTHER") => {
+  const handleAddCustomLine = (dept: string) => {
     setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0 }]);
   };
 
@@ -325,7 +318,7 @@ export function ReportForm({
     setCustomLines((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  const handleAddCatalogItem = (dept: "OPD_GYNAE" | "DENTAL" | "PHARMACY" | "OTHER", val: string) => {
+  const handleAddCatalogItem = (dept: string, val: string) => {
     const id = parseInt(val, 10);
     if (!id) return;
     const s = catalogList.find((x) => x.id === id);
@@ -375,7 +368,7 @@ export function ReportForm({
   };
 
   // ── catalog autocomplete helper ───────────────────────────────
-  const renderCatalogAutocomplete = (dept: "OPD_GYNAE" | "DENTAL" | "PHARMACY" | "OTHER") => {
+  const renderCatalogAutocomplete = (dept: string) => {
     const hasHidden = catalogList.some(
       (item) => item.department === dept && item.defaultShow === false && serviceQuantities[item.id] === undefined
     );
@@ -448,7 +441,7 @@ export function ReportForm({
   );
 
   // ── custom line rows ──────────────────────────────────────────
-  const renderCustomLines = (dept: "OPD_GYNAE" | "DENTAL" | "PHARMACY" | "OTHER") =>
+  const renderCustomLines = (dept: string) =>
     customLines
       .filter((l) => l.department === dept)
       .map((line, cIdx) => {
@@ -557,162 +550,57 @@ export function ReportForm({
             </CardContent>
           </Card>
 
-          {/* 2. OPD / Gynae Services */}
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40">
-            <button
-              type="button"
-              onClick={() => toggleSection("opd")}
-              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-            >
-              <div>
-                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  2. OPD &amp; Gynae Services
-                </CardTitle>
-                <CardDescription className="text-xs">OPD consultations, procedures, and monitoring</CardDescription>
-              </div>
-              <span className="text-xs font-bold text-teal-600">{openSections.opd ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-            </button>
-            {openSections.opd && (
-              <CardContent className="p-5 space-y-4">
-                {opdCatalog.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
-                    No OPD/Gynae items found in master catalog. Please click "Seed Default Catalog" on the history logs page.
+          {/* Dynamic service sections — one per master category */}
+          {activeCategories.map((cat, catIdx) => {
+            const sectionKey = `cat_${cat.code}`;
+            const isOpen = openSections[sectionKey] ?? (catIdx === 0);
+            const deptCatalog = getCatalogForDept(cat.code);
+            return (
+              <Card key={cat.code} className="border shadow-xs bg-white/70 dark:bg-slate-900/40">
+                <button
+                  type="button"
+                  onClick={() => toggleSection(sectionKey)}
+                  className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
+                >
+                  <div>
+                    <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                      {catIdx + 2}. {cat.label} Services
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      Services &amp; receipts for the {cat.label} department
+                    </CardDescription>
                   </div>
-                ) : renderServiceTable(opdCatalog)}
+                  <span className="text-xs font-bold text-teal-600">{isOpen ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+                </button>
+                {isOpen && (
+                  <CardContent className="p-5 space-y-4">
+                    {deptCatalog.length === 0 ? (
+                      <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
+                        No items found for <strong>{cat.label}</strong>. Add services under Accounts → Service Charges.
+                      </div>
+                    ) : renderServiceTable(deptCatalog)}
 
-                <div className="space-y-3 pt-4 border-t">
-                  <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Custom OPD Items</h5>
-                  {renderCustomLines("OPD_GYNAE")}
-                  <div className="flex flex-wrap gap-4 items-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <div className="pb-0.5">
-                      <Button type="button" variant="outline" size="default" onClick={() => handleAddCustomLine("OPD_GYNAE")} className="font-semibold cursor-pointer text-xs h-10">
-                        <Plus size={13} className="mr-1" /> Add Custom Line
-                      </Button>
+                    <div className="space-y-3 pt-4 border-t">
+                      <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Custom {cat.label} Items</h5>
+                      {renderCustomLines(cat.code)}
+                      <div className="flex flex-wrap gap-4 items-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+                        <div className="pb-0.5">
+                          <Button type="button" variant="outline" size="default" onClick={() => handleAddCustomLine(cat.code)} className="font-semibold cursor-pointer text-xs h-10">
+                            <Plus size={13} className="mr-1" /> Add Custom Line
+                          </Button>
+                        </div>
+                        {renderCatalogAutocomplete(cat.code)}
+                      </div>
                     </div>
-                    {renderCatalogAutocomplete("OPD_GYNAE")}
-                  </div>
-                </div>
-              </CardContent>
-            )}
-          </Card>
+                  </CardContent>
+                )}
+              </Card>
+            );
+          })}
 
-          {/* 3. Dental Services */}
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
-            <button
-              type="button"
-              onClick={() => toggleSection("dental")}
-              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-            >
-              <div>
-                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  3. Dental Services
-                </CardTitle>
-                <CardDescription className="text-xs">OPD consultations and dental procedures</CardDescription>
-              </div>
-              <span className="text-xs font-bold text-teal-600">{openSections.dental ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-            </button>
-            {openSections.dental && (
-              <CardContent className="p-5 space-y-4">
-                {dentalCatalog.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
-                    No Dental items found in master catalog. Please click "Seed Default Catalog" on the history logs page.
-                  </div>
-                ) : renderServiceTable(dentalCatalog)}
-
-                <div className="space-y-3 pt-4 border-t">
-                  <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Custom Dental Items</h5>
-                  {renderCustomLines("DENTAL")}
-                  <div className="flex flex-wrap gap-4 items-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <div className="pb-0.5">
-                      <Button type="button" variant="outline" size="default" onClick={() => handleAddCustomLine("DENTAL")} className="font-semibold cursor-pointer text-xs h-10">
-                        <Plus size={13} className="mr-1" /> Add Custom Line
-                      </Button>
-                    </div>
-                    {renderCatalogAutocomplete("DENTAL")}
-                  </div>
-                </div>
-              </CardContent>
-            )}
-          </Card>
-
-          {/* 4. Pharmacy Sales */}
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
-            <button
-              type="button"
-              onClick={() => toggleSection("pharmacy")}
-              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-            >
-              <div>
-                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  4. Pharmacy Sales
-                </CardTitle>
-                <CardDescription className="text-xs">OPD / Ward pharmacy dispensing and sales</CardDescription>
-              </div>
-              <span className="text-xs font-bold text-teal-600">{openSections.pharmacy ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-            </button>
-            {openSections.pharmacy && (
-              <CardContent className="p-5 space-y-4">
-                {pharmacyCatalog.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
-                    No Pharmacy items found. Add them under Accounts → Service Charges with department set to PHARMACY.
-                  </div>
-                ) : renderServiceTable(pharmacyCatalog)}
-
-                <div className="space-y-3 pt-4 border-t">
-                  <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Custom Pharmacy Items</h5>
-                  {renderCustomLines("PHARMACY")}
-                  <div className="flex flex-wrap gap-4 items-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <div className="pb-0.5">
-                      <Button type="button" variant="outline" size="default" onClick={() => handleAddCustomLine("PHARMACY")} className="font-semibold cursor-pointer text-xs h-10">
-                        <Plus size={13} className="mr-1" /> Add Custom Line
-                      </Button>
-                    </div>
-                    {renderCatalogAutocomplete("PHARMACY")}
-                  </div>
-                </div>
-              </CardContent>
-            )}
-          </Card>
-
-          {/* 5. General Income */}
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
-            <button
-              type="button"
-              onClick={() => toggleSection("general")}
-              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-            >
-              <div>
-                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  5. General Income
-                </CardTitle>
-                <CardDescription className="text-xs">Parking, canteen, training fees, and other receipts</CardDescription>
-              </div>
-              <span className="text-xs font-bold text-teal-600">{openSections.general ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-            </button>
-            {openSections.general && (
-              <CardContent className="p-5 space-y-4">
-                {generalCatalog.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
-                    No General Income items found. Add them under Accounts → Service Charges with department set to OTHER.
-                  </div>
-                ) : renderServiceTable(generalCatalog)}
-
-                <div className="space-y-3 pt-4 border-t">
-                  <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Custom General Income Items</h5>
-                  {renderCustomLines("OTHER")}
-                  <div className="flex flex-wrap gap-4 items-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <div className="pb-0.5">
-                      <Button type="button" variant="outline" size="default" onClick={() => handleAddCustomLine("OTHER")} className="font-semibold cursor-pointer text-xs h-10">
-                        <Plus size={13} className="mr-1" /> Add Custom Line
-                      </Button>
-                    </div>
-                    {renderCatalogAutocomplete("OTHER")}
-                  </div>
-                </div>
-              </CardContent>
-            )}
-          </Card>
-
+          {/* IPD Admissions & Discharges — section number shifts after dynamic categories */}
+          {/* N+2 = activeCategories.length + 2 */}
+          {/* 6 (was hardcoded) → now dynamic number */}
           {/* 6. IPD Admissions & Discharges */}
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
@@ -812,7 +700,6 @@ export function ReportForm({
             )}
           </Card>
 
-          {/* 7. Expenditures & Staff Advances */}
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
               type="button"
@@ -821,7 +708,7 @@ export function ReportForm({
             >
               <div>
                 <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  7. Expenditures &amp; Staff Advances
+                  {activeCategories.length + 3}. Expenditures &amp; Staff Advances
                 </CardTitle>
                 <CardDescription className="text-xs">Daily payouts, vendor settlements, and salaries</CardDescription>
               </div>
@@ -912,7 +799,6 @@ export function ReportForm({
             )}
           </Card>
 
-          {/* 8. Additional Income */}
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
               type="button"
@@ -921,7 +807,7 @@ export function ReportForm({
             >
               <div>
                 <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  8. Additional Income (Add section)
+                  {activeCategories.length + 4}. Additional Income
                 </CardTitle>
                 <CardDescription className="text-xs">IVF injections, Lifecell, outsourced diagnostic sales, and fund transfers</CardDescription>
               </div>
@@ -967,7 +853,6 @@ export function ReportForm({
             )}
           </Card>
 
-          {/* 9. Payment Channel Reconciliation */}
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
               type="button"
@@ -976,7 +861,7 @@ export function ReportForm({
             >
               <div>
                 <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  9. Payment Channel Reconciliation
+                  {activeCategories.length + 5}. Payment Channel Reconciliation
                 </CardTitle>
                 <CardDescription className="text-xs">Reconcile transaction collections by card, UPI, and cash per bank channel</CardDescription>
               </div>
@@ -1046,12 +931,17 @@ export function ReportForm({
               Live Summary
             </h4>
             <div className="space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-semibold">Opening Balance:</span>
+                <span className="font-bold">{fmt(openBal)}</span>
+              </div>
+              {activeCategories.map((cat) => (
+                <div key={cat.code} className="flex justify-between">
+                  <span className="text-muted-foreground font-semibold">{cat.label} Receipts:</span>
+                  <span className="font-bold">{fmt(categoryTotals[cat.code] ?? 0)}</span>
+                </div>
+              ))}
               {[
-                ["Opening Balance:", fmt(openBal)],
-                ["OPD Gynae Receipts:", fmt(opdTotal)],
-                ["Dental Receipts:", fmt(dentalTotal)],
-                ["Pharmacy Sales:", fmt(pharmacyTotal)],
-                ["General Income:", fmt(generalTotal)],
                 ["IPD Admissions:", fmt(ipdAdmissionsTotal)],
                 ["IPD Discharges:", fmt(ipdDischargesTotal)],
                 ["Additional Incomes:", fmt(additionalTotal)],
