@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search, Calendar, Coins, FileText, CheckCircle, Lock, Trash2, Wand2, RefreshCw, TrendingUp } from "lucide-react";
+import { Plus, Search, Calendar, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp } from "lucide-react";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRpcQuery } from "../../../lib/query";
@@ -29,7 +29,6 @@ function ReportsHistory() {
   const [search, setSearch] = React.useState("");
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
-  const [seedingMsg, setSeedingMsg] = React.useState("");
 
   // Query reports list
   const reportsQuery = useRpcQuery<any[]>(
@@ -39,22 +38,6 @@ function ReportsHistory() {
 
   const reportsData = reportsQuery.data ?? [];
 
-  // Seed catalog items mutation
-  const seedCatalogMutation = useMutation({
-    mutationFn: async () => {
-      const response = await client["daily-closing"]["seed-catalog"].$post({});
-      if (!response.ok) throw new Error(await response.text());
-      return response.json();
-    },
-    onSuccess: (res: any) => {
-      setSeedingMsg(res.message || `Successfully seeded ${res.count} default services!`);
-      setTimeout(() => setSeedingMsg(""), 4000);
-      queryClient.invalidateQueries({ queryKey: ["service-catalog"] });
-    },
-    onError: (err: any) => {
-      alert(err.message || "Failed to seed catalog");
-    },
-  });
 
   // Delete draft report mutation
   const deleteReportMutation = useMutation({
@@ -108,18 +91,6 @@ function ReportsHistory() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button
-            onClick={() => {
-              if (confirm("This will seed standard OPD, Gynae, and Dental services into your master catalog list. Proceed?")) {
-                seedCatalogMutation.mutate();
-              }
-            }}
-            variant="outline"
-            className="font-semibold gap-1.5 cursor-pointer"
-            disabled={seedCatalogMutation.isPending}
-          >
-            <Wand2 size={16} /> Seed Default Catalog
-          </Button>
 
           <Button asChild className="bg-teal-650 hover:bg-teal-700 text-white font-semibold cursor-pointer">
             <Link to="/reports/new">
@@ -129,12 +100,6 @@ function ReportsHistory() {
         </div>
       </div>
 
-      {seedingMsg && (
-        <div className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 p-4 rounded-lg border border-emerald-250 text-sm font-semibold flex items-center gap-2 animate-in fade-in duration-300">
-          <CheckCircle size={18} />
-          <span>{seedingMsg}</span>
-        </div>
-      )}
 
       {/* Analytics Summary */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Printer, Edit2, Lock, FileText, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Edit2, Lock, FileText, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
 import { useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
@@ -19,7 +19,7 @@ const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = 
       >
         <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
-            <div className="no-print opacity-50">
+          <div className="opacity-50">
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </div>
             <span>{title}</span>
@@ -27,7 +27,7 @@ const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = 
           <span className={cn("text-sm font-black", titleClass)}>{amount}</span>
         </CardTitle>
       </CardHeader>
-      <div className={cn("print:block", !expanded && "hidden")}>
+      <div className={cn(!expanded && "hidden")}>
         <CardContent className="p-3">
           {children}
         </CardContent>
@@ -45,14 +45,14 @@ const SubPanel = ({ title, amount, children, defaultExpanded = false }: any) => 
         onClick={() => setExpanded(!expanded)}
       >
         <div className="flex items-center gap-1.5">
-          <div className="no-print opacity-50">
+          <div className="opacity-50">
             {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
           </div>
           <span className="uppercase tracking-wider text-slate-700 dark:text-slate-300">{title}</span>
         </div>
         <span className="text-rose-600 dark:text-rose-455">{amount}</span>
       </div>
-      <div className={cn("print:block", !expanded && "hidden")}>
+      <div className={cn(!expanded && "hidden")}>
         {children}
       </div>
     </div>
@@ -198,29 +198,14 @@ function ReportDetail() {
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
-  const handlePrint = () => {
-    window.print();
-  };
 
   return (
     <div className="space-y-6">
       {/* Print styles override */}
-      <style>{`
-        @media print {
-          body { background: white !important; color: black !important; padding: 0 !important; }
-          body * { color: black !important; }
-          .no-print { display: none !important; }
-          .print-full-width { width: 100% !important; max-width: 100% !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; }
-          .print-grid { display: grid !important; grid-template-cols: 1fr 1fr 1fr !important; gap: 15px !important; }
-          .card { border: 1px solid #94a3b8 !important; page-break-inside: avoid !important; box-shadow: none !important; background: transparent !important; }
-          header { display: none !important; }
-          aside { display: none !important; }
-          main { padding: 0 !important; }
-        }
-      `}</style>
+     
 
       {/* Detail view header actions */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between no-print">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" asChild className="cursor-pointer">
             <Link to="/reports">
@@ -253,16 +238,12 @@ function ReportDetail() {
               </Link>
             </Button>
           )}
-
-          <Button onClick={handlePrint} className="bg-slate-800 hover:bg-slate-900 text-white font-semibold cursor-pointer gap-1.5">
-            <Printer size={15} /> Print Statement
-          </Button>
         </div>
       </div>
 
       {/* Discrepancy Alert Banner */}
       {!isReconciled && (
-        <div className="bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-450 p-4 rounded-lg border border-rose-200 text-sm font-semibold flex items-center gap-2.5 no-print animate-in fade-in duration-300">
+        <div className="bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-455 p-4 rounded-lg border border-rose-200 text-sm font-semibold flex items-center gap-2.5 animate-in fade-in duration-300">
           <AlertTriangle size={18} className="shrink-0" />
           <div>
             <span>Payment channels reconciliation mismatch detected!</span>
@@ -273,19 +254,9 @@ function ReportDetail() {
         </div>
       )}
 
-      {/* Print Page Header */}
-      <div className="hidden print:block text-center border-b-2 border-teal-700 pb-4 mb-6">
-        <h1 className="text-2xl font-black text-slate-800 uppercase tracking-tight">ACME Fertility & Healthcare Centre</h1>
-        <p className="text-xs text-slate-500 font-medium uppercase mt-1">Daily Close Statement & Financial Reconciliation Report</p>
-        <div className="flex justify-between text-[11px] mt-4 font-semibold text-slate-600">
-          <span>REPORT DATE: {new Date(report.reportDate).toLocaleDateString([], { dateStyle: "long" })}</span>
-          <span>CREATED BY: {report.creatorName}</span>
-          <span>STATUS: {report.status.toUpperCase()}</span>
-        </div>
-      </div>
 
       {/* Reconciled Summary Block */}
-      <div className="mt-8 border-t-2 pt-6 w-full max-w-none mb-8 text-sm print-full-width">
+      <div className="mt-8 border-t-2 pt-6 w-full max-w-none mb-8 text-sm">
         <div className="space-y-2 border border-teal-600/30 rounded-xl bg-teal-500/5 p-5 shadow-xs">
           <h4 className="font-extrabold text-base border-b pb-2 mb-3 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
             Closing Statement Summary
@@ -404,7 +375,7 @@ function ReportDetail() {
       </div>
 
       {/* 3-Column Reconciliation Sheet */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 print-grid print-full-width">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
         {/* Column 1: Income Streams */}
         <div className="space-y-5">
@@ -521,7 +492,7 @@ function ReportDetail() {
           </h4>
 
           {/* Expenditures */}
-          <Panel title="Expenditures (Out)" amount={fmt(expendituresTotal)} titleClass="text-rose-600 dark:text-rose-400">
+          <Panel title="Expenditures (Out)" amount={fmt(expendituresTotal)} titleClass="text-rose-600 dark:text-rose-400" defaultExpanded={true}>
 
             {groupedExpenditures.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-4">No logged expenses.</p>
@@ -530,7 +501,7 @@ function ReportDetail() {
                 {(groupedExpenditures as any[]).map((group: any) => {
                   const catLabel = expCategoriesList.find((c: any) => c.code === group.category)?.label || group.category;
                   return (
-                    <SubPanel key={group.category} title={catLabel} amount={fmt(group.total)}>
+                    <SubPanel key={group.category} title={catLabel} amount={fmt(group.total)} defaultExpanded={false}>
                       <table className="w-full text-xs text-left">
                         <tbody>
                           {group.items.map((item: any) => (
@@ -630,12 +601,6 @@ function ReportDetail() {
         </div>
       </div>
 
-      {/* Signature block for prints */}
-      <div className="hidden print:flex justify-between mt-20 pt-4 text-xs font-semibold text-slate-500">
-        <div className="border-t border-slate-300 w-48 text-center pt-1.5">Prepared By (Staff)</div>
-        <div className="border-t border-slate-300 w-48 text-center pt-1.5">Checked By (Accounts)</div>
-        <div className="border-t border-slate-300 w-48 text-center pt-1.5">Approved By (Director)</div>
-      </div>
     </div>
   );
 }
