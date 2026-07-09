@@ -15,8 +15,11 @@ import {
   dailyIpdAdmissions,
   dailyIpdDischarges,
   dailyAdditionalIncome,
+  dailyDiscountsReturns,
   dailyPaymentChannels,
   user,
+  expenseCategories,
+  expenseCatalog,
 } from "../db/schema.ts";
 import { jsonBody } from "./shared.ts";
 
@@ -40,6 +43,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         code: z.string().min(1).toUpperCase(),
         label: z.string().min(1),
         sortOrder: z.number().int().default(0),
+        isVariableAmount: z.boolean().default(false),
       })
     );
     const [row] = await db
@@ -60,6 +64,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         label: z.string().min(1).optional(),
         sortOrder: z.number().int().optional(),
         active: z.boolean().optional(),
+        isVariableAmount: z.boolean().optional(),
       })
     );
     const [row] = await db
@@ -110,7 +115,10 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
     );
     const [row] = await db
       .insert(serviceCatalog)
-      .values(input)
+      .values({
+        ...input,
+        defaultRate: input.defaultRate.toString(),
+      })
       .returning()
       .execute();
     return c.json(row, 201);
@@ -131,10 +139,12 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         defaultShow: z.boolean().optional(),
       })
     );
+    const { defaultRate, ...rest } = input;
     const [row] = await db
       .update(serviceCatalog)
       .set({
-        ...input,
+        ...rest,
+        ...(defaultRate !== undefined ? { defaultRate: defaultRate.toString() } : {}),
         updatedAt: new Date(),
       })
       .where(eq(serviceCatalog.id, id))
@@ -159,6 +169,156 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
     if (!row) {
       return c.json({ error: "Service not found" }, 404);
     }
+    return c.json({ success: true, deleted: row });
+  })
+
+  // -------------------------------------------------------------------------
+  // Expense Categories Master
+  // -------------------------------------------------------------------------
+  .get("/daily-closing/expense-categories", async (c) => {
+    let rows = await db
+      .select()
+      .from(expenseCategories)
+      .orderBy(expenseCategories.sortOrder, expenseCategories.code)
+      .execute();
+    if (rows.length === 0) {
+      const defaults = [
+        { code: "SALARY", label: "Salary", sortOrder: 10 },
+        { code: "VENDOR", label: "Vendor", sortOrder: 20 },
+        { code: "MISC", label: "Misc", sortOrder: 30 },
+      ];
+      await db.insert(expenseCategories).values(defaults).execute();
+      rows = await db
+        .select()
+        .from(expenseCategories)
+        .orderBy(expenseCategories.sortOrder, expenseCategories.code)
+        .execute();
+    }
+    return c.json(rows);
+  })
+
+  .post("/daily-closing/expense-categories", async (c) => {
+    const input = await jsonBody(
+      c,
+      z.object({
+        code: z.string().min(1).toUpperCase(),
+        label: z.string().min(1),
+        sortOrder: z.number().int().default(0),
+      })
+    );
+    const [row] = await db
+      .insert(expenseCategories)
+      .values(input)
+      .returning()
+      .execute();
+    return c.json(row, 201);
+  })
+
+  .put("/daily-closing/expense-categories/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const input = await jsonBody(
+      c,
+      z.object({
+        code: z.string().min(1).optional(),
+        label: z.string().min(1).optional(),
+        sortOrder: z.number().int().optional(),
+        active: z.boolean().optional(),
+      })
+    );
+    const [row] = await db
+      .update(expenseCategories)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(expenseCategories.id, id))
+      .returning()
+      .execute();
+    if (!row) return c.json({ error: "Category not found" }, 404);
+    return c.json(row);
+  })
+
+  .delete("/daily-closing/expense-categories/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const [row] = await db
+      .update(expenseCategories)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(expenseCategories.id, id))
+      .returning()
+      .execute();
+    if (!row) return c.json({ error: "Category not found" }, 404);
+    return c.json({ success: true, deactivated: row });
+  })
+
+  // -------------------------------------------------------------------------
+  // Expense Catalog Master
+  // -------------------------------------------------------------------------
+  .get("/daily-closing/expense-catalog", async (c) => {
+    const list = await db
+      .select()
+      .from(expenseCatalog)
+      .orderBy(expenseCatalog.sortOrder, expenseCatalog.itemName)
+      .execute();
+    return c.json(list);
+  })
+
+  .post("/daily-closing/expense-catalog", async (c) => {
+    const input = await jsonBody(
+      c,
+      z.object({
+        category: z.string().min(1),
+        itemName: z.string().min(1),
+        defaultAmount: z.number().nonnegative(),
+        sortOrder: z.number().int().default(0),
+      })
+    );
+    const [row] = await db
+      .insert(expenseCatalog)
+      .values({
+        ...input,
+        defaultAmount: input.defaultAmount.toString(),
+      })
+      .returning()
+      .execute();
+    return c.json(row, 201);
+  })
+
+  .put("/daily-closing/expense-catalog/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const input = await jsonBody(
+      c,
+      z.object({
+        category: z.string().min(1).optional(),
+        itemName: z.string().min(1).optional(),
+        defaultAmount: z.number().nonnegative().optional(),
+        sortOrder: z.number().int().optional(),
+        active: z.boolean().optional(),
+      })
+    );
+    const { defaultAmount, ...rest } = input;
+    const [row] = await db
+      .update(expenseCatalog)
+      .set({
+        ...rest,
+        ...(defaultAmount !== undefined ? { defaultAmount: defaultAmount.toString() } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(expenseCatalog.id, id))
+      .returning()
+      .execute();
+    if (!row) return c.json({ error: "Expense item not found" }, 404);
+    return c.json(row);
+  })
+
+  .delete("/daily-closing/expense-catalog/:id", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+    const [row] = await db
+      .delete(expenseCatalog)
+      .where(eq(expenseCatalog.id, id))
+      .returning()
+      .execute();
+    if (!row) return c.json({ error: "Expense item not found" }, 404);
     return c.json({ success: true, deleted: row });
   })
 
@@ -342,6 +502,12 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       .where(eq(dailyAdditionalIncome.reportId, id))
       .execute();
 
+    const discountsReturns = await db
+      .select()
+      .from(dailyDiscountsReturns)
+      .where(eq(dailyDiscountsReturns.reportId, id))
+      .execute();
+
     const paymentChannels = await db
       .select()
       .from(dailyPaymentChannels)
@@ -365,6 +531,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       ipdAdmissions,
       ipdDischarges,
       additionalIncome,
+      discountsReturns,
       paymentChannels,
     });
   })
@@ -386,6 +553,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         bankDeposit: z.number().default(0),
         fundHandoverSir: z.number().default(0),
         fundHandoverMadam: z.number().default(0),
+        cashReceiptSir: z.number().default(0),
+        cashReceiptMam: z.number().default(0),
+        cashReceiptAcon: z.number().default(0),
         status: z.enum(["draft", "submitted", "locked"]).default("draft"),
         // Nested arrays
         serviceLines: z.array(
@@ -439,6 +609,12 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             amount: z.number(),
           })
         ),
+        discountsReturns: z.array(
+          z.object({
+            label: z.string(),
+            amount: z.number(),
+          })
+        ).default([]),
         paymentChannels: z.array(
           z.object({
             bank: z.string(),
@@ -481,21 +657,29 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
     const ipdAdmissionsTotal = payload.ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
     const ipdDischargesTotal = payload.ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
     const additionalTotal = payload.additionalIncome.reduce((sum, item) => sum + item.amount, 0);
-
+    const discountsTotal = payload.discountsReturns.reduce((sum, item) => sum + item.amount, 0);
     const totalIncome = 
-      payload.openingBalance + 
       opdTotal + 
       pharmacyTotal + 
       ipdAdmissionsTotal + 
       ipdDischargesTotal + 
-      additionalTotal;
+      additionalTotal -
+      discountsTotal;
 
     const expendituresTotal = payload.expenditures.reduce((sum, item) => sum + item.amount, 0);
     const advancesTotal = payload.staffAdvances.reduce((sum, item) => sum + item.amount, 0);
     const totalExpenditure = expendituresTotal + advancesTotal;
 
     const balance = totalIncome - totalExpenditure;
-    const closingBalance = balance - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
+    const otherCashChannelsTotal = payload.paymentChannels
+      .filter((c) => c.bank === "CASH" && c.channel === "CASH")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const cashReceiptsTotal = payload.cashReceiptSir + payload.cashReceiptMam + payload.cashReceiptAcon + otherCashChannelsTotal;
+    const bankReceiptsTotal = payload.paymentChannels
+      .filter((c) => c.bank !== "CASH")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    const closingBalance = payload.openingBalance + balance + cashReceiptsTotal - totalExpenditure - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
 
     // Begin Drizzle Transaction
     const reportRow = await db.transaction(async (tx) => {
@@ -504,13 +688,18 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         .values({
           reportDate: payload.reportDate,
           createdBy: session.user.id,
-          openingBalance: payload.openingBalance,
-          bankDeposit: payload.bankDeposit,
-          fundHandoverSir: payload.fundHandoverSir,
-          fundHandoverMadam: payload.fundHandoverMadam,
-          totalIncome: totalIncome,
-          totalExpenditure: totalExpenditure,
-          closingBalance: closingBalance,
+          openingBalance: payload.openingBalance.toFixed(2),
+          bankDeposit: payload.bankDeposit.toFixed(2),
+          fundHandoverSir: payload.fundHandoverSir.toFixed(2),
+          fundHandoverMadam: payload.fundHandoverMadam.toFixed(2),
+          cashReceiptSir: payload.cashReceiptSir.toFixed(2),
+          cashReceiptMam: payload.cashReceiptMam.toFixed(2),
+          cashReceiptAcon: payload.cashReceiptAcon.toFixed(2),
+          cashReceiptsTotal: cashReceiptsTotal.toFixed(2),
+          bankReceiptsTotal: bankReceiptsTotal.toFixed(2),
+          totalIncome: totalIncome.toFixed(2),
+          totalExpenditure: totalExpenditure.toFixed(2),
+          closingBalance: closingBalance.toFixed(2),
           status: payload.status,
         })
         .returning()
@@ -524,9 +713,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.serviceLines.map((line) => ({
               reportId: report.id,
               serviceId: line.serviceId ?? null,
-              rate: line.rate,
+              rate: line.rate.toString(),
               quantity: line.quantity,
-              amount: line.amount,
+              amount: line.amount.toString(),
             }))
           )
           .execute();
@@ -538,14 +727,14 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           .insert(dailyPharmacyIncome)
           .values({
             reportId: report.id,
-            otWardTotal: pharmacyIncome.otWardTotal,
-            acmeNewTotal: pharmacyIncome.acmeNewTotal,
-            parking: pharmacyIncome.parking,
-            coffeeShop: pharmacyIncome.coffeeShop,
-            canteenIncome: pharmacyIncome.canteenIncome,
-            creditCardChargesNight: pharmacyIncome.creditCardChargesNight,
-            trainingFee: pharmacyIncome.trainingFee,
-            humankindSales: pharmacyIncome.humankindSales,
+            otWardTotal: pharmacyIncome.otWardTotal.toString(),
+            acmeNewTotal: pharmacyIncome.acmeNewTotal.toString(),
+            parking: pharmacyIncome.parking.toString(),
+            coffeeShop: pharmacyIncome.coffeeShop.toString(),
+            canteenIncome: pharmacyIncome.canteenIncome.toString(),
+            creditCardChargesNight: pharmacyIncome.creditCardChargesNight.toString(),
+            trainingFee: pharmacyIncome.trainingFee.toString(),
+            humankindSales: pharmacyIncome.humankindSales.toString(),
             miscIncome: pharmacyIncome.miscIncome,
           })
           .execute();
@@ -559,7 +748,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               reportId: report.id,
               category: item.category,
               details: item.details,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -572,7 +761,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.staffAdvances.map((item) => ({
               reportId: report.id,
               staffName: item.staffName,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -586,7 +775,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               reportId: report.id,
               patientName: item.patientName,
               type: item.type,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -599,7 +788,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.ipdDischarges.map((item) => ({
               reportId: report.id,
               patientName: item.patientName,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -612,7 +801,20 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.additionalIncome.map((item) => ({
               reportId: report.id,
               label: item.label,
-              amount: item.amount,
+              amount: item.amount.toString(),
+            }))
+          )
+          .execute();
+      }
+
+      if (payload.discountsReturns.length > 0) {
+        await tx
+          .insert(dailyDiscountsReturns)
+          .values(
+            payload.discountsReturns.map((item) => ({
+              reportId: report.id,
+              label: item.label,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -627,7 +829,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               bank: item.bank,
               channel: item.channel,
               sourceLabel: item.sourceLabel,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -668,6 +870,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         bankDeposit: z.number().default(0),
         fundHandoverSir: z.number().default(0),
         fundHandoverMadam: z.number().default(0),
+        cashReceiptSir: z.number().default(0),
+        cashReceiptMam: z.number().default(0),
+        cashReceiptAcon: z.number().default(0),
         status: z.enum(["draft", "submitted", "locked"]).default("draft"),
         serviceLines: z.array(
           z.object({
@@ -720,6 +925,12 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             amount: z.number(),
           })
         ),
+        discountsReturns: z.array(
+          z.object({
+            label: z.string(),
+            amount: z.number(),
+          })
+        ).default([]),
         paymentChannels: z.array(
           z.object({
             bank: z.string(),
@@ -750,34 +961,47 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
     const ipdAdmissionsTotal = payload.ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
     const ipdDischargesTotal = payload.ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
     const additionalTotal = payload.additionalIncome.reduce((sum, item) => sum + item.amount, 0);
-
+    const discountsTotalPut = payload.discountsReturns.reduce((sum, item) => sum + item.amount, 0);
     const totalIncome =
-      payload.openingBalance +
       opdTotal +
       pharmacyTotalPut +
       ipdAdmissionsTotal +
       ipdDischargesTotal +
-      additionalTotal;
+      additionalTotal -
+      discountsTotalPut;
 
     const expendituresTotal = payload.expenditures.reduce((sum, item) => sum + item.amount, 0);
     const advancesTotal = payload.staffAdvances.reduce((sum, item) => sum + item.amount, 0);
     const totalExpenditure = expendituresTotal + advancesTotal;
 
     const balance = totalIncome - totalExpenditure;
-    const closingBalance = balance - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
+    const otherCashChannelsTotal = payload.paymentChannels
+      .filter((c) => c.bank === "CASH" && c.channel === "CASH")
+      .reduce((sum, item) => sum + item.amount, 0);
+    const cashReceiptsTotal = payload.cashReceiptSir + payload.cashReceiptMam + payload.cashReceiptAcon + otherCashChannelsTotal;
+    const bankReceiptsTotal = payload.paymentChannels
+      .filter((c) => c.bank !== "CASH")
+      .reduce((sum, item) => sum + item.amount, 0);
+
+    const closingBalance = payload.openingBalance + balance + cashReceiptsTotal - totalExpenditure - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
 
     // Run Updates inside Drizzle Transaction
     const updatedRow = await db.transaction(async (tx) => {
       const [report] = await tx
         .update(dailyClosingReports)
         .set({
-          openingBalance: payload.openingBalance,
-          bankDeposit: payload.bankDeposit,
-          fundHandoverSir: payload.fundHandoverSir,
-          fundHandoverMadam: payload.fundHandoverMadam,
-          totalIncome: totalIncome,
-          totalExpenditure: totalExpenditure,
-          closingBalance: closingBalance,
+          openingBalance: payload.openingBalance.toFixed(2),
+          bankDeposit: payload.bankDeposit.toFixed(2),
+          fundHandoverSir: payload.fundHandoverSir.toFixed(2),
+          fundHandoverMadam: payload.fundHandoverMadam.toFixed(2),
+          cashReceiptSir: payload.cashReceiptSir.toFixed(2),
+          cashReceiptMam: payload.cashReceiptMam.toFixed(2),
+          cashReceiptAcon: payload.cashReceiptAcon.toFixed(2),
+          cashReceiptsTotal: cashReceiptsTotal.toFixed(2),
+          bankReceiptsTotal: bankReceiptsTotal.toFixed(2),
+          totalIncome: totalIncome.toFixed(2),
+          totalExpenditure: totalExpenditure.toFixed(2),
+          closingBalance: closingBalance.toFixed(2),
           status: payload.status,
           updatedAt: new Date(),
         })
@@ -793,6 +1017,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       await tx.delete(dailyIpdAdmissions).where(eq(dailyIpdAdmissions.reportId, id)).execute();
       await tx.delete(dailyIpdDischarges).where(eq(dailyIpdDischarges.reportId, id)).execute();
       await tx.delete(dailyAdditionalIncome).where(eq(dailyAdditionalIncome.reportId, id)).execute();
+      await tx.delete(dailyDiscountsReturns).where(eq(dailyDiscountsReturns.reportId, id)).execute();
       await tx.delete(dailyPaymentChannels).where(eq(dailyPaymentChannels.reportId, id)).execute();
 
       // Re-insert new nested children
@@ -803,9 +1028,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.serviceLines.map((line) => ({
               reportId: id,
               serviceId: line.serviceId ?? null,
-              rate: line.rate,
+              rate: line.rate.toString(),
               quantity: line.quantity,
-              amount: line.amount,
+              amount: line.amount.toString(),
             }))
           )
           .execute();
@@ -817,14 +1042,14 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           .insert(dailyPharmacyIncome)
           .values({
             reportId: id,
-            otWardTotal: pharmacyIncomePut.otWardTotal,
-            acmeNewTotal: pharmacyIncomePut.acmeNewTotal,
-            parking: pharmacyIncomePut.parking,
-            coffeeShop: pharmacyIncomePut.coffeeShop,
-            canteenIncome: pharmacyIncomePut.canteenIncome,
-            creditCardChargesNight: pharmacyIncomePut.creditCardChargesNight,
-            trainingFee: pharmacyIncomePut.trainingFee,
-            humankindSales: pharmacyIncomePut.humankindSales,
+            otWardTotal: pharmacyIncomePut.otWardTotal.toString(),
+            acmeNewTotal: pharmacyIncomePut.acmeNewTotal.toString(),
+            parking: pharmacyIncomePut.parking.toString(),
+            coffeeShop: pharmacyIncomePut.coffeeShop.toString(),
+            canteenIncome: pharmacyIncomePut.canteenIncome.toString(),
+            creditCardChargesNight: pharmacyIncomePut.creditCardChargesNight.toString(),
+            trainingFee: pharmacyIncomePut.trainingFee.toString(),
+            humankindSales: pharmacyIncomePut.humankindSales.toString(),
             miscIncome: pharmacyIncomePut.miscIncome,
           })
           .execute();
@@ -838,7 +1063,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               reportId: id,
               category: item.category,
               details: item.details,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -851,7 +1076,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.staffAdvances.map((item) => ({
               reportId: id,
               staffName: item.staffName,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -865,7 +1090,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               reportId: id,
               patientName: item.patientName,
               type: item.type,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -878,7 +1103,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.ipdDischarges.map((item) => ({
               reportId: id,
               patientName: item.patientName,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -891,7 +1116,20 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             payload.additionalIncome.map((item) => ({
               reportId: id,
               label: item.label,
-              amount: item.amount,
+              amount: item.amount.toString(),
+            }))
+          )
+          .execute();
+      }
+
+      if (payload.discountsReturns.length > 0) {
+        await tx
+          .insert(dailyDiscountsReturns)
+          .values(
+            payload.discountsReturns.map((item) => ({
+              reportId: id,
+              label: item.label,
+              amount: item.amount.toString(),
             }))
           )
           .execute();
@@ -906,7 +1144,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               bank: item.bank,
               channel: item.channel,
               sourceLabel: item.sourceLabel,
-              amount: item.amount,
+              amount: item.amount.toString(),
             }))
           )
           .execute();

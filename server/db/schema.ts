@@ -1,5 +1,5 @@
-import { relations, sql } from "drizzle-orm";
-import { integer, doublePrecision as real, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
+import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -70,7 +70,7 @@ export const leaveTypes = sqliteTable("leave_types", {
   maxDays: integer("max_days").notNull().default(0),
   active: boolean("active").notNull().default(true),
   payable: boolean("payable").notNull().default(true),
-  paymentRate: real("payment_rate").notNull().default(100.0),
+  paymentRate: numeric("payment_rate", { precision: 12, scale: 2 }).notNull().default("100"),
   ...timestamps
 });
 
@@ -110,7 +110,7 @@ export const staff = sqliteTable("staff", {
   role: text("role").notNull(),
   phone: text("phone").notNull(),
   email: text("email").notNull(),
-  salary: real("salary").notNull(),
+  salary: numeric("salary", { precision: 12, scale: 2 }).notNull().default("0"),
   status: text("status").notNull().default("Active"),
   aadhar: text("aadhar").notNull().default(""),
   pan: text("pan").notNull().default(""),
@@ -158,16 +158,16 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   id: serial("id").primaryKey(),
   staffId: integer("staff_id").notNull(),
   staffVersion: integer("staff_version").notNull().default(1),
-  basicSalary: real("basic_salary").notNull().default(0),
-  hra: real("hra").notNull().default(0),
-  conveyance: real("conveyance").notNull().default(0),
-  medical: real("medical").notNull().default(0),
-  special: real("special").notNull().default(0),
-  epf: real("epf").notNull().default(0),
-  esi: real("esi").notNull().default(0),
-  professionalTax: real("professional_tax").notNull().default(0),
-  otherDeductions: real("other_deductions").notNull().default(0),
-  lateAttendance: real("late_attendance").notNull().default(0),
+  basicSalary: numeric("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
+  hra: numeric("hra", { precision: 12, scale: 2 }).notNull().default("0"),
+  conveyance: numeric("conveyance", { precision: 12, scale: 2 }).notNull().default("0"),
+  medical: numeric("medical", { precision: 12, scale: 2 }).notNull().default("0"),
+  special: numeric("special", { precision: 12, scale: 2 }).notNull().default("0"),
+  epf: numeric("epf", { precision: 12, scale: 2 }).notNull().default("0"),
+  esi: numeric("esi", { precision: 12, scale: 2 }).notNull().default("0"),
+  professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
+  lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   bankName: text("bank_name"),
   accountNumber: text("account_number"),
   ifscCode: text("ifsc_code"),
@@ -298,19 +298,19 @@ export const payslips = sqliteTable("payslips", {
   id: serial("id").primaryKey(),
   staffId: integer("staff_id").notNull(), // stable staffId, no FK
   month: text("month").notNull(),
-  basicSalary: real("basic_salary").notNull().default(0),
-  hra: real("hra").notNull().default(0),
-  conveyance: real("conveyance").notNull().default(0),
-  medical: real("medical").notNull().default(0),
-  special: real("special").notNull().default(0),
-  epf: real("epf").notNull().default(0),
-  esi: real("esi").notNull().default(0),
-  professionalTax: real("professional_tax").notNull().default(0),
-  otherDeductions: real("other_deductions").notNull().default(0),
-  lateAttendance: real("late_attendance").notNull().default(0),
+  basicSalary: numeric("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
+  hra: numeric("hra", { precision: 12, scale: 2 }).notNull().default("0"),
+  conveyance: numeric("conveyance", { precision: 12, scale: 2 }).notNull().default("0"),
+  medical: numeric("medical", { precision: 12, scale: 2 }).notNull().default("0"),
+  special: numeric("special", { precision: 12, scale: 2 }).notNull().default("0"),
+  epf: numeric("epf", { precision: 12, scale: 2 }).notNull().default("0"),
+  esi: numeric("esi", { precision: 12, scale: 2 }).notNull().default("0"),
+  professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
+  lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   leaveDaysTaken: integer("leave_days_taken").notNull().default(0),
-  leaveDeduction: real("leave_deduction").notNull().default(0),
-  netSalary: real("net_salary").notNull().default(0),
+  leaveDeduction: numeric("leave_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
+  netSalary: numeric("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   version: integer("version").notNull().default(1),
   status: text("status").notNull().default("Active"),
   ...timestamps
@@ -392,7 +392,7 @@ export const medicines = sqliteTable("medicines", {
   strength: text("strength").notNull(),
   stock: integer("stock").notNull(),
   reorderLevel: integer("reorder_level").notNull(),
-  price: real("price").notNull(),
+  price: numeric("price", { precision: 12, scale: 2 }).notNull().default("0"),
   batchNo: text("batch_no").notNull(),
   expiryDate: timestamp("expiry_date").notNull(),
   ...timestamps
@@ -565,19 +565,19 @@ export const transactions = sqliteTable("transactions", {
   description: text("description").notNull(),
   category: text("category").notNull(),
   type: text("type").notNull(),
-  amount: real("amount").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   paymentMethod: text("payment_method").notNull(),
   notes: text("notes"),
   ...timestamps
 });
 
-export const transactionsRelations = relations(transactions, ({}) => ({}));
+export const transactionsRelations = relations(transactions, ({ }) => ({}));
 
 export const consultantRates = sqliteTable("consultant_rates", {
   id: serial("id").primaryKey(),
   doctorId: integer("doctor_id").notNull().unique(),
-  baseRate: real("base_rate").notNull().default(500),
-  doctorSharePercent: real("doctor_share_percent").notNull().default(70),
+  baseRate: numeric("base_rate", { precision: 12, scale: 2 }).notNull().default("500"),
+  doctorSharePercent: numeric("doctor_share_percent", { precision: 12, scale: 2 }).notNull().default("70"),
   ...timestamps
 });
 
@@ -592,13 +592,18 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   id: serial("id").primaryKey(),
   reportDate: text("report_date").notNull().unique(),
   createdBy: text("created_by").notNull().references(() => user.id),
-  openingBalance: real("opening_balance").notNull().default(0),
-  bankDeposit: real("bank_deposit").notNull().default(0),
-  fundHandoverSir: real("fund_handover_sir").notNull().default(0),
-  fundHandoverMadam: real("fund_handover_madam").notNull().default(0),
-  totalIncome: real("total_income").notNull().default(0),
-  totalExpenditure: real("total_expenditure").notNull().default(0),
-  closingBalance: real("closing_balance").notNull().default(0),
+  openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  bankDeposit: numeric("bank_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
+  fundHandoverSir: numeric("fund_handover_sir", { precision: 12, scale: 2 }).notNull().default("0"),
+  fundHandoverMadam: numeric("fund_handover_madam", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalIncome: numeric("total_income", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalExpenditure: numeric("total_expenditure", { precision: 12, scale: 2 }).notNull().default("0"),
+  closingBalance: numeric("closing_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  cashReceiptSir: numeric("cash_receipt_sir", { precision: 12, scale: 2 }).notNull().default("0"),
+  cashReceiptMam: numeric("cash_receipt_mam", { precision: 12, scale: 2 }).notNull().default("0"),
+  cashReceiptAcon: numeric("cash_receipt_acon", { precision: 12, scale: 2 }).notNull().default("0"),
+  cashReceiptsTotal: numeric("cash_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  bankReceiptsTotal: numeric("bank_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
   status: text("status").notNull().default("draft"),
   ...timestamps
 });
@@ -609,6 +614,7 @@ export const serviceCategories = sqliteTable("service_categories", {
   label: text("label").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
+  isVariableAmount: boolean("is_variable_amount").notNull().default(false),
   ...timestamps
 });
 
@@ -616,9 +622,28 @@ export const serviceCatalog = sqliteTable("service_catalog", {
   id: serial("id").primaryKey(),
   department: text("department").notNull(),
   serviceName: text("service_name").notNull(),
-  defaultRate: real("default_rate").notNull().default(0),
+  defaultRate: numeric("default_rate", { precision: 12, scale: 2 }).notNull().default("0"),
   sortOrder: integer("sort_order").notNull().default(0),
   defaultShow: boolean("default_show").notNull().default(true),
+  ...timestamps
+});
+
+export const expenseCategories = sqliteTable("expense_categories", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const expenseCatalog = sqliteTable("expense_catalog", {
+  id: serial("id").primaryKey(),
+  category: text("category").notNull(),
+  itemName: text("item_name").notNull(),
+  defaultAmount: numeric("default_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: boolean("active").notNull().default(true),
   ...timestamps
 });
 
@@ -626,22 +651,22 @@ export const dailyServiceLines = sqliteTable("daily_service_lines", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   serviceId: integer("service_id").references(() => serviceCatalog.id, { onDelete: "set null" }),
-  rate: real("rate").notNull(),
+  rate: numeric("rate", { precision: 12, scale: 2 }).notNull().default("0"),
   quantity: integer("quantity").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyPharmacyIncome = sqliteTable("daily_pharmacy_income", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().unique().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
-  otWardTotal: real("ot_ward_total").notNull().default(0),
-  acmeNewTotal: real("acme_new_total").notNull().default(0),
-  parking: real("parking").notNull().default(0),
-  coffeeShop: real("coffee_shop").notNull().default(0),
-  canteenIncome: real("canteen_income").notNull().default(0),
-  creditCardChargesNight: real("credit_card_charges_night").notNull().default(0),
-  trainingFee: real("training_fee").notNull().default(0),
-  humankindSales: real("humankind_sales").notNull().default(0),
+  otWardTotal: numeric("ot_ward_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  acmeNewTotal: numeric("acme_new_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  parking: numeric("parking", { precision: 12, scale: 2 }).notNull().default("0"),
+  coffeeShop: numeric("coffee_shop", { precision: 12, scale: 2 }).notNull().default("0"),
+  canteenIncome: numeric("canteen_income", { precision: 12, scale: 2 }).notNull().default("0"),
+  creditCardChargesNight: numeric("credit_card_charges_night", { precision: 12, scale: 2 }).notNull().default("0"),
+  trainingFee: numeric("training_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  humankindSales: numeric("humankind_sales", { precision: 12, scale: 2 }).notNull().default("0"),
   miscIncome: text("misc_income").notNull().default("[]")
 });
 
@@ -650,14 +675,14 @@ export const dailyExpenditures = sqliteTable("daily_expenditures", {
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   category: text("category").notNull(),
   details: text("details").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyStaffAdvances = sqliteTable("daily_staff_advances", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   staffName: text("staff_name").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyIpdAdmissions = sqliteTable("daily_ipd_admissions", {
@@ -665,21 +690,28 @@ export const dailyIpdAdmissions = sqliteTable("daily_ipd_admissions", {
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   patientName: text("patient_name").notNull(),
   type: text("type").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyIpdDischarges = sqliteTable("daily_ipd_discharges", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   patientName: text("patient_name").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyAdditionalIncome = sqliteTable("daily_additional_income", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   label: text("label").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
+});
+
+export const dailyDiscountsReturns = sqliteTable("daily_discounts_returns", {
+  id: serial("id").primaryKey(),
+  reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyPaymentChannels = sqliteTable("daily_payment_channels", {
@@ -688,7 +720,7 @@ export const dailyPaymentChannels = sqliteTable("daily_payment_channels", {
   bank: text("bank").notNull(),
   channel: text("channel").notNull(),
   sourceLabel: text("source_label").notNull(),
-  amount: real("amount").notNull()
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
 export const dailyClosingReportsRelations = relations(dailyClosingReports, ({ many, one }) => ({
@@ -703,6 +735,7 @@ export const dailyClosingReportsRelations = relations(dailyClosingReports, ({ ma
   ipdAdmissions: many(dailyIpdAdmissions),
   ipdDischarges: many(dailyIpdDischarges),
   additionalIncome: many(dailyAdditionalIncome),
+  discountsReturns: many(dailyDiscountsReturns),
   paymentChannels: many(dailyPaymentChannels)
 }));
 
@@ -737,4 +770,8 @@ export const dailyAdditionalIncomeRelations = relations(dailyAdditionalIncome, (
 
 export const dailyPaymentChannelsRelations = relations(dailyPaymentChannels, ({ one }) => ({
   report: one(dailyClosingReports, { fields: [dailyPaymentChannels.reportId], references: [dailyClosingReports.id] })
+}));
+
+export const dailyDiscountsReturnsRelations = relations(dailyDiscountsReturns, ({ one }) => ({
+  report: one(dailyClosingReports, { fields: [dailyDiscountsReturns.reportId], references: [dailyClosingReports.id] })
 }));

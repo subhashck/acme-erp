@@ -10,7 +10,24 @@ import { Label } from "../ui/label";
 import { cn } from "../utils/cn";
 import { Autocomplete } from "../ui/autocomplete";
 
-type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean };
+type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean; isVariableAmount: boolean };
+
+type ExpenseCategory = {
+  id: number;
+  code: string;
+  label: string;
+  sortOrder: number;
+  active: boolean;
+};
+
+type ExpenseCatalogItem = {
+  id: number;
+  category: string;
+  itemName: string;
+  defaultAmount: number;
+  sortOrder: number;
+  active: boolean;
+};
 
 // ─────────────────────────── constants ───────────────────────────
 
@@ -24,7 +41,6 @@ const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "HDFC", channel: "UPI", sourceLabel: "Front OPD UPI", amount: 0 },
   { bank: "HDFC", channel: "CARD", sourceLabel: "Pharmacy Card", amount: 0 },
   { bank: "BOI", channel: "UPI", sourceLabel: "Pharmacy UPI", amount: 0 },
-  { bank: "CASH", channel: "CASH", sourceLabel: "Cash Collection", amount: 0 },
 ];
 
 // ─────────────────────────── types ───────────────────────────────
@@ -37,6 +53,7 @@ type IpdDischarge = { patientName: string; amount: number };
 type Expenditure = { category: string; details: string; amount: number };
 type StaffAdvance = { staffName: string; amount: number };
 type AdditionalIncome = { label: string; amount: number };
+type DiscountReturn = { label: string; amount: number };
 type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number };
 
 export interface ReportPayload {
@@ -45,6 +62,9 @@ export interface ReportPayload {
   bankDeposit: number;
   fundHandoverSir: number;
   fundHandoverMadam: number;
+  cashReceiptSir: number;
+  cashReceiptMam: number;
+  cashReceiptAcon: number;
   status: "draft" | "submitted";
   serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number }>;
   expenditures: Expenditure[];
@@ -52,6 +72,7 @@ export interface ReportPayload {
   ipdAdmissions: IpdAdmission[];
   ipdDischarges: IpdDischarge[];
   additionalIncome: AdditionalIncome[];
+  discountsReturns: DiscountReturn[];
   paymentChannels: PaymentChannel[];
 }
 
@@ -90,12 +111,16 @@ export function ReportForm({
   const [fundHandoverSir, setFundHandoverSir] = React.useState("0");
   const [fundHandoverMadam, setFundHandoverMadam] = React.useState("0");
   const [status, setStatus] = React.useState<"draft" | "submitted">("draft");
+  const [cashReceiptSir, setCashReceiptSir] = React.useState("0");
+  const [cashReceiptMam, setCashReceiptMam] = React.useState("0");
+  const [cashReceiptAcon, setCashReceiptAcon] = React.useState("0");
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
     ipd: false,
     exp: false,
     add: false,
+    discounts: false,
     reconcile: false,
   });
   const toggleSection = (s: string) => setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
@@ -112,6 +137,19 @@ export function ReportForm({
     ["service-catalog"],
     () => client["daily-closing"].catalog.$get()
   );
+
+  // ── expense categories and catalog queries ─────────────────────
+  const expCategoriesQuery = useRpcQuery<ExpenseCategory[]>(
+    ["expense-categories"],
+    () => (client["daily-closing"] as any)["expense-categories"].$get()
+  );
+  const activeExpCategories = (expCategoriesQuery.data ?? []).filter((c) => c.active);
+
+  const expCatalogQuery = useRpcQuery<ExpenseCatalogItem[]>(
+    ["expense-catalog"],
+    () => (client["daily-closing"] as any)["expense-catalog"].$get()
+  );
+  const expCatalogList = expCatalogQuery.data ?? [];
 
   // ── auto-populate opening balance in new mode ─────────────────
   const pastReportsQuery = useRpcQuery<any[]>(
@@ -136,6 +174,8 @@ export function ReportForm({
 
   const catalogList = catalogQuery.data ?? [];
 
+  const expCategoriesOptions = activeExpCategories.length > 0 ? activeExpCategories.map((c) => c.code) : ["SALARY", "VENDOR", "MISC"];
+
   /** Returns catalog items visible for a given category code */
   const getCatalogForDept = (code: string) =>
     catalogList.filter(
@@ -149,6 +189,7 @@ export function ReportForm({
   const [expenditures, setExpenditures] = React.useState<Expenditure[]>([]);
   const [staffAdvances, setStaffAdvances] = React.useState<StaffAdvance[]>([]);
   const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
+  const [discountsReturns, setDiscountsReturns] = React.useState<DiscountReturn[]>([]);
   const [paymentChannels, setPaymentChannels] = React.useState<PaymentChannel[]>(
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
   );
@@ -176,7 +217,7 @@ export function ReportForm({
       } else {
         custom.push({
           serviceName: l.serviceName || "Custom service",
-          department: l.department || "OPD_GYNAE",
+          department: l.department || "OPD",
           rate: parseFloat(l.rate),
           quantity: l.quantity,
           amount: parseFloat(l.amount),
@@ -201,9 +242,17 @@ export function ReportForm({
     setAdditionalIncome(initialData.additionalIncome?.map((item: any) => ({
       label: item.label, amount: parseFloat(item.amount),
     })) ?? []);
-    setPaymentChannels(initialData.paymentChannels?.map((item: any) => ({
-      bank: item.bank, channel: item.channel, sourceLabel: item.sourceLabel, amount: parseFloat(item.amount),
+    setDiscountsReturns(initialData.discountsReturns?.map((item: any) => ({
+      label: item.label, amount: parseFloat(item.amount),
     })) ?? []);
+    setCashReceiptSir(String(initialData.cashReceiptSir || 0));
+    setCashReceiptMam(String(initialData.cashReceiptMam || 0));
+    setCashReceiptAcon(String(initialData.cashReceiptAcon || 0));
+
+    const pChannels = (initialData.paymentChannels ?? []).map((item: any) => ({
+      bank: item.bank, channel: item.channel, sourceLabel: item.sourceLabel, amount: parseFloat(item.amount),
+    }));
+    setPaymentChannels(pChannels);
   }, [initialData]);
 
   // ── derived calculations ──────────────────────────────────────
@@ -239,24 +288,49 @@ export function ReportForm({
   const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
   const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
   const additionalTotal = additionalIncome.reduce((sum, item) => sum + item.amount, 0);
+  const discountsTotal = discountsReturns.reduce((sum, item) => sum + item.amount, 0);
 
   const openBal = parseFloat(openingBalance) || 0;
-  const totalIncome = openBal + totalCategoryIncome + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal;
+
+  const totalIncome = totalCategoryIncome + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal - discountsTotal;
   const netBalance = totalIncome - totalExpenditures;
 
   const depositVal = parseFloat(bankDeposit) || 0;
   const handoverSirVal = parseFloat(fundHandoverSir) || 0;
   const handoverMadamVal = parseFloat(fundHandoverMadam) || 0;
-  const closingBalance = netBalance - depositVal - handoverSirVal - handoverMadamVal;
 
-  const paymentChannelsSum = paymentChannels.reduce((sum, item) => sum + item.amount, 0);
-  const revenueToReconcile = totalIncome - openBal;
+
+  const cashSirVal = parseFloat(cashReceiptSir) || 0;
+  const cashMamVal = parseFloat(cashReceiptMam) || 0;
+  const cashAconVal = parseFloat(cashReceiptAcon) || 0;
+
+  const cashReceiptsSum = paymentChannels
+    .filter((item) => item.bank === "CASH" && item.channel === "CASH")
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  const bankReceiptsSum = paymentChannels
+    .filter((item) => item.bank !== "CASH")
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  const paymentChannelsSum = bankReceiptsSum + paymentChannels
+    .filter((item) => item.bank === "CASH" && item.channel === "CASH")
+    .reduce((sum, item) => sum + item.amount, 0) + cashSirVal + cashMamVal + cashAconVal;
+
+  const closingBalance = openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal;
+
+  const revenueToReconcile = totalIncome;
   const isReconciled = Math.abs(paymentChannelsSum - revenueToReconcile) < 1;
 
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
   // ── event handlers ────────────────────────────────────────────
+  const handleCashReceiptChange = (sourceLabel: "SIR" | "MAM" | "ACON", valStr: string) => {
+    if (sourceLabel === "SIR") setCashReceiptSir(valStr);
+    else if (sourceLabel === "MAM") setCashReceiptMam(valStr);
+    else if (sourceLabel === "ACON") setCashReceiptAcon(valStr);
+  };
+
   const handleQtyChange = (serviceId: number, rate: number, qtyStr: string) => {
     const qty = parseInt(qtyStr, 10);
     if (qty <= 0) {
@@ -291,7 +365,7 @@ export function ReportForm({
     setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0 }]);
   };
 
-  const handleCustomLineChange = (index: number, field: string, val: string) => {
+  const handleCustomLineChange = (index: number, field: string, val: string, isVar: boolean = false) => {
     setCustomLines((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
@@ -301,11 +375,11 @@ export function ReportForm({
         } else if (field === "rate") {
           const rateVal = parseFloat(val) || 0;
           copy.rate = rateVal;
-          copy.amount = rateVal * copy.quantity;
+          if (!isVar) copy.amount = rateVal * copy.quantity;
         } else if (field === "quantity") {
           const qtyVal = parseInt(val, 10) || 0;
           copy.quantity = qtyVal;
-          copy.amount = copy.rate * qtyVal;
+          if (!isVar) copy.amount = copy.rate * qtyVal;
         } else if (field === "amount") {
           copy.amount = parseFloat(val) || 0;
         }
@@ -354,6 +428,9 @@ export function ReportForm({
       bankDeposit: depositVal,
       fundHandoverSir: handoverSirVal,
       fundHandoverMadam: handoverMadamVal,
+      cashReceiptSir: cashSirVal,
+      cashReceiptMam: cashMamVal,
+      cashReceiptAcon: cashAconVal,
       status,
       serviceLines: parsedServiceLines,
       expenditures,
@@ -361,6 +438,7 @@ export function ReportForm({
       ipdAdmissions,
       ipdDischarges,
       additionalIncome,
+      discountsReturns,
       paymentChannels: paymentChannels.filter((c) => c.amount > 0),
     };
 
@@ -389,14 +467,14 @@ export function ReportForm({
   };
 
   // ── service table ─────────────────────────────────────────────
-  const renderServiceTable = (catalog: any[]) => (
+  const renderServiceTable = (catalog: any[], isVar: boolean) => (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-xs border-collapse">
         <thead>
           <tr className="border-b bg-muted/40 font-semibold text-muted-foreground text-[10px] uppercase">
             <th className="p-3">Service Name</th>
             <th className="p-3 text-center w-24">Quantity</th>
-            <th className="p-3 text-right w-32">Rate (INR)</th>
+            {!isVar && <th className="p-3 text-right w-32">Rate (INR)</th>}
             <th className="p-3 text-right w-36">Total (INR)</th>
           </tr>
         </thead>
@@ -410,19 +488,40 @@ export function ReportForm({
                   <input
                     type="number" min="0" placeholder="0"
                     value={state.quantity || ""}
-                    onChange={(e) => handleQtyChange(item.id, item.defaultRate, e.target.value)}
+                    onChange={(e) => {
+                      const qtyStr = e.target.value;
+                      if (isVar) {
+                        const qty = parseInt(qtyStr, 10) || 0;
+                        if (qty <= 0) {
+                          setServiceQuantities((prev) => {
+                            const copy = { ...prev };
+                            delete copy[item.id];
+                            return copy;
+                          });
+                        } else {
+                          setServiceQuantities((prev) => ({
+                            ...prev,
+                            [item.id]: { rate: 0, quantity: qty, amount: prev[item.id]?.amount || 0 },
+                          }));
+                        }
+                      } else {
+                        handleQtyChange(item.id, item.defaultRate, qtyStr);
+                      }
+                    }}
                     className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
                   />
                 </td>
-                <td className="p-3 text-right">
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={state.rate}
-                    onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
-                    disabled={state.quantity === 0}
-                    className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
-                  />
-                </td>
+                {!isVar && (
+                  <td className="p-3 text-right">
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={state.rate}
+                      onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
+                      disabled={state.quantity === 0}
+                      className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
+                    />
+                  </td>
+                )}
                 <td className="p-3 text-right">
                   <input
                     type="number" min="0" step="0.01"
@@ -441,7 +540,7 @@ export function ReportForm({
   );
 
   // ── custom line rows ──────────────────────────────────────────
-  const renderCustomLines = (dept: string) =>
+  const renderCustomLines = (dept: string, isVar: boolean) =>
     customLines
       .filter((l) => l.department === dept)
       .map((line, cIdx) => {
@@ -550,6 +649,7 @@ export function ReportForm({
             </CardContent>
           </Card>
 
+
           {/* Dynamic service sections — one per master category */}
           {activeCategories.map((cat, catIdx) => {
             const sectionKey = `cat_${cat.code}`;
@@ -578,11 +678,11 @@ export function ReportForm({
                       <div className="text-center py-6 text-xs text-muted-foreground border border-dashed rounded-lg">
                         No items found for <strong>{cat.label}</strong>. Add services under Accounts → Service Charges.
                       </div>
-                    ) : renderServiceTable(deptCatalog)}
+                    ) : renderServiceTable(deptCatalog, cat.isVariableAmount)}
 
                     <div className="space-y-3 pt-4 border-t">
                       <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Custom {cat.label} Items</h5>
-                      {renderCustomLines(cat.code)}
+                      {renderCustomLines(cat.code, cat.isVariableAmount)}
                       <div className="flex flex-wrap gap-4 items-end mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                         <div className="pb-0.5">
                           <Button type="button" variant="outline" size="default" onClick={() => handleAddCustomLine(cat.code)} className="font-semibold cursor-pointer text-xs h-10">
@@ -718,11 +818,19 @@ export function ReportForm({
               <CardContent className="p-5 space-y-5">
                 <div className="space-y-3">
                   <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Outflow Payments</h5>
+                  <datalist id="predefined-expenses">
+                    {expCatalogList.map((item) => (
+                      <option key={item.id} value={item.itemName}>
+                        {item.itemName} ({activeExpCategories.find(c => c.code === item.category)?.label || item.category} - ₹{item.defaultAmount})
+                      </option>
+                    ))}
+                  </datalist>
+
                   {expenditures.map((item, idx) => (
                     <div key={idx} className="flex flex-wrap gap-3 items-end bg-muted/15 p-2.5 rounded border">
                       <Select
                         label="Category"
-                        options={EXP_CATEGORIES}
+                        options={expCategoriesOptions}
                         value={item.category}
                         className="w-48"
                         onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, category: e.target.value } : ex)))}
@@ -732,9 +840,28 @@ export function ReportForm({
                         <Label className="text-[10px]">Details / Payee</Label>
                         <Input
                           type="text"
+                          list="predefined-expenses"
                           placeholder="e.g. M/S SB Surgical, Bamboo purchase"
                           value={item.details}
-                          onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, details: e.target.value } : ex)))}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const matched = expCatalogList.find((x) => x.itemName.toUpperCase() === val.toUpperCase());
+                            if (matched) {
+                              setExpenditures(
+                                expenditures.map((ex, i) =>
+                                  i === idx
+                                    ? { ...ex, details: val, category: matched.category, amount: matched.defaultAmount }
+                                    : ex
+                                )
+                              );
+                            } else {
+                              setExpenditures(
+                                expenditures.map((ex, i) =>
+                                  i === idx ? { ...ex, details: val } : ex
+                                )
+                              );
+                            }
+                          }}
                           required
                         />
                       </div>
@@ -756,7 +883,7 @@ export function ReportForm({
                       </button>
                     </div>
                   ))}
-                  <Button type="button" variant="outline" onClick={() => setExpenditures([...expenditures, { category: "MISC", details: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
+                  <Button type="button" variant="outline" onClick={() => setExpenditures([...expenditures, { category: expCategoriesOptions[0] || "MISC", details: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
                     <Plus size={13} className="mr-1" /> Add Outflow Record
                   </Button>
                 </div>
@@ -799,7 +926,7 @@ export function ReportForm({
             )}
           </Card>
 
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
             <button
               type="button"
               onClick={() => toggleSection("add")}
@@ -856,12 +983,66 @@ export function ReportForm({
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
               type="button"
+              onClick={() => toggleSection("discounts")}
+              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
+            >
+              <div>
+                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                  {activeCategories.length + 5}. Discounts &amp; Returns
+                </CardTitle>
+                <CardDescription className="text-xs">Refunds and discounts given</CardDescription>
+              </div>
+              <span className="text-xs font-bold text-teal-600">{openSections.discounts ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+            </button>
+            {openSections.discounts && (
+              <CardContent className="p-5 space-y-4">
+                {discountsReturns.map((item, idx) => (
+                  <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
+                    <div className="flex-1 space-y-1">
+                      <Label className="text-[10px]">Description</Label>
+                      <Input
+                        type="text"
+                        placeholder="e.g. Discount for Patient X"
+                        value={item.label}
+                        onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, label: e.target.value } : dr)))}
+                        required
+                      />
+                    </div>
+                    <div className="w-48 space-y-1">
+                      <Label className="text-[10px]">Amount (INR)</Label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        value={item.amount || ""}
+                        onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: parseFloat(e.target.value) || 0 } : dr)))}
+                        required
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDiscountsReturns(discountsReturns.filter((_, i) => i !== idx))}
+                      className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={() => setDiscountsReturns([...discountsReturns, { label: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
+                  <Plus size={13} className="mr-1" /> Add Discount / Return
+                </Button>
+              </CardContent>
+            )}
+          </Card>
+
+          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <button
+              type="button"
               onClick={() => toggleSection("reconcile")}
               className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
             >
               <div>
                 <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  {activeCategories.length + 5}. Payment Channel Reconciliation
+                  {activeCategories.length + 6}. Payment Channel Reconciliation
                 </CardTitle>
                 <CardDescription className="text-xs">Reconcile transaction collections by card, UPI, and cash per bank channel</CardDescription>
               </div>
@@ -869,53 +1050,55 @@ export function ReportForm({
             </button>
             {openSections.reconcile && (
               <CardContent className="p-5 space-y-4">
-                {paymentChannels.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-1 gap-3 sm:grid-cols-4 items-end bg-muted/15 p-3 rounded border">
-                    <Select
-                      label="Bank"
-                      options={BANKS}
-                      value={item.bank}
-                      onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, bank: e.target.value } : pc)))}
-                      required
-                    />
-                    <Select
-                      label="Channel"
-                      options={CHANNELS}
-                      value={item.channel}
-                      onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, channel: e.target.value } : pc)))}
-                      required
-                    />
-                    <div className="space-y-1">
-                      <Label className="text-[10px]">Description / Source</Label>
-                      <Input
-                        type="text"
-                        placeholder="e.g. Front OPD card reader"
-                        value={item.sourceLabel}
-                        onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, sourceLabel: e.target.value } : pc)))}
+                {paymentChannels
+                  .map((item, idx) => ({ item, idx }))
+                  .map(({ item, idx }) => (
+                    <div key={idx} className="grid grid-cols-1 gap-3 sm:grid-cols-4 items-end bg-muted/15 p-3 rounded border">
+                      <Select
+                        label="Bank"
+                        options={BANKS}
+                        value={item.bank}
+                        onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, bank: e.target.value } : pc)))}
                         required
                       />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <div className="space-y-1 flex-1">
-                        <Label className="text-[10px]">Amount (INR)</Label>
+                      <Select
+                        label="Channel"
+                        options={CHANNELS}
+                        value={item.channel}
+                        onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, channel: e.target.value } : pc)))}
+                        required
+                      />
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Description / Source</Label>
                         <Input
-                          type="number"
-                          placeholder="0"
-                          value={item.amount || ""}
-                          onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: parseFloat(e.target.value) || 0 } : pc)))}
+                          type="text"
+                          placeholder="e.g. Front OPD card reader"
+                          value={item.sourceLabel}
+                          onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, sourceLabel: e.target.value } : pc)))}
                           required
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentChannels(paymentChannels.filter((_, i) => i !== idx))}
-                        className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
-                      >
-                        <Trash2 size={15} />
-                      </button>
+                      <div className="flex gap-2 items-center">
+                        <div className="space-y-1 flex-1">
+                          <Label className="text-[10px]">Amount (INR)</Label>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={item.amount || ""}
+                            onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: parseFloat(e.target.value) || 0 } : pc)))}
+                            required
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentChannels(paymentChannels.filter((_, i) => i !== idx))}
+                          className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
                 <Button type="button" variant="outline" onClick={() => setPaymentChannels([...paymentChannels, { bank: "CASH", channel: "CASH", sourceLabel: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
                   <Plus size={13} className="mr-1" /> Add Payment Channel
                 </Button>
@@ -930,74 +1113,138 @@ export function ReportForm({
             <h4 className="font-extrabold text-base border-b pb-2 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
               Live Summary
             </h4>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground font-semibold">Opening Balance:</span>
-                <span className="font-bold">{fmt(openBal)}</span>
-              </div>
-              {activeCategories.map((cat) => (
-                <div key={cat.code} className="flex justify-between">
-                  <span className="text-muted-foreground font-semibold">{cat.label} Receipts:</span>
-                  <span className="font-bold">{fmt(categoryTotals[cat.code] ?? 0)}</span>
+
+            <div className="text-xs ">
+              {/* income and expenditure section */}
+              <div className="space-y-2 border p-2 -mx-2 my-3 rounded-lg border-lime-800">
+                <p className="font-semibold text-lg">Income and Expenditure</p>
+                <hr className="border-b-2 border-fuchsia-800/30" />
+                <div className="text-emerald-400  px-2">
+                  {activeCategories.map((cat) => (
+                    <div key={cat.code} className="flex justify-between">
+                      <span className="font-semibold">{cat.label}</span>
+                      <span className="font-bold">{fmt(categoryTotals[cat.code] ?? 0)}</span>
+                    </div>
+                  ))}
+
+
+                  {discountsTotal > 0 && (
+                    <div className="flex justify-between text-rose-400 dark:text-rose-300">
+                      <span className="font-semibold">Less: Discounts/Returns:</span>
+                      <span className="font-bold">-{fmt(discountsTotal)}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
-              {[
-                ["IPD Admissions:", fmt(ipdAdmissionsTotal)],
-                ["IPD Discharges:", fmt(ipdDischargesTotal)],
-                ["Additional Incomes:", fmt(additionalTotal)],
-              ].map(([label, value]) => (
-                <div key={label} className="flex justify-between">
-                  <span className="text-muted-foreground font-semibold">{label}</span>
-                  <span className="font-bold">{value}</span>
+                <div className="bg-emerald-500/40 pb-2 px-2 rounded-xl">
+                  <div className="grid grid-cols-2  pt-2 font-bold ">
+                    <span>Total Income:</span>
+                    <span className="text-right">{fmt(totalIncome)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-4  pt-2 font-bold ">
+                    <span>  </span>
+                    <span>Cash </span>
+                    <span className="text-right col-span-2">{fmt(cashReceiptsSum)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-4  font-bold ">
+                    <span>  </span>
+                    <span>Bank </span>
+                    <span className="text-right col-span-2">{fmt(bankReceiptsSum)}</span>
+                  </div>
                 </div>
-              ))}
-              <div className="flex justify-between border-t pt-2 font-bold text-teal-700 dark:text-teal-400">
-                <span>Total Income:</span>
-                <span>{fmt(totalIncome)}</span>
+
+                <div className="flex justify-between border-b pb-2 pt-1 px-2 bg-rose-500/60 rounded-xl">
+                  <span className="font-semibold text-slate-50">Total Expenditures:</span>
+                  <span className="font-bold ">{fmt(totalExpenditures)}</span>
+                </div>
+                <div className="flex justify-between font-bold  px-2">
+                  <span>Net Balance:</span>
+                  <span>{fmt(netBalance)}</span>
+                </div>
               </div>
-              <div className="flex justify-between border-b pb-2 pt-1">
-                <span className="text-muted-foreground font-semibold">Total Expenditures:</span>
-                <span className="font-bold text-rose-600 dark:text-rose-455">{fmt(totalExpenditures)}</span>
-              </div>
-              <div className="flex justify-between font-bold">
-                <span>Gross Balance:</span>
-                <span>{fmt(netBalance)}</span>
+              {/* cash management section */}
+              <div className=" space-y-2 border p-2 -mx-2 rounded-lg border-lime-800">
+                <span className="font-semibold text-lg">Cash Management</span>
+                <hr className="border-b-2 border-fuchsia-800/30" />
+                <div className="flex justify-between text-emerald-300 px-2">
+                  <span className="font-semibold">Opening Balance:</span>
+                  <span className="font-bold">{fmt(openBal)}</span>
+                </div>
+                <div className="px-2">
+                  <div className="grid grid-cols-2 items-baseline mt-2 text-emerald-300">
+                    <Label className="text-emerald-300">Cash Receipt (Sir)</Label>
+                    <Input
+                      type="number" step="0.01"
+                      className="font-semibold text-right pr-0 bg-transparent"
+                      value={cashReceiptSir}
+                      onChange={(e) => handleCashReceiptChange("SIR", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 items-baseline mt-2 text-emerald-300">
+                    <Label className="text-emerald-300">Cash Receipt (Mam)</Label>
+                    <Input
+                      type="number" step="0.01"
+                      className="font-semibold text-right pr-0 bg-transparent"
+                      value={cashReceiptMam}
+                      onChange={(e) => handleCashReceiptChange("MAM", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 items-baseline mt-2 text-emerald-300">
+                    <Label className="text-emerald-300">Cash Receipt (Acon)</Label>
+                    <Input
+                      type="number" step="0.01"
+                      className="font-semibold text-right pr-0 bg-transparent"
+                      value={cashReceiptAcon}
+                      onChange={(e) => handleCashReceiptChange("ACON", e.target.value)}
+                    />
+                  </div>
+                  <div className="flex justify-between text-emerald-300 mt-4">
+                    <span className="font-semibold">Add Cash Receipts:</span>
+                    <span className="font-bold">{fmt(cashReceiptsSum)}</span>
+                  </div>
+                  <div className="flex justify-between text-rose-300 mt-2 mb-4">
+                    <span className="font-semibold">Less Expenditure:</span>
+                    <span className="font-bold">{fmt(totalExpenditures)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
+                    <Label className=" text-rose-300">Less Bank Deposit</Label>
+                    <Input
+                      type="number" step="0.01"
+                      className=" font-semibold text-right pr-0 bg-transparent"
+                      value={bankDeposit}
+                      onChange={(e) => setBankDeposit(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
+                    <Label className=" text-rose-300"> Handover (Sir)</Label>
+                    <Input
+                      type="number" step="0.01"
+                      className=" font-semibold text-right pr-0 bg-transparent"
+                      value={fundHandoverSir}
+                      onChange={(e) => setFundHandoverSir(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
+                    <Label className=" text-rose-300">Handover (Madam)</Label>
+                    <Input
+                      type="number" step="0.01"
+                      className=" font-semibold text-right pr-0 bg-transparent"
+                      value={fundHandoverMadam}
+                      onChange={(e) => setFundHandoverMadam(e.target.value)}
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Deduction inputs */}
-              <div className="space-y-2 pt-2 border-t mt-2">
-                <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Less Bank Deposit</Label>
-                  <Input
-                    type="number" step="0.01"
-                    className="h-8 text-xs font-semibold"
-                    value={bankDeposit}
-                    onChange={(e) => setBankDeposit(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Fund Handover (Sir)</Label>
-                  <Input
-                    type="number" step="0.01"
-                    className="h-8 text-xs font-semibold"
-                    value={fundHandoverSir}
-                    onChange={(e) => setFundHandoverSir(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] text-muted-foreground">Fund Handover (Madam)</Label>
-                  <Input
-                    type="number" step="0.01"
-                    className="h-8 text-xs font-semibold"
-                    value={fundHandoverMadam}
-                    onChange={(e) => setFundHandoverMadam(e.target.value)}
-                  />
-                </div>
-              </div>
 
-              <div className="flex justify-between items-center text-sm font-black text-teal-700 dark:text-teal-400 border-t pt-3 mt-3">
-                <span>Reconciled Closing:</span>
-                <span className="text-base font-black">{fmt(closingBalance)}</span>
+
+              <div className="space-y-1.5 border-t pt-3 mt-3">
+                <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  <span>Calculated Closing:</span>
+                  <span>{fmt(closingBalance)}</span>
+                </div>
               </div>
 
               <div className={cn(

@@ -26,12 +26,57 @@ type Category = {
   label: string;
   sortOrder: number;
   active: boolean;
+  isVariableAmount: boolean;
+};
+
+type ExpenseCategory = {
+  id: number;
+  code: string;
+  label: string;
+  sortOrder: number;
+  active: boolean;
+};
+
+type ExpenseCatalogItem = {
+  id: number;
+  category: string;
+  itemName: string;
+  defaultAmount: number;
+  sortOrder: number;
+  active: boolean;
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function ServiceCharges() {
   const queryClient = useQueryClient();
+
+  const [activeTab, setActiveTab] = React.useState<"services" | "expenses">("services");
+
+  // ── Expense Filter states ──────────────────────────────────────────────────
+  const [expSearchQuery, setExpSearchQuery] = React.useState("");
+  const [selectedExpDept, setSelectedExpDept] = React.useState("ALL");
+
+  // ── Expense Modal states ───────────────────────────────────────────────────
+  const [isExpAddOpen, setIsExpAddOpen] = React.useState(false);
+  const [editingExpItem, setEditingExpItem] = React.useState<ExpenseCatalogItem | null>(null);
+  const [deletingExpItem, setDeletingExpItem] = React.useState<ExpenseCatalogItem | null>(null);
+
+  // ── Manage Expense Categories panel ────────────────────────────────────────
+  const [expCatPanelOpen, setExpCatPanelOpen] = React.useState(false);
+  const [expCatForm, setExpCatForm] = React.useState({ code: "", label: "", sortOrder: "0" });
+  const [expCatFormError, setExpCatFormError] = React.useState("");
+  const [editingExpCat, setEditingExpCat] = React.useState<ExpenseCategory | null>(null);
+  const [deletingExpCat, setDeletingExpCat] = React.useState<ExpenseCategory | null>(null);
+
+  // ── Expense Form states ────────────────────────────────────────────────────
+  const [expFormData, setExpFormData] = React.useState({
+    category: "",
+    itemName: "",
+    defaultAmount: "",
+    sortOrder: "0",
+  });
+  const [expFormError, setExpFormError] = React.useState("");
 
   // ── Filter states ─────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -44,7 +89,7 @@ function ServiceCharges() {
 
   // ── Manage Categories panel ───────────────────────────────────────────────
   const [catPanelOpen, setCatPanelOpen] = React.useState(false);
-  const [catForm, setCatForm] = React.useState({ code: "", label: "", sortOrder: "0" });
+  const [catForm, setCatForm] = React.useState({ code: "", label: "", sortOrder: "0", isVariableAmount: false });
   const [catFormError, setCatFormError] = React.useState("");
   const [editingCat, setEditingCat] = React.useState<Category | null>(null);
   const [deletingCat, setDeletingCat] = React.useState<Category | null>(null);
@@ -73,6 +118,121 @@ function ServiceCharges() {
   const categories = categoriesQuery.data ?? [];
   const activeCategories = categories.filter((c) => c.active);
   const catalogData = catalogQuery.data ?? [];
+
+  // ── Expense Queries ────────────────────────────────────────────────────────
+  const expCategoriesQuery = useRpcQuery<ExpenseCategory[]>(
+    ["expense-categories"],
+    () => (client["daily-closing"] as any)["expense-categories"].$get()
+  );
+
+  const expCatalogQuery = useRpcQuery<ExpenseCatalogItem[]>(
+    ["expense-catalog"],
+    () => (client["daily-closing"] as any)["expense-catalog"].$get()
+  );
+
+  const expCategories = expCategoriesQuery.data ?? [];
+  const activeExpCategories = expCategories.filter((c) => c.active);
+  const expCatalogData = expCatalogQuery.data ?? [];
+
+  // Set default expense category once expense categories load
+  React.useEffect(() => {
+    if (activeExpCategories.length > 0 && !expFormData.category) {
+      setExpFormData((prev) => ({ ...prev, category: activeExpCategories[0].code }));
+    }
+  }, [activeExpCategories.length]);
+
+  // ── Expense Catalog Mutations ──────────────────────────────────────────────
+  const addExpMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const response = await (client["daily-closing"] as any)["expense-catalog"].$post({ json: payload });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-catalog"] });
+      setIsExpAddOpen(false);
+      resetExpForm();
+    },
+    onError: (err: any) => setExpFormError(err.message || "Failed to add expense item"),
+  });
+
+  const editExpMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const response = await (client["daily-closing"] as any)["expense-catalog"][":id"].$put({
+        param: { id: String(id) },
+        json: payload,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-catalog"] });
+      setEditingExpItem(null);
+      resetExpForm();
+    },
+    onError: (err: any) => setExpFormError(err.message || "Failed to edit expense item"),
+  });
+
+  const deleteExpMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await (client["daily-closing"] as any)["expense-catalog"][":id"].$delete({
+        param: { id: String(id) },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-catalog"] });
+      setDeletingExpItem(null);
+    },
+    onError: (err: any) => alert(err.message || "Failed to delete expense item"),
+  });
+
+  // ── Expense Category Mutations ──────────────────────────────────────────────
+  const addExpCatMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const response = await (client["daily-closing"] as any)["expense-categories"].$post({ json: payload });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-categories"] });
+      resetExpCatForm();
+    },
+    onError: (err: any) => setExpCatFormError(err.message || "Failed to add expense category"),
+  });
+
+  const editExpCatMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: number; payload: any }) => {
+      const response = await (client["daily-closing"] as any)["expense-categories"][":id"].$put({
+        param: { id: String(id) },
+        json: payload,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-categories"] });
+      setEditingExpCat(null);
+      resetExpCatForm();
+    },
+    onError: (err: any) => setExpCatFormError(err.message || "Failed to update expense category"),
+  });
+
+  const deleteExpCatMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await (client["daily-closing"] as any)["expense-categories"][":id"].$delete({
+        param: { id: String(id) },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["expense-categories"] });
+      setDeletingExpCat(null);
+    },
+    onError: (err: any) => alert(err.message || "Failed to deactivate expense category"),
+  });
 
   // ── Set default category once categories load ─────────────────────────────
   React.useEffect(() => {
@@ -172,6 +332,99 @@ function ServiceCharges() {
     onError: (err: any) => alert(err.message || "Failed to deactivate category"),
   });
 
+  // ── Expense Form helpers ──────────────────────────────────────────────────
+  const resetExpForm = () => {
+    setExpFormData({
+      category: activeExpCategories[0]?.code ?? "",
+      itemName: "",
+      defaultAmount: "",
+      sortOrder: "0",
+    });
+    setExpFormError("");
+  };
+
+  const resetExpCatForm = () => {
+    setExpCatForm({ code: "", label: "", sortOrder: "0" });
+    setExpCatFormError("");
+  };
+
+  const handleOpenExpAdd = () => {
+    resetExpForm();
+    setIsExpAddOpen(true);
+  };
+
+  const handleOpenExpEdit = (item: ExpenseCatalogItem) => {
+    setExpFormData({
+      category: item.category,
+      itemName: item.itemName,
+      defaultAmount: String(item.defaultAmount),
+      sortOrder: String(item.sortOrder),
+    });
+    setExpFormError("");
+    setEditingExpItem(item);
+  };
+
+  const handleOpenExpEditCat = (cat: ExpenseCategory) => {
+    setEditingExpCat(cat);
+    setExpCatForm({
+      code: cat.code,
+      label: cat.label,
+      sortOrder: String(cat.sortOrder),
+    });
+    setExpCatFormError("");
+  };
+
+  const handleExpFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setExpFormError("");
+
+    const amount = parseFloat(expFormData.defaultAmount);
+    const order = parseInt(expFormData.sortOrder, 10);
+    const category = expFormData.category.trim().toUpperCase().replace(/\s+/g, "_");
+
+    if (!category) return setExpFormError("Category is required");
+    if (!expFormData.itemName.trim()) return setExpFormError("Expense name is required");
+    if (isNaN(amount) || amount < 0) return setExpFormError("Default amount must be a non-negative number");
+    if (isNaN(order)) return setExpFormError("Sort order must be an integer");
+
+    const payload = {
+      category,
+      itemName: expFormData.itemName.toUpperCase(),
+      defaultAmount: amount,
+      sortOrder: order,
+    };
+
+    if (editingExpItem) {
+      editExpMutation.mutate({ id: editingExpItem.id, payload });
+    } else {
+      addExpMutation.mutate(payload);
+    }
+  };
+
+  const handleExpCatFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setExpCatFormError("");
+
+    const order = parseInt(expCatForm.sortOrder, 10);
+    if (isNaN(order)) return setExpCatFormError("Sort order must be an integer");
+
+    const code = expCatForm.code.trim().toUpperCase().replace(/\s+/g, "_");
+    if (!code) return setExpCatFormError("Code is required");
+    if (!expCatForm.label.trim()) return setExpCatFormError("Label is required");
+
+    const payload = {
+      code,
+      label: expCatForm.label,
+      sortOrder: order,
+    };
+
+    if (editingExpCat) {
+      editExpCatMutation.mutate({ id: editingExpCat.id, payload });
+    } else {
+      addExpCatMutation.mutate(payload);
+    }
+  };
+
   // ── Form helpers ──────────────────────────────────────────────────────────
   const resetForm = () => {
     setFormData({
@@ -185,7 +438,7 @@ function ServiceCharges() {
   };
 
   const resetCatForm = () => {
-    setCatForm({ code: "", label: "", sortOrder: "0" });
+    setCatForm({ code: "", label: "", sortOrder: "0", isVariableAmount: false });
     setCatFormError("");
   };
 
@@ -212,6 +465,7 @@ function ServiceCharges() {
       code: cat.code,
       label: cat.label,
       sortOrder: String(cat.sortOrder),
+      isVariableAmount: cat.isVariableAmount,
     });
     setCatFormError("");
   };
@@ -299,6 +553,38 @@ function ServiceCharges() {
     [activeCategories, categoryCounts]
   );
 
+  // ── Expense Catalog list filters ───────────────────────────────────────────
+  const filteredExpData = React.useMemo(() => {
+    return expCatalogData
+      .filter((item) => {
+        const matchesSearch = item.itemName.toLowerCase().includes(expSearchQuery.toLowerCase());
+        const matchesDept = selectedExpDept === "ALL" || item.category === selectedExpDept;
+        return matchesSearch && matchesDept;
+      })
+      .sort((a, b) => {
+        if (a.category !== b.category) return a.category.localeCompare(b.category);
+        return (a.sortOrder ?? 0) - (b.sortOrder ?? 0);
+      });
+  }, [expCatalogData, expSearchQuery, selectedExpDept]);
+
+  const totalExpCount = expCatalogData.length;
+  const avgExpAmount = totalExpCount > 0
+    ? expCatalogData.reduce((acc, curr) => acc + curr.defaultAmount, 0) / totalExpCount
+    : 0;
+
+  const expCategoryCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    expCatalogData.forEach((item) => {
+      counts[item.category] = (counts[item.category] ?? 0) + 1;
+    });
+    return counts;
+  }, [expCatalogData]);
+
+  const usedExpCategories = React.useMemo(
+    () => expCategories.filter((c) => (expCategoryCounts[c.code] ?? 0) > 0),
+    [expCategories, expCategoryCounts]
+  );
+
   const fmt = (val: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
 
@@ -320,19 +606,52 @@ function ServiceCharges() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between font-sans">
         <div>
           <h3 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <Coins className="text-teal-600 dark:text-teal-400 size-6" /> Service Charges &amp; Rates
+            <Coins className="text-teal-600 dark:text-teal-400 size-6" /> {activeTab === "services" ? "Service Charges & Rates" : "Predefined Expenses"}
           </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            View and manage base service charges and department grouping configurations.
+            {activeTab === "services"
+              ? "View and manage base service charges and department grouping configurations."
+              : "View and manage predefined expense items and categories."}
           </p>
         </div>
-        <Button onClick={handleOpenAdd} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shrink-0">
-          <Plus size={16} className="mr-1.5" /> Add Service Charge
+        <Button
+          onClick={activeTab === "services" ? handleOpenAdd : handleOpenExpAdd}
+          className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer shrink-0"
+        >
+          <Plus size={16} className="mr-1.5" /> Add {activeTab === "services" ? "Service Charge" : "Expense Item"}
         </Button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-1">
+        <button
+          onClick={() => setActiveTab("services")}
+          className={cn(
+            "px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-all cursor-pointer",
+            activeTab === "services"
+              ? "border-teal-650 text-teal-600 dark:text-teal-400 dark:border-teal-400 font-extrabold"
+              : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          )}
+        >
+          Services Catalog
+        </button>
+        <button
+          onClick={() => setActiveTab("expenses")}
+          className={cn(
+            "px-4 py-2.5 text-xs font-bold border-b-2 -mb-px transition-all cursor-pointer",
+            activeTab === "expenses"
+              ? "border-teal-650 text-teal-600 dark:text-teal-400 dark:border-teal-400 font-extrabold"
+              : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          )}
+        >
+          Expenses Catalog
+        </button>
+      </div>
+
+      {activeTab === "services" && (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
         <Card className="shadow-sm border-slate-200 dark:border-slate-800">
           <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Services</CardTitle>
@@ -635,6 +954,20 @@ function ServiceCharges() {
                     className="border-slate-200 dark:border-slate-800"
                   />
                 </div>
+                <div className="space-y-1 flex items-end pb-2">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="cat-variable-amount"
+                      checked={catForm.isVariableAmount}
+                      onChange={(e) => setCatForm((p) => ({ ...p, isVariableAmount: e.target.checked }))}
+                      className="rounded border-slate-300 w-4 h-4"
+                    />
+                    <Label htmlFor="cat-variable-amount" className="text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                      Total Amount Only (Rate/Qty not required)
+                    </Label>
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-2">
@@ -663,6 +996,334 @@ function ServiceCharges() {
           </CardContent>
         )}
       </Card>
+      </>
+      )}
+
+      {activeTab === "expenses" && (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+              <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Predefined Expenses</CardTitle>
+                <Layers className="size-4 text-slate-400 animate-pulse" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-2xl font-black text-slate-800 dark:text-slate-100">
+                  {expCatalogQuery.isLoading ? "..." : totalExpCount}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Configured items in database expense catalog</p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+              <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Average Expense Amount</CardTitle>
+                <DollarSign className="size-4 text-slate-400" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-2xl font-black text-teal-700 dark:text-teal-400">
+                  {expCatalogQuery.isLoading ? "..." : fmt(avgExpAmount)}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Mean amount across all predefined expenses</p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+              <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Categories Breakdown</CardTitle>
+                <ListOrdered className="size-4 text-slate-400" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-xs flex gap-2 font-bold flex-wrap mt-1">
+                  {usedExpCategories.length === 0 ? (
+                    <span className="text-muted-foreground text-[10px]">No categories yet</span>
+                  ) : usedExpCategories.map((cat) => (
+                    <Badge
+                      key={cat.code}
+                      className={cn("border cursor-pointer", deptBadgeClass(cat.code))}
+                      onClick={() => setSelectedExpDept(cat.code)}
+                    >
+                      {cat.label}: {expCategoryCounts[cat.code] ?? 0}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">Click a category to filter</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Filters & Catalog Table */}
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex-1 flex items-center gap-3">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search expense name..."
+                      className="pl-9 bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800"
+                      value={expSearchQuery}
+                      onChange={(e) => setExpSearchQuery(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <select
+                      value={selectedExpDept}
+                      onChange={(e) => setSelectedExpDept(e.target.value)}
+                      className="text-xs font-semibold h-9 px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-lg cursor-pointer outline-none"
+                    >
+                      <option value="ALL">All Categories</option>
+                      {activeExpCategories.map((cat) => (
+                        <option key={cat.code} value={cat.code}>{cat.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => expCatalogQuery.refetch()}
+                  disabled={expCatalogQuery.isRefetching}
+                  className="size-9 cursor-pointer self-end md:self-auto"
+                  title="Refresh Expense Catalog"
+                >
+                  <RefreshCw className={cn("size-4 text-slate-600", expCatalogQuery.isRefetching && "animate-spin")} />
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {expCatalogQuery.isLoading ? (
+                <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+                  Loading expense catalog...
+                </div>
+              ) : filteredExpData.length === 0 ? (
+                <div className="flex h-48 flex-col items-center justify-center text-sm text-muted-foreground border-t p-6 space-y-2">
+                  <Coins className="size-8 text-slate-300" />
+                  <p className="font-semibold">No expense items match your criteria.</p>
+                  <p className="text-xs text-slate-400">Try adjusting your filters or search term.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border-t">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b bg-slate-50 dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-400 border-slate-100 dark:border-slate-800">
+                        <th className="p-4 w-12 text-center">Sort</th>
+                        <th className="p-4">Expense Item Name</th>
+                        <th className="p-4">Category</th>
+                        <th className="p-4 text-right">Default Amount</th>
+                        <th className="p-4 text-center w-24">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-900">
+                      {filteredExpData.map((item) => {
+                        const catMeta = activeExpCategories.find((c) => c.code === item.category);
+                        return (
+                          <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                            <td className="p-4 font-mono font-bold text-center text-muted-foreground">{item.sortOrder ?? 0}</td>
+                            <td className="p-4 font-extrabold text-slate-800 dark:text-slate-200 tracking-tight">{item.itemName}</td>
+                            <td className="p-4">
+                              <Badge className={cn("font-bold text-[10px] uppercase border", deptBadgeClass(item.category))}>
+                                {catMeta ? catMeta.label : item.category.replace(/_/g, " ")}
+                              </Badge>
+                            </td>
+                            <td className="p-4 text-right font-black text-slate-800 dark:text-slate-200 text-sm">{fmt(item.defaultAmount)}</td>
+                            <td className="p-4 text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button
+                                  variant="ghost" size="icon"
+                                  onClick={() => handleOpenExpEdit(item)}
+                                  className="size-8 text-slate-600 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 cursor-pointer"
+                                  title="Edit Item"
+                                >
+                                  <Edit2 size={13} />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="icon"
+                                  onClick={() => setDeletingExpItem(item)}
+                                  className="size-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/20 cursor-pointer"
+                                  title="Delete Item"
+                                >
+                                  <Trash2 size={13} />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Manage Expense Categories Panel */}
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setExpCatPanelOpen((v) => !v)}
+              className="w-full text-left px-5 py-4 flex items-center justify-between gap-3 cursor-pointer focus:outline-none"
+            >
+              <div className="flex items-center gap-2">
+                <Tag className="size-4 text-teal-600 dark:text-teal-400" />
+                <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">Manage Expense Categories</span>
+                <Badge className="bg-teal-50 dark:bg-teal-950/30 border-teal-200 dark:border-teal-900 text-teal-800 dark:text-teal-400 border text-[10px] font-bold">
+                  {activeExpCategories.length} active
+                </Badge>
+              </div>
+              {expCatPanelOpen
+                ? <ChevronUp className="size-4 text-slate-400" />
+                : <ChevronDown className="size-4 text-slate-400" />}
+            </button>
+
+            {expCatPanelOpen && (
+              <CardContent className="pt-0 pb-5 px-5 space-y-5">
+                {/* Category table */}
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 dark:bg-slate-900 font-bold text-slate-600 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                        <th className="p-3 w-10 text-center">Sort</th>
+                        <th className="p-3">Code</th>
+                        <th className="p-3">Display Label</th>
+                        <th className="p-3 text-center w-20">Active</th>
+                        <th className="p-3 text-center w-24">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-900">
+                      {expCategoriesQuery.isLoading ? (
+                        <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Loading categories...</td></tr>
+                      ) : expCategories.length === 0 ? (
+                        <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">No categories yet. Add one below.</td></tr>
+                      ) : expCategories.map((cat) => (
+                        <tr key={cat.id} className={cn("hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors", !cat.active && "opacity-50")}>
+                          <td className="p-3 font-mono text-center text-muted-foreground">{cat.sortOrder}</td>
+                          <td className="p-3 font-bold tracking-tight text-slate-800 dark:text-slate-200">
+                            <Badge className={cn("font-bold text-[10px] uppercase border", deptBadgeClass(cat.code))}>
+                              {cat.code}
+                            </Badge>
+                          </td>
+                          <td className="p-3 text-slate-700 dark:text-slate-300">{cat.label}</td>
+                          <td className="p-3 text-center">
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold border",
+                              cat.active
+                                ? "bg-emerald-50 border-emerald-200 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900 dark:text-emerald-400"
+                                : "bg-slate-50 border-slate-200 text-slate-500 dark:bg-slate-900 dark:border-slate-800"
+                            )}>
+                              {cat.active ? "Yes" : "No"}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                variant="ghost" size="icon"
+                                onClick={() => handleOpenExpEditCat(cat)}
+                                className="size-8 text-slate-600 dark:text-slate-400 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 cursor-pointer"
+                                title="Edit Category"
+                              >
+                                <Edit2 size={13} />
+                              </Button>
+                              {cat.active && (
+                                <Button
+                                  variant="ghost" size="icon"
+                                  onClick={() => setDeletingExpCat(cat)}
+                                  className="size-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/20 cursor-pointer"
+                                  title="Deactivate Category"
+                                >
+                                  <Trash2 size={13} />
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Add / Edit Category inline form */}
+                <form onSubmit={handleExpCatFormSubmit} className="border rounded-lg p-4 bg-slate-50/50 dark:bg-slate-900/30 space-y-4">
+                  <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                    {editingExpCat ? "Edit Expense Category" : "Add New Expense Category"}
+                  </h5>
+
+                  {expCatFormError && (
+                    <div className=" border  text-rose-650 p-2.5 rounded-lg text-xs font-semibold flex items-center gap-2">
+                      <AlertTriangle className="size-4 shrink-0" /> {expCatFormError}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="exp-cat-code" className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Code <span className="text-muted-foreground font-normal">(e.g. SALARY)</span>
+                      </Label>
+                      <Input
+                        id="exp-cat-code"
+                        placeholder="SALARY"
+                        value={expCatForm.code}
+                        onChange={(e) => setExpCatForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
+                        className="uppercase font-semibold border-slate-200 dark:border-slate-800"
+                        disabled={!!editingExpCat}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="exp-cat-label" className="text-xs font-bold text-slate-700 dark:text-slate-300">Display Label</Label>
+                      <Input
+                        id="exp-cat-label"
+                        placeholder="Salary"
+                        value={expCatForm.label}
+                        onChange={(e) => setExpCatForm((p) => ({ ...p, label: e.target.value }))}
+                        className="border-slate-200 dark:border-slate-800"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="exp-cat-sort" className="text-xs font-bold text-slate-700 dark:text-slate-300">Sort Order</Label>
+                      <Input
+                        id="exp-cat-sort"
+                        type="number"
+                        placeholder="0"
+                        value={expCatForm.sortOrder}
+                        onChange={(e) => setExpCatForm((p) => ({ ...p, sortOrder: e.target.value }))}
+                        className="border-slate-200 dark:border-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      type="submit"
+                      className="bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer text-xs h-9"
+                      disabled={addExpCatMutation.isPending || editExpCatMutation.isPending}
+                    >
+                      <Plus size={13} className="mr-1" />
+                      {editingExpCat
+                        ? (editExpCatMutation.isPending ? "Saving..." : "Save Changes")
+                        : (addExpCatMutation.isPending ? "Adding..." : "Add Category")}
+                    </Button>
+                    {editingExpCat && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="cursor-pointer font-semibold text-xs h-9 border-slate-200 dark:border-slate-800"
+                        onClick={() => { setEditingExpCat(null); resetExpCatForm(); }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
+                </form>
+              </CardContent>
+            )}
+          </Card>
+        </>
+      )}
 
       {/* ── Add / Edit Service Dialog ───────────────────────────────────────── */}
       {(isAddOpen || editingItem) && (
@@ -852,6 +1513,186 @@ function ServiceCharges() {
                 disabled={deleteCatMutation.isPending}
               >
                 {deleteCatMutation.isPending ? "Deactivating..." : "Confirm Deactivate"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Add / Edit Expense Dialog ───────────────────────────────────────── */}
+      {(isExpAddOpen || editingExpItem) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-md bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="font-extrabold text-base tracking-tight">
+                  {editingExpItem ? "Edit Predefined Expense" : "Add Predefined Expense"}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {editingExpItem ? "Modify expense name or category" : "Configure a new predefined expense item"}
+                </p>
+              </div>
+              <button
+                onClick={() => { setIsExpAddOpen(false); setEditingExpItem(null); }}
+                className="text-slate-400 hover:text-white rounded-lg p-1 transition-colors cursor-pointer text-sm font-semibold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleExpFormSubmit} className="p-6 space-y-4">
+              {expFormError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-600 p-3 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  <span>{expFormError}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="exp-category" className="text-xs font-bold text-slate-700 dark:text-slate-350">Category</Label>
+                <select
+                  id="exp-category"
+                  value={expFormData.category}
+                  onChange={(e) => setExpFormData((prev) => ({ ...prev, category: e.target.value }))}
+                  className="w-full h-10 border rounded-md px-3 py-2 bg-background dark:bg-slate-900 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring border-slate-200 dark:border-slate-800 cursor-pointer text-slate-800 dark:text-slate-100 font-semibold"
+                >
+                  {activeExpCategories.map((cat) => (
+                    <option key={cat.code} value={cat.code}>{cat.label} ({cat.code})</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Manage expense categories in the "Manage Expense Categories" panel below.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="expItemName" className="text-xs font-bold text-slate-700 dark:text-slate-350">Expense Item Name</Label>
+                <Input
+                  id="expItemName"
+                  placeholder="E.g., TEA/COFFEE, WATER JAR"
+                  value={expFormData.itemName}
+                  onChange={(e) => setExpFormData((prev) => ({ ...prev, itemName: e.target.value }))}
+                  className="w-full border-slate-200 dark:border-slate-800 focus:border-teal-500 focus:ring-teal-500 uppercase font-semibold text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="defaultAmount" className="text-xs font-bold text-slate-700 dark:text-slate-350">Default Amount (INR)</Label>
+                  <Input
+                    id="defaultAmount"
+                    type="number" min="0" placeholder="0"
+                    value={expFormData.defaultAmount}
+                    onChange={(e) => setExpFormData((prev) => ({ ...prev, defaultAmount: e.target.value }))}
+                    className="w-full border-slate-200 dark:border-slate-800 focus:border-teal-500 focus:ring-teal-500 font-bold text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="expSortOrder" className="text-xs font-bold text-slate-700 dark:text-slate-350">Sort Order Index</Label>
+                  <Input
+                    id="expSortOrder"
+                    type="number" placeholder="0"
+                    value={expFormData.sortOrder}
+                    onChange={(e) => setExpFormData((prev) => ({ ...prev, sortOrder: e.target.value }))}
+                    className="w-full border-slate-200 dark:border-slate-800 focus:border-teal-500 focus:ring-teal-500 text-slate-800 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button
+                  type="button" variant="outline"
+                  onClick={() => { setIsExpAddOpen(false); setEditingExpItem(null); }}
+                  className="flex-1 cursor-pointer font-semibold border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                  disabled={addExpMutation.isPending || editExpMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold cursor-pointer"
+                  disabled={addExpMutation.isPending || editExpMutation.isPending}
+                >
+                  {addExpMutation.isPending || editExpMutation.isPending ? "Saving..." : "Save Expense Item"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Expense Item Confirmation ───────────────────────────────── */}
+      {deletingExpItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-sm bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 overflow-hidden animate-in zoom-in-95 duration-200 text-center space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-rose-100 text-rose-700 rounded-full p-3 size-12 mx-auto flex items-center justify-center">
+              <AlertTriangle className="size-6 shrink-0" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-base text-slate-800 dark:text-slate-100">Delete Expense Item?</h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                Are you sure you want to delete <strong className="text-slate-800 dark:text-slate-200">{deletingExpItem.itemName}</strong>?
+                This action is permanent and new daily reports will not list this predefined expense.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeletingExpItem(null)}
+                className="flex-1 cursor-pointer font-semibold border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                disabled={deleteExpMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => deleteExpMutation.mutate(deletingExpItem.id)}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
+                disabled={deleteExpMutation.isPending}
+              >
+                {deleteExpMutation.isPending ? "Deleting..." : "Confirm Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Deactivate Expense Category Confirmation ───────────────────────── */}
+      {deletingExpCat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-sm bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 overflow-hidden animate-in zoom-in-95 duration-200 text-center space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-amber-100 text-amber-700 rounded-full p-3 size-12 mx-auto flex items-center justify-center">
+              <AlertTriangle className="size-6 shrink-0" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-base text-slate-800 dark:text-slate-100">Deactivate Category?</h4>
+              <p className="text-xs text-muted-foreground mt-1">
+                Deactivating <strong className="text-slate-800 dark:text-slate-200">{deletingExpCat.label}</strong> will hide it from
+                all dropdowns. Existing catalog items in this category are <em>not</em> deleted.
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeletingExpCat(null)}
+                className="flex-1 cursor-pointer font-semibold border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                disabled={deleteExpCatMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => deleteExpCatMutation.mutate(deletingExpCat.id)}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer"
+                disabled={deleteExpCatMutation.isPending}
+              >
+                {deleteExpCatMutation.isPending ? "Deactivating..." : "Confirm Deactivate"}
               </Button>
             </div>
           </div>
