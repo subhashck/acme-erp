@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Printer, Edit2, Lock, FileText, CheckCircle, AlertTriangle, HelpCircle } from "lucide-react";
+import { ArrowLeft, Printer, Edit2, Lock, FileText, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
 import { useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
@@ -7,6 +7,59 @@ import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../ui/card";
 import { Badge } from "../../../ui/badge";
 import { cn } from "../../../utils/cn";
+
+
+const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = "" }: any) => {
+  const [expanded, setExpanded] = React.useState(defaultExpanded);
+  return (
+    <Card className="card border bg-card">
+      <CardHeader 
+        className="py-3 bg-muted/20 border-b cursor-pointer hover:bg-muted/30 transition-colors select-none" 
+        onClick={() => setExpanded(!expanded)}
+      >
+        <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
+          <div className="flex items-center gap-1.5">
+            <div className="no-print opacity-50">
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </div>
+            <span>{title}</span>
+          </div>
+          <span className={cn("text-sm font-black", titleClass)}>{amount}</span>
+        </CardTitle>
+      </CardHeader>
+      <div className={cn("print:block", !expanded && "hidden")}>
+        <CardContent className="p-3">
+          {children}
+        </CardContent>
+      </div>
+    </Card>
+  );
+};
+
+const SubPanel = ({ title, amount, children, defaultExpanded = false }: any) => {
+  const [expanded, setExpanded] = React.useState(defaultExpanded);
+  return (
+    <div className="space-y-1">
+      <div 
+        className="flex justify-between items-center text-[11px] font-bold bg-muted/40 px-2 py-1.5 rounded-sm cursor-pointer hover:bg-muted/60 transition-colors select-none"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-1.5">
+          <div className="no-print opacity-50">
+            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          </div>
+          <span className="uppercase tracking-wider text-slate-700 dark:text-slate-300">{title}</span>
+        </div>
+        <span className="text-rose-600 dark:text-rose-455">{amount}</span>
+      </div>
+      <div className={cn("print:block", !expanded && "hidden")}>
+        {children}
+      </div>
+    </div>
+  );
+};
+
+type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean };
 
 export const Route = createFileRoute("/_authenticated/reports/$id")({
   component: ReportDetail,
@@ -22,9 +75,20 @@ function ReportDetail() {
     () => client["daily-closing"].reports[":id"].$get({ param: { id } })
   );
 
+  // Query all categories
+  const categoriesQuery = useRpcQuery<ServiceCategory[]>(
+    ["service-categories"],
+    () => (client["daily-closing"] as any).categories.$get()
+  );
+
+  const expCategoriesQuery = useRpcQuery<any[]>(
+    ["expense-categories"],
+    () => (client["daily-closing"] as any)["expense-categories"].$get()
+  );
+
   const report = reportQuery.data;
 
-  if (reportQuery.isLoading) {
+  if (reportQuery.isLoading || categoriesQuery.isLoading || expCategoriesQuery.isLoading) {
     return (
       <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
         Loading detailed statement...
@@ -45,30 +109,56 @@ function ReportDetail() {
     );
   }
 
-  // Categories of service lines
-  const opdLines = report.serviceLines?.filter((l: any) => l.department === "OPD_GYNAE") ?? [];
-  const dentalLines = report.serviceLines?.filter((l: any) => l.department === "DENTAL") ?? [];
+  const categoriesList = categoriesQuery.data ?? [];
+  const expCategoriesList = expCategoriesQuery.data ?? [];
 
-  const opdTotal = opdLines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
-  const dentalTotal = dentalLines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
+  // Group service lines by department code dynamically
+  const activeCategoryCodes = new Set(categoriesList.filter((c) => c.active).map((c) => c.code));
+  const reportCategoryCodes = new Set(report.serviceLines?.map((l: any) => l.department).filter(Boolean) as string[]);
+  
+  const allCategoryCodes = Array.from(new Set([
+    ...categoriesList.map((c) => c.code),
+    ...reportCategoryCodes
+  ]));
 
-  // Pharmacy Total
-  const otWard = parseFloat(report.pharmacyIncome?.otWardTotal) || 0;
-  const acmeNew = parseFloat(report.pharmacyIncome?.acmeNewTotal) || 0;
-  const parking = parseFloat(report.pharmacyIncome?.parking) || 0;
-  const coffeeShop = parseFloat(report.pharmacyIncome?.coffeeShop) || 0;
-  const canteen = parseFloat(report.pharmacyIncome?.canteenIncome) || 0;
-  const ccNight = parseFloat(report.pharmacyIncome?.creditCardChargesNight) || 0;
-  const training = parseFloat(report.pharmacyIncome?.trainingFee) || 0;
-  const humankind = parseFloat(report.pharmacyIncome?.humankindSales) || 0;
+  console.log(allCategoryCodes)
 
-  const miscIncomeList = JSON.parse(report.pharmacyIncome?.miscIncome || "[]");
-  const miscIncomeTotal = miscIncomeList.reduce((sum: number, item: any) => sum + (parseFloat(item.amount) || 0), 0);
+  const displayedCategories = allCategoryCodes
+    .map((code) => {
+      const catObj = categoriesList.find((c) => c.code === code);
+      const isCategoryActive = catObj ? catObj.active : false;
+      const lines = report.serviceLines?.filter((l: any) => l.department === code) ?? [];
+      const total = lines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
+      const label = catObj ? catObj.label : code;
+      const sortOrder = catObj ? catObj.sortOrder : 999999;
 
-  const pharmacyTotal = otWard + acmeNew + parking + coffeeShop + canteen + ccNight + training + humankind + miscIncomeTotal;
+      return {
+        code,
+        label,
+        active: isCategoryActive,
+        lines,
+        total,
+        sortOrder,
+      };
+    })
+    .filter((cat) => cat.lines.length > 0)
+
+
+    console.log(displayedCategories)
+
+  const categoryIncomeTotal = displayedCategories.reduce((sum, cat) => sum + cat.total, 0);
 
   // Expenditures & Advances
   const expendituresTotal = report.expenditures?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
+  
+  const expendituresByCategory = (report.expenditures || []).reduce((acc: any, item: any) => {
+    if (!acc[item.category]) acc[item.category] = { category: item.category, total: 0, items: [] };
+    acc[item.category].total += parseFloat(item.amount);
+    acc[item.category].items.push(item);
+    return acc;
+  }, {});
+  const groupedExpenditures = Object.values(expendituresByCategory).sort((a: any, b: any) => a.category.localeCompare(b.category));
+
   const staffAdvancesTotal = report.staffAdvances?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
 
   // IPD Admissions & Discharges
@@ -78,22 +168,31 @@ function ReportDetail() {
   // Additional Incomes
   const additionalIncomeTotal = report.additionalIncome?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
 
+  // Discounts & Returns
+  const discountsReturnsList = report.discountsReturns ?? [];
+  const discountsTotal = discountsReturnsList.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
+
   // Recomputed Grand Totals
   const openingBalance = parseFloat(report.openingBalance) || 0;
-  const totalIncome = openingBalance + opdTotal + dentalTotal + pharmacyTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal;
+  const totalIncome = categoryIncomeTotal +  ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
   const totalExpenditure = expendituresTotal + staffAdvancesTotal;
   const netBalance = totalIncome - totalExpenditure;
 
   const bankDeposit = parseFloat(report.bankDeposit) || 0;
   const handoverSir = parseFloat(report.fundHandoverSir) || 0;
   const handoverMadam = parseFloat(report.fundHandoverMadam) || 0;
-  const closingBalance = netBalance - bankDeposit - handoverSir - handoverMadam;
 
   // Reconciled Payment Channels
-  const paymentChannelsTotal = report.paymentChannels?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
+  const cashSir = parseFloat(report.cashReceiptSir) || 0;
+  const cashMam = parseFloat(report.cashReceiptMam) || 0;
+  const cashAcon = parseFloat(report.cashReceiptAcon) || 0;
+  const cashReceiptsTotal = parseFloat(report.cashReceiptsTotal) || 0;
+  const bankReceiptsTotal = parseFloat(report.bankReceiptsTotal) || 0;
+  const closingBalance = parseFloat(report.closingBalance) || 0;
 
-  // Cross check: Payment Channels total vs (Total Income - Opening Balance)
-  const isReconciled = Math.abs(paymentChannelsTotal - (totalIncome - openingBalance)) < 1;
+  const paymentChannelsTotal = bankReceiptsTotal + cashReceiptsTotal;
+  const paymentChannelsListTotal = report.paymentChannels?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
+  const isReconciled = Math.abs(paymentChannelsTotal - totalIncome) < 1;
 
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
@@ -108,6 +207,7 @@ function ReportDetail() {
       <style>{`
         @media print {
           body { background: white !important; color: black !important; padding: 0 !important; }
+          body * { color: black !important; }
           .no-print { display: none !important; }
           .print-full-width { width: 100% !important; max-width: 100% !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; }
           .print-grid { display: grid !important; grid-template-cols: 1fr 1fr 1fr !important; gap: 15px !important; }
@@ -166,7 +266,7 @@ function ReportDetail() {
           <div>
             <span>Payment channels reconciliation mismatch detected!</span>
             <p className="text-xs font-normal text-muted-foreground mt-0.5">
-              Total channel transactions sum to <strong className="text-rose-700 dark:text-rose-400">{fmt(paymentChannelsTotal)}</strong>, but net daily revenues sum to <strong className="text-rose-700 dark:text-rose-400">{fmt(totalIncome - openingBalance)}</strong>. Mismatch: <strong className="text-rose-700 dark:text-rose-400">{fmt(Math.abs(paymentChannelsTotal - (totalIncome - openingBalance)))}</strong>.
+              Total channel transactions sum to <strong className="text-rose-700 dark:text-rose-400">{fmt(paymentChannelsTotal)}</strong>, but net daily revenues sum to <strong className="text-rose-700 dark:text-rose-400">{fmt(totalIncome)}</strong>. Mismatch: <strong className="text-rose-700 dark:text-rose-400">{fmt(Math.abs(paymentChannelsTotal - totalIncome))}</strong>.
             </p>
           </div>
         </div>
@@ -183,6 +283,123 @@ function ReportDetail() {
         </div>
       </div>
 
+{/* Reconciled Summary Block */}
+      <div className="mt-8 border-t-2 pt-6 w-full max-w-none mb-8 text-sm print-full-width">
+        <div className="space-y-2 border border-teal-600/30 rounded-xl bg-teal-500/5 p-5 shadow-xs">
+          <h4 className="font-extrabold text-base border-b pb-2 mb-3 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
+            Closing Statement Summary
+          </h4>
+          
+          <div className="space-y-2 text-xs p-2">
+            <p className="font-semibold text-lg">Income and Expenditure</p>
+            <hr className="border-b-2 border-fuchsia-800/30" />
+            
+            <div className="text-emerald-400">
+              {displayedCategories.map((cat) => (
+                <div key={cat.code} className="flex justify-between">
+                  <span className="font-semibold">{cat.label}</span>
+                  <span className="font-bold">{fmt(cat.total)}</span>
+                </div>
+              ))}
+              {discountsTotal > 0 && (
+                <div className="flex justify-between text-rose-400 dark:text-rose-300">
+                  <span className="font-semibold">Less: Discounts/Returns:</span>
+                  <span className="font-bold">-{fmt(discountsTotal)}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between border-t pt-2 font-bold text-teal-700 dark:text-teal-400">
+              <span>Total Income:</span>
+              <span>{fmt(totalIncome)}</span>
+            </div>
+
+            <div className="flex justify-between border-b pb-2 pt-1 text-rose-600 dark:text-rose-455">
+              <span className="font-semibold">Total Expenditures:</span>
+              <span className="font-bold">{fmt(totalExpenditure)}</span>
+            </div>
+            <div className="flex justify-between font-bold">
+              <span>Gross Balance:</span>
+              <span>{fmt(netBalance)}</span>
+            </div>
+
+            <div className="gap-y-2 mt-4">
+              <span className="font-semibold text-lg">Cash Management</span>
+              <hr className="border-b-2 border-fuchsia-800/30 mb-2" />
+              <div className="flex justify-between text-emerald-300">
+                <span className="font-semibold">Opening Balance:</span>
+                <span className="font-bold">{fmt(openingBalance)}</span>
+              </div>
+              
+              <div>
+                <div className="flex justify-between text-emerald-300">
+                  <span className="font-semibold">Cash Receipt (Sir):</span>
+                  <span className="font-bold">{fmt(cashSir)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-300">
+                  <span className="font-semibold">Cash Receipt (Mam):</span>
+                  <span className="font-bold">{fmt(cashMam)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-300">
+                  <span className="font-semibold">Cash Receipt (Acon):</span>
+                  <span className="font-bold">{fmt(cashAcon)}</span>
+                </div>
+                <div className="flex justify-between text-emerald-300 mt-2">
+                  <span className="font-semibold">Add Cash Receipts:</span>
+                  <span className="font-bold">{fmt(cashReceiptsTotal)}</span>
+                </div>
+                <div className="flex justify-between text-rose-300">
+                  <span className="font-semibold">Less Bank Receipts:</span>
+                  <span className="font-bold">{fmt(bankReceiptsTotal)}</span>
+                </div>
+
+                <div className="flex justify-between mt-2 text-rose-300">
+                  <span className="font-semibold">Less Bank Deposit:</span>
+                  <span className="font-bold">{fmt(bankDeposit)}</span>
+                </div>
+                <div className="flex justify-between mt-2 text-rose-300">
+                  <span className="font-semibold">Handover (Sir):</span>
+                  <span className="font-bold">{fmt(handoverSir)}</span>
+                </div>
+                <div className="flex justify-between mt-2 text-rose-300">
+                  <span className="font-semibold">Handover (Madam):</span>
+                  <span className="font-bold">{fmt(handoverMadam)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 border-t pt-3 mt-3">
+              <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+                <span>Calculated Closing:</span>
+                <span>{fmt(closingBalance)}</span>
+              </div>
+            </div>
+
+            <div className={cn(
+              "border p-3 rounded-lg mt-4 text-center text-[11px] font-bold transition-all",
+              isReconciled
+                ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+            )}>
+              <div className="flex items-center justify-center gap-1">
+                {isReconciled ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                <span>RECONCILIATION CHECK</span>
+              </div>
+              <div className="mt-1 font-semibold text-muted-foreground">
+                Channel sum: {fmt(paymentChannelsTotal)}<br />
+                Net revenue: {fmt(totalIncome)}
+              </div>
+              {!isReconciled && (
+                <p className="mt-1.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-400">
+                  Mismatch: {fmt(Math.abs(paymentChannelsTotal - totalIncome))}
+                </p>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
       {/* 3-Column Reconciliation Sheet */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 print-grid print-full-width">
         
@@ -194,28 +411,15 @@ function ReportDetail() {
           </h4>
 
           {/* Opening Balance */}
-          <Card className="card border bg-card">
-            <CardHeader className="py-3 bg-muted/20 border-b">
-              <CardTitle className="text-xs font-extrabold flex justify-between items-center text-muted-foreground uppercase tracking-wider">
-                <span>To Balance B/f</span>
-                <span className="text-foreground text-sm font-black">{fmt(openingBalance)}</span>
-              </CardTitle>
-            </CardHeader>
-          </Card>
+          <Panel title="To Balance B/f" amount={fmt(openingBalance)} />
 
-          {/* OPD / Gynae Services */}
-          {opdLines.length > 0 && (
-            <Card className="card border bg-card">
-              <CardHeader className="py-3 bg-muted/20 border-b">
-                <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                  <span>OPD & Gynae Services</span>
-                  <span className="text-teal-650 dark:text-teal-400 text-sm font-black">{fmt(opdTotal)}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
+          {/* Dynamic Categories Services */}
+          {displayedCategories.map((cat) => (
+            <Panel key={cat.code} title={cat.label} amount={fmt(cat.total)} titleClass="text-teal-650 dark:text-teal-400">
+
                 <table className="w-full text-xs text-left">
                   <tbody>
-                    {opdLines.map((line: any) => (
+                    {cat.lines.map((line: any) => (
                       <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
                         <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
                         <td className="py-2 text-right text-muted-foreground">
@@ -226,104 +430,23 @@ function ReportDetail() {
                     ))}
                   </tbody>
                 </table>
-              </CardContent>
-            </Card>
-          )}
+              
+</Panel>
+          ))}
 
-          {/* Dental Services */}
-          {dentalLines.length > 0 && (
-            <Card className="card border bg-card">
-              <CardHeader className="py-3 bg-muted/20 border-b">
-                <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                  <span>Dental Services</span>
-                  <span className="text-teal-650 dark:text-teal-400 text-sm font-black">{fmt(dentalTotal)}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
-                <table className="w-full text-xs text-left">
-                  <tbody>
-                    {dentalLines.map((line: any) => (
-                      <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
-                        <td className="py-2 text-right text-muted-foreground">
-                          {line.quantity} × {fmt(line.rate)}
-                        </td>
-                        <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          )}
 
-          {/* Pharmacy & General Incomes */}
-          <Card className="card border bg-card">
-            <CardHeader className="py-3 bg-muted/20 border-b">
-              <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                <span>Pharmacy & General Sales</span>
-                <span className="text-teal-650 dark:text-teal-400 text-sm font-black">{fmt(pharmacyTotal)}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 space-y-2 text-xs">
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">OT / Ward Medicines</span>
-                <span className="font-semibold">{fmt(otWard)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Acme New Medicines</span>
-                <span className="font-semibold">{fmt(acmeNew)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Parking Receipts</span>
-                <span className="font-semibold">{fmt(parking)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Coffee Shop Sales</span>
-                <span className="font-semibold">{fmt(coffeeShop)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Canteen Sales</span>
-                <span className="font-semibold">{fmt(canteen)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Night Credit Card Fees</span>
-                <span className="font-semibold">{fmt(ccNight)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Training Program Fees</span>
-                <span className="font-semibold">{fmt(training)}</span>
-              </div>
-              <div className="flex justify-between border-b pb-1.5 hover:bg-muted/10">
-                <span className="text-muted-foreground font-medium">Humankind Brand Sales</span>
-                <span className="font-semibold">{fmt(humankind)}</span>
-              </div>
-              {miscIncomeList.map((item: any, i: number) => (
-                <div key={i} className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0 hover:bg-muted/10 font-semibold text-foreground">
-                  <span className="truncate pr-2 font-medium">{item.label}</span>
-                  <span>{fmt(parseFloat(item.amount) || 0)}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
 
           {/* IPD Admissions */}
           {report.ipdAdmissions?.length > 0 && (
-            <Card className="card border bg-card">
-              <CardHeader className="py-3 bg-muted/20 border-b">
-                <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                  <span>IPD Admissions / Advances</span>
-                  <span className="text-teal-650 dark:text-teal-400 text-sm font-black">{fmt(ipdAdmissionsTotal)}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
+            <Panel title="IPD Admissions / Advances" amount={fmt(ipdAdmissionsTotal)} titleClass="text-teal-650 dark:text-teal-400">
+
                 <table className="w-full text-xs text-left">
                   <tbody>
                     {report.ipdAdmissions.map((item: any) => (
                       <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
                         <td className="py-2 pr-2 font-semibold text-foreground">{item.patientName}</td>
                         <td className="py-2 text-center">
-                          <span className="inline-block px-1.5 py-0.5 rounded-sm bg-slate-100 text-[10px] font-bold text-slate-650">
+                          <span className="inline-block px-1.5 py-0.5 rounded-sm bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-650 dark:text-slate-300">
                             {item.type}
                           </span>
                         </td>
@@ -332,20 +455,14 @@ function ReportDetail() {
                     ))}
                   </tbody>
                 </table>
-              </CardContent>
-            </Card>
+              
+</Panel>
           )}
 
           {/* IPD Discharges */}
           {report.ipdDischarges?.length > 0 && (
-            <Card className="card border bg-card">
-              <CardHeader className="py-3 bg-muted/20 border-b">
-                <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                  <span>IPD Discharges</span>
-                  <span className="text-teal-650 dark:text-teal-400 text-sm font-black">{fmt(ipdDischargesTotal)}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
+            <Panel title="IPD Discharges" amount={fmt(ipdDischargesTotal)} titleClass="text-teal-650 dark:text-teal-400">
+
                 <table className="w-full text-xs text-left">
                   <tbody>
                     {report.ipdDischarges.map((item: any) => (
@@ -356,28 +473,40 @@ function ReportDetail() {
                     ))}
                   </tbody>
                 </table>
-              </CardContent>
-            </Card>
+              
+</Panel>
           )}
 
           {/* Additional Income */}
           {report.additionalIncome?.length > 0 && (
-            <Card className="card border bg-card">
-              <CardHeader className="py-3 bg-muted/20 border-b">
-                <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                  <span>Additional Incomes (Add)</span>
-                  <span className="text-teal-650 dark:text-teal-400 text-sm font-black">{fmt(additionalIncomeTotal)}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3 space-y-2 text-xs">
+            <Panel title="Additional Incomes (Add)" amount={fmt(additionalIncomeTotal)} titleClass="text-teal-650 dark:text-teal-400">
+<div className="space-y-2 text-xs">
+
                 {report.additionalIncome.map((item: any) => (
                   <div key={item.id} className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0 hover:bg-muted/10">
                     <span className="text-muted-foreground font-medium">{item.label}</span>
                     <span className="font-bold text-foreground">{fmt(item.amount)}</span>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+              
+</div>
+</Panel>
+          )}
+
+          {/* Discounts & Returns */}
+          {discountsReturnsList.length > 0 && (
+            <Panel title="Discounts & Returns" amount={"-" + fmt(discountsTotal)} titleClass="text-rose-600 dark:text-rose-455">
+<div className="space-y-2 text-xs">
+
+                {discountsReturnsList.map((item: any) => (
+                  <div key={item.id} className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0 hover:bg-muted/10">
+                    <span className="text-muted-foreground font-medium">{item.label}</span>
+                    <span className="font-bold text-rose-600 dark:text-rose-455">-{fmt(item.amount)}</span>
+                  </div>
+                ))}
+              
+</div>
+</Panel>
           )}
         </div>
 
@@ -389,46 +518,38 @@ function ReportDetail() {
           </h4>
 
           {/* Expenditures */}
-          <Card className="card border bg-card">
-            <CardHeader className="py-3 bg-muted/20 border-b">
-              <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                <span>Expenditures (Out)</span>
-                <span className="text-rose-600 dark:text-rose-400 text-sm font-black">{fmt(expendituresTotal)}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3">
-              {report.expenditures?.length === 0 ? (
+          <Panel title="Expenditures (Out)" amount={fmt(expendituresTotal)} titleClass="text-rose-600 dark:text-rose-400">
+
+              {groupedExpenditures.length === 0 ? (
                 <p className="text-center text-xs text-muted-foreground py-4">No logged expenses.</p>
               ) : (
-                <table className="w-full text-xs text-left">
-                  <tbody>
-                    {report.expenditures.map((item: any) => (
-                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2">
-                          <span className="font-bold text-foreground block">{item.details}</span>
-                          <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wide">
-                            {item.category}
-                          </span>
-                        </td>
-                        <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="space-y-3">
+                  {(groupedExpenditures as any[]).map((group: any) => {
+                    const catLabel = expCategoriesList.find((c: any) => c.code === group.category)?.label || group.category;
+                    return (
+                      <SubPanel key={group.category} title={catLabel} amount={fmt(group.total)}>
+                        <table className="w-full text-xs text-left">
+                          <tbody>
+                            {group.items.map((item: any) => (
+                              <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
+                                <td className="py-1.5 pr-2 pl-2 text-foreground font-medium">{item.details}</td>
+                                <td className="py-1.5 text-right font-bold text-foreground pr-2">{fmt(item.amount)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </SubPanel>
+                    );
+                  })}
+                </div>
               )}
-            </CardContent>
-          </Card>
+            
+</Panel>
 
           {/* Staff Advances */}
           {report.staffAdvances?.length > 0 && (
-            <Card className="card border bg-card">
-              <CardHeader className="py-3 bg-muted/20 border-b">
-                <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                  <span>Staff Advances</span>
-                  <span className="text-rose-600 dark:text-rose-400 text-sm font-black">{fmt(staffAdvancesTotal)}</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-3">
+            <Panel title="Staff Advances" amount={fmt(staffAdvancesTotal)} titleClass="text-rose-600 dark:text-rose-400">
+
                 <table className="w-full text-xs text-left">
                   <tbody>
                     {report.staffAdvances.map((item: any) => (
@@ -439,8 +560,8 @@ function ReportDetail() {
                     ))}
                   </tbody>
                 </table>
-              </CardContent>
-            </Card>
+              
+</Panel>
           )}
         </div>
 
@@ -452,14 +573,8 @@ function ReportDetail() {
           </h4>
 
           {/* Payment channels breakdown */}
-          <Card className="card border bg-card">
-            <CardHeader className="py-3 bg-muted/20 border-b">
-              <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
-                <span>Payment Channel Collections</span>
-                <span className="text-slate-800 dark:text-slate-200 text-sm font-black">{fmt(paymentChannelsTotal)}</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3">
+          <Panel title="Payment Channel Collections" amount={fmt(paymentChannelsListTotal)} titleClass="text-slate-800 dark:text-slate-200">
+
               {report.paymentChannels?.length === 0 ? (
                 <p className="text-center text-xs text-muted-foreground py-4">No logged payment channels.</p>
               ) : (
@@ -487,17 +602,13 @@ function ReportDetail() {
                   </tbody>
                 </table>
               )}
-            </CardContent>
-          </Card>
+            
+</Panel>
 
           {/* Bank deposit & Handover */}
-          <Card className="card border bg-card bg-slate-50/50 dark:bg-slate-900/10">
-            <CardHeader className="py-3 bg-muted/20 border-b">
-              <CardTitle className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
-                Bank Deposits & Handovers
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3 space-y-2.5 text-xs">
+          <Panel title="Bank Deposits & Handovers" amount="">
+<div className="space-y-2.5 text-xs">
+
               <div className="flex justify-between border-b pb-1.5">
                 <span className="text-muted-foreground font-medium">Less Bank Deposit</span>
                 <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(bankDeposit)}</span>
@@ -510,42 +621,9 @@ function ReportDetail() {
                 <span className="text-muted-foreground font-medium">Fund Handover Madam</span>
                 <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(handoverMadam)}</span>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Reconciled Summary Block */}
-      <div className="mt-8 border-t-2 pt-6 max-w-lg ml-auto text-sm print-full-width">
-        <div className="space-y-2 border border-teal-600/30 rounded-xl bg-teal-500/5 p-5 shadow-xs">
-          <h4 className="font-extrabold text-base border-b pb-2 mb-3 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
-            Closing Statement Summary
-          </h4>
-          
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground font-medium">Gross Daily Revenues (Income):</span>
-            <span className="font-bold text-emerald-600 dark:text-emerald-450">{fmt(totalIncome)}</span>
-          </div>
-
-          <div className="flex justify-between text-xs border-b pb-2">
-            <span className="text-muted-foreground font-medium">Gross Daily Expenditures (Outgoings):</span>
-            <span className="font-bold text-rose-600 dark:text-rose-455">{fmt(totalExpenditure)}</span>
-          </div>
-
-          <div className="flex justify-between text-xs pt-1">
-            <span className="text-muted-foreground font-medium">Balance B/f:</span>
-            <span className="font-semibold">{fmt(netBalance)}</span>
-          </div>
-
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground font-medium">Total Deductions (Deposits + Handovers):</span>
-            <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(bankDeposit + handoverSir + handoverMadam)}</span>
-          </div>
-
-          <div className="flex justify-between items-center text-base font-black text-teal-700 dark:text-teal-400 border-t pt-3 mt-3">
-            <span>Net Reconciled Cash In Hand:</span>
-            <span className="text-xl font-black">{fmt(closingBalance)}</span>
-          </div>
+            
+</div>
+</Panel>
         </div>
       </div>
 
