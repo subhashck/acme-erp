@@ -128,7 +128,7 @@ function ReportDetail() {
     .map((code) => {
       const catObj = categoriesList.find((c) => c.code === code);
       const isCategoryActive = catObj ? catObj.active : false;
-      const lines = report.serviceLines?.filter((l: any) => l.department === code) ?? [];
+      const lines = report.serviceLines?.filter((l: any) => l.department === code && !l.isNightEntry) ?? [];
       const total = lines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
       const label = catObj ? catObj.label : code;
       const sortOrder = catObj ? catObj.sortOrder : 999999;
@@ -148,6 +148,7 @@ function ReportDetail() {
   console.log(displayedCategories)
 
   const categoryIncomeTotal = displayedCategories.reduce((sum, cat) => sum + cat.total, 0);
+  const nightServicesTotal = report.serviceLines?.filter((l: any) => l.isNightEntry).reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0) ?? 0;
 
   // Expenditures & Advances
   const expendituresTotal = report.expenditures?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
@@ -175,7 +176,7 @@ function ReportDetail() {
 
   // Recomputed Grand Totals
   const openingBalance = parseFloat(report.openingBalance) || 0;
-  const totalIncome = categoryIncomeTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
+  const totalIncome = categoryIncomeTotal + nightServicesTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
   const totalExpenditure = expendituresTotal + staffAdvancesTotal;
   const netBalance = totalIncome - totalExpenditure;
 
@@ -289,6 +290,12 @@ function ReportDetail() {
                     <span className="font-bold">{fmt(cat.total)}</span>
                   </div>
                 ))}
+                {nightServicesTotal > 0 && (
+                  <div className="flex justify-between text-indigo-400 dark:text-indigo-300">
+                    <span className="font-semibold">Night / After-EOD Services</span>
+                    <span className="font-bold">{fmt(nightServicesTotal)}</span>
+                  </div>
+                )}
                 {discountsTotal > 0 && (
                   <div className="flex justify-between text-rose-400 dark:text-rose-300">
                     <span className="font-semibold">Less: Discounts/Returns:</span>
@@ -422,6 +429,25 @@ function ReportDetail() {
 
             </Panel>
           ))}
+
+          {/* Night Services Panel */}
+          {nightServicesTotal > 0 && (
+            <Panel title="Night / After-EOD Services" amount={fmt(nightServicesTotal)} titleClass="text-indigo-650 dark:text-indigo-400">
+              <table className="w-full text-xs text-left">
+                <tbody>
+                  {report.serviceLines?.filter((l: any) => l.isNightEntry).map((line: any) => (
+                    <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
+                      <td className="py-2 text-right text-muted-foreground">
+                        {line.quantity} × {fmt(line.rate)}
+                      </td>
+                      <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          )}
 
 
 

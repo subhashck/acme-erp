@@ -654,7 +654,8 @@ export const dailyServiceLines = sqliteTable("daily_service_lines", {
   serviceId: integer("service_id").references(() => serviceCatalog.id, { onDelete: "set null" }),
   rate: numeric("rate", { precision: 12, scale: 2 }).notNull().default("0"),
   quantity: integer("quantity").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  isNightEntry: boolean("is_night_entry").notNull().default(false)
 });
 
 export const dailyPharmacyIncome = sqliteTable("daily_pharmacy_income", {

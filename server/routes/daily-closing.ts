@@ -457,6 +457,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         rate: dailyServiceLines.rate,
         quantity: dailyServiceLines.quantity,
         amount: dailyServiceLines.amount,
+        isNightEntry: dailyServiceLines.isNightEntry,
         serviceName: serviceCatalog.serviceName,
         department: serviceCatalog.department,
       })
@@ -565,6 +566,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             rate: z.number(),
             quantity: z.number(),
             amount: z.number(),
+            isNightEntry: z.boolean().default(false).optional(),
           })
         ),
         pharmacyIncome: z.object({
@@ -597,19 +599,19 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             type: z.enum(["ADMISSION", "ADVANCE", "OBSERVATION"]),
             amount: z.number(),
           })
-        ),
+        ).default([]),
         ipdDischarges: z.array(
           z.object({
             patientName: z.string(),
             amount: z.number(),
           })
-        ),
+        ).default([]),
         additionalIncome: z.array(
           z.object({
             label: z.string(),
             amount: z.number(),
           })
-        ),
+        ).default([]),
         discountsReturns: z.array(
           z.object({
             label: z.string(),
@@ -718,6 +720,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               rate: line.rate.toString(),
               quantity: line.quantity,
               amount: line.amount.toString(),
+              isNightEntry: line.isNightEntry ?? false,
             }))
           )
           .execute();
@@ -883,6 +886,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             rate: z.number(),
             quantity: z.number(),
             amount: z.number(),
+            isNightEntry: z.boolean().default(false).optional(),
           })
         ),
         pharmacyIncome: z.object({
@@ -915,19 +919,19 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             type: z.enum(["ADMISSION", "ADVANCE", "OBSERVATION"]),
             amount: z.number(),
           })
-        ),
+        ).default([]),
         ipdDischarges: z.array(
           z.object({
             patientName: z.string(),
             amount: z.number(),
           })
-        ),
+        ).default([]),
         additionalIncome: z.array(
           z.object({
             label: z.string(),
             amount: z.number(),
           })
-        ),
+        ).default([]),
         discountsReturns: z.array(
           z.object({
             label: z.string(),
@@ -1035,6 +1039,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               rate: line.rate.toString(),
               quantity: line.quantity,
               amount: line.amount.toString(),
+              isNightEntry: line.isNightEntry ?? false,
             }))
           )
           .execute();
