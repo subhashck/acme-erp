@@ -65,6 +65,7 @@ export interface ReportPayload {
   cashReceiptSir: number;
   cashReceiptMam: number;
   cashReceiptAcon: number;
+  cashReceipts: number;
   status: "draft" | "submitted";
   serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number }>;
   expenditures: Expenditure[];
@@ -431,6 +432,7 @@ export function ReportForm({
       cashReceiptSir: cashSirVal,
       cashReceiptMam: cashMamVal,
       cashReceiptAcon: cashAconVal,
+      cashReceipts: cashReceiptsSum,
       status,
       serviceLines: parsedServiceLines,
       expenditures,
