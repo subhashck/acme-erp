@@ -7,7 +7,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
   // Group service lines by department code dynamically
-  const reportCategoryCodes = new Set(report.serviceLines?.map((l: any) => l.department).filter(Boolean) as string[]);
+  const reportCategoryCodes = new Set(report.serviceLines?.filter((l: any) => !l.isNightEntry).map((l: any) => l.department).filter(Boolean) as string[]);
   const allCategoryCodes = Array.from(new Set([
     ...categoriesList.map((c) => c.code),
     ...reportCategoryCodes
@@ -17,7 +17,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     .map((code) => {
       const catObj = categoriesList.find((c) => c.code === code);
       const isCategoryActive = catObj ? catObj.active : false;
-      const lines = report.serviceLines?.filter((l: any) => l.department === code) ?? [];
+      const lines = report.serviceLines?.filter((l: any) => l.department === code && !l.isNightEntry) ?? [];
       const total = lines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
       const label = catObj ? catObj.label : code;
       const sortOrder = catObj ? catObj.sortOrder : 999999;
@@ -59,9 +59,12 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   const discountsReturnsList = report.discountsReturns ?? [];
   const discountsTotal = discountsReturnsList.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
 
+  // Night Services
+  const nightServicesTotal = report.serviceLines?.filter((l: any) => l.isNightEntry).reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0) ?? 0;
+
   // Recomputed Grand Totals
   const openingBalance = parseFloat(report.openingBalance) || 0;
-  const totalIncome = categoryIncomeTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
+  const totalIncome = categoryIncomeTotal + nightServicesTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
   const totalExpenditure = expendituresTotal + staffAdvancesTotal;
 
   const bankDeposit = parseFloat(report.bankDeposit) || 0;
@@ -172,6 +175,19 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     drawRow("Additional Incomes", fmt(additionalIncomeTotal));
   }
 
+  if (nightServicesTotal > 0) {
+    drawRow("Night / After-EOD Services", fmt(nightServicesTotal));
+    report.serviceLines?.filter((l: any) => l.isNightEntry).forEach((line: any) => {
+      checkPageBreak(6);
+      doc.setFont("helvetica", "oblique");
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`- ${line.serviceName} (${line.quantity} × ${fmt(line.rate)})`, 20, y);
+      doc.text(fmt(line.amount), 195, y, { align: "right" });
+      y += 5;
+    });
+  }
+
   if (discountsTotal > 0) {
     drawRow("Less: Discounts & Returns", `-${fmt(discountsTotal)}`);
   }
@@ -268,7 +284,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
   // Group service lines by department code dynamically
-  const reportCategoryCodes = new Set(report.serviceLines?.map((l: any) => l.department).filter(Boolean) as string[]);
+  const reportCategoryCodes = new Set(report.serviceLines?.filter((l: any) => !l.isNightEntry).map((l: any) => l.department).filter(Boolean) as string[]);
   const allCategoryCodes = Array.from(new Set([
     ...categoriesList.map((c) => c.code),
     ...reportCategoryCodes
@@ -278,7 +294,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     .map((code) => {
       const catObj = categoriesList.find((c) => c.code === code);
       const isCategoryActive = catObj ? catObj.active : false;
-      const lines = report.serviceLines?.filter((l: any) => l.department === code) ?? [];
+      const lines = report.serviceLines?.filter((l: any) => l.department === code && !l.isNightEntry) ?? [];
       const total = lines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
       const label = catObj ? catObj.label : code;
       const sortOrder = catObj ? catObj.sortOrder : 999999;
@@ -320,9 +336,12 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   const discountsReturnsList = report.discountsReturns ?? [];
   const discountsTotal = discountsReturnsList.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
 
+  // Night Services
+  const nightServicesTotal = report.serviceLines?.filter((l: any) => l.isNightEntry).reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0) ?? 0;
+
   // Recomputed Grand Totals
   const openingBalance = parseFloat(report.openingBalance) || 0;
-  const totalIncome = categoryIncomeTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
+  const totalIncome = categoryIncomeTotal + nightServicesTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
   const totalExpenditure = expendituresTotal + staffAdvancesTotal;
 
   const bankDeposit = parseFloat(report.bankDeposit) || 0;
@@ -443,6 +462,13 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
 
   if (report.additionalIncome?.length > 0) {
     addRow(["Additional Incomes", "", "", additionalIncomeTotal], [styleBold, null, styleRegular, styleNumber]);
+  }
+
+  if (nightServicesTotal > 0) {
+    addRow(["Night / After-EOD Services", "", "", nightServicesTotal], [styleBold, null, styleRegular, styleNumber]);
+    report.serviceLines?.filter((l: any) => l.isNightEntry).forEach((line: any) => {
+      addRow([`  - ${line.serviceName}`, "", `${line.quantity} × ${fmt(line.rate)}`, line.amount], [styleItalic, null, styleItalic, styleNumber]);
+    });
   }
 
   if (discountsTotal > 0) {

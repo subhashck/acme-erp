@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus, Trash2, Save, AlertTriangle, CheckCircle } from "lucide-react";
+import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon } from "lucide-react";
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { Button } from "../ui/button";
@@ -9,6 +9,9 @@ import { Select } from "../ui/select";
 import { Label } from "../ui/label";
 import { cn } from "../utils/cn";
 import { Autocomplete } from "../ui/autocomplete";
+import { format } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean; isVariableAmount: boolean };
 
@@ -67,7 +70,7 @@ export interface ReportPayload {
   cashReceiptAcon: number;
   cashReceipts: number;
   status: "draft" | "submitted";
-  serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number }>;
+  serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean }>;
   expenditures: Expenditure[];
   staffAdvances: StaffAdvance[];
   // ipdAdmissions: IpdAdmission[];
@@ -160,14 +163,19 @@ export function ReportForm({
   );
 
   React.useEffect(() => {
-    if (mode === "new" && pastReportsQuery.data && pastReportsQuery.data.length > 0) {
-      const sorted = [...pastReportsQuery.data].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
-      const latest = sorted[0];
-      if (latest && parseFloat(latest.closingBalance) > 0) {
-        setOpeningBalance(String(latest.closingBalance));
+    if (mode === "new" && pastReportsQuery.data) {
+      const priorReports = pastReportsQuery.data.filter((r) => r.reportDate < reportDate);
+      if (priorReports.length > 0) {
+        const sorted = [...priorReports].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+        const latest = sorted[0];
+        if (latest) {
+          setOpeningBalance(String(latest.closingBalance || 0));
+          return;
+        }
       }
+      setOpeningBalance("0");
     }
-  }, [pastReportsQuery.data, mode]);
+  }, [pastReportsQuery.data, reportDate, mode]);
 
   // ── service line state ────────────────────────────────────────
   const [serviceQuantities, setServiceQuantities] = React.useState<ServiceQty>({});
@@ -194,6 +202,7 @@ export function ReportForm({
   const [paymentChannels, setPaymentChannels] = React.useState<PaymentChannel[]>(
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
   );
+  const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number }>>([]);
 
   // ── populate state from initialData (edit mode) ───────────────
   React.useEffect(() => {
@@ -208,25 +217,38 @@ export function ReportForm({
     // Service lines
     const quantities: ServiceQty = {};
     const custom: CustomLine[] = [];
+    const night: Array<{ serviceId: number; rate: number; quantity: number; amount: number }> = [];
     initialData.serviceLines?.forEach((l: any) => {
-      if (l.serviceId) {
-        quantities[l.serviceId] = {
-          rate: parseFloat(l.rate),
-          quantity: l.quantity,
-          amount: parseFloat(l.amount),
-        };
+      if (l.isNightEntry) {
+        if (l.serviceId) {
+          night.push({
+            serviceId: l.serviceId,
+            rate: parseFloat(l.rate),
+            quantity: l.quantity,
+            amount: parseFloat(l.amount),
+          });
+        }
       } else {
-        custom.push({
-          serviceName: l.serviceName || "Custom service",
-          department: l.department || "OPD",
-          rate: parseFloat(l.rate),
-          quantity: l.quantity,
-          amount: parseFloat(l.amount),
-        });
+        if (l.serviceId) {
+          quantities[l.serviceId] = {
+            rate: parseFloat(l.rate),
+            quantity: l.quantity,
+            amount: parseFloat(l.amount),
+          };
+        } else {
+          custom.push({
+            serviceName: l.serviceName || "Custom service",
+            department: l.department || "OPD",
+            rate: parseFloat(l.rate),
+            quantity: l.quantity,
+            amount: parseFloat(l.amount),
+          });
+        }
       }
     });
     setServiceQuantities(quantities);
     setCustomLines(custom);
+    setNightServices(night);
 
     setIpdAdmissions(initialData.ipdAdmissions?.map((item: any) => ({
       patientName: item.patientName, type: item.type, amount: parseFloat(item.amount),
@@ -293,8 +315,8 @@ export function ReportForm({
 
   const openBal = parseFloat(openingBalance) || 0;
 
-  // const totalIncome = totalCategoryIncome + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal - discountsTotal;
-  const totalIncome = totalCategoryIncome - discountsTotal;
+  const nightServicesTotal = nightServices.reduce((sum, item) => sum + item.amount, 0);
+  const totalIncome = totalCategoryIncome + nightServicesTotal - discountsTotal;
   const netBalance = totalIncome - totalExpenditures;
 
   const depositVal = parseFloat(bankDeposit) || 0;
@@ -406,21 +428,86 @@ export function ReportForm({
     }
   };
 
+  const handleNightQtyChange = (index: number, qtyStr: string) => {
+    const qty = parseInt(qtyStr, 10) || 0;
+    setNightServices((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        return { ...item, quantity: qty, amount: item.rate * qty };
+      })
+    );
+  };
+
+  const handleNightRateAmtChange = (index: number, field: "rate" | "amount", valueStr: string) => {
+    const val = parseFloat(valueStr);
+    if (isNaN(val) || val < 0) return;
+    setNightServices((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        if (field === "rate") {
+          return { ...item, rate: val, amount: val * item.quantity };
+        } else {
+          return { ...item, amount: val };
+        }
+      })
+    );
+  };
+
+  const handleRemoveNightService = (index: number) => {
+    setNightServices((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const renderNightCatalogAutocomplete = () => {
+    return (
+      <div className="w-full max-w-xs text-left">
+        <Autocomplete
+          label="Add Night Service Item"
+          placeholder="Search service name..."
+          value=""
+          options={catalogList
+            .map((item) => [String(item.id), `${item.serviceName} (₹${item.defaultRate})`] as [string, string])}
+          onChange={(val) => {
+            const id = parseInt(val, 10);
+            if (!id) return;
+            const s = catalogList.find((x) => x.id === id);
+            if (s) {
+              setNightServices((prev) => [
+                ...prev,
+                { serviceId: id, rate: parseFloat(s.defaultRate), quantity: 1, amount: parseFloat(s.defaultRate) },
+              ]);
+            }
+          }}
+        />
+      </div>
+    );
+  };
+
   // ── submit ────────────────────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedServiceLines = [
-      ...Object.entries(serviceQuantities).map(([serviceId, data]) => ({
-        serviceId: parseInt(serviceId, 10),
-        rate: data.rate,
-        quantity: data.quantity,
-        amount: data.amount,
-      })),
+      ...Object.entries(serviceQuantities)
+        .filter(([_, data]) => data.quantity > 0)
+        .map(([serviceId, data]) => ({
+          serviceId: parseInt(serviceId, 10),
+          rate: Number(data.rate),
+          quantity: Number(data.quantity),
+          amount: Number(data.amount),
+          isNightEntry: false,
+        })),
       ...customLines.map((line) => ({
         serviceId: null,
-        rate: line.rate,
-        quantity: line.quantity,
-        amount: line.amount,
+        rate: Number(line.rate),
+        quantity: Number(line.quantity),
+        amount: Number(line.amount),
+        isNightEntry: false,
+      })),
+      ...nightServices.map((line) => ({
+        serviceId: line.serviceId,
+        rate: Number(line.rate),
+        quantity: Number(line.quantity),
+        amount: Number(line.amount),
+        isNightEntry: true,
       })),
     ];
 
@@ -622,19 +709,46 @@ export function ReportForm({
                 1. Header Details
               </CardTitle>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1">
-                <Label htmlFor="repDate">Report Date</Label>
+            <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 items-baseline">
+              <div className="space-y-1 flex flex-col justify-end">
+                <Label htmlFor="repDate" className="mb-1">Report Date</Label>
                 {mode === "new" ? (
-                  <Input
-                    id="repDate"
-                    type="date"
-                    value={reportDate}
-                    onChange={(e) => setReportDate(e.target.value)}
-                    required
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        id="repDate"
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal h-10 border rounded-md px-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-50",
+                          !reportDate && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4 text-muted-foreground shrink-0" />
+                        {reportDate ? (
+                          format(new Date(reportDate), "PPP")
+                        ) : (
+                          <span>Pick a date</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={reportDate ? new Date(reportDate) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const yyyy = date.getFullYear();
+                            const mm = String(date.getMonth() + 1).padStart(2, '0');
+                            const dd = String(date.getDate()).padStart(2, '0');
+                            setReportDate(`${yyyy}-${mm}-${dd}`);
+                          }
+                        }}
+                        // initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 ) : (
-                  <Input type="text" value={lockedReportDate ?? ""} disabled className="opacity-70" />
+                  <Input type="text" value={lockedReportDate ?? ""} disabled className="opacity-70 h-10" />
                 )}
               </div>
               <div className="space-y-1">
@@ -648,6 +762,86 @@ export function ReportForm({
                   onChange={(e) => setOpeningBalance(e.target.value)}
                   required
                 />
+              </div>
+              {/* Separator and Night Services */}
+              <div className="sm:col-span-2 border-t pt-4 mt-2 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                      Night Time / After-EOD Services
+                    </h4>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Services performed after previous day's end-of-day reporting, to be accounted in today's report
+                    </p>
+                  </div>
+                  {renderNightCatalogAutocomplete()}
+                </div>
+
+                {nightServices.length > 0 && (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b bg-muted/40 font-semibold text-muted-foreground text-[10px] uppercase">
+                          <th className="p-3">Service Name</th>
+                          <th className="p-3 text-center w-24">Quantity</th>
+                          <th className="p-3 text-right w-32">Rate (INR)</th>
+                          <th className="p-3 text-right w-36">Total (INR)</th>
+                          <th className="p-3 text-center w-16">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y bg-slate-50/20 dark:bg-slate-900/10">
+                        {nightServices.map((item, idx) => {
+                          const s = catalogList.find((x) => x.id === item.serviceId);
+                          return (
+                            <tr key={idx} className="hover:bg-muted/10">
+                              <td className="p-3 font-semibold text-teal-600 dark:text-teal-400">
+                                {s?.serviceName || "Unknown Service"}
+                              </td>
+                              <td className="p-3 text-center">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity || ""}
+                                  onChange={(e) => handleNightQtyChange(idx, e.target.value)}
+                                  className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-3 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.rate}
+                                  onChange={(e) => handleNightRateAmtChange(idx, "rate", e.target.value)}
+                                  className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-3 text-right">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.amount}
+                                  onChange={(e) => handleNightRateAmtChange(idx, "amount", e.target.value)}
+                                  className="w-28 text-right font-bold text-foreground rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
+                                />
+                              </td>
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveNightService(idx)}
+                                  className="p-1.5 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
