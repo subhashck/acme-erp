@@ -31,8 +31,8 @@ type ExpenseCatalogItem = {
 
 // ─────────────────────────── constants ───────────────────────────
 
-const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
-const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
+// const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
+// const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
 const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHER"];
 const CHANNELS = ["CARD", "UPI", "QR", "RTGS", "CASH"];
 
@@ -47,12 +47,12 @@ const DEFAULT_PAYMENT_CHANNELS = [
 
 type ServiceQty = Record<number, { rate: number; quantity: number; amount: number }>;
 type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number };
-type MiscIncome = { label: string; amount: number };
+// type MiscIncome = { label: string; amount: number };
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
 type Expenditure = { category: string; details: string; amount: number };
 type StaffAdvance = { staffName: string; amount: number };
-type AdditionalIncome = { label: string; amount: number };
+// type AdditionalIncome = { label: string; amount: number };
 type DiscountReturn = { label: string; amount: number };
 type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number };
 
@@ -70,9 +70,9 @@ export interface ReportPayload {
   serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number }>;
   expenditures: Expenditure[];
   staffAdvances: StaffAdvance[];
-  ipdAdmissions: IpdAdmission[];
-  ipdDischarges: IpdDischarge[];
-  additionalIncome: AdditionalIncome[];
+  // ipdAdmissions: IpdAdmission[];
+  // ipdDischarges: IpdDischarge[];
+  // additionalIncome: AdditionalIncome[];
   discountsReturns: DiscountReturn[];
   paymentChannels: PaymentChannel[];
 }
@@ -186,10 +186,10 @@ export function ReportForm({
 
   // ── other form state ──────────────────────────────────────────
   const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
-  const [ipdDischarges, setIpdDischarges] = React.useState<IpdDischarge[]>([]);
+  // const [ipdDischarges, setIpdDischarges] = React.useState<IpdDischarge[]>([]);
   const [expenditures, setExpenditures] = React.useState<Expenditure[]>([]);
   const [staffAdvances, setStaffAdvances] = React.useState<StaffAdvance[]>([]);
-  const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
+  // const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
   const [discountsReturns, setDiscountsReturns] = React.useState<DiscountReturn[]>([]);
   const [paymentChannels, setPaymentChannels] = React.useState<PaymentChannel[]>(
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
@@ -231,18 +231,18 @@ export function ReportForm({
     setIpdAdmissions(initialData.ipdAdmissions?.map((item: any) => ({
       patientName: item.patientName, type: item.type, amount: parseFloat(item.amount),
     })) ?? []);
-    setIpdDischarges(initialData.ipdDischarges?.map((item: any) => ({
-      patientName: item.patientName, amount: parseFloat(item.amount),
-    })) ?? []);
+    // setIpdDischarges(initialData.ipdDischarges?.map((item: any) => ({
+    //   patientName: item.patientName, amount: parseFloat(item.amount),
+    // })) ?? []);
     setExpenditures(initialData.expenditures?.map((item: any) => ({
       category: item.category, details: item.details, amount: parseFloat(item.amount),
     })) ?? []);
     setStaffAdvances(initialData.staffAdvances?.map((item: any) => ({
       staffName: item.staffName, amount: parseFloat(item.amount),
     })) ?? []);
-    setAdditionalIncome(initialData.additionalIncome?.map((item: any) => ({
-      label: item.label, amount: parseFloat(item.amount),
-    })) ?? []);
+    // setAdditionalIncome(initialData.additionalIncome?.map((item: any) => ({
+    //   label: item.label, amount: parseFloat(item.amount),
+    // })) ?? []);
     setDiscountsReturns(initialData.discountsReturns?.map((item: any) => ({
       label: item.label, amount: parseFloat(item.amount),
     })) ?? []);
@@ -286,14 +286,15 @@ export function ReportForm({
   const advTotal = staffAdvances.reduce((sum, item) => sum + item.amount, 0);
   const totalExpenditures = expTotal + advTotal;
 
-  const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
-  const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
-  const additionalTotal = additionalIncome.reduce((sum, item) => sum + item.amount, 0);
+  // const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
+  // const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
+  // const additionalTotal = additionalIncome.reduce((sum, item) => sum + item.amount, 0);
   const discountsTotal = discountsReturns.reduce((sum, item) => sum + item.amount, 0);
 
   const openBal = parseFloat(openingBalance) || 0;
 
-  const totalIncome = totalCategoryIncome + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal - discountsTotal;
+  // const totalIncome = totalCategoryIncome + ipdAdmissionsTotal + ipdDischargesTotal + additionalTotal - discountsTotal;
+  const totalIncome = totalCategoryIncome - discountsTotal;
   const netBalance = totalIncome - totalExpenditures;
 
   const depositVal = parseFloat(bankDeposit) || 0;
@@ -437,9 +438,9 @@ export function ReportForm({
       serviceLines: parsedServiceLines,
       expenditures,
       staffAdvances,
-      ipdAdmissions,
-      ipdDischarges,
-      additionalIncome,
+      // ipdAdmissions,
+      // ipdDischarges,
+      // additionalIncome,
       discountsReturns,
       paymentChannels: paymentChannels.filter((c) => c.amount > 0),
     };
@@ -704,7 +705,7 @@ export function ReportForm({
           {/* N+2 = activeCategories.length + 2 */}
           {/* 6 (was hardcoded) → now dynamic number */}
           {/* 6. IPD Admissions & Discharges */}
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+          {/* <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
               type="button"
               onClick={() => toggleSection("ipd")}
@@ -800,7 +801,7 @@ export function ReportForm({
                 </div>
               </CardContent>
             )}
-          </Card>
+          </Card> */}
 
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
@@ -928,7 +929,7 @@ export function ReportForm({
             )}
           </Card>
 
-          <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
+          {/* <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
             <button
               type="button"
               onClick={() => toggleSection("add")}
@@ -980,7 +981,7 @@ export function ReportForm({
                 </Button>
               </CardContent>
             )}
-          </Card>
+          </Card> */}
 
           <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
             <button
