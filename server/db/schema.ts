@@ -603,6 +603,7 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   cashReceiptMam: numeric("cash_receipt_mam", { precision: 12, scale: 2 }).notNull().default("0"),
   cashReceiptAcon: numeric("cash_receipt_acon", { precision: 12, scale: 2 }).notNull().default("0"),
   cashReceiptsTotal: numeric("cash_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  cashReceipts: numeric("cash_receipts", { precision: 12, scale: 2 }).notNull().default("0"),
   bankReceiptsTotal: numeric("bank_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
   status: text("status").notNull().default("draft"),
   ...timestamps

@@ -556,6 +556,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         cashReceiptSir: z.number().default(0),
         cashReceiptMam: z.number().default(0),
         cashReceiptAcon: z.number().default(0),
+        cashReceipts: z.number().default(0),
         status: z.enum(["draft", "submitted", "locked"]).default("draft"),
         // Nested arrays
         serviceLines: z.array(
@@ -679,7 +680,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       .filter((c) => c.bank !== "CASH")
       .reduce((sum, item) => sum + item.amount, 0);
 
-    const closingBalance = payload.openingBalance + balance + cashReceiptsTotal - totalExpenditure - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
+    const closingBalance = payload.openingBalance + cashReceiptsTotal - totalExpenditure - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
 
     // Begin Drizzle Transaction
     const reportRow = await db.transaction(async (tx) => {
@@ -696,6 +697,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           cashReceiptMam: payload.cashReceiptMam.toFixed(2),
           cashReceiptAcon: payload.cashReceiptAcon.toFixed(2),
           cashReceiptsTotal: cashReceiptsTotal.toFixed(2),
+          cashReceipts: otherCashChannelsTotal.toFixed(2),
           bankReceiptsTotal: bankReceiptsTotal.toFixed(2),
           totalIncome: totalIncome.toFixed(2),
           totalExpenditure: totalExpenditure.toFixed(2),
@@ -873,6 +875,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         cashReceiptSir: z.number().default(0),
         cashReceiptMam: z.number().default(0),
         cashReceiptAcon: z.number().default(0),
+        cashReceipts: z.number().default(0),
         status: z.enum(["draft", "submitted", "locked"]).default("draft"),
         serviceLines: z.array(
           z.object({
@@ -983,7 +986,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       .filter((c) => c.bank !== "CASH")
       .reduce((sum, item) => sum + item.amount, 0);
 
-    const closingBalance = payload.openingBalance + balance + cashReceiptsTotal - totalExpenditure - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
+    const closingBalance = payload.openingBalance + cashReceiptsTotal - totalExpenditure - payload.bankDeposit - payload.fundHandoverSir - payload.fundHandoverMadam;
 
     // Run Updates inside Drizzle Transaction
     const updatedRow = await db.transaction(async (tx) => {
@@ -998,6 +1001,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           cashReceiptMam: payload.cashReceiptMam.toFixed(2),
           cashReceiptAcon: payload.cashReceiptAcon.toFixed(2),
           cashReceiptsTotal: cashReceiptsTotal.toFixed(2),
+          cashReceipts: otherCashChannelsTotal.toFixed(2),
           bankReceiptsTotal: bankReceiptsTotal.toFixed(2),
           totalIncome: totalIncome.toFixed(2),
           totalExpenditure: totalExpenditure.toFixed(2),

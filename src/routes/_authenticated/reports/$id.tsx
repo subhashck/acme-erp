@@ -13,8 +13,8 @@ const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = 
   const [expanded, setExpanded] = React.useState(defaultExpanded);
   return (
     <Card className="card border bg-card">
-      <CardHeader 
-        className="py-3 bg-muted/20 border-b cursor-pointer hover:bg-muted/30 transition-colors select-none" 
+      <CardHeader
+        className="py-3 bg-muted/20 border-b cursor-pointer hover:bg-muted/30 transition-colors select-none"
         onClick={() => setExpanded(!expanded)}
       >
         <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
@@ -40,7 +40,7 @@ const SubPanel = ({ title, amount, children, defaultExpanded = false }: any) => 
   const [expanded, setExpanded] = React.useState(defaultExpanded);
   return (
     <div className="space-y-1">
-      <div 
+      <div
         className="flex justify-between items-center text-[11px] font-bold bg-muted/40 px-2 py-1.5 rounded-sm cursor-pointer hover:bg-muted/60 transition-colors select-none"
         onClick={() => setExpanded(!expanded)}
       >
@@ -115,7 +115,7 @@ function ReportDetail() {
   // Group service lines by department code dynamically
   const activeCategoryCodes = new Set(categoriesList.filter((c) => c.active).map((c) => c.code));
   const reportCategoryCodes = new Set(report.serviceLines?.map((l: any) => l.department).filter(Boolean) as string[]);
-  
+
   const allCategoryCodes = Array.from(new Set([
     ...categoriesList.map((c) => c.code),
     ...reportCategoryCodes
@@ -144,13 +144,13 @@ function ReportDetail() {
     .filter((cat) => cat.lines.length > 0)
 
 
-    console.log(displayedCategories)
+  console.log(displayedCategories)
 
   const categoryIncomeTotal = displayedCategories.reduce((sum, cat) => sum + cat.total, 0);
 
   // Expenditures & Advances
   const expendituresTotal = report.expenditures?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
-  
+
   const expendituresByCategory = (report.expenditures || []).reduce((acc: any, item: any) => {
     if (!acc[item.category]) acc[item.category] = { category: item.category, total: 0, items: [] };
     acc[item.category].total += parseFloat(item.amount);
@@ -174,7 +174,7 @@ function ReportDetail() {
 
   // Recomputed Grand Totals
   const openingBalance = parseFloat(report.openingBalance) || 0;
-  const totalIncome = categoryIncomeTotal +  ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
+  const totalIncome = categoryIncomeTotal + ipdAdmissionsTotal + ipdDischargesTotal + additionalIncomeTotal - discountsTotal;
   const totalExpenditure = expendituresTotal + staffAdvancesTotal;
   const netBalance = totalIncome - totalExpenditure;
 
@@ -186,11 +186,12 @@ function ReportDetail() {
   const cashSir = parseFloat(report.cashReceiptSir) || 0;
   const cashMam = parseFloat(report.cashReceiptMam) || 0;
   const cashAcon = parseFloat(report.cashReceiptAcon) || 0;
+  const cashReceipts = parseFloat(report.cashReceipts) || 0;
   const cashReceiptsTotal = parseFloat(report.cashReceiptsTotal) || 0;
   const bankReceiptsTotal = parseFloat(report.bankReceiptsTotal) || 0;
   const closingBalance = parseFloat(report.closingBalance) || 0;
 
-  const paymentChannelsTotal = bankReceiptsTotal + cashReceiptsTotal;
+  const paymentChannelsTotal = bankReceiptsTotal + cashReceipts;
   const paymentChannelsListTotal = report.paymentChannels?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
   const isReconciled = Math.abs(paymentChannelsTotal - totalIncome) < 1;
 
@@ -283,54 +284,56 @@ function ReportDetail() {
         </div>
       </div>
 
-{/* Reconciled Summary Block */}
+      {/* Reconciled Summary Block */}
       <div className="mt-8 border-t-2 pt-6 w-full max-w-none mb-8 text-sm print-full-width">
         <div className="space-y-2 border border-teal-600/30 rounded-xl bg-teal-500/5 p-5 shadow-xs">
           <h4 className="font-extrabold text-base border-b pb-2 mb-3 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
             Closing Statement Summary
           </h4>
-          
+
           <div className="space-y-2 text-xs p-2">
-            <p className="font-semibold text-lg">Income and Expenditure</p>
-            <hr className="border-b-2 border-fuchsia-800/30" />
-            
-            <div className="text-emerald-400">
-              {displayedCategories.map((cat) => (
-                <div key={cat.code} className="flex justify-between">
-                  <span className="font-semibold">{cat.label}</span>
-                  <span className="font-bold">{fmt(cat.total)}</span>
-                </div>
-              ))}
-              {discountsTotal > 0 && (
-                <div className="flex justify-between text-rose-400 dark:text-rose-300">
-                  <span className="font-semibold">Less: Discounts/Returns:</span>
-                  <span className="font-bold">-{fmt(discountsTotal)}</span>
-                </div>
-              )}
+            <div className="gap-y-2 mt-4 bg-teal-500/10 p-4">
+              <p className="font-semibold text-lg">Income and Expenditure</p>
+              <hr className="border-b-2 border-fuchsia-800/30" />
+
+              <div className="text-emerald-400">
+                {displayedCategories.map((cat) => (
+                  <div key={cat.code} className="flex justify-between">
+                    <span className="font-semibold">{cat.label}</span>
+                    <span className="font-bold">{fmt(cat.total)}</span>
+                  </div>
+                ))}
+                {discountsTotal > 0 && (
+                  <div className="flex justify-between text-rose-400 dark:text-rose-300">
+                    <span className="font-semibold">Less: Discounts/Returns:</span>
+                    <span className="font-bold">-{fmt(discountsTotal)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between border-t pt-2 font-bold text-teal-700 dark:text-teal-400">
+                <span>Total Income:</span>
+                <span>{fmt(totalIncome)}</span>
+              </div>
+
+              <div className="flex justify-between border-b pb-2 pt-1 text-rose-400 dark:text-rose-355">
+                <span className="font-semibold">Total Expenditures:</span>
+                <span className="font-bold">{fmt(totalExpenditure)}</span>
+              </div>
+              <div className="flex justify-between font-bold">
+                <span>Gross Balance:</span>
+                <span>{fmt(netBalance)}</span>
+              </div>
             </div>
 
-            <div className="flex justify-between border-t pt-2 font-bold text-teal-700 dark:text-teal-400">
-              <span>Total Income:</span>
-              <span>{fmt(totalIncome)}</span>
-            </div>
-
-            <div className="flex justify-between border-b pb-2 pt-1 text-rose-600 dark:text-rose-455">
-              <span className="font-semibold">Total Expenditures:</span>
-              <span className="font-bold">{fmt(totalExpenditure)}</span>
-            </div>
-            <div className="flex justify-between font-bold">
-              <span>Gross Balance:</span>
-              <span>{fmt(netBalance)}</span>
-            </div>
-
-            <div className="gap-y-2 mt-4">
+            <div className="gap-y-2 mt-4 bg-amber-200/10 p-4">
               <span className="font-semibold text-lg">Cash Management</span>
               <hr className="border-b-2 border-fuchsia-800/30 mb-2" />
-              <div className="flex justify-between text-emerald-300">
+              <div className="flex justify-between text-emerald-300 mb-2">
                 <span className="font-semibold">Opening Balance:</span>
                 <span className="font-bold">{fmt(openingBalance)}</span>
               </div>
-              
+
               <div>
                 <div className="flex justify-between text-emerald-300">
                   <span className="font-semibold">Cash Receipt (Sir):</span>
@@ -344,32 +347,32 @@ function ReportDetail() {
                   <span className="font-semibold">Cash Receipt (Acon):</span>
                   <span className="font-bold">{fmt(cashAcon)}</span>
                 </div>
-                <div className="flex justify-between text-emerald-300 mt-2">
-                  <span className="font-semibold">Add Cash Receipts:</span>
-                  <span className="font-bold">{fmt(cashReceiptsTotal)}</span>
+                <div className="flex justify-between text-emerald-300 mb-2">
+                  <span className="font-semibold">Add Cash Income Receipts:</span>
+                  <span className="font-bold">{fmt(cashReceipts)}</span>
                 </div>
                 <div className="flex justify-between text-rose-300">
-                  <span className="font-semibold">Less Bank Receipts:</span>
-                  <span className="font-bold">{fmt(bankReceiptsTotal)}</span>
+                  <span className="font-semibold">Less Cash Expenditure:</span>
+                  <span className="font-bold">{fmt(expendituresTotal)}</span>
                 </div>
 
-                <div className="flex justify-between mt-2 text-rose-300">
+                <div className="flex justify-between text-rose-300">
                   <span className="font-semibold">Less Bank Deposit:</span>
                   <span className="font-bold">{fmt(bankDeposit)}</span>
                 </div>
-                <div className="flex justify-between mt-2 text-rose-300">
+                <div className="flex justify-between text-rose-300">
                   <span className="font-semibold">Handover (Sir):</span>
                   <span className="font-bold">{fmt(handoverSir)}</span>
                 </div>
-                <div className="flex justify-between mt-2 text-rose-300">
+                <div className="flex justify-between  text-rose-300">
                   <span className="font-semibold">Handover (Madam):</span>
                   <span className="font-bold">{fmt(handoverMadam)}</span>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-1.5 border-t pt-3 mt-3">
-              <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400">
+            <div className="space-y-1.5 border-t pt-3 mt-3 p-4">
+              <div className="flex justify-between items-center text-sm font-bold text-lime-400">
                 <span>Calculated Closing:</span>
                 <span>{fmt(closingBalance)}</span>
               </div>
@@ -402,7 +405,7 @@ function ReportDetail() {
 
       {/* 3-Column Reconciliation Sheet */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 print-grid print-full-width">
-        
+
         {/* Column 1: Income Streams */}
         <div className="space-y-5">
           <h4 className="text-xs font-black uppercase text-teal-600 dark:text-teal-400 tracking-wider flex items-center gap-1.5 border-b pb-2">
@@ -417,21 +420,21 @@ function ReportDetail() {
           {displayedCategories.map((cat) => (
             <Panel key={cat.code} title={cat.label} amount={fmt(cat.total)} titleClass="text-teal-650 dark:text-teal-400">
 
-                <table className="w-full text-xs text-left">
-                  <tbody>
-                    {cat.lines.map((line: any) => (
-                      <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
-                        <td className="py-2 text-right text-muted-foreground">
-                          {line.quantity} × {fmt(line.rate)}
-                        </td>
-                        <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              
-</Panel>
+              <table className="w-full text-xs text-left">
+                <tbody>
+                  {cat.lines.map((line: any) => (
+                    <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
+                      <td className="py-2 text-right text-muted-foreground">
+                        {line.quantity} × {fmt(line.rate)}
+                      </td>
+                      <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+            </Panel>
           ))}
 
 
@@ -440,47 +443,47 @@ function ReportDetail() {
           {report.ipdAdmissions?.length > 0 && (
             <Panel title="IPD Admissions / Advances" amount={fmt(ipdAdmissionsTotal)} titleClass="text-teal-650 dark:text-teal-400">
 
-                <table className="w-full text-xs text-left">
-                  <tbody>
-                    {report.ipdAdmissions.map((item: any) => (
-                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2 font-semibold text-foreground">{item.patientName}</td>
-                        <td className="py-2 text-center">
-                          <span className="inline-block px-1.5 py-0.5 rounded-sm bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-650 dark:text-slate-300">
-                            {item.type}
-                          </span>
-                        </td>
-                        <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              
-</Panel>
+              <table className="w-full text-xs text-left">
+                <tbody>
+                  {report.ipdAdmissions.map((item: any) => (
+                    <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2 font-semibold text-foreground">{item.patientName}</td>
+                      <td className="py-2 text-center">
+                        <span className="inline-block px-1.5 py-0.5 rounded-sm bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-650 dark:text-slate-300">
+                          {item.type}
+                        </span>
+                      </td>
+                      <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+            </Panel>
           )}
 
           {/* IPD Discharges */}
           {report.ipdDischarges?.length > 0 && (
             <Panel title="IPD Discharges" amount={fmt(ipdDischargesTotal)} titleClass="text-teal-650 dark:text-teal-400">
 
-                <table className="w-full text-xs text-left">
-                  <tbody>
-                    {report.ipdDischarges.map((item: any) => (
-                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2 font-semibold text-foreground">{item.patientName}</td>
-                        <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              
-</Panel>
+              <table className="w-full text-xs text-left">
+                <tbody>
+                  {report.ipdDischarges.map((item: any) => (
+                    <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2 font-semibold text-foreground">{item.patientName}</td>
+                      <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+            </Panel>
           )}
 
           {/* Additional Income */}
           {report.additionalIncome?.length > 0 && (
             <Panel title="Additional Incomes (Add)" amount={fmt(additionalIncomeTotal)} titleClass="text-teal-650 dark:text-teal-400">
-<div className="space-y-2 text-xs">
+              <div className="space-y-2 text-xs">
 
                 {report.additionalIncome.map((item: any) => (
                   <div key={item.id} className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0 hover:bg-muted/10">
@@ -488,15 +491,15 @@ function ReportDetail() {
                     <span className="font-bold text-foreground">{fmt(item.amount)}</span>
                   </div>
                 ))}
-              
-</div>
-</Panel>
+
+              </div>
+            </Panel>
           )}
 
           {/* Discounts & Returns */}
           {discountsReturnsList.length > 0 && (
             <Panel title="Discounts & Returns" amount={"-" + fmt(discountsTotal)} titleClass="text-rose-600 dark:text-rose-455">
-<div className="space-y-2 text-xs">
+              <div className="space-y-2 text-xs">
 
                 {discountsReturnsList.map((item: any) => (
                   <div key={item.id} className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0 hover:bg-muted/10">
@@ -504,9 +507,9 @@ function ReportDetail() {
                     <span className="font-bold text-rose-600 dark:text-rose-455">-{fmt(item.amount)}</span>
                   </div>
                 ))}
-              
-</div>
-</Panel>
+
+              </div>
+            </Panel>
           )}
         </div>
 
@@ -520,48 +523,48 @@ function ReportDetail() {
           {/* Expenditures */}
           <Panel title="Expenditures (Out)" amount={fmt(expendituresTotal)} titleClass="text-rose-600 dark:text-rose-400">
 
-              {groupedExpenditures.length === 0 ? (
-                <p className="text-center text-xs text-muted-foreground py-4">No logged expenses.</p>
-              ) : (
-                <div className="space-y-3">
-                  {(groupedExpenditures as any[]).map((group: any) => {
-                    const catLabel = expCategoriesList.find((c: any) => c.code === group.category)?.label || group.category;
-                    return (
-                      <SubPanel key={group.category} title={catLabel} amount={fmt(group.total)}>
-                        <table className="w-full text-xs text-left">
-                          <tbody>
-                            {group.items.map((item: any) => (
-                              <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                                <td className="py-1.5 pr-2 pl-2 text-foreground font-medium">{item.details}</td>
-                                <td className="py-1.5 text-right font-bold text-foreground pr-2">{fmt(item.amount)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </SubPanel>
-                    );
-                  })}
-                </div>
-              )}
-            
-</Panel>
+            {groupedExpenditures.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-4">No logged expenses.</p>
+            ) : (
+              <div className="space-y-3">
+                {(groupedExpenditures as any[]).map((group: any) => {
+                  const catLabel = expCategoriesList.find((c: any) => c.code === group.category)?.label || group.category;
+                  return (
+                    <SubPanel key={group.category} title={catLabel} amount={fmt(group.total)}>
+                      <table className="w-full text-xs text-left">
+                        <tbody>
+                          {group.items.map((item: any) => (
+                            <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
+                              <td className="py-1.5 pr-2 pl-2 text-foreground font-medium">{item.details}</td>
+                              <td className="py-1.5 text-right font-bold text-foreground pr-2">{fmt(item.amount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </SubPanel>
+                  );
+                })}
+              </div>
+            )}
+
+          </Panel>
 
           {/* Staff Advances */}
           {report.staffAdvances?.length > 0 && (
             <Panel title="Staff Advances" amount={fmt(staffAdvancesTotal)} titleClass="text-rose-600 dark:text-rose-400">
 
-                <table className="w-full text-xs text-left">
-                  <tbody>
-                    {report.staffAdvances.map((item: any) => (
-                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2 font-medium text-foreground">{item.staffName}</td>
-                        <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              
-</Panel>
+              <table className="w-full text-xs text-left">
+                <tbody>
+                  {report.staffAdvances.map((item: any) => (
+                    <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2 font-medium text-foreground">{item.staffName}</td>
+                      <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+            </Panel>
           )}
         </div>
 
@@ -575,39 +578,39 @@ function ReportDetail() {
           {/* Payment channels breakdown */}
           <Panel title="Payment Channel Collections" amount={fmt(paymentChannelsListTotal)} titleClass="text-slate-800 dark:text-slate-200">
 
-              {report.paymentChannels?.length === 0 ? (
-                <p className="text-center text-xs text-muted-foreground py-4">No logged payment channels.</p>
-              ) : (
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="border-b text-muted-foreground text-[10px] uppercase font-bold pb-1">
-                      <th className="pb-2">Channel / Bank</th>
-                      <th className="pb-2">Source</th>
-                      <th className="pb-2 text-right">Amount</th>
+            {report.paymentChannels?.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-4">No logged payment channels.</p>
+            ) : (
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b text-muted-foreground text-[10px] uppercase font-bold pb-1">
+                    <th className="pb-2">Channel / Bank</th>
+                    <th className="pb-2">Source</th>
+                    <th className="pb-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.paymentChannels.map((item: any) => (
+                    <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2">
+                        <span className="font-bold text-foreground block">{item.channel}</span>
+                        <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wide">
+                          {item.bank}
+                        </span>
+                      </td>
+                      <td className="py-2 text-muted-foreground">{item.sourceLabel}</td>
+                      <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {report.paymentChannels.map((item: any) => (
-                      <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                        <td className="py-2 pr-2">
-                          <span className="font-bold text-foreground block">{item.channel}</span>
-                          <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-wide">
-                            {item.bank}
-                          </span>
-                        </td>
-                        <td className="py-2 text-muted-foreground">{item.sourceLabel}</td>
-                        <td className="py-2 text-right font-bold text-foreground">{fmt(item.amount)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            
-</Panel>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+          </Panel>
 
           {/* Bank deposit & Handover */}
           <Panel title="Bank Deposits & Handovers" amount="">
-<div className="space-y-2.5 text-xs">
+            <div className="space-y-2.5 text-xs">
 
               <div className="flex justify-between border-b pb-1.5">
                 <span className="text-muted-foreground font-medium">Less Bank Deposit</span>
@@ -621,9 +624,9 @@ function ReportDetail() {
                 <span className="text-muted-foreground font-medium">Fund Handover Madam</span>
                 <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(handoverMadam)}</span>
               </div>
-            
-</div>
-</Panel>
+
+            </div>
+          </Panel>
         </div>
       </div>
 
