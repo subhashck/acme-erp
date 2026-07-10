@@ -37,7 +37,7 @@ type ExpenseCatalogItem = {
 // const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
 // const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
 const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHER"];
-const CHANNELS = ["CARD", "UPI", "QR", "RTGS", "CASH"];
+const CHANNELS = ["CREDIT CARD", "UPI", "DEBIT CARD", "RTGS", "CASH"];
 
 const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "ICICI", channel: "CARD", sourceLabel: "Front OPD Card", amount: 0 },
@@ -297,25 +297,25 @@ export function ReportForm({
         ...catalogServiceLines.filter((l) => l.department === cat.code),
         ...customLines.filter((l) => l.department === cat.code),
       ];
-      totals[cat.code] = catLines.reduce((sum, l) => sum + l.amount, 0);
+      totals[cat.code] = catLines.reduce((sum, l) => sum + (parseFloat(l.amount as any) || 0), 0);
     }
     return totals;
   }, [catalogServiceLines, customLines, activeCategories]);
 
-  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + v, 0);
+  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + (v || 0), 0);
 
-  const expTotal = expenditures.reduce((sum, item) => sum + item.amount, 0);
-  const advTotal = staffAdvances.reduce((sum, item) => sum + item.amount, 0);
+  const expTotal = expenditures.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
+  const advTotal = staffAdvances.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
   const totalExpenditures = expTotal + advTotal;
 
   // const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
   // const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
   // const additionalTotal = additionalIncome.reduce((sum, item) => sum + item.amount, 0);
-  const discountsTotal = discountsReturns.reduce((sum, item) => sum + item.amount, 0);
+  const discountsTotal = discountsReturns.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
 
   const openBal = parseFloat(openingBalance) || 0;
 
-  const nightServicesTotal = nightServices.reduce((sum, item) => sum + item.amount, 0);
+  const nightServicesTotal = nightServices.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
   const totalIncome = totalCategoryIncome + nightServicesTotal - discountsTotal;
   const netBalance = totalIncome - totalExpenditures;
 
@@ -328,17 +328,30 @@ export function ReportForm({
   const cashMamVal = parseFloat(cashReceiptMam) || 0;
   const cashAconVal = parseFloat(cashReceiptAcon) || 0;
 
+  // const cashReceiptsSum = paymentChannels
+  //   .filter((item) => item.bank === "CASH" && item.channel === "CASH")
+  //   .reduce((sum, item) => sum + item.amount, 0);
+
+  // const bankReceiptsSum = paymentChannels
+  //   .filter((item) => item.bank !== "CASH")
+  //   .reduce((sum, item) => sum + item.amount, 0);
+
+  // const paymentChannelsSum = bankReceiptsSum + paymentChannels
+  //   .filter((item) => item.bank === "CASH" && item.channel === "CASH")
+  //   .reduce((sum, item) => sum + item.amount, 0) + cashSirVal + cashMamVal + cashAconVal;
+
   const cashReceiptsSum = paymentChannels
     .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
 
   const bankReceiptsSum = paymentChannels
     .filter((item) => item.bank !== "CASH")
-    .reduce((sum, item) => sum + item.amount, 0);
+    .reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
 
   const paymentChannelsSum = bankReceiptsSum + paymentChannels
     .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-    .reduce((sum, item) => sum + item.amount, 0) + cashSirVal + cashMamVal + cashAconVal;
+    .reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0)
+    + cashSirVal + cashMamVal + cashAconVal;
 
   const closingBalance = openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal;
 
@@ -523,13 +536,27 @@ export function ReportForm({
       cashReceipts: cashReceiptsSum,
       status,
       serviceLines: parsedServiceLines,
-      expenditures,
-      staffAdvances,
-      // ipdAdmissions,
-      // ipdDischarges,
-      // additionalIncome,
-      discountsReturns,
-      paymentChannels: paymentChannels.filter((c) => c.amount > 0),
+      expenditures: expenditures.map((e) => ({
+        category: e.category,
+        details: e.details,
+        amount: Number(e.amount),
+      })),
+      staffAdvances: staffAdvances.map((sa) => ({
+        staffName: sa.staffName,
+        amount: Number(sa.amount),
+      })),
+      discountsReturns: discountsReturns.map((dr) => ({
+        label: dr.label,
+        amount: Number(dr.amount),
+      })),
+      paymentChannels: paymentChannels
+        .filter((c) => c.amount > 0)
+        .map((pc) => ({
+          bank: pc.bank,
+          channel: pc.channel,
+          sourceLabel: pc.sourceLabel,
+          amount: Number(pc.amount),
+        })),
     };
 
     onSubmit(payload);
@@ -743,7 +770,7 @@ export function ReportForm({
                             setReportDate(`${yyyy}-${mm}-${dd}`);
                           }
                         }}
-                        // initialFocus
+                      // initialFocus
                       />
                     </PopoverContent>
                   </Popover>
