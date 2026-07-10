@@ -32,6 +32,20 @@ type ExpenseCatalogItem = {
   active: boolean;
 };
 
+// ─────────────────────────── helpers ──────────────────────────────
+
+/**
+ * Normalizes a value that may arrive as a JS number OR as a numeric-string
+ * (Postgres `numeric` columns come back from Drizzle as strings, e.g. "500.00").
+ * Every amount that could have come from the API should be passed through this
+ * before it's used in arithmetic — using `+` directly on a string silently
+ * falls back to concatenation instead of addition.
+ */
+const toNum = (v: unknown): number => {
+  const n = typeof v === "string" ? parseFloat(v) : (v as number);
+  return Number.isFinite(n) ? n : 0;
+};
+
 // ─────────────────────────── constants ───────────────────────────
 
 // const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
@@ -186,11 +200,19 @@ export function ReportForm({
   const expCategoriesOptions = activeExpCategories.length > 0 ? activeExpCategories.map((c) => c.code) : ["SALARY", "VENDOR", "MISC"];
 
   /** Returns catalog items visible for a given category code */
-  const getCatalogForDept = (code: string) =>
-    catalogList.filter(
+  const getCatalogForDept = (code: string) => {
+    const items = catalogList.filter(
       (item) => item.department === code &&
         (item.defaultShow !== false || serviceQuantities[item.id] !== undefined)
     );
+    return items.sort((a, b) => {
+      const idxA = entryOrder.indexOf(a.id);
+      const idxB = entryOrder.indexOf(b.id);
+      const valA = idxA === -1 ? 999999 : idxA;
+      const valB = idxB === -1 ? 999999 : idxB;
+      return valA - valB;
+    });
+  };
 
   // ── other form state ──────────────────────────────────────────
   const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
@@ -203,15 +225,51 @@ export function ReportForm({
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
   );
   const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number }>>([]);
+  const [entryOrder, setEntryOrder] = React.useState<number[]>([]);
+
+  // Initialize entryOrder reactively based on mode and catalogList / initialData
+  React.useEffect(() => {
+    if (catalogList.length === 0) return;
+
+    if (mode === "new") {
+      if (entryOrder.length === 0) {
+        const defaultShowIds = catalogList
+          .filter((item) => item.defaultShow !== false)
+          .map((item) => item.id);
+        setEntryOrder(defaultShowIds);
+      }
+    } else if (mode === "edit" && initialData) {
+      if (entryOrder.length === 0) {
+        const editEntryOrder: number[] = [];
+        initialData.serviceLines?.forEach((l: any) => {
+          if (!l.isNightEntry && l.serviceId) {
+            editEntryOrder.push(l.serviceId);
+          }
+        });
+        
+        const defaultShowIds = catalogList
+          .filter((item) => item.defaultShow !== false)
+          .map((item) => item.id);
+          
+        const combined = [...editEntryOrder];
+        defaultShowIds.forEach((id) => {
+          if (!combined.includes(id)) {
+            combined.push(id);
+          }
+        });
+        setEntryOrder(combined);
+      }
+    }
+  }, [catalogList, initialData, mode, entryOrder.length]);
 
   // ── populate state from initialData (edit mode) ───────────────
   React.useEffect(() => {
     if (!initialData) return;
 
-    setOpeningBalance(String(initialData.openingBalance));
-    setBankDeposit(String(initialData.bankDeposit));
-    setFundHandoverSir(String(initialData.fundHandoverSir));
-    setFundHandoverMadam(String(initialData.fundHandoverMadam));
+    setOpeningBalance(String(toNum(initialData.openingBalance)));
+    setBankDeposit(String(toNum(initialData.bankDeposit)));
+    setFundHandoverSir(String(toNum(initialData.fundHandoverSir)));
+    setFundHandoverMadam(String(toNum(initialData.fundHandoverMadam)));
     setStatus(initialData.status);
 
     // Service lines
@@ -223,25 +281,25 @@ export function ReportForm({
         if (l.serviceId) {
           night.push({
             serviceId: l.serviceId,
-            rate: parseFloat(l.rate),
-            quantity: l.quantity,
-            amount: parseFloat(l.amount),
+            rate: toNum(l.rate),
+            quantity: toNum(l.quantity),
+            amount: toNum(l.amount),
           });
         }
       } else {
         if (l.serviceId) {
           quantities[l.serviceId] = {
-            rate: parseFloat(l.rate),
-            quantity: l.quantity,
-            amount: parseFloat(l.amount),
+            rate: toNum(l.rate),
+            quantity: toNum(l.quantity),
+            amount: toNum(l.amount),
           };
         } else {
           custom.push({
             serviceName: l.serviceName || "Custom service",
             department: l.department || "OPD",
-            rate: parseFloat(l.rate),
-            quantity: l.quantity,
-            amount: parseFloat(l.amount),
+            rate: toNum(l.rate),
+            quantity: toNum(l.quantity),
+            amount: toNum(l.amount),
           });
         }
       }
@@ -251,29 +309,29 @@ export function ReportForm({
     setNightServices(night);
 
     setIpdAdmissions(initialData.ipdAdmissions?.map((item: any) => ({
-      patientName: item.patientName, type: item.type, amount: parseFloat(item.amount),
+      patientName: item.patientName, type: item.type, amount: toNum(item.amount),
     })) ?? []);
     // setIpdDischarges(initialData.ipdDischarges?.map((item: any) => ({
-    //   patientName: item.patientName, amount: parseFloat(item.amount),
+    //   patientName: item.patientName, amount: toNum(item.amount),
     // })) ?? []);
     setExpenditures(initialData.expenditures?.map((item: any) => ({
-      category: item.category, details: item.details, amount: parseFloat(item.amount),
+      category: item.category, details: item.details, amount: toNum(item.amount),
     })) ?? []);
     setStaffAdvances(initialData.staffAdvances?.map((item: any) => ({
-      staffName: item.staffName, amount: parseFloat(item.amount),
+      staffName: item.staffName, amount: toNum(item.amount),
     })) ?? []);
     // setAdditionalIncome(initialData.additionalIncome?.map((item: any) => ({
-    //   label: item.label, amount: parseFloat(item.amount),
+    //   label: item.label, amount: toNum(item.amount),
     // })) ?? []);
     setDiscountsReturns(initialData.discountsReturns?.map((item: any) => ({
-      label: item.label, amount: parseFloat(item.amount),
+      label: item.label, amount: toNum(item.amount),
     })) ?? []);
-    setCashReceiptSir(String(initialData.cashReceiptSir || 0));
-    setCashReceiptMam(String(initialData.cashReceiptMam || 0));
-    setCashReceiptAcon(String(initialData.cashReceiptAcon || 0));
+    setCashReceiptSir(String(toNum(initialData.cashReceiptSir)));
+    setCashReceiptMam(String(toNum(initialData.cashReceiptMam)));
+    setCashReceiptAcon(String(toNum(initialData.cashReceiptAcon)));
 
     const pChannels = (initialData.paymentChannels ?? []).map((item: any) => ({
-      bank: item.bank, channel: item.channel, sourceLabel: item.sourceLabel, amount: parseFloat(item.amount),
+      bank: item.bank, channel: item.channel, sourceLabel: item.sourceLabel, amount: toNum(item.amount),
     }));
     setPaymentChannels(pChannels);
   }, [initialData]);
@@ -297,61 +355,52 @@ export function ReportForm({
         ...catalogServiceLines.filter((l) => l.department === cat.code),
         ...customLines.filter((l) => l.department === cat.code),
       ];
-      totals[cat.code] = catLines.reduce((sum, l) => sum + (parseFloat(l.amount as any) || 0), 0);
+      totals[cat.code] = catLines.reduce((sum, l) => sum + toNum(l.amount), 0);
     }
     return totals;
   }, [catalogServiceLines, customLines, activeCategories]);
 
-  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + (v || 0), 0);
+  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + toNum(v), 0);
 
-  const expTotal = expenditures.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
-  const advTotal = staffAdvances.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
+  const expTotal = expenditures.reduce((sum, item) => sum + toNum(item.amount), 0);
+  const advTotal = staffAdvances.reduce((sum, item) => sum + toNum(item.amount), 0);
   const totalExpenditures = expTotal + advTotal;
 
-  // const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
-  // const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
-  // const additionalTotal = additionalIncome.reduce((sum, item) => sum + item.amount, 0);
-  const discountsTotal = discountsReturns.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
+  // const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + toNum(item.amount), 0);
+  // const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + toNum(item.amount), 0);
+  // const additionalTotal = additionalIncome.reduce((sum, item) => sum + toNum(item.amount), 0);
+  const discountsTotal = discountsReturns.reduce((sum, item) => sum + toNum(item.amount), 0);
 
-  const openBal = parseFloat(openingBalance) || 0;
+  const openBal = toNum(openingBalance);
 
-  const nightServicesTotal = nightServices.reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
+  const nightServicesTotal = nightServices.reduce((sum, item) => sum + toNum(item.amount), 0);
   const totalIncome = totalCategoryIncome + nightServicesTotal - discountsTotal;
   const netBalance = totalIncome - totalExpenditures;
 
-  const depositVal = parseFloat(bankDeposit) || 0;
-  const handoverSirVal = parseFloat(fundHandoverSir) || 0;
-  const handoverMadamVal = parseFloat(fundHandoverMadam) || 0;
+  const depositVal = toNum(bankDeposit);
+  const handoverSirVal = toNum(fundHandoverSir);
+  const handoverMadamVal = toNum(fundHandoverMadam);
 
+  const cashSirVal = toNum(cashReceiptSir);
+  const cashMamVal = toNum(cashReceiptMam);
+  const cashAconVal = toNum(cashReceiptAcon);
 
-  const cashSirVal = parseFloat(cashReceiptSir) || 0;
-  const cashMamVal = parseFloat(cashReceiptMam) || 0;
-  const cashAconVal = parseFloat(cashReceiptAcon) || 0;
-
-  // const cashReceiptsSum = paymentChannels
-  //   .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-  //   .reduce((sum, item) => sum + item.amount, 0);
-
-  // const bankReceiptsSum = paymentChannels
-  //   .filter((item) => item.bank !== "CASH")
-  //   .reduce((sum, item) => sum + item.amount, 0);
-
-  // const paymentChannelsSum = bankReceiptsSum + paymentChannels
-  //   .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-  //   .reduce((sum, item) => sum + item.amount, 0) + cashSirVal + cashMamVal + cashAconVal;
-
+  // NOTE: `paymentChannels` amounts may originate from the API (Postgres
+  // `numeric` columns come back as strings via Drizzle), so every reduce
+  // over this array must go through `toNum` — raw `item.amount` addition
+  // silently degrades into string concatenation the moment a string slips in.
   const cashReceiptsSum = paymentChannels
     .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-    .reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
+    .reduce((sum, item) => sum + toNum(item.amount), 0);
 
   const bankReceiptsSum = paymentChannels
     .filter((item) => item.bank !== "CASH")
-    .reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0);
+    .reduce((sum, item) => sum + toNum(item.amount), 0);
 
-  const paymentChannelsSum = bankReceiptsSum + paymentChannels
-    .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-    .reduce((sum, item) => sum + (parseFloat(item.amount as any) || 0), 0)
-    + cashSirVal + cashMamVal + cashAconVal;
+  // Reuses cashReceiptsSum/bankReceiptsSum above instead of re-filtering and
+  // re-reducing the same array a second time — one source of truth per total.
+  // const paymentChannelsSum = bankReceiptsSum + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal;
+  const paymentChannelsSum = bankReceiptsSum + cashReceiptsSum;
 
   const closingBalance = openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal;
 
@@ -436,8 +485,9 @@ export function ReportForm({
     if (s) {
       setServiceQuantities((prev) => ({
         ...prev,
-        [id]: { rate: s.defaultRate, quantity: 1, amount: s.defaultRate },
+        [id]: { rate: toNum(s.defaultRate), quantity: 1, amount: toNum(s.defaultRate) },
       }));
+      setEntryOrder((prev) => prev.includes(id) ? prev : [...prev, id]);
     }
   };
 
@@ -499,27 +549,33 @@ export function ReportForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const parsedServiceLines = [
-      ...Object.entries(serviceQuantities)
-        .filter(([_, data]) => data.quantity > 0)
-        .map(([serviceId, data]) => ({
-          serviceId: parseInt(serviceId, 10),
-          rate: Number(data.rate),
-          quantity: Number(data.quantity),
-          amount: Number(data.amount),
-          isNightEntry: false,
-        })),
+      ...entryOrder
+        .filter((serviceId) => {
+          const data = serviceQuantities[serviceId];
+          return data && data.quantity > 0;
+        })
+        .map((serviceId) => {
+          const data = serviceQuantities[serviceId];
+          return {
+            serviceId,
+            rate: toNum(data.rate),
+            quantity: toNum(data.quantity),
+            amount: toNum(data.amount),
+            isNightEntry: false,
+          };
+        }),
       ...customLines.map((line) => ({
         serviceId: null,
-        rate: Number(line.rate),
-        quantity: Number(line.quantity),
-        amount: Number(line.amount),
+        rate: toNum(line.rate),
+        quantity: toNum(line.quantity),
+        amount: toNum(line.amount),
         isNightEntry: false,
       })),
       ...nightServices.map((line) => ({
         serviceId: line.serviceId,
-        rate: Number(line.rate),
-        quantity: Number(line.quantity),
-        amount: Number(line.amount),
+        rate: toNum(line.rate),
+        quantity: toNum(line.quantity),
+        amount: toNum(line.amount),
         isNightEntry: true,
       })),
     ];
@@ -539,23 +595,23 @@ export function ReportForm({
       expenditures: expenditures.map((e) => ({
         category: e.category,
         details: e.details,
-        amount: Number(e.amount),
+        amount: toNum(e.amount),
       })),
       staffAdvances: staffAdvances.map((sa) => ({
         staffName: sa.staffName,
-        amount: Number(sa.amount),
+        amount: toNum(sa.amount),
       })),
       discountsReturns: discountsReturns.map((dr) => ({
         label: dr.label,
-        amount: Number(dr.amount),
+        amount: toNum(dr.amount),
       })),
       paymentChannels: paymentChannels
-        .filter((c) => c.amount > 0)
+        .filter((c) => toNum(c.amount) > 0)
         .map((pc) => ({
           bank: pc.bank,
           channel: pc.channel,
           sourceLabel: pc.sourceLabel,
-          amount: Number(pc.amount),
+          amount: toNum(pc.amount),
         })),
     };
 
@@ -622,7 +678,7 @@ export function ReportForm({
                           }));
                         }
                       } else {
-                        handleQtyChange(item.id, item.defaultRate, qtyStr);
+                        handleQtyChange(item.id, toNum(item.defaultRate), qtyStr);
                       }
                     }}
                     className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
@@ -1074,7 +1130,7 @@ export function ReportForm({
                               setExpenditures(
                                 expenditures.map((ex, i) =>
                                   i === idx
-                                    ? { ...ex, details: val, category: matched.category, amount: matched.defaultAmount }
+                                    ? { ...ex, details: val, category: matched.category, amount: toNum(matched.defaultAmount) }
                                     : ex
                                 )
                               );
@@ -1351,6 +1407,12 @@ export function ReportForm({
                     </div>
                   ))}
 
+                  {nightServicesTotal > 0 && (
+                    <div className="flex justify-between">
+                      <span className="font-semibold">Night Income</span>
+                      <span className="font-bold">{fmt(nightServicesTotal)}</span>
+                    </div>
+                  )}
 
                   {discountsTotal > 0 && (
                     <div className="flex justify-between text-rose-400 dark:text-rose-300">

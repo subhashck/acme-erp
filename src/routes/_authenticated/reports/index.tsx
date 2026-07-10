@@ -1,6 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search, Calendar, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown } from "lucide-react";
 import * as React from "react";
+import { Calendar } from "../../../components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { format } from "date-fns";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
@@ -26,14 +29,14 @@ export const Route = createFileRoute("/_authenticated/reports/")({
 
 function ReportsHistory() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = React.useState("");
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
+  const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc");
 
   // Query reports list
   const reportsQuery = useRpcQuery<any[]>(
-    ["daily-closing-reports", startDate, endDate, search],
-    () => client["daily-closing"].reports.$get({ query: { startDate, endDate, search } })
+    ["daily-closing-reports", startDate, endDate, sortOrder],
+    () => client["daily-closing"].reports.$get({ query: { startDate, endDate, sortOrder } })
   );
 
   const reportsData = reportsQuery.data ?? [];
@@ -82,7 +85,7 @@ function ReportsHistory() {
       {/* Title & Banner */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h3 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent dark:from-teal-400 dark:to-emerald-400">
+          <h3 className="text-3xl font-extrabold tracking-tight bg-linear-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent dark:from-teal-400 dark:to-emerald-400">
             Daily Closing Reports
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -103,7 +106,7 @@ function ReportsHistory() {
 
       {/* Analytics Summary */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
-        <Card className="border border-border/60 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 shadow-xs hover:shadow-md transition-all duration-300">
+        <Card className="border border-border/60 bg-linear-to-br from-emerald-500/5 to-teal-500/5 shadow-xs hover:shadow-md transition-all duration-300">
           <CardHeader className="pb-2">
             <CardDescription className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-xs uppercase tracking-wider">
               <Coins size={14} /> Total Revenues (Logged View)
@@ -115,7 +118,7 @@ function ReportsHistory() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border/60 bg-gradient-to-br from-rose-500/5 to-red-500/5 shadow-xs hover:shadow-md transition-all duration-300">
+        <Card className="border border-border/60 bg-linear-to-br from-rose-500/5 to-red-500/5 shadow-xs hover:shadow-md transition-all duration-300">
           <CardHeader className="pb-2">
             <CardDescription className="font-bold text-rose-600 dark:text-rose-455 flex items-center gap-1.5 text-xs uppercase tracking-wider">
               <FileText size={14} /> Total Expenditures
@@ -127,7 +130,7 @@ function ReportsHistory() {
           </CardContent>
         </Card>
 
-        <Card className="border border-border/60 bg-gradient-to-br from-teal-500/5 to-cyan-500/5 shadow-xs hover:shadow-md transition-all duration-300">
+        <Card className="border border-border/60 bg-linear-to-br from-teal-500/5 to-cyan-500/5 shadow-xs hover:shadow-md transition-all duration-300">
           <CardHeader className="pb-2">
             <CardDescription className="font-bold text-teal-600 dark:text-teal-400 flex items-center gap-1.5 text-xs uppercase tracking-wider">
               <TrendingUp size={14} /> Avg. Closing Cash In Hand
@@ -184,34 +187,93 @@ function ReportsHistory() {
 
           {/* Controls */}
           <div className="flex flex-wrap gap-2.5 items-center">
-            {/* Search Input */}
-            <div className="relative flex items-center max-w-xs border rounded-lg bg-card shadow-xs">
-              <Search size={15} className="absolute left-3 text-muted-foreground" />
-              <Input
-                placeholder="Search staff, patient, or date..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 border-0 ring-0 focus-visible:ring-0"
-              />
-            </div>
+            {/* Start Date Selector */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "h-9 font-semibold justify-start text-xs cursor-pointer border rounded-lg bg-card px-3 py-1 shadow-xs",
+                    !startDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon size={14} className="mr-1.5 text-muted-foreground shrink-0" />
+                  {startDate ? (
+                    format(new Date(startDate), "MMM dd, yyyy")
+                  ) : (
+                    <span>Start Date</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={startDate ? new Date(startDate) : undefined}
+                  onSelect={(date) => {
+                    if (date) {
+                      const yyyy = date.getFullYear();
+                      const mm = String(date.getMonth() + 1).padStart(2, '0');
+                      const dd = String(date.getDate()).padStart(2, '0');
+                      setStartDate(`${yyyy}-${mm}-${dd}`);
+                    } else {
+                      setStartDate("");
+                    }
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
 
-            {/* Date Range selectors */}
-            <div className="flex items-center gap-1.5 border rounded-lg bg-card px-2.5 py-1 shadow-xs text-xs">
-              <Calendar size={13} className="text-muted-foreground" />
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent border-0 font-semibold focus:outline-none cursor-pointer"
-              />
-              <span className="text-muted-foreground">-</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent border-0 font-semibold focus:outline-none cursor-pointer"
-              />
-            </div>
+            <span className="text-muted-foreground text-xs font-semibold select-none">to</span>
+
+            {/* End Date Selector */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "h-9 font-semibold justify-start text-xs cursor-pointer border rounded-lg bg-card px-3 py-1 shadow-xs",
+                    !endDate && "text-muted-foreground"
+                  )}
+                >
+                  <CalendarIcon size={14} className="mr-1.5 text-muted-foreground shrink-0" />
+                  {endDate ? (
+                    format(new Date(endDate), "MMM dd, yyyy")
+                  ) : (
+                    <span>End Date</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={endDate ? new Date(endDate) : undefined}
+                  onSelect={(date) => {
+                    if (date) {
+                      const yyyy = date.getFullYear();
+                      const mm = String(date.getMonth() + 1).padStart(2, '0');
+                      const dd = String(date.getDate()).padStart(2, '0');
+                      setEndDate(`${yyyy}-${mm}-${dd}`);
+                    } else {
+                      setEndDate("");
+                    }
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Clear Filters Button */}
+            {(startDate || endDate) && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="text-xs h-9 cursor-pointer text-muted-foreground hover:text-foreground font-semibold px-2"
+              >
+                Clear Filters
+              </Button>
+            )}
 
             <Button
               size="icon"
@@ -243,7 +305,19 @@ function ReportsHistory() {
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30 text-muted-foreground font-semibold">
-                    <th className="p-4">Report Date</th>
+                    <th
+                      className="p-4 cursor-pointer select-none hover:bg-muted/50 hover:text-foreground transition-colors group"
+                      onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Report Date</span>
+                        {sortOrder === "asc" ? (
+                          <ArrowUp size={14} className="text-teal-650 dark:text-teal-400" />
+                        ) : (
+                          <ArrowDown size={14} className="text-teal-650 dark:text-teal-400" />
+                        )}
+                      </div>
+                    </th>
                     <th className="p-4">Opening Balance</th>
                     <th className="p-4">Total Income</th>
                     <th className="p-4">Total Expenditure</th>

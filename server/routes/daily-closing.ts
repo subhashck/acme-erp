@@ -1,4 +1,4 @@
-import { and, desc, eq, sql, gte, lte, inArray } from "drizzle-orm";
+import { and, desc, asc, eq, sql, gte, lte, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -375,6 +375,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
     const startDate = c.req.query("startDate");
     const endDate = c.req.query("endDate");
     const search = c.req.query("search");
+    const sortOrder = c.req.query("sortOrder") || "desc";
 
     let matchedIds: number[] | null = null;
     if (search && search.trim().length > 0) {
@@ -416,7 +417,11 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
     }
 
     const list = await query
-      .orderBy(desc(dailyClosingReports.reportDate))
+      .orderBy(
+        sortOrder === "asc"
+          ? asc(dailyClosingReports.reportDate)
+          : desc(dailyClosingReports.reportDate)
+      )
       .execute();
 
     // Fetch user details for creator names
