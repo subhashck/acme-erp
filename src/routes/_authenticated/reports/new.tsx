@@ -12,6 +12,7 @@ function NewReportForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [errorMsg, setErrorMsg] = React.useState("");
+  const [isInvalidating, setIsInvalidating] = React.useState(false);
 
   const createMutation = useMutation({
     mutationFn: async (payload: ReportPayload) => {
@@ -19,8 +20,9 @@ function NewReportForm() {
       if (!response.ok) throw new Error(await response.text());
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] });
+    onSuccess: async () => {
+      setIsInvalidating(true);
+      await queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] });
       router.navigate({ to: "/reports" });
     },
     onError: (err: any) => {
@@ -30,7 +32,7 @@ function NewReportForm() {
 
   const header = (
     <div>
-      <h3 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent dark:from-teal-400 dark:to-emerald-400">
+      <h3 className="text-3xl font-extrabold tracking-tight bg-linear-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent dark:from-teal-400 dark:to-emerald-400">
         New closing report
       </h3>
       <p className="mt-1 text-sm text-muted-foreground">
@@ -47,7 +49,7 @@ function NewReportForm() {
         setErrorMsg("");
         createMutation.mutate(payload);
       }}
-      isPending={createMutation.isPending}
+      isPending={createMutation.isPending || isInvalidating}
       errorMsg={errorMsg}
     />
   );
