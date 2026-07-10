@@ -308,6 +308,14 @@ function ReportDetail() {
                 <span>Total Income:</span>
                 <span>{fmt(totalIncome)}</span>
               </div>
+              <div className="flex justify-between pl-4 font-semibold text-teal-600/80 dark:text-teal-450/80">
+                <span>Cash Receipts</span>
+                <span>{fmt(cashReceipts)}</span>
+              </div>
+              <div className="flex justify-between pl-4 font-semibold text-teal-600/80 dark:text-teal-450/80 pb-2">
+                <span>Bank Receipts</span>
+                <span>{fmt(bankReceiptsTotal)}</span>
+              </div>
 
               <div className="flex justify-between border-b pb-2 pt-1 text-rose-400 dark:text-rose-355">
                 <span className="font-semibold">Total Expenditures:</span>
