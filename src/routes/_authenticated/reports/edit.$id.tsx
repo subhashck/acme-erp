@@ -16,6 +16,7 @@ function EditReportForm() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [errorMsg, setErrorMsg] = React.useState("");
+  const [isInvalidating, setIsInvalidating] = React.useState(false);
 
   // Load existing report
   const reportQuery = useRpcQuery<any>(
@@ -33,9 +34,12 @@ function EditReportForm() {
       if (!response.ok) throw new Error(await response.text());
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] });
-      queryClient.invalidateQueries({ queryKey: ["daily-closing-report", id] });
+    onSuccess: async () => {
+      setIsInvalidating(true);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] }),
+        queryClient.invalidateQueries({ queryKey: ["daily-closing-report", id] }),
+      ]);
       router.navigate({ to: "/reports/$id", params: { id } });
     },
     onError: (err: any) => {
@@ -106,7 +110,7 @@ function EditReportForm() {
         setErrorMsg("");
         editMutation.mutate(payload);
       }}
-      isPending={editMutation.isPending}
+      isPending={editMutation.isPending || isInvalidating}
       errorMsg={errorMsg}
     />
   );
