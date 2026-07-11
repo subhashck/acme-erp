@@ -1,17 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown } from "lucide-react";
 import * as React from "react";
-import { Calendar } from "../../../components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Calendar } from "../../../../components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../../components/ui/popover";
 import { format } from "date-fns";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { useRpcQuery } from "../../../lib/query";
-import { client } from "../../../services/rpc";
-import { Button } from "../../../ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../ui/card";
-import { Input } from "../../../ui/input";
-import { Badge } from "../../../ui/badge";
-import { cn } from "../../../utils/cn";
+import { useRpcQuery } from "../../../../lib/query";
+import { client } from "../../../../services/rpc";
+import { Button } from "../../../../ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../../ui/card";
+import { Input } from "../../../../ui/input";
+import { Badge } from "../../../../ui/badge";
+import { cn } from "../../../../utils/cn";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -23,7 +23,7 @@ import {
   Legend,
 } from "recharts";
 
-export const Route = createFileRoute("/_authenticated/reports/")({
+export const Route = createFileRoute("/_authenticated/accounts/reports/")({
   component: ReportsHistory,
 });
 
@@ -62,7 +62,7 @@ function ReportsHistory() {
   // Calculate statistics (from last 30 days of data in current view)
   const totalIncomesSum = reportsData.reduce((sum, r) => sum + parseFloat(r.totalIncome), 0);
   const totalExpendituresSum = reportsData.reduce((sum, r) => sum + parseFloat(r.totalExpenditure), 0);
-  const avgClosingBalance = reportsData.length > 0 
+  const avgClosingBalance = reportsData.length > 0
     ? reportsData.reduce((sum, r) => sum + parseFloat(r.closingBalance), 0) / reportsData.length
     : 0;
 
@@ -96,7 +96,7 @@ function ReportsHistory() {
         <div className="flex flex-wrap items-center gap-3">
 
           <Button asChild className="bg-teal-650 hover:bg-teal-700 text-white font-semibold cursor-pointer">
-            <Link to="/reports/new">
+            <Link to="/accounts/reports/new">
               <Plus size={16} className="mr-1.5" /> New Closing Report
             </Link>
           </Button>
@@ -155,12 +155,12 @@ function ReportsHistory() {
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -332,7 +332,7 @@ function ReportsHistory() {
                     <tr key={report.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-4 font-bold text-foreground">
                         <Link
-                          to="/reports/$id"
+                          to="/accounts/reports/$id"
                           params={{ id: String(report.id) }}
                           className="hover:underline text-teal-650 dark:text-teal-400"
                         >
@@ -370,7 +370,7 @@ function ReportsHistory() {
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <Button variant="ghost" size="icon" asChild title="View Report" className="cursor-pointer">
-                            <Link to="/reports/$id" params={{ id: String(report.id) }}>
+                            <Link to="/accounts/reports/$id" params={{ id: String(report.id) }}>
                               <FileText size={16} />
                             </Link>
                           </Button>
@@ -378,7 +378,7 @@ function ReportsHistory() {
                           {report.status === "draft" && (
                             <>
                               <Button variant="ghost" size="icon" asChild title="Edit Report" className="cursor-pointer">
-                                <Link to="/reports/edit/$id" params={{ id: String(report.id) }}>
+                                <Link to="/accounts/reports/edit/$id" params={{ id: String(report.id) }}>
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     width="16"

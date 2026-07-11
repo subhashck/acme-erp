@@ -402,11 +402,11 @@ export function Shell() {
                       Service Charges
                     </Link>
                     <Link
-                      to="/reports"
+                      to="/accounts/reports"
                       className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                       activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                     >
-                      Daily Closing
+                      Daily Closing Reports
                     </Link>
                   </div>
                 )}
@@ -634,7 +634,7 @@ export function Shell() {
               </Link>
 
               <Link
-                to="/reports"
+                to="/accounts/reports"
                 className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
                 title="Daily Closing Reports"
