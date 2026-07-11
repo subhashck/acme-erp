@@ -14,9 +14,6 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
-import { Route as AuthenticatedReportsIndexRouteImport } from './routes/_authenticated/reports/index'
-import { Route as AuthenticatedReportsNewRouteImport } from './routes/_authenticated/reports/new'
-import { Route as AuthenticatedReportsIdRouteImport } from './routes/_authenticated/reports/$id'
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
@@ -39,7 +36,10 @@ import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_au
 import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authenticated/admin/hospital'
 import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
 import { Route as AuthenticatedAccountsConsultantChargesRouteImport } from './routes/_authenticated/accounts/consultant-charges'
-import { Route as AuthenticatedReportsEditIdRouteImport } from './routes/_authenticated/reports/edit.$id'
+import { Route as AuthenticatedAccountsReportsIndexRouteImport } from './routes/_authenticated/accounts/reports/index'
+import { Route as AuthenticatedAccountsReportsNewRouteImport } from './routes/_authenticated/accounts/reports/new'
+import { Route as AuthenticatedAccountsReportsIdRouteImport } from './routes/_authenticated/accounts/reports/$id'
+import { Route as AuthenticatedAccountsReportsEditIdRouteImport } from './routes/_authenticated/accounts/reports/edit.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -66,22 +66,6 @@ const AuthenticatedCommunicationRoute =
     path: '/communication',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedReportsIndexRoute =
-  AuthenticatedReportsIndexRouteImport.update({
-    id: '/reports/',
-    path: '/reports/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedReportsNewRoute = AuthenticatedReportsNewRouteImport.update({
-  id: '/reports/new',
-  path: '/reports/new',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
-const AuthenticatedReportsIdRoute = AuthenticatedReportsIdRouteImport.update({
-  id: '/reports/$id',
-  path: '/reports/$id',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedMastersShiftsRoute =
   AuthenticatedMastersShiftsRouteImport.update({
     id: '/masters/shifts',
@@ -209,10 +193,28 @@ const AuthenticatedAccountsConsultantChargesRoute =
     path: '/accounts/consultant-charges',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedReportsEditIdRoute =
-  AuthenticatedReportsEditIdRouteImport.update({
-    id: '/reports/edit/$id',
-    path: '/reports/edit/$id',
+const AuthenticatedAccountsReportsIndexRoute =
+  AuthenticatedAccountsReportsIndexRouteImport.update({
+    id: '/accounts/reports/',
+    path: '/accounts/reports/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAccountsReportsNewRoute =
+  AuthenticatedAccountsReportsNewRouteImport.update({
+    id: '/accounts/reports/new',
+    path: '/accounts/reports/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAccountsReportsIdRoute =
+  AuthenticatedAccountsReportsIdRouteImport.update({
+    id: '/accounts/reports/$id',
+    path: '/accounts/reports/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAccountsReportsEditIdRoute =
+  AuthenticatedAccountsReportsEditIdRouteImport.update({
+    id: '/accounts/reports/edit/$id',
+    path: '/accounts/reports/edit/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 
@@ -243,10 +245,10 @@ export interface FileRoutesByFullPath {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
-  '/reports/$id': typeof AuthenticatedReportsIdRoute
-  '/reports/new': typeof AuthenticatedReportsNewRoute
-  '/reports/': typeof AuthenticatedReportsIndexRoute
-  '/reports/edit/$id': typeof AuthenticatedReportsEditIdRoute
+  '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
+  '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
+  '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -275,10 +277,10 @@ export interface FileRoutesByTo {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
-  '/reports/$id': typeof AuthenticatedReportsIdRoute
-  '/reports/new': typeof AuthenticatedReportsNewRoute
-  '/reports': typeof AuthenticatedReportsIndexRoute
-  '/reports/edit/$id': typeof AuthenticatedReportsEditIdRoute
+  '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
+  '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/accounts/reports': typeof AuthenticatedAccountsReportsIndexRoute
+  '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -309,10 +311,10 @@ export interface FileRoutesById {
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
-  '/_authenticated/reports/$id': typeof AuthenticatedReportsIdRoute
-  '/_authenticated/reports/new': typeof AuthenticatedReportsNewRoute
-  '/_authenticated/reports/': typeof AuthenticatedReportsIndexRoute
-  '/_authenticated/reports/edit/$id': typeof AuthenticatedReportsEditIdRoute
+  '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
+  '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/_authenticated/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
+  '/_authenticated/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -343,10 +345,10 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
-    | '/reports/$id'
-    | '/reports/new'
-    | '/reports/'
-    | '/reports/edit/$id'
+    | '/accounts/reports/$id'
+    | '/accounts/reports/new'
+    | '/accounts/reports/'
+    | '/accounts/reports/edit/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -375,10 +377,10 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
-    | '/reports/$id'
-    | '/reports/new'
-    | '/reports'
-    | '/reports/edit/$id'
+    | '/accounts/reports/$id'
+    | '/accounts/reports/new'
+    | '/accounts/reports'
+    | '/accounts/reports/edit/$id'
   id:
     | '__root__'
     | '/_authenticated'
@@ -408,10 +410,10 @@ export interface FileRouteTypes {
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
-    | '/_authenticated/reports/$id'
-    | '/_authenticated/reports/new'
-    | '/_authenticated/reports/'
-    | '/_authenticated/reports/edit/$id'
+    | '/_authenticated/accounts/reports/$id'
+    | '/_authenticated/accounts/reports/new'
+    | '/_authenticated/accounts/reports/'
+    | '/_authenticated/accounts/reports/edit/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -454,27 +456,6 @@ declare module '@tanstack/react-router' {
       path: '/communication'
       fullPath: '/communication'
       preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/reports/': {
-      id: '/_authenticated/reports/'
-      path: '/reports'
-      fullPath: '/reports/'
-      preLoaderRoute: typeof AuthenticatedReportsIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/reports/new': {
-      id: '/_authenticated/reports/new'
-      path: '/reports/new'
-      fullPath: '/reports/new'
-      preLoaderRoute: typeof AuthenticatedReportsNewRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/reports/$id': {
-      id: '/_authenticated/reports/$id'
-      path: '/reports/$id'
-      fullPath: '/reports/$id'
-      preLoaderRoute: typeof AuthenticatedReportsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/masters/shifts': {
@@ -631,11 +612,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsConsultantChargesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/reports/edit/$id': {
-      id: '/_authenticated/reports/edit/$id'
-      path: '/reports/edit/$id'
-      fullPath: '/reports/edit/$id'
-      preLoaderRoute: typeof AuthenticatedReportsEditIdRouteImport
+    '/_authenticated/accounts/reports/': {
+      id: '/_authenticated/accounts/reports/'
+      path: '/accounts/reports'
+      fullPath: '/accounts/reports/'
+      preLoaderRoute: typeof AuthenticatedAccountsReportsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/accounts/reports/new': {
+      id: '/_authenticated/accounts/reports/new'
+      path: '/accounts/reports/new'
+      fullPath: '/accounts/reports/new'
+      preLoaderRoute: typeof AuthenticatedAccountsReportsNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/accounts/reports/$id': {
+      id: '/_authenticated/accounts/reports/$id'
+      path: '/accounts/reports/$id'
+      fullPath: '/accounts/reports/$id'
+      preLoaderRoute: typeof AuthenticatedAccountsReportsIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/accounts/reports/edit/$id': {
+      id: '/_authenticated/accounts/reports/edit/$id'
+      path: '/accounts/reports/edit/$id'
+      fullPath: '/accounts/reports/edit/$id'
+      preLoaderRoute: typeof AuthenticatedAccountsReportsEditIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
   }
@@ -667,10 +669,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
   AuthenticatedMastersSalaryTemplatesRoute: typeof AuthenticatedMastersSalaryTemplatesRoute
   AuthenticatedMastersShiftsRoute: typeof AuthenticatedMastersShiftsRoute
-  AuthenticatedReportsIdRoute: typeof AuthenticatedReportsIdRoute
-  AuthenticatedReportsNewRoute: typeof AuthenticatedReportsNewRoute
-  AuthenticatedReportsIndexRoute: typeof AuthenticatedReportsIndexRoute
-  AuthenticatedReportsEditIdRoute: typeof AuthenticatedReportsEditIdRoute
+  AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
+  AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
+  AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
+  AuthenticatedAccountsReportsEditIdRoute: typeof AuthenticatedAccountsReportsEditIdRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -703,10 +705,12 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMastersSalaryTemplatesRoute:
     AuthenticatedMastersSalaryTemplatesRoute,
   AuthenticatedMastersShiftsRoute: AuthenticatedMastersShiftsRoute,
-  AuthenticatedReportsIdRoute: AuthenticatedReportsIdRoute,
-  AuthenticatedReportsNewRoute: AuthenticatedReportsNewRoute,
-  AuthenticatedReportsIndexRoute: AuthenticatedReportsIndexRoute,
-  AuthenticatedReportsEditIdRoute: AuthenticatedReportsEditIdRoute,
+  AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
+  AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
+  AuthenticatedAccountsReportsIndexRoute:
+    AuthenticatedAccountsReportsIndexRoute,
+  AuthenticatedAccountsReportsEditIdRoute:
+    AuthenticatedAccountsReportsEditIdRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

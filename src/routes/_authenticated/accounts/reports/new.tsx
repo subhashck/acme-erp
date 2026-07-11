@@ -1,10 +1,10 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { client } from "../../../services/rpc";
-import { ReportForm, ReportPayload } from "../../../components/ReportForm";
+import { client } from "../../../../services/rpc";
+import { ReportForm, ReportPayload } from "../../../../components/ReportForm";
 
-export const Route = createFileRoute("/_authenticated/reports/new")({
+export const Route = createFileRoute("/_authenticated/accounts/reports/new")({
   component: NewReportForm,
 });
 
@@ -23,7 +23,7 @@ function NewReportForm() {
     onSuccess: async () => {
       setIsInvalidating(true);
       await queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] });
-      router.navigate({ to: "/reports" });
+      router.navigate({ to: "/accounts/reports" });
     },
     onError: (err: any) => {
       setErrorMsg(err.message || "Failed to create closing report");

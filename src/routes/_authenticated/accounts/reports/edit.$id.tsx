@@ -2,12 +2,12 @@ import { createFileRoute, useRouter, Link } from "@tanstack/react-router";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { useRpcQuery } from "../../../lib/query";
-import { client } from "../../../services/rpc";
-import { Button } from "../../../ui/button";
-import { ReportForm, ReportPayload } from "../../../components/ReportForm";
+import { useRpcQuery } from "../../../../lib/query";
+import { client } from "../../../../services/rpc";
+import { Button } from "../../../../ui/button";
+import { ReportForm, ReportPayload } from "../../../../components/ReportForm";
 
-export const Route = createFileRoute("/_authenticated/reports/edit/$id")({
+export const Route = createFileRoute("/_authenticated/accounts/reports/edit/$id")({
   component: EditReportForm,
 });
 
@@ -40,7 +40,7 @@ function EditReportForm() {
         queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] }),
         queryClient.invalidateQueries({ queryKey: ["daily-closing-report", id] }),
       ]);
-      router.navigate({ to: "/reports/$id", params: { id } });
+      router.navigate({ to: "/accounts/reports/$id", params: { id } });
     },
     onError: (err: any) => {
       setErrorMsg(err.message || "Failed to save closing report changes");
@@ -75,7 +75,7 @@ function EditReportForm() {
           This report is currently in <strong>{report.status.toUpperCase()}</strong> status. Only draft logs can be edited or deleted.
         </p>
         <Button
-          onClick={() => router.navigate({ to: "/reports/$id", params: { id } })}
+          onClick={() => router.navigate({ to: "/accounts/reports/$id", params: { id } })}
           variant="outline"
           size="default"
           className="cursor-pointer font-semibold"
@@ -89,7 +89,7 @@ function EditReportForm() {
   const header = (
     <div className="flex items-center gap-2">
       <Button variant="outline" size="icon" asChild className="cursor-pointer">
-        <Link to="/reports/$id" params={{ id }}>
+        <Link to="/accounts/reports/$id" params={{ id }}>
           <ArrowLeft size={16} />
         </Link>
       </Button>

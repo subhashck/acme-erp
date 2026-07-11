@@ -1,13 +1,13 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, Edit2, Lock, FileText, FileSpreadsheet, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
-import { exportClosingToPDF, exportClosingToExcel } from "../../../lib/closing-export";
-import { useRpcQuery } from "../../../lib/query";
-import { client } from "../../../services/rpc";
-import { Button } from "../../../ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../ui/card";
-import { Badge } from "../../../ui/badge";
-import { cn } from "../../../utils/cn";
+import { exportClosingToPDF, exportClosingToExcel } from "../../../../lib/closing-export";
+import { useRpcQuery } from "../../../../lib/query";
+import { client } from "../../../../services/rpc";
+import { Button } from "../../../../ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../../ui/card";
+import { Badge } from "../../../../ui/badge";
+import { cn } from "../../../../utils/cn";
 
 
 const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = "" }: any) => {
@@ -20,7 +20,7 @@ const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = 
       >
         <CardTitle className="text-xs font-extrabold flex justify-between items-center uppercase tracking-wider">
           <div className="flex items-center gap-1.5">
-          <div className="opacity-50">
+            <div className="opacity-50">
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </div>
             <span>{title}</span>
@@ -62,7 +62,7 @@ const SubPanel = ({ title, amount, children, defaultExpanded = false }: any) => 
 
 type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean };
 
-export const Route = createFileRoute("/_authenticated/reports/$id")({
+export const Route = createFileRoute("/_authenticated/accounts/reports/$id")({
   component: ReportDetail,
 });
 
@@ -103,7 +103,7 @@ function ReportDetail() {
         <AlertTriangle className="size-8 mx-auto" />
         <h4 className="font-bold">Closing statement not found.</h4>
         <p className="text-xs">The record you are trying to view does not exist or has been deleted.</p>
-        <Button onClick={() => router.navigate({ to: "/reports" })} variant="outline" size="default">
+        <Button onClick={() => router.navigate({ to: "/accounts/reports" })} variant="outline" size="default">
           Go Back
         </Button>
       </div>
@@ -212,13 +212,13 @@ function ReportDetail() {
   return (
     <div className="space-y-6">
       {/* Print styles override */}
-     
+
 
       {/* Detail view header actions */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" asChild className="cursor-pointer">
-            <Link to="/reports">
+            <Link to="/accounts/reports">
               <ArrowLeft size={16} />
             </Link>
           </Button>
@@ -243,7 +243,7 @@ function ReportDetail() {
         <div className="flex items-center gap-2">
           {report.status === "draft" && (
             <Button asChild variant="outline" className="font-semibold cursor-pointer">
-              <Link to="/reports/edit/$id" params={{ id: String(report.id) }}>
+              <Link to="/accounts/reports/edit/$id" params={{ id: String(report.id) }}>
                 <Edit2 size={15} className="mr-1.5" /> Edit Draft
               </Link>
             </Button>
