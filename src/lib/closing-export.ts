@@ -75,6 +75,8 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   const cashSir = parseFloat(report.cashReceiptSir) || 0;
   const cashMam = parseFloat(report.cashReceiptMam) || 0;
   const cashAcon = parseFloat(report.cashReceiptAcon) || 0;
+  const bankReceiptSir = parseFloat(report.bankReceiptSir) || 0;
+  const bankReceiptSirBank = report.bankReceiptSirBank || "";
   const cashReceipts = parseFloat(report.cashReceipts) || 0;
   const bankReceiptsTotal = parseFloat(report.bankReceiptsTotal) || 0;
   const closingBalance = parseFloat(report.closingBalance) || 0;
@@ -242,6 +244,9 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   drawRow("Cash Receipt (Sir)", fmt(cashSir));
   drawRow("Cash Receipt (Mam)", fmt(cashMam));
   drawRow("Cash Receipt (Acon)", fmt(cashAcon));
+  if (bankReceiptSir > 0) {
+    drawRow(`Bank Receipt (Sir) [${bankReceiptSirBank || "N/A"}]`, fmt(bankReceiptSir));
+  }
   drawRow("Add Cash Income Receipts (Payment Channels)", fmt(cashReceipts));
   drawRow("Less Cash Expenditures", `-${fmt(expendituresTotal)}`);
   drawRow("Less Bank Deposit", `-${fmt(bankDeposit)}`);
@@ -352,6 +357,8 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   const cashSir = parseFloat(report.cashReceiptSir) || 0;
   const cashMam = parseFloat(report.cashReceiptMam) || 0;
   const cashAcon = parseFloat(report.cashReceiptAcon) || 0;
+  const bankReceiptSir = parseFloat(report.bankReceiptSir) || 0;
+  const bankReceiptSirBank = report.bankReceiptSirBank || "";
   const cashReceipts = parseFloat(report.cashReceipts) || 0;
   const bankReceiptsTotal = parseFloat(report.bankReceiptsTotal) || 0;
   const closingBalance = parseFloat(report.closingBalance) || 0;
@@ -508,6 +515,9 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   addRow(["Cash Receipt (Sir)", "", "", cashSir], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Cash Receipt (Mam)", "", "", cashMam], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Cash Receipt (Acon)", "", "", cashAcon], [styleRegular, null, styleRegular, styleNumber]);
+  if (bankReceiptSir > 0) {
+    addRow([`Bank Receipt (Sir) [${bankReceiptSirBank || "N/A"}]`, "", "", bankReceiptSir], [styleRegular, null, styleRegular, styleNumber]);
+  }
   addRow(["Add Cash Income Receipts (Channels)", "", "", cashReceipts], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Less Cash Expenditures", "", "", -expendituresTotal], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Less Bank Deposit", "", "", -bankDeposit], [styleRegular, null, styleRegular, styleNumber]);

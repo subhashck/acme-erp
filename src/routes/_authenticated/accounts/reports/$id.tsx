@@ -188,6 +188,8 @@ function ReportDetail() {
   const cashSir = parseFloat(report.cashReceiptSir) || 0;
   const cashMam = parseFloat(report.cashReceiptMam) || 0;
   const cashAcon = parseFloat(report.cashReceiptAcon) || 0;
+  const bankReceiptSir = parseFloat(report.bankReceiptSir) || 0;
+  const bankReceiptSirBank = report.bankReceiptSirBank || "";
   const cashReceipts = parseFloat(report.cashReceipts) || 0;
   const cashReceiptsTotal = parseFloat(report.cashReceiptsTotal) || 0;
   const bankReceiptsTotal = parseFloat(report.bankReceiptsTotal) || 0;
@@ -284,18 +286,19 @@ function ReportDetail() {
               <hr className="border-b-2 border-fuchsia-800/30" />
 
               <div className="text-emerald-400">
-                {displayedCategories.map((cat) => (
-                  <div key={cat.code} className="flex justify-between">
-                    <span className="font-semibold">{cat.label}</span>
-                    <span className="font-bold">{fmt(cat.total)}</span>
-                  </div>
-                ))}
                 {nightServicesTotal > 0 && (
                   <div className="flex justify-between text-indigo-400 dark:text-indigo-300">
                     <span className="font-semibold">Night / After-EOD Services</span>
                     <span className="font-bold">{fmt(nightServicesTotal)}</span>
                   </div>
                 )}
+                {displayedCategories.map((cat) => (
+                  <div key={cat.code} className="flex justify-between">
+                    <span className="font-semibold">{cat.label}</span>
+                    <span className="font-bold">{fmt(cat.total)}</span>
+                  </div>
+                ))}
+
                 {discountsTotal > 0 && (
                   <div className="flex justify-between text-rose-400 dark:text-rose-300">
                     <span className="font-semibold">Less: Discounts/Returns:</span>
@@ -348,6 +351,12 @@ function ReportDetail() {
                   <span className="font-semibold">Cash Receipt (Acon):</span>
                   <span className="font-bold">{fmt(cashAcon)}</span>
                 </div>
+                {bankReceiptSir > 0 && (
+                  <div className="flex justify-between text-emerald-300">
+                    <span className="font-semibold">Bank Receipt (Sir) [{bankReceiptSirBank}]:</span>
+                    <span className="font-bold">{fmt(bankReceiptSir)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-emerald-300 mb-2">
                   <span className="font-semibold">Add Cash Income Receipts:</span>
                   <span className="font-bold">{fmt(cashReceipts)}</span>
@@ -417,6 +426,25 @@ function ReportDetail() {
           {/* Opening Balance */}
           <Panel title="To Balance B/f" amount={fmt(openingBalance)} />
 
+          {/* Night Services Panel */}
+          {nightServicesTotal > 0 && (
+            <Panel title="Night / After-EOD Services" amount={fmt(nightServicesTotal)} titleClass="text-indigo-650 dark:text-indigo-400">
+              <table className="w-full text-xs text-left">
+                <tbody>
+                  {report.serviceLines?.filter((l: any) => l.isNightEntry).map((line: any) => (
+                    <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
+                      <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
+                      <td className="py-2 text-right text-muted-foreground">
+                        {line.quantity} × {fmt(line.rate)}
+                      </td>
+                      <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Panel>
+          )}
+
           {/* Dynamic Categories Services */}
           {displayedCategories.map((cat) => (
             <Panel key={cat.code} title={cat.label} amount={fmt(cat.total)} titleClass="text-teal-650 dark:text-teal-400">
@@ -438,24 +466,7 @@ function ReportDetail() {
             </Panel>
           ))}
 
-          {/* Night Services Panel */}
-          {nightServicesTotal > 0 && (
-            <Panel title="Night / After-EOD Services" amount={fmt(nightServicesTotal)} titleClass="text-indigo-650 dark:text-indigo-400">
-              <table className="w-full text-xs text-left">
-                <tbody>
-                  {report.serviceLines?.filter((l: any) => l.isNightEntry).map((line: any) => (
-                    <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
-                      <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
-                      <td className="py-2 text-right text-muted-foreground">
-                        {line.quantity} × {fmt(line.rate)}
-                      </td>
-                      <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Panel>
-          )}
+
 
 
 
@@ -629,8 +640,39 @@ function ReportDetail() {
           </Panel>
 
           {/* Bank deposit & Handover */}
-          <Panel title="Bank Deposits & Handovers" amount="">
+          <Panel title="Bank Deposits & Handovers" amount="" defaultExpanded={true}>
             <div className="space-y-2.5 text-xs">
+
+              {(cashSir > 0 || cashMam > 0 || cashAcon > 0 || bankReceiptSir > 0) && (
+                <div className="pt-2 mt-2 border-t border-dashed space-y-2">
+                  <h5 className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pb-1">Receipts / Inflows</h5>
+                  {bankReceiptSir > 0 && (
+                    <div className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0">
+                      <span className="text-muted-foreground font-medium">Bank Receipt (Sir) [{bankReceiptSirBank || "N/A"}]</span>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-450">{fmt(bankReceiptSir)}</span>
+                    </div>
+                  )}
+                  {cashSir > 0 && (
+                    <div className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0">
+                      <span className="text-muted-foreground font-medium">Cash Receipt (Sir)</span>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-450">{fmt(cashSir)}</span>
+                    </div>
+                  )}
+                  {cashMam > 0 && (
+                    <div className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0">
+                      <span className="text-muted-foreground font-medium">Cash Receipt (Mam)</span>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-450">{fmt(cashMam)}</span>
+                    </div>
+                  )}
+                  {cashAcon > 0 && (
+                    <div className="flex justify-between border-b pb-1.5 last:border-0 last:pb-0">
+                      <span className="text-muted-foreground font-medium">Cash Receipt (Acon)</span>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-450">{fmt(cashAcon)}</span>
+                    </div>
+                  )}
+
+                </div>
+              )}
 
               <div className="flex justify-between border-b pb-1.5">
                 <span className="text-muted-foreground font-medium">Less Bank Deposit</span>
@@ -644,6 +686,8 @@ function ReportDetail() {
                 <span className="text-muted-foreground font-medium">Fund Handover Madam</span>
                 <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(handoverMadam)}</span>
               </div>
+
+
 
             </div>
           </Panel>

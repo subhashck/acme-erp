@@ -308,11 +308,14 @@ export const payslips = sqliteTable("payslips", {
   professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
-  leaveDaysTaken: integer("leave_days_taken").notNull().default(0),
+  leaveDaysTaken: numeric("leave_days_taken", { precision: 5, scale: 2 }).notNull().default("0"),
   leaveDeduction: numeric("leave_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
   netSalary: numeric("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   version: integer("version").notNull().default(1),
   status: text("status").notNull().default("Active"),
+  hrNotes: text("hr_notes"),
+  cooNotes: text("coo_notes"),
+  accountsNotes: text("accounts_notes"),
   ...timestamps
 });
 
@@ -605,6 +608,8 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   cashReceiptsTotal: numeric("cash_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
   cashReceipts: numeric("cash_receipts", { precision: 12, scale: 2 }).notNull().default("0"),
   bankReceiptsTotal: numeric("bank_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  bankReceiptSir: numeric("bank_receipt_sir", { precision: 12, scale: 2 }).notNull().default("0"),
+  bankReceiptSirBank: text("bank_receipt_sir_bank"),
   status: text("status").notNull().default("draft"),
   ...timestamps
 });

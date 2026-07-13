@@ -112,7 +112,14 @@ export const staffRoutes = new Hono<AuthEnv>()
 
     const [row] = await db
       .insert(staff)
-      .values({ ...staffData, staffId: nextStaffId, employeeCode: code("EMP"), version: 1, active: true })
+      .values({
+        ...staffData,
+        salary: String(staffData.salary),
+        staffId: nextStaffId,
+        employeeCode: code("EMP"),
+        version: 1,
+        active: true,
+      })
       .returning()
       .execute();
 
@@ -121,15 +128,15 @@ export const staffRoutes = new Hono<AuthEnv>()
       .values({
         staffId: row.staffId,
         staffVersion: row.version,
-        basicSalary,
-        hra,
-        conveyance,
-        medical,
-        special,
-        epf,
-        esi,
-        professionalTax,
-        otherDeductions,
+        basicSalary: String(basicSalary),
+        hra: String(hra),
+        conveyance: String(conveyance),
+        medical: String(medical),
+        special: String(special),
+        epf: String(epf),
+        esi: String(esi),
+        professionalTax: String(professionalTax),
+        otherDeductions: String(otherDeductions),
         bankName,
         accountNumber,
         ifscCode,
@@ -181,6 +188,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       return c.json({ error: "Unauthorized" }, 403);
     }
     const { id } = idParam.parse(c.req.param());
+    const rawBody = (await c.req.raw.clone().json().catch(() => ({}))) as Record<string, any>;
     const input = await jsonBody(c, staffInput);
 
     const {
@@ -213,11 +221,52 @@ export const staffRoutes = new Hono<AuthEnv>()
       return c.json({ error: "Staff member not found" }, 404);
     }
 
+    const currentSalary = await db
+      .select()
+      .from(staffSalaries)
+      .where(and(eq(staffSalaries.staffId, id), eq(staffSalaries.staffVersion, currentStaff.version)))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    const finalBasicSalary = "basicSalary" in rawBody ? Number(basicSalary) : Number(currentSalary?.basicSalary ?? 0);
+    const finalHra = "hra" in rawBody ? Number(hra) : Number(currentSalary?.hra ?? 0);
+    const finalConveyance = "conveyance" in rawBody ? Number(conveyance) : Number(currentSalary?.conveyance ?? 0);
+    const finalMedical = "medical" in rawBody ? Number(medical) : Number(currentSalary?.medical ?? 0);
+    const finalSpecial = "special" in rawBody ? Number(special) : Number(currentSalary?.special ?? 0);
+    const finalEpf = "epf" in rawBody ? Number(epf) : Number(currentSalary?.epf ?? 0);
+    const finalEsi = "esi" in rawBody ? Number(esi) : Number(currentSalary?.esi ?? 0);
+    const finalPt = "professionalTax" in rawBody ? Number(professionalTax) : Number(currentSalary?.professionalTax ?? 0);
+    const finalOther = "otherDeductions" in rawBody ? Number(otherDeductions) : Number(currentSalary?.otherDeductions ?? 0);
+    const finalBankName = "bankName" in rawBody ? bankName : (currentSalary?.bankName ?? null);
+    const finalAccountNumber = "accountNumber" in rawBody ? accountNumber : (currentSalary?.accountNumber ?? null);
+    const finalIfscCode = "ifscCode" in rawBody ? ifscCode : (currentSalary?.ifscCode ?? null);
+
+    const hasSalaryChange = !currentSalary ||
+      Number(currentSalary.basicSalary) !== finalBasicSalary ||
+      Number(currentSalary.hra) !== finalHra ||
+      Number(currentSalary.conveyance) !== finalConveyance ||
+      Number(currentSalary.medical) !== finalMedical ||
+      Number(currentSalary.special) !== finalSpecial ||
+      Number(currentSalary.epf) !== finalEpf ||
+      Number(currentSalary.esi) !== finalEsi ||
+      Number(currentSalary.professionalTax) !== finalPt ||
+      Number(currentSalary.otherDeductions) !== finalOther ||
+      currentSalary.bankName !== finalBankName ||
+      currentSalary.accountNumber !== finalAccountNumber ||
+      currentSalary.ifscCode !== finalIfscCode;
+
+    const computedGross = finalBasicSalary + finalHra + finalConveyance + finalMedical + finalSpecial;
+
     const newVersion = currentStaff.version + 1;
 
     const cleanStaffData = Object.fromEntries(
       Object.entries(staffData).filter(([_, v]) => v !== undefined)
     ) as typeof staffData;
+
+    let staffStatus = cleanStaffData.status;
+    if (hasSalaryChange) {
+      staffStatus = "Active";
+    }
 
     // Mark all existing rows for this staffId as inactive
     await db
@@ -231,6 +280,8 @@ export const staffRoutes = new Hono<AuthEnv>()
       .insert(staff)
       .values({
         ...cleanStaffData,
+        status: staffStatus || "Active",
+        salary: String(computedGross),
         staffId: id,
         employeeCode: currentStaff.employeeCode,
         userId: currentStaff.userId,
@@ -246,19 +297,20 @@ export const staffRoutes = new Hono<AuthEnv>()
       .values({
         staffId: newStaffRow.staffId,
         staffVersion: newStaffRow.version,
-        basicSalary,
-        hra,
-        conveyance,
-        medical,
-        special,
-        epf,
-        esi,
-        professionalTax,
-        otherDeductions,
-        bankName,
-        accountNumber,
-        ifscCode,
+        basicSalary: String(finalBasicSalary),
+        hra: String(finalHra),
+        conveyance: String(finalConveyance),
+        medical: String(finalMedical),
+        special: String(finalSpecial),
+        epf: String(finalEpf),
+        esi: String(finalEsi),
+        professionalTax: String(finalPt),
+        otherDeductions: String(finalOther),
+        bankName: finalBankName,
+        accountNumber: finalAccountNumber,
+        ifscCode: finalIfscCode,
       })
+      .returning()
       .execute();
 
     // Handle department assignment for new version

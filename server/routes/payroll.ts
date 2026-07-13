@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -50,6 +50,9 @@ export const payrollRoutes = new Hono<AuthEnv>()
         netSalary: payslips.netSalary,
         version: payslips.version,
         status: payslips.status,
+        hrNotes: payslips.hrNotes,
+        cooNotes: payslips.cooNotes,
+        accountsNotes: payslips.accountsNotes,
         createdAt: payslips.createdAt,
         employeeCode: staff.employeeCode,
         name: staff.name,
@@ -88,6 +91,9 @@ export const payrollRoutes = new Hono<AuthEnv>()
         netSalary: payslips.netSalary,
         version: payslips.version,
         status: payslips.status,
+        hrNotes: payslips.hrNotes,
+        cooNotes: payslips.cooNotes,
+        accountsNotes: payslips.accountsNotes,
         createdAt: payslips.createdAt,
         employeeCode: staff.employeeCode,
         name: staff.name,
@@ -127,22 +133,38 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .from(leaveTypes)
       .where(eq(leaveTypes.active, true))
       .execute();
+    const queryYearStart = new Date(yearStart.getTime() - 24 * 60 * 60 * 1000);
+    const queryYearEnd = new Date(yearEnd.getTime() + 24 * 60 * 60 * 1000);
+
     const approvedLeaves = await db
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStart.toISOString()} AND ${leaveRequests.startDate} <= ${yearEnd.toISOString()}`
+        sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${queryYearStart.toISOString()} AND ${leaveRequests.startDate} <= ${queryYearEnd.toISOString()}`
       )
       .execute();
+
+    const getLocalDateStr = (d: Date) => {
+      return new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    };
+    const yearStartStr = `${year}-01-01`;
+    const yearEndStr = `${year}-12-31`;
 
     // Count days taken per leave type
     const daysByType: Record<string, number> = {};
     for (const lr of approvedLeaves) {
-      const start = lr.startDate;
-      const end = lr.endDate;
+      const lrStartStr = getLocalDateStr(lr.startDate);
+      const lrEndStr = getLocalDateStr(lr.endDate);
+      if (lrEndStr < yearStartStr || lrStartStr > yearEndStr) {
+        continue;
+      }
+      const overlapStartStr = lrStartStr < yearStartStr ? yearStartStr : lrStartStr;
+      const overlapEndStr = lrEndStr > yearEndStr ? yearEndStr : lrEndStr;
+      const d1 = new Date(`${overlapStartStr}T00:00:00Z`);
+      const d2 = new Date(`${overlapEndStr}T00:00:00Z`);
       const days = lr.isHalfDay
         ? 0.5
-        : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+        : Math.max(1, Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1);
       daysByType[lr.leaveType] = (daysByType[lr.leaveType] ?? 0) + days;
     }
 
@@ -163,18 +185,18 @@ export const payrollRoutes = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = z
       .object({
-        basicSalary: z.number().min(0),
-        hra: z.number().min(0),
-        conveyance: z.number().min(0),
-        medical: z.number().min(0),
-        special: z.number().min(0),
-        epf: z.number().min(0),
-        esi: z.number().min(0),
-        professionalTax: z.number().min(0),
-        otherDeductions: z.number().min(0),
-        lateAttendance: z.number().min(0),
-        leaveDaysTaken: z.number().min(0),
-        leaveDeduction: z.number().min(0),
+        basicSalary: z.coerce.number().min(0),
+        hra: z.coerce.number().min(0),
+        conveyance: z.coerce.number().min(0),
+        medical: z.coerce.number().min(0),
+        special: z.coerce.number().min(0),
+        epf: z.coerce.number().min(0),
+        esi: z.coerce.number().min(0),
+        professionalTax: z.coerce.number().min(0),
+        otherDeductions: z.coerce.number().min(0),
+        lateAttendance: z.coerce.number().min(0),
+        leaveDaysTaken: z.coerce.number().min(0),
+        leaveDeduction: z.coerce.number().min(0),
       })
       .parse(await c.req.json());
 
@@ -186,6 +208,9 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .then((res: any) => res[0]);
     if (!existing) {
       return c.json({ error: "Payslip not found" }, 404);
+    }
+    if (existing.status !== "Active") {
+      return c.json({ error: `Cannot edit a payslip with status: ${existing.status}` }, 400);
     }
 
     const gross =
@@ -209,19 +234,19 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .values({
         staffId: existing.staffId,
         month: existing.month,
-        basicSalary: input.basicSalary,
-        hra: input.hra,
-        conveyance: input.conveyance,
-        medical: input.medical,
-        special: input.special,
-        epf: input.epf,
-        esi: input.esi,
-        professionalTax: input.professionalTax,
-        otherDeductions: input.otherDeductions,
-        lateAttendance: input.lateAttendance,
-        leaveDaysTaken: input.leaveDaysTaken,
-        leaveDeduction: input.leaveDeduction,
-        netSalary: net,
+        basicSalary: String(input.basicSalary),
+        hra: String(input.hra),
+        conveyance: String(input.conveyance),
+        medical: String(input.medical),
+        special: String(input.special),
+        epf: String(input.epf),
+        esi: String(input.esi),
+        professionalTax: String(input.professionalTax),
+        otherDeductions: String(input.otherDeductions),
+        lateAttendance: String(input.lateAttendance),
+        leaveDaysTaken: String(input.leaveDaysTaken),
+        leaveDeduction: String(input.leaveDeduction),
+        netSalary: String(net),
         version: existing.version + 1,
         status: "Active",
       })
@@ -229,6 +254,105 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .execute();
 
     return c.json(newRow);
+  })
+  .post("/hr/payroll/payslips/:id/approve", async (c) => {
+    const session = c.get("session");
+    if (!session) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const { id } = idParam.parse(c.req.param());
+    const { targetStatus, note } = z
+      .object({
+        targetStatus: z.enum(["Approved by HR", "Approved by COO", "Paid"]),
+        note: z.string().optional().nullable(),
+      })
+      .parse(await c.req.json());
+
+    const existing = await db
+      .select()
+      .from(payslips)
+      .where(eq(payslips.id, id))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (!existing) {
+      return c.json({ error: "Payslip not found" }, 404);
+    }
+
+    const currentStaff = await getCurrentStaff(c);
+
+    if (targetStatus === "Approved by HR") {
+      if (existing.status !== "Active") {
+        return c.json({ error: "Payslip must be Active to be approved by HR." }, 400);
+      }
+      const isHrOrAdmin = session.user.role === "admin" || session.user.role === "hr";
+      if (!isHrOrAdmin) {
+        return c.json({ error: "Only HR or Admin staff can approve payslips as HR." }, 403);
+      }
+      
+      const [updated] = await db
+        .update(payslips)
+        .set({ status: targetStatus, hrNotes: note })
+        .where(eq(payslips.id, id))
+        .returning()
+        .execute();
+      return c.json(updated);
+    } 
+    
+    if (targetStatus === "Approved by COO") {
+      if (existing.status !== "Approved by HR") {
+        return c.json({ error: "Payslip must be Approved by HR to be approved by COO." }, 400);
+      }
+      if (!currentStaff || currentStaff.role !== "Chief Operating Officer") {
+        return c.json({ error: "Only the Chief Operating Officer can approve payslips." }, 403);
+      }
+      
+      const [updated] = await db
+        .update(payslips)
+        .set({ status: targetStatus, cooNotes: note })
+        .where(eq(payslips.id, id))
+        .returning()
+        .execute();
+      return c.json(updated);
+    }
+
+    if (targetStatus === "Paid") {
+      if (existing.status !== "Approved by COO") {
+        return c.json({ error: "Payslip must be Approved by COO before marking as Paid." }, 400);
+      }
+      if (!currentStaff) {
+        return c.json({ error: "Staff profile required to approve payments." }, 403);
+      }
+      
+      const isAccounts = await db
+        .select({ name: departments.name })
+        .from(staffDepartments)
+        .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+        .where(
+          and(
+            eq(staffDepartments.staffId, currentStaff.staffId),
+            eq(staffDepartments.status, "Active"),
+            eq(departments.name, "Accounts")
+          )
+        )
+        .limit(1)
+        .then((res: any) => res.length > 0);
+
+      const isAuthorized = session.user.role === "admin" || isAccounts;
+      if (!isAuthorized) {
+        return c.json({ error: "Only staff from the Accounts department can mark payslips as Paid." }, 403);
+      }
+
+      const [updated] = await db
+        .update(payslips)
+        .set({ status: targetStatus, accountsNotes: note })
+        .where(eq(payslips.id, id))
+        .returning()
+        .execute();
+      return c.json(updated);
+    }
+
+    return c.json({ error: "Invalid target status" }, 400);
   })
   .post("/hr/payroll/generate", async (c) => {
     const session = c.get("session");
@@ -282,6 +406,83 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .execute();
     }
 
+    const getLocalDateStr = (d: Date) => {
+      return new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    };
+    const monthStartStr = `${month}-01`;
+    const monthEndStr = `${month}-${String(daysInMonth).padStart(2, "0")}`;
+
+    // Broaden UTC range by 1 day on both ends to capture timezone border leaves
+    const queryStart = new Date(monthStart.getTime() - 24 * 60 * 60 * 1000);
+    const queryEnd = new Date(monthEnd.getTime() + 24 * 60 * 60 * 1000);
+
+    const staffIds = activeStaff.map((s) => s.staffId);
+    if (staffIds.length === 0) {
+      return c.json({ error: "No active employees found to generate payroll." }, 400);
+    }
+
+    const pendingLeaves = await db
+      .select()
+      .from(leaveRequests)
+      .where(
+        sql`${leaveRequests.status} IN ('Pending', 'Forwarded', 'Pending Payroll Approval') AND ${leaveRequests.endDate} >= ${queryStart.toISOString()} AND ${leaveRequests.startDate} <= ${queryEnd.toISOString()}`
+      )
+      .execute();
+
+    const staffIdsSet = new Set(staffIds);
+    const overlappingPendingLeaves = pendingLeaves.filter((lr) => {
+      if (!staffIdsSet.has(lr.staffId)) return false;
+      const lrStartStr = getLocalDateStr(lr.startDate);
+      const lrEndStr = getLocalDateStr(lr.endDate);
+      return lrEndStr >= monthStartStr && lrStartStr <= monthEndStr;
+    });
+
+    if (overlappingPendingLeaves.length > 0) {
+      const staffMap = new Map(activeStaff.map((s) => [s.staffId, s.name]));
+      const details = overlappingPendingLeaves
+        .map((lr) => {
+          const empName = staffMap.get(lr.staffId) || `Staff ID ${lr.staffId}`;
+          return `${empName} (Leave request ${lr.requestNo || lr.id})`;
+        })
+        .join(", ");
+      return c.json(
+        {
+          error: `Cannot generate payroll: Pending leave requests exist for target month: ${details}. Please approve or reject them first.`
+        },
+        400
+      );
+    }
+
+    // Guardrail against undefined salary structures
+    const staffLackingSalary = await db
+      .select({
+        staffId: staff.staffId,
+        name: staff.name,
+      })
+      .from(staff)
+      .leftJoin(
+        staffSalaries,
+        sql`${staff.staffId} = ${staffSalaries.staffId} AND ${staff.version} = ${staffSalaries.staffVersion}`
+      )
+      .where(
+        and(
+          inArray(staff.staffId, staffIds),
+          eq(staff.active, true),
+          sql`${staffSalaries.id} IS NULL`
+        )
+      )
+      .execute();
+
+    if (staffLackingSalary.length > 0) {
+      const names = staffLackingSalary.map((s) => s.name).join(", ");
+      return c.json(
+        {
+          error: `Cannot generate payroll: Salary structure is not defined for active staff: ${names}. Please define salary structures first.`
+        },
+        400
+      );
+    }
+
     // Get all active leave types for deduction lookup
     const allLeaveTypes = await db.select().from(leaveTypes).execute();
     const leaveTypeMap: Record<string, { payable: boolean; paymentRate: number }> =
@@ -289,7 +490,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
     for (const lt of allLeaveTypes) {
       leaveTypeMap[lt.name] = {
         payable: lt.payable,
-        paymentRate: lt.paymentRate,
+        paymentRate: Number(lt.paymentRate || 0),
       };
     }
 
@@ -297,27 +498,11 @@ export const payrollRoutes = new Hono<AuthEnv>()
     const skippedEmployees: string[] = [];
 
     for (const employee of activeStaff) {
-      // Check if employee has any pending leaves
-      const pendingLeaves = await db
-        .select()
-        .from(leaveRequests)
-        .where(
-          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} IN ('Pending', 'Forwarded', 'Pending Payroll Approval')`
-        )
-        .limit(1)
-        .execute();
-
-      if (pendingLeaves.length > 0) {
-        // Skip payroll processing for this employee
-        skippedEmployees.push(employee.name);
-        continue;
-      }
-
       // Get salary structure
       const structure = await db
         .select()
         .from(staffSalaries)
-        .where(eq(staffSalaries.staffId, employee.staffId))
+        .where(and(eq(staffSalaries.staffId, employee.staffId), eq(staffSalaries.staffVersion, employee.version)))
         .limit(1)
         .then((res: any) => res[0]);
 
@@ -333,18 +518,18 @@ export const payrollRoutes = new Hono<AuthEnv>()
         lateAtt = 0;
 
       if (structure) {
-        basic = structure.basicSalary;
-        hra = structure.hra;
-        conveyance = structure.conveyance;
-        medical = structure.medical;
-        special = structure.special;
-        epf = structure.epf;
-        esi = structure.esi;
-        profTax = structure.professionalTax;
-        otherDed = structure.otherDeductions;
-        lateAtt = structure.lateAttendance;
+        basic = Number(structure.basicSalary || 0);
+        hra = Number(structure.hra || 0);
+        conveyance = Number(structure.conveyance || 0);
+        medical = Number(structure.medical || 0);
+        special = Number(structure.special || 0);
+        epf = Number(structure.epf || 0);
+        esi = Number(structure.esi || 0);
+        profTax = Number(structure.professionalTax || 0);
+        otherDed = Number(structure.otherDeductions || 0);
+        lateAtt = Number(structure.lateAttendance || 0);
       } else {
-        const total = employee.salary || 0;
+        const total = Number(employee.salary || 0);
         basic = Math.round(total * 0.5);
         hra = Math.round(total * 0.3);
         conveyance = Math.round(total * 0.1);
@@ -355,12 +540,15 @@ export const payrollRoutes = new Hono<AuthEnv>()
       const gross = basic + hra + conveyance + medical + special;
       const dailyRate = gross / daysInMonth;
 
+      const queryStart = new Date(monthStart.getTime() - 24 * 60 * 60 * 1000);
+      const queryEnd = new Date(monthEnd.getTime() + 24 * 60 * 60 * 1000);
+
       // Count approved leave days overlapping with the target month
       const approvedLeaves = await db
         .select()
         .from(leaveRequests)
         .where(
-          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStart.toISOString()} AND ${leaveRequests.startDate} <= ${monthEnd.toISOString()}`
+          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${queryStart.toISOString()} AND ${leaveRequests.startDate} <= ${queryEnd.toISOString()}`
         )
         .execute();
 
@@ -368,13 +556,20 @@ export const payrollRoutes = new Hono<AuthEnv>()
       let leaveDeduction = 0;
 
       for (const lr of approvedLeaves) {
-        const lrStart = lr.startDate.getTime() / 1000;
-        const lrEnd = lr.endDate.getTime() / 1000;
-        const overlapStart = Math.max(lrStart, monthStart.getTime() / 1000);
-        const overlapEnd = Math.min(lrEnd, monthEnd.getTime() / 1000);
-        const days = Math.max(
+        const lrStartStr = getLocalDateStr(lr.startDate);
+        const lrEndStr = getLocalDateStr(lr.endDate);
+        if (lrEndStr < monthStartStr || lrStartStr > monthEndStr) {
+          continue;
+        }
+
+        const overlapStartStr = lrStartStr < monthStartStr ? monthStartStr : lrStartStr;
+        const overlapEndStr = lrEndStr > monthEndStr ? monthEndStr : lrEndStr;
+        const d1 = new Date(`${overlapStartStr}T00:00:00Z`);
+        const d2 = new Date(`${overlapEndStr}T00:00:00Z`);
+
+        const days = lr.isHalfDay ? 0.5 : Math.max(
           1,
-          Math.round((overlapEnd - overlapStart) / 86400) + 1
+          Math.round((d2.getTime() - d1.getTime()) / 86400000) + 1
         );
         leaveDaysTaken += days;
 
@@ -382,62 +577,6 @@ export const payrollRoutes = new Hono<AuthEnv>()
         const deductionRate = lt ? (!lt.payable ? 100 : lt.paymentRate) : 100;
         leaveDeduction += dailyRate * days * (deductionRate / 100);
       }
-
-      // Calculate unexcused absences and half days based on rosters and attendance
-      let unexcusedAbsenceDays = 0;
-      let halfDayDays = 0;
-
-      const employeeRosters = await db
-        .select({ startDate: rosters.startDate, endDate: rosters.endDate })
-        .from(rosters)
-        .where(eq(rosters.staffId, employee.staffId))
-        .execute();
-
-      const monthStartStr = `${month}-01`;
-      const monthEndStr = `${month}-${String(daysInMonth).padStart(2, "0")}`;
-      const employeeAttendance = await db
-        .select({ date: attendance.date, status: attendance.status })
-        .from(attendance)
-        .where(
-          sql`${attendance.staffId} = ${employee.staffId} AND ${attendance.date} >= ${monthStartStr} AND ${attendance.date} <= ${monthEndStr}`
-        )
-        .execute();
-      const attendanceStatusMap = new Map(
-        employeeAttendance.map((a) => [a.date, a.status])
-      );
-
-      for (let day = 1; day <= daysInMonth; day++) {
-        const dayStr = `${month}-${String(day).padStart(2, "0")}`;
-        const dayTimestamp =
-          new Date(`${dayStr}T12:00:00Z`).getTime() / 1000;
-
-        const isRostered = employeeRosters.some(
-          (r) => r.startDate <= dayStr && r.endDate >= dayStr
-        );
-        if (!isRostered) continue;
-
-        const onLeave = approvedLeaves.some((l) => {
-          const lStart = l.startDate.getTime() / 1000;
-          const lEnd = l.endDate.getTime() / 1000;
-          return lStart <= dayTimestamp && lEnd >= dayTimestamp;
-        });
-
-        if (onLeave) continue;
-
-        const attStatus = attendanceStatusMap.get(dayStr);
-        if (attStatus === "Absent") {
-          unexcusedAbsenceDays++;
-        } else if (attStatus === "Half-day") {
-          halfDayDays++;
-        } else if (!attStatus) {
-          unexcusedAbsenceDays++;
-        }
-      }
-
-      const attendanceDeduction =
-        dailyRate * (unexcusedAbsenceDays + 0.5 * halfDayDays);
-      leaveDaysTaken += unexcusedAbsenceDays + 0.5 * halfDayDays;
-      leaveDeduction += attendanceDeduction;
 
       leaveDeduction = Math.round(leaveDeduction * 100) / 100;
       const statutoryDeductions = epf + esi + profTax + otherDed + lateAtt;
@@ -456,19 +595,19 @@ export const payrollRoutes = new Hono<AuthEnv>()
       const payslipValues = {
         staffId: employee.staffId,
         month,
-        basicSalary: basic,
-        hra,
-        conveyance,
-        medical,
-        special,
-        epf,
-        esi,
-        professionalTax: profTax,
-        otherDeductions: otherDed,
-        lateAttendance: lateAtt,
-        leaveDaysTaken,
-        leaveDeduction,
-        netSalary: net,
+        basicSalary: String(basic),
+        hra: String(hra),
+        conveyance: String(conveyance),
+        medical: String(medical),
+        special: String(special),
+        epf: String(epf),
+        esi: String(esi),
+        professionalTax: String(profTax),
+        otherDeductions: String(otherDed),
+        lateAttendance: String(lateAtt),
+        leaveDaysTaken: String(leaveDaysTaken),
+        leaveDeduction: String(leaveDeduction),
+        netSalary: String(net),
         status: "Active" as const,
       };
 
