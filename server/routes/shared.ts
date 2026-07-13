@@ -230,6 +230,20 @@ export const staffInput = z.object({
       esiNumber: z.string().optional(),
       dateOfJoining: z.string().optional(),
       lastWorkingDate: z.string().optional(),
+      religion: z.string().optional(),
+      nominees: z
+        .array(
+          z.object({
+            name: z.string().optional(),
+            percentage: z.coerce.number().optional(),
+            relationship: z.string().optional(),
+          })
+        )
+        .default([]),
+      mncRegistrationNo: z.string().optional(),
+      mncValidityUpto: z.string().optional(),
+      mmcRegistrationNo: z.string().optional(),
+      mmcValidityUpto: z.string().optional(),
     })
     .optional(),
 });

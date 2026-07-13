@@ -237,6 +237,18 @@ function ViewStaff() {
                       
                       <span className="text-muted-foreground font-medium">ESI Number</span>
                       <span className="font-semibold text-foreground font-mono">{profile?.esiNumber || "N/A"}</span>
+
+                      <span className="text-muted-foreground font-medium">MNC Registration No</span>
+                      <span className="font-semibold text-foreground font-mono">{profile?.mncRegistrationNo || "N/A"}</span>
+
+                      <span className="text-muted-foreground font-medium">MNC Validity Upto</span>
+                      <span className="font-semibold text-foreground">{profile?.mncValidityUpto || "N/A"}</span>
+
+                      <span className="text-muted-foreground font-medium">MMC Registration No</span>
+                      <span className="font-semibold text-foreground font-mono">{profile?.mmcRegistrationNo || "N/A"}</span>
+
+                      <span className="text-muted-foreground font-medium">MMC Validity Upto</span>
+                      <span className="font-semibold text-foreground">{profile?.mmcValidityUpto || "N/A"}</span>
                     </>
                   )}
                 </div>
@@ -265,20 +277,59 @@ function ViewStaff() {
               </Card>
             )}
 
-            {/* Family Details */}
+            {/* Demographics & Family Details */}
             <Card>
               <CardHeader className="flex flex-row items-center gap-2">
                 <UserRound className="text-muted-foreground" size={18} />
-                <CardTitle className="text-base">Family Details</CardTitle>
+                <CardTitle className="text-base">Demographics &amp; Family Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
+                  <span className="text-muted-foreground font-medium">Sex</span>
+                  <span className="font-semibold text-foreground">{profile?.gender || "N/A"}</span>
+
+                  <span className="text-muted-foreground font-medium">Religion</span>
+                  <span className="font-semibold text-foreground">{profile?.religion || "N/A"}</span>
+
+                  <span className="text-muted-foreground font-medium">Marital Status</span>
+                  <span className="font-semibold text-foreground">{profile?.maritalStatus || "N/A"}</span>
+
+                  {profile?.maritalStatus === "Married" && (
+                    <>
+                      <span className="text-muted-foreground font-medium">Spouse's Name</span>
+                      <span className="font-semibold text-foreground">{profile?.spouseName || "N/A"}</span>
+                    </>
+                  )}
+
                   <span className="text-muted-foreground font-medium">Father's Name</span>
                   <span className="font-semibold text-foreground">{profile?.fatherName || "N/A"}</span>
                   
                   <span className="text-muted-foreground font-medium">Mother's Name</span>
                   <span className="font-semibold text-foreground">{profile?.motherName || "N/A"}</span>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Nominee Details */}
+            <Card>
+              <CardHeader className="flex flex-row items-center gap-2">
+                <Users className="text-muted-foreground" size={18} />
+                <CardTitle className="text-base">Nominee Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {Array.isArray(profile?.nominees) && profile.nominees.length > 0 ? (
+                  <div className="space-y-4">
+                    {profile.nominees.map((nom: any, i: number) => (
+                      <div key={i} className="border-l-2 border-primary/20 pl-4 py-1">
+                        <p className="font-semibold text-sm">{nom.name}</p>
+                        <p className="text-xs text-muted-foreground">Relationship: {nom.relationship}</p>
+                        <p className="text-xs text-muted-foreground">Share Percentage: {nom.percentage}%</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No nominee details recorded.</p>
+                )}
               </CardContent>
             </Card>
 

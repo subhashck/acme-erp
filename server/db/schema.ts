@@ -207,6 +207,12 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   esiNumber: text("esi_number"),
   dateOfJoining: text("date_of_joining"),
   lastWorkingDate: text("last_working_date"),
+  religion: text("religion"),
+  nominees: text("nominees").notNull().default("[]"),
+  mncRegistrationNo: text("mnc_registration_no"),
+  mncValidityUpto: text("mnc_validity_upto"),
+  mmcRegistrationNo: text("mmc_registration_no"),
+  mmcValidityUpto: text("mmc_validity_upto"),
   ...timestamps
 }, (table) => [
   unique("staff_hr_profiles_staff_id_version_unique").on(table.staffId, table.staffVersion),

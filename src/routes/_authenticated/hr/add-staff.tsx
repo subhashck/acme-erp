@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
-import { ArrowLeft, BriefcaseBusiness, Check, ChevronLeft, ChevronRight, IdCard, Plus, Save, UserRound, Trash2, Calendar as CalendarIcon } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Check, ChevronLeft, ChevronRight, IdCard, Plus, Save, UserRound, Trash2, Calendar as CalendarIcon, Users } from "lucide-react";
 import { useForm, useFieldArray, Controller, type FieldPath } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
@@ -57,8 +57,33 @@ const staffSchema = z.object({
   lastWorkingDate: z.string().optional(),
   isExecutive: z.boolean().optional(),
   supervisor1Id: z.string().optional(),
-  supervisor2Id: z.string().optional()
-});
+  supervisor2Id: z.string().optional(),
+  gender: z.enum(["Male", "Female", "Others"]).optional(),
+  religion: z.string().optional(),
+  maritalStatus: z.enum(["Single", "Married", "Divorced", "Widowed"]).optional(),
+  spouseName: z.string().optional(),
+  nominees: z.array(z.object({
+    name: z.string().min(1, "Nominee name is required"),
+    relationship: z.string().min(1, "Relationship is required"),
+    percentage: z.coerce.number().min(1, "Percentage must be at least 1").max(100, "Percentage cannot exceed 100")
+  })).default([]),
+  mncRegistrationNo: z.string().optional(),
+  mncValidityUpto: z.string().optional(),
+  mmcRegistrationNo: z.string().optional(),
+  mmcValidityUpto: z.string().optional()
+}).refine(
+  (data) => {
+    if (data.nominees && data.nominees.length > 0) {
+      const sum = data.nominees.reduce((acc, curr) => acc + (curr.percentage || 0), 0);
+      return sum === 100;
+    }
+    return true;
+  },
+  {
+    path: ["nominees"],
+    message: "The sum of nominee percentages must equal 100%",
+  }
+);
 
 type StaffFormInput = z.input<typeof staffSchema>;
 type StaffFormValues = z.output<typeof staffSchema>;
@@ -81,7 +106,16 @@ const defaultValues: Partial<StaffFormInput> = {
   lastWorkingDate: "",
   isExecutive: false,
   supervisor1Id: "",
-  supervisor2Id: ""
+  supervisor2Id: "",
+  gender: "Male",
+  religion: "",
+  maritalStatus: "Single",
+  spouseName: "",
+  nominees: [],
+  mncRegistrationNo: "",
+  mncValidityUpto: "",
+  mmcRegistrationNo: "",
+  mmcValidityUpto: ""
 };
 
 function AddStaff() {
@@ -117,6 +151,7 @@ function AddStaff() {
   });
 
   const isExecutiveVal = form.watch("isExecutive");
+  const maritalStatusVal = form.watch("maritalStatus");
 
   const { fields: edFields, append: appendEd, remove: removeEd } = useFieldArray({
     control: form.control,
@@ -126,6 +161,11 @@ function AddStaff() {
   const { fields: proFields, append: appendPro, remove: removePro } = useFieldArray({
     control: form.control,
     name: "professionalHistory"
+  });
+
+  const { fields: nomineeFields, append: appendNominee, remove: removeNominee } = useFieldArray({
+    control: form.control,
+    name: "nominees"
   });
 
 
@@ -161,7 +201,16 @@ function AddStaff() {
         lastWorkingDate: profile?.lastWorkingDate ?? "",
         isExecutive: existingStaff.isExecutive ?? false,
         supervisor1Id: supervisorsQuery.data?.explicitSupervisors?.supervisor1?.staffId?.toString() ?? "",
-        supervisor2Id: supervisorsQuery.data?.explicitSupervisors?.supervisor2?.staffId?.toString() ?? ""
+        supervisor2Id: supervisorsQuery.data?.explicitSupervisors?.supervisor2?.staffId?.toString() ?? "",
+        gender: (profile?.gender as any) ?? "Male",
+        religion: profile?.religion ?? "",
+        maritalStatus: (profile?.maritalStatus as any) ?? "Single",
+        spouseName: profile?.spouseName ?? "",
+        nominees: Array.isArray(profile?.nominees) ? profile.nominees : [],
+        mncRegistrationNo: profile?.mncRegistrationNo ?? "",
+        mncValidityUpto: profile?.mncValidityUpto ?? "",
+        mmcRegistrationNo: profile?.mmcRegistrationNo ?? "",
+        mmcValidityUpto: profile?.mmcValidityUpto ?? ""
       });
       hasInitialized.current = true;
     }
@@ -191,7 +240,16 @@ function AddStaff() {
           dateOfJoining: values.dateOfJoining,
           lastWorkingDate: values.lastWorkingDate,
           educationHistory: values.educationHistory,
-          professionalHistory: values.professionalHistory
+          professionalHistory: values.professionalHistory,
+          gender: values.gender,
+          religion: values.religion,
+          maritalStatus: values.maritalStatus,
+          spouseName: values.maritalStatus === "Married" ? values.spouseName : "",
+          nominees: values.nominees,
+          mncRegistrationNo: values.mncRegistrationNo,
+          mncValidityUpto: values.mncValidityUpto,
+          mmcRegistrationNo: values.mmcRegistrationNo,
+          mmcValidityUpto: values.mmcValidityUpto
         }
       };
 
@@ -308,6 +366,12 @@ function AddStaff() {
               <Field label="Email" type="email" className="md:col-span-2" {...form.register("email")} error={form.formState.errors.email?.message} />
               <Field label="Father's Name" {...form.register("fatherName")} error={form.formState.errors.fatherName?.message} />
               <Field label="Mother's Name" {...form.register("motherName")} error={form.formState.errors.motherName?.message} />
+              <Select label="Sex" {...form.register("gender")} options={["Male", "Female", "Others"]} error={form.formState.errors.gender?.message} />
+              <Select label="Religion" {...form.register("religion")} options={["Hinduism", "Sanamahism", "Islam", "Christianity", "Sikhism", "Buddhism", "Jainism", "Others"]} error={form.formState.errors.religion?.message} />
+              <Select label="Marital Status" {...form.register("maritalStatus")} options={["Single", "Married", "Divorced", "Widowed"]} error={form.formState.errors.maritalStatus?.message} />
+              {maritalStatusVal === "Married" && (
+                <Field label="Spouse's Name" {...form.register("spouseName")} error={form.formState.errors.spouseName?.message} />
+              )}
 
               <div className="md:col-span-2 mt-4">
                 <div className="flex items-center justify-between border-b pb-2 mb-4">
@@ -359,6 +423,40 @@ function AddStaff() {
                   {proFields.length === 0 && <p className="text-sm text-muted-foreground">No professional history added.</p>}
                 </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="border-b">
+            <CardTitle className="flex items-center justify-between text-base">
+              <span className="flex items-center gap-2">
+                <Users size={18} />
+                Nominee Details
+              </span>
+              <Button type="button" variant="outline" size="default" onClick={() => appendNominee({ name: "", relationship: "", percentage: 100 })}>
+                <Plus size={16} className="mr-1" /> Add Nominee
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              {nomineeFields.map((field, i) => (
+                <div key={field.id} className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] gap-4 items-end p-4 border rounded-lg bg-muted/10 relative">
+                  <Field label="Nominee Name" {...form.register(`nominees.${i}.name`)} error={form.formState.errors.nominees?.[i]?.name?.message} />
+                  <Select label="Relationship" {...form.register(`nominees.${i}.relationship`)} options={["Father", "Mother", "Sister", "Brother", "Children", "Others"]} error={form.formState.errors.nominees?.[i]?.relationship?.message} />
+                  <Field label="Percentage (%)" type="number" {...form.register(`nominees.${i}.percentage`)} error={form.formState.errors.nominees?.[i]?.percentage?.message} />
+                  <Button type="button" variant="ghost" size="icon" className="text-destructive mb-1" onClick={() => removeNominee(i)}>
+                    <Trash2 size={16} />
+                  </Button>
+                </div>
+              ))}
+              {nomineeFields.length === 0 && (
+                <p className="text-sm text-muted-foreground">No nominees added. Add one or more nominees if applicable.</p>
+              )}
+              {form.formState.errors.nominees && (
+                <p className="text-sm font-semibold text-destructive mt-2">{form.formState.errors.nominees.message}</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -489,6 +587,78 @@ function AddStaff() {
               <Field label="PAN Number" className="uppercase" {...form.register("pan")} error={form.formState.errors.pan?.message} />
               <Field label="EPF Number" {...form.register("epfNumber")} error={form.formState.errors.epfNumber?.message} />
               <Field label="ESI Number" {...form.register("esiNumber")} error={form.formState.errors.esiNumber?.message} />
+
+              <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
+                <h3 className="font-semibold md:col-span-2">Council Registrations</h3>
+                <Field label="MNC Registration No" {...form.register("mncRegistrationNo")} error={form.formState.errors.mncRegistrationNo?.message} />
+                <div className="flex flex-col gap-1.5">
+                  <Label>MNC Validity Upto</Label>
+                  <Controller
+                    control={form.control}
+                    name="mncValidityUpto"
+                    render={({ field }) => (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-background px-3",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            captionLayout="dropdown"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  />
+                  {form.formState.errors.mncValidityUpto && <p className="text-xs text-destructive">{form.formState.errors.mncValidityUpto.message}</p>}
+                </div>
+
+                <Field label="MMC Registration No" {...form.register("mmcRegistrationNo")} error={form.formState.errors.mmcRegistrationNo?.message} />
+                <div className="flex flex-col gap-1.5">
+                  <Label>MMC Validity Upto</Label>
+                  <Controller
+                    control={form.control}
+                    name="mmcValidityUpto"
+                    render={({ field }) => (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-background px-3",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            captionLayout="dropdown"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  />
+                  {form.formState.errors.mmcValidityUpto && <p className="text-xs text-destructive">{form.formState.errors.mmcValidityUpto.message}</p>}
+                </div>
+              </div>
+
               <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
                 <h3 className="font-semibold md:col-span-2">Bank Details</h3>
                 <Select label="Bank Name" {...form.register("bankName")} options={activeBanks} error={form.formState.errors.bankName?.message} />

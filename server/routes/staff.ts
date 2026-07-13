@@ -169,6 +169,9 @@ export const staffRoutes = new Hono<AuthEnv>()
           professionalHistory: hrProfile.professionalHistory
             ? JSON.stringify(hrProfile.professionalHistory)
             : "[]",
+          nominees: hrProfile.nominees
+            ? JSON.stringify(hrProfile.nominees)
+            : "[]",
         })
         .execute();
     }
@@ -412,6 +415,14 @@ export const staffRoutes = new Hono<AuthEnv>()
         professionalHistory: hrProfile?.professionalHistory
           ? JSON.stringify(hrProfile.professionalHistory)
           : (oldProfile?.professionalHistory ?? "[]"),
+        religion: hrProfile?.religion ?? oldProfile?.religion,
+        nominees: hrProfile?.nominees
+          ? JSON.stringify(hrProfile.nominees)
+          : (oldProfile?.nominees ?? "[]"),
+        mncRegistrationNo: hrProfile?.mncRegistrationNo ?? oldProfile?.mncRegistrationNo,
+        mncValidityUpto: hrProfile?.mncValidityUpto ?? oldProfile?.mncValidityUpto,
+        mmcRegistrationNo: hrProfile?.mmcRegistrationNo ?? oldProfile?.mmcRegistrationNo,
+        mmcValidityUpto: hrProfile?.mmcValidityUpto ?? oldProfile?.mmcValidityUpto,
       })
       .execute();
 
@@ -478,6 +489,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         ...profile,
         educationHistory: JSON.parse(profile.educationHistory || "[]"),
         professionalHistory: JSON.parse(profile.professionalHistory || "[]"),
+        nominees: JSON.parse(profile.nominees || "[]"),
       });
     }
 
@@ -488,6 +500,15 @@ export const staffRoutes = new Hono<AuthEnv>()
       esiNumber: "",
       educationHistory: [],
       professionalHistory: [],
+      religion: "",
+      nominees: [],
+      mncRegistrationNo: "",
+      mncValidityUpto: "",
+      mmcRegistrationNo: "",
+      mmcValidityUpto: "",
+      maritalStatus: "",
+      spouseName: "",
+      gender: "",
     });
   })
 
