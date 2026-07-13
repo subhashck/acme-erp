@@ -940,7 +940,7 @@ export function Shell() {
           </div>
         </header>
         <section className="px-4 py-6 md:px-8 dark:bg-slate-950">
-          <div key={location.pathname} className="animate-page-transition">
+          <div key={router.state.matches[router.state.matches.length - 1]?.pathname || location.pathname} className="animate-page-transition">
             <Outlet />
           </div>
         </section>
