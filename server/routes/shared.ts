@@ -202,8 +202,8 @@ export const staffInput = z.object({
       spouseName: z.string().optional(),
       emergencyContactName: z.string().optional(),
       emergencyContactPhone: z.string().optional(),
-      currentAddress: z.string().optional(),
-      permanentAddress: z.string().optional(),
+      currentAddress: z.string().min(1, "Current address is required"),
+      permanentAddress: z.string().min(1, "Permanent address is required"),
       educationHistory: z
         .array(
           z.object({

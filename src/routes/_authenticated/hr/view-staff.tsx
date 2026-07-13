@@ -301,6 +301,12 @@ function ViewStaff() {
                     </>
                   )}
 
+                  <span className="text-muted-foreground font-medium">Current Address</span>
+                  <span className="font-semibold text-foreground break-words">{profile?.currentAddress || "N/A"}</span>
+
+                  <span className="text-muted-foreground font-medium">Permanent Address</span>
+                  <span className="font-semibold text-foreground break-words">{profile?.permanentAddress || "N/A"}</span>
+
                   <span className="text-muted-foreground font-medium">Father's Name</span>
                   <span className="font-semibold text-foreground">{profile?.fatherName || "N/A"}</span>
                   

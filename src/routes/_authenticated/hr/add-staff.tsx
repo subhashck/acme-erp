@@ -62,6 +62,8 @@ const staffSchema = z.object({
   religion: z.string().optional(),
   maritalStatus: z.enum(["Single", "Married", "Divorced", "Widowed"]).optional(),
   spouseName: z.string().optional(),
+  currentAddress: z.string().min(1, "Current address is required"),
+  permanentAddress: z.string().min(1, "Permanent address is required"),
   nominees: z.array(z.object({
     name: z.string().min(1, "Nominee name is required"),
     relationship: z.string().min(1, "Relationship is required"),
@@ -95,6 +97,8 @@ const defaultValues: Partial<StaffFormInput> = {
   pan: "",
   fatherName: "",
   motherName: "",
+  currentAddress: "",
+  permanentAddress: "",
   epfNumber: "",
   esiNumber: "",
   educationHistory: [],
@@ -190,6 +194,8 @@ function AddStaff() {
         pan: existingStaff.pan ?? "",
         fatherName: profile?.fatherName ?? "",
         motherName: profile?.motherName ?? "",
+        currentAddress: profile?.currentAddress ?? "",
+        permanentAddress: profile?.permanentAddress ?? "",
         epfNumber: profile?.epfNumber ?? "",
         esiNumber: profile?.esiNumber ?? "",
         educationHistory: Array.isArray(profile?.educationHistory) ? profile.educationHistory : [],
@@ -235,6 +241,8 @@ function AddStaff() {
         hrProfile: {
           fatherName: values.fatherName,
           motherName: values.motherName,
+          currentAddress: values.currentAddress,
+          permanentAddress: values.permanentAddress,
           epfNumber: values.epfNumber,
           esiNumber: values.esiNumber,
           dateOfJoining: values.dateOfJoining,
@@ -372,6 +380,26 @@ function AddStaff() {
               {maritalStatusVal === "Married" && (
                 <Field label="Spouse's Name" {...form.register("spouseName")} error={form.formState.errors.spouseName?.message} />
               )}
+
+              <div className="md:col-span-2 grid gap-4 md:grid-cols-2 mt-2 bg-slate-50/50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                <Field label="Current Address" {...form.register("currentAddress")} error={form.formState.errors.currentAddress?.message} />
+                <Field label="Permanent Address" {...form.register("permanentAddress")} error={form.formState.errors.permanentAddress?.message} />
+                <div className="md:col-span-2 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="same-address"
+                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        form.setValue("permanentAddress", form.getValues("currentAddress") || "", { shouldValidate: true });
+                      }
+                    }}
+                  />
+                  <label htmlFor="same-address" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                    Permanent Address is same as Current Address
+                  </label>
+                </div>
+              </div>
 
               <div className="md:col-span-2 mt-4">
                 <div className="flex items-center justify-between border-b pb-2 mb-4">
