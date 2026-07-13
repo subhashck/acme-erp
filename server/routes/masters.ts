@@ -68,7 +68,10 @@ export const mastersRoutes = new Hono<AuthEnv>()
     const input = await jsonBody(c, leaveTypeInput);
     const [row] = await db
       .insert(leaveTypes)
-      .values(input)
+      .values({
+        ...input,
+        paymentRate: String(input.paymentRate),
+      })
       .returning()
       .execute();
     return c.json(row, 201);
@@ -78,7 +81,10 @@ export const mastersRoutes = new Hono<AuthEnv>()
     const input = await jsonBody(c, leaveTypeInput);
     const [row] = await db
       .update(leaveTypes)
-      .set(input)
+      .set({
+        ...input,
+        paymentRate: String(input.paymentRate),
+      })
       .where(eq(leaveTypes.id, id))
       .returning()
       .execute();
