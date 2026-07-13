@@ -47,7 +47,10 @@ export const accountsRoutes = new Hono<AuthEnv>()
     );
     const [row] = await db
       .insert(transactions)
-      .values(input)
+      .values({
+        ...input,
+        amount: input.amount.toFixed(2),
+      })
       .returning()
       .execute();
     return c.json(row, 201);
@@ -132,8 +135,8 @@ export const accountsRoutes = new Hono<AuthEnv>()
       [row] = await db
         .update(consultantRates)
         .set({
-          baseRate: input.baseRate,
-          doctorSharePercent: input.doctorSharePercent,
+          baseRate: String(input.baseRate),
+          doctorSharePercent: String(input.doctorSharePercent),
           updatedAt: new Date(),
         })
         .where(eq(consultantRates.doctorId, input.doctorId))
@@ -144,8 +147,8 @@ export const accountsRoutes = new Hono<AuthEnv>()
         .insert(consultantRates)
         .values({
           doctorId: input.doctorId,
-          baseRate: input.baseRate,
-          doctorSharePercent: input.doctorSharePercent,
+          baseRate: String(input.baseRate),
+          doctorSharePercent: String(input.doctorSharePercent),
         })
         .returning()
         .execute();
@@ -211,8 +214,8 @@ export const accountsRoutes = new Hono<AuthEnv>()
 
     const report = docs.map((doc) => {
       const visits = docVisits.get(doc.staffId) ?? [];
-      const baseRate = doc.baseRate ?? 500;
-      const sharePercent = doc.doctorSharePercent ?? 70;
+      const baseRate = Number(doc.baseRate ?? 500);
+      const sharePercent = Number(doc.doctorSharePercent ?? 70);
 
       let totalConsultantEarnings = 0;
       let totalHospitalEarnings = 0;

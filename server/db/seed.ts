@@ -60,11 +60,11 @@ async function seedDomain() {
   ]).execute();
 
   await db.insert(leaveTypes).values([
-    { name: "Casual Leave", maxDays: 12, payable: true, paymentRate: 100.0 },
-    { name: "Sick Leave", maxDays: 10, payable: true, paymentRate: 100.0 },
-    { name: "Maternity Leave", maxDays: 180, payable: true, paymentRate: 100.0 },
-    { name: "Paternity Leave", maxDays: 15, payable: true, paymentRate: 100.0 },
-    { name: "Loss of Pay", maxDays: 365, payable: false, paymentRate: 0.0 }
+    { name: "Casual Leave", maxDays: 12, payable: true, paymentRate: "100.0" },
+    { name: "Sick Leave", maxDays: 10, payable: true, paymentRate: "100.0" },
+    { name: "Maternity Leave", maxDays: 180, payable: true, paymentRate: "100.0" },
+    { name: "Paternity Leave", maxDays: 15, payable: true, paymentRate: "100.0" },
+    { name: "Loss of Pay", maxDays: 365, payable: false, paymentRate: "0.0" }
   ]).execute();
 
   const deptRows = await db.insert(departments).values([
@@ -223,7 +223,7 @@ async function seedEmployeeUsers() {
         role: employee.role,
         phone: employee.phone,
         email: employee.email,
-        salary: employee.salary,
+        salary: String(employee.salary),
         status: "Active",
         aadhar: "555566667777",
         pan: "EFGHI5678J"
