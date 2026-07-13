@@ -496,6 +496,8 @@ export const staffRoutes = new Hono<AuthEnv>()
     return c.json({
       fatherName: "",
       motherName: "",
+      currentAddress: "",
+      permanentAddress: "",
       epfNumber: "",
       esiNumber: "",
       educationHistory: [],
