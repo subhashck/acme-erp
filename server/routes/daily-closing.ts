@@ -465,10 +465,12 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         isNightEntry: dailyServiceLines.isNightEntry,
         serviceName: serviceCatalog.serviceName,
         department: serviceCatalog.department,
+        sortOrder: serviceCatalog.sortOrder,
       })
       .from(dailyServiceLines)
       .leftJoin(serviceCatalog, eq(dailyServiceLines.serviceId, serviceCatalog.id))
       .where(eq(dailyServiceLines.reportId, id))
+      .orderBy(asc(serviceCatalog.sortOrder), asc(serviceCatalog.serviceName))
       .execute();
 
     const [pharmacyIncome] = await db
@@ -565,6 +567,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         bankReceiptSir: z.number().default(0),
         bankReceiptSirBank: z.string().nullable().optional(),
         cashReceipts: z.number().default(0),
+        bankDeposits: z.string().nullable().optional(),
         status: z.enum(["draft", "submitted", "locked"]).default("draft"),
         // Nested arrays
         serviceLines: z.array(
@@ -713,6 +716,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           totalIncome: totalIncome.toFixed(2),
           totalExpenditure: totalExpenditure.toFixed(2),
           closingBalance: closingBalance.toFixed(2),
+          bankDeposits: payload.bankDeposits || null,
           status: payload.status,
         })
         .returning()
@@ -890,6 +894,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         bankReceiptSir: z.number().default(0),
         bankReceiptSirBank: z.string().nullable().optional(),
         cashReceipts: z.number().default(0),
+        bankDeposits: z.string().nullable().optional(),
         status: z.enum(["draft", "submitted", "locked"]).default("draft"),
         serviceLines: z.array(
           z.object({
@@ -1023,6 +1028,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           totalIncome: totalIncome.toFixed(2),
           totalExpenditure: totalExpenditure.toFixed(2),
           closingBalance: closingBalance.toFixed(2),
+          bankDeposits: payload.bankDeposits || null,
           status: payload.status,
           updatedAt: new Date(),
         })

@@ -60,6 +60,8 @@ const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "BOI", channel: "UPI", sourceLabel: "Pharmacy UPI", amount: 0 },
 ];
 
+
+
 // ─────────────────────────── types ───────────────────────────────
 
 type ServiceQty = Record<number, { rate: number; quantity: number; amount: number }>;
@@ -84,6 +86,7 @@ export interface ReportPayload {
   cashReceiptAcon: number;
   bankReceiptSir: number;
   bankReceiptSirBank: string | null;
+  bankDeposits?: string | null;
   cashReceipts: number;
   status: "draft" | "submitted";
   serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean }>;
@@ -127,7 +130,6 @@ export function ReportForm({
   // ── header state ──────────────────────────────────────────────
   const [reportDate, setReportDate] = React.useState(() => new Date().toISOString().split("T")[0]);
   const [openingBalance, setOpeningBalance] = React.useState("0");
-  const [bankDeposit, setBankDeposit] = React.useState("0");
   const [fundHandoverSir, setFundHandoverSir] = React.useState("0");
   const [fundHandoverMadam, setFundHandoverMadam] = React.useState("0");
   const [status, setStatus] = React.useState<"draft" | "submitted">("draft");
@@ -136,6 +138,7 @@ export function ReportForm({
   const [cashReceiptAcon, setCashReceiptAcon] = React.useState("0");
   const [bankReceiptSir, setBankReceiptSir] = React.useState("0");
   const [bankReceiptSirBank, setBankReceiptSirBank] = React.useState("");
+  const [bankDeposits, setBankDeposits] = React.useState<{ bankName: string; amount: number }[]>([]);
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
@@ -272,7 +275,6 @@ export function ReportForm({
     if (!initialData) return;
 
     setOpeningBalance(String(toNum(initialData.openingBalance)));
-    setBankDeposit(String(toNum(initialData.bankDeposit)));
     setFundHandoverSir(String(toNum(initialData.fundHandoverSir)));
     setFundHandoverMadam(String(toNum(initialData.fundHandoverMadam)));
     setStatus(initialData.status);
@@ -341,6 +343,26 @@ export function ReportForm({
       bank: item.bank, channel: item.channel, sourceLabel: item.sourceLabel, amount: toNum(item.amount),
     }));
     setPaymentChannels(pChannels);
+
+    if (initialData.bankDeposits) {
+      try {
+        const parsed = JSON.parse(initialData.bankDeposits);
+        if (Array.isArray(parsed)) {
+          setBankDeposits(parsed.map((item: any) => ({
+            bankName: item.bankName || "",
+            amount: toNum(item.amount),
+          })));
+        } else {
+          setBankDeposits([]);
+        }
+      } catch (e) {
+        setBankDeposits([]);
+      }
+    } else if (toNum(initialData.bankDeposit) > 0) {
+      setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
+    } else {
+      setBankDeposits([]);
+    }
   }, [initialData]);
 
   // ── derived calculations ──────────────────────────────────────
@@ -384,7 +406,11 @@ export function ReportForm({
   const totalIncome = totalCategoryIncome + nightServicesTotal - discountsTotal;
   const netBalance = totalIncome - totalExpenditures;
 
-  const depositVal = toNum(bankDeposit);
+  const derivedBankDepositTotal = React.useMemo(() => {
+    return bankDeposits.reduce((sum, item) => sum + item.amount, 0);
+  }, [bankDeposits]);
+
+  const depositVal = derivedBankDepositTotal;
   const handoverSirVal = toNum(fundHandoverSir);
   const handoverMadamVal = toNum(fundHandoverMadam);
 
@@ -598,6 +624,7 @@ export function ReportForm({
       cashReceiptAcon: cashAconVal,
       bankReceiptSir: toNum(bankReceiptSir),
       bankReceiptSirBank: bankReceiptSirBank || null,
+      bankDeposits: JSON.stringify(bankDeposits),
       cashReceipts: cashReceiptsSum,
       status,
       serviceLines: parsedServiceLines,
@@ -1133,6 +1160,60 @@ export function ReportForm({
             <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
               <button
                 type="button"
+                onClick={() => toggleSection("discounts")}
+                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
+              >
+                <div>
+                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                    {activeCategories.length + 5}. Discounts &amp; Returns
+                  </CardTitle>
+                  <CardDescription className="text-xs">Refunds and discounts given</CardDescription>
+                </div>
+                <span className="text-xs font-bold text-teal-600">{openSections.discounts ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+              </button>
+              {openSections.discounts && (
+                <CardContent className="p-5 space-y-4">
+                  {discountsReturns.map((item, idx) => (
+                    <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
+                      <div className="flex-1 space-y-1">
+                        <Label className="text-[10px]">Description</Label>
+                        <Input
+                          type="text"
+                          placeholder="e.g. Discount for Patient X"
+                          value={item.label}
+                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, label: e.target.value } : dr)))}
+                          required
+                        />
+                      </div>
+                      <div className="w-48 space-y-1">
+                        <Label className="text-[10px]">Amount (INR)</Label>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={item.amount || ""}
+                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: parseFloat(e.target.value) || 0 } : dr)))}
+                          required
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDiscountsReturns(discountsReturns.filter((_, i) => i !== idx))}
+                        className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                  <Button type="button" variant="outline" onClick={() => setDiscountsReturns([...discountsReturns, { label: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
+                    <Plus size={13} className="mr-1" /> Add Discount / Return
+                  </Button>
+                </CardContent>
+              )}
+            </Card>
+
+            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+              <button
+                type="button"
                 onClick={() => toggleSection("exp")}
                 className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
               >
@@ -1310,31 +1391,33 @@ export function ReportForm({
             )}
           </Card> */}
 
+
+
             <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
               <button
                 type="button"
-                onClick={() => toggleSection("discounts")}
+                onClick={() => toggleSection("deposits")}
                 className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 5}. Discounts &amp; Returns
+                    {activeCategories.length + 6}. Bank Deposits
                   </CardTitle>
-                  <CardDescription className="text-xs">Refunds and discounts given</CardDescription>
+                  <CardDescription className="text-xs">Record cash deposits made to specific bank accounts</CardDescription>
                 </div>
-                <span className="text-xs font-bold text-teal-600">{openSections.discounts ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+                <span className="text-xs font-bold text-teal-600">{openSections.deposits ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
               </button>
-              {openSections.discounts && (
+              {openSections.deposits && (
                 <CardContent className="p-5 space-y-4">
-                  {discountsReturns.map((item, idx) => (
+                  {bankDeposits.map((item, idx) => (
                     <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
                       <div className="flex-1 space-y-1">
-                        <Label className="text-[10px]">Description</Label>
+                        <Label className="text-[10px]">Bank Account / Name</Label>
                         <Input
                           type="text"
-                          placeholder="e.g. Discount for Patient X"
-                          value={item.label}
-                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, label: e.target.value } : dr)))}
+                          placeholder="e.g. Sir (ICICI)"
+                          value={item.bankName}
+                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, bankName: e.target.value } : bd))}
                           required
                         />
                       </div>
@@ -1344,22 +1427,28 @@ export function ReportForm({
                           type="number"
                           placeholder="0"
                           value={item.amount || ""}
-                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: parseFloat(e.target.value) || 0 } : dr)))}
+                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, amount: parseFloat(e.target.value) || 0 } : bd))}
                           required
                         />
                       </div>
                       <button
                         type="button"
-                        onClick={() => setDiscountsReturns(discountsReturns.filter((_, i) => i !== idx))}
+                        onClick={() => setBankDeposits(bankDeposits.filter((_, i) => i !== idx))}
                         className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
                       >
                         <Trash2 size={15} />
                       </button>
                     </div>
                   ))}
-                  <Button type="button" variant="outline" onClick={() => setDiscountsReturns([...discountsReturns, { label: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
-                    <Plus size={13} className="mr-1" /> Add Discount / Return
+                  <Button type="button" variant="outline" onClick={() => setBankDeposits([...bankDeposits, { bankName: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
+                    <Plus size={13} className="mr-1" /> Add Bank Deposit
                   </Button>
+                  {bankDeposits.length > 0 && (
+                    <div className="pt-3 border-t flex justify-between items-center text-sm font-bold text-teal-600">
+                      <span>Total Bank Deposits:</span>
+                      <span>{fmt(derivedBankDepositTotal)}</span>
+                    </div>
+                  )}
                 </CardContent>
               )}
             </Card>
@@ -1372,7 +1461,7 @@ export function ReportForm({
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 6}. Payment Channel Reconciliation
+                    {activeCategories.length + 7}. Payment Channel Reconciliation
                   </CardTitle>
                   <CardDescription className="text-xs">Reconcile transaction collections by card, UPI, and cash per bank channel</CardDescription>
                 </div>
@@ -1568,14 +1657,9 @@ export function ReportForm({
                       <span className="font-bold">{fmt(totalExpenditures)}</span>
                     </div>
 
-                    <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
-                      <Label className=" text-rose-300">Less Bank Deposit</Label>
-                      <Input
-                        type="number" step="0.01"
-                        className=" font-semibold text-right pr-0 bg-transparent"
-                        value={bankDeposit}
-                        onChange={(e) => setBankDeposit(e.target.value)}
-                      />
+                    <div className="flex justify-between items-baseline mt-2 text-rose-300">
+                      <span className="font-semibold text-xs">Less Bank Deposit</span>
+                      <span className="font-bold text-xs">{fmt(derivedBankDepositTotal)}</span>
                     </div>
                     <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
                       <Label className=" text-rose-300"> Handover (Sir)</Label>

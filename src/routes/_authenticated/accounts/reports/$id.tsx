@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, Edit2, Lock, FileText, FileSpreadsheet, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
-import { exportClosingToPDF, exportClosingToExcel } from "../../../../lib/closing-export";
+import { exportClosingToExcel } from "../../../../lib/closing-export";
 import { useRpcQuery } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { Button } from "../../../../ui/button";
@@ -122,14 +122,20 @@ function ReportDetail() {
     ...reportCategoryCodes
   ]));
 
-  console.log(allCategoryCodes)
+  // console.log(allCategoryCodes)
 
   const displayedCategories = allCategoryCodes
     .map((code) => {
       const catObj = categoriesList.find((c) => c.code === code);
       const isCategoryActive = catObj ? catObj.active : false;
       const lines = report.serviceLines?.filter((l: any) => l.department === code && !l.isNightEntry) ?? [];
-      const total = lines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
+      const sortedLines = [...lines].sort((a: any, b: any) => {
+        const orderA = a.sortOrder !== undefined && a.sortOrder !== null ? Number(a.sortOrder) : 999999;
+        const orderB = b.sortOrder !== undefined && b.sortOrder !== null ? Number(b.sortOrder) : 999999;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.serviceName || "").localeCompare(b.serviceName || "");
+      });
+      const total = sortedLines.reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0);
       const label = catObj ? catObj.label : code;
       const sortOrder = catObj ? catObj.sortOrder : 999999;
 
@@ -137,7 +143,7 @@ function ReportDetail() {
         code,
         label,
         active: isCategoryActive,
-        lines,
+        lines: sortedLines,
         total,
         sortOrder,
       };
@@ -145,10 +151,17 @@ function ReportDetail() {
     .filter((cat) => cat.lines.length > 0)
 
 
-  console.log(displayedCategories)
+  // console.log(displayedCategories)
 
   const categoryIncomeTotal = displayedCategories.reduce((sum, cat) => sum + cat.total, 0);
   const nightServicesTotal = report.serviceLines?.filter((l: any) => l.isNightEntry).reduce((sum: number, l: any) => sum + parseFloat(l.amount), 0) ?? 0;
+  const nightLines = report.serviceLines?.filter((l: any) => l.isNightEntry) ?? [];
+  const sortedNightLines = [...nightLines].sort((a: any, b: any) => {
+    const orderA = a.sortOrder !== undefined && a.sortOrder !== null ? Number(a.sortOrder) : 999999;
+    const orderB = b.sortOrder !== undefined && b.sortOrder !== null ? Number(b.sortOrder) : 999999;
+    if (orderA !== orderB) return orderA - orderB;
+    return (a.serviceName || "").localeCompare(b.serviceName || "");
+  });
 
   // Expenditures & Advances
   const expendituresTotal = report.expenditures?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
@@ -182,6 +195,25 @@ function ReportDetail() {
 
   const bankDeposit = parseFloat(report.bankDeposit) || 0;
   const handoverSir = parseFloat(report.fundHandoverSir) || 0;
+
+  const bankDepositsList = (() => {
+    if (report.bankDeposits) {
+      try {
+        const parsed = JSON.parse(report.bankDeposits);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((item: any) => (parseFloat(item.amount) || 0) > 0);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    // Fallback for legacy statements
+    const total = parseFloat(report.bankDeposit) || 0;
+    if (total > 0) {
+      return [{ bankName: "Sir (ICICI)", amount: total }];
+    }
+    return [];
+  })();
   const handoverMadam = parseFloat(report.fundHandoverMadam) || 0;
 
   // Reconciled Payment Channels
@@ -202,9 +234,9 @@ function ReportDetail() {
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
-  const handleExportPDF = () => {
-    exportClosingToPDF(report, categoriesList, expCategoriesList);
-  };
+  // const handleExportPDF = () => {
+  //   exportClosingToPDF(report, categoriesList, expCategoriesList);
+  // };
 
   const handleExportExcel = () => {
     exportClosingToExcel(report, categoriesList, expCategoriesList);
@@ -250,11 +282,11 @@ function ReportDetail() {
               </Link>
             </Button>
           )}
-          <Button onClick={handleExportPDF} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer gap-1.5">
+          {/* <Button onClick={handleExportPDF} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer gap-1.5">
             <FileText size={15} /> Export PDF
-          </Button>
+          </Button> */}
           <Button onClick={handleExportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer gap-1.5">
-            <FileSpreadsheet size={15} /> Export Excel
+            <FileSpreadsheet size={15} /> Export to Excel
           </Button>
         </div>
       </div>
@@ -366,9 +398,17 @@ function ReportDetail() {
                   <span className="font-bold">{fmt(expendituresTotal)}</span>
                 </div>
 
-                <div className="flex justify-between text-rose-300">
-                  <span className="font-semibold">Less Bank Deposit:</span>
-                  <span className="font-bold">{fmt(bankDeposit)}</span>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-rose-300">
+                    <span className="font-semibold">Less Bank Deposit:</span>
+                    <span className="font-bold">{fmt(bankDeposit)}</span>
+                  </div>
+                  {bankDepositsList.map((item, idx) => (
+                    <div key={idx} className="flex justify-between pl-4 text-[10px] text-rose-200/80">
+                      <span>{item.bankName}:</span>
+                      <span>{fmt(item.amount)}</span>
+                    </div>
+                  ))}
                 </div>
                 <div className="flex justify-between text-rose-300">
                   <span className="font-semibold">Handover (Sir):</span>
@@ -431,7 +471,7 @@ function ReportDetail() {
             <Panel title="Night / After-EOD Services" amount={fmt(nightServicesTotal)} titleClass="text-indigo-650 dark:text-indigo-400">
               <table className="w-full text-xs text-left">
                 <tbody>
-                  {report.serviceLines?.filter((l: any) => l.isNightEntry).map((line: any) => (
+                  {sortedNightLines.map((line: any) => (
                     <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
                       <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
                       <td className="py-2 text-right text-muted-foreground">
@@ -674,9 +714,17 @@ function ReportDetail() {
                 </div>
               )}
 
-              <div className="flex justify-between border-b pb-1.5">
-                <span className="text-muted-foreground font-medium">Less Bank Deposit</span>
-                <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(bankDeposit)}</span>
+              <div className="border-b pb-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground font-medium">Less Bank Deposit</span>
+                  <span className="font-semibold text-rose-600 dark:text-rose-455">{fmt(bankDeposit)}</span>
+                </div>
+                {bankDepositsList.map((item, idx) => (
+                  <div key={idx} className="flex justify-between pl-4 text-[11px] text-muted-foreground/80 mt-0.5">
+                    <span>{item.bankName}</span>
+                    <span>{fmt(item.amount)}</span>
+                  </div>
+                ))}
               </div>
               <div className="flex justify-between border-b pb-1.5">
                 <span className="text-muted-foreground font-medium">Fund Handover Sir</span>

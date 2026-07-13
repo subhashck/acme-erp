@@ -610,6 +610,7 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   bankReceiptsTotal: numeric("bank_receipts_total", { precision: 12, scale: 2 }).notNull().default("0"),
   bankReceiptSir: numeric("bank_receipt_sir", { precision: 12, scale: 2 }).notNull().default("0"),
   bankReceiptSirBank: text("bank_receipt_sir_bank"),
+  bankDeposits: text("bank_deposits"),
   status: text("status").notNull().default("draft"),
   ...timestamps
 });
