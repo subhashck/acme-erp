@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { CalendarClock, AlertCircle, Calendar as CalendarIcon, X, Plus, Paperclip } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
@@ -14,6 +14,13 @@ import type { StaffRow, LeaveTypeRow, LeaveRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { Select } from "../../../ui/select";
+import {
+  Select as ShadcnSelect,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select";
 import { Autocomplete } from "../../../ui/autocomplete";
 import { formatDate } from "../../../utils/format";
 import { cn } from "../../../utils/cn";
@@ -276,58 +283,57 @@ function LeaveManagement() {
                 <input
                   type="text"
                   placeholder="Search..."
-                  className="h-9 w-full lg:w-48 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="h-9 w-full lg:w-48 rounded-md border border-input  px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
                 />
-                <select
-                  className="h-9 w-full lg:w-auto rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="All">All Statuses</option>
-                  <option value="Pending">Pending</option>
-                  <option value="Forwarded">Forwarded</option>
-                  <option value="Pending Payroll Approval">Pending Payroll Approval</option>
-                  <option value="Approved">Approved</option>
-                  <option value="Rejected">Rejected</option>
-                </select>
-                <select
-                  className="h-9 w-full lg:w-auto rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={typeFilter}
-                  onChange={(e) => {
-                    setTypeFilter(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="All">All Leave Types</option>
-                  {activeLeaveTypes.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-                <select
-                  className="h-9 w-full lg:w-auto rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={`${sortBy}-${sortOrder}`}
-                  onChange={(e) => {
-                    const [field, order] = e.target.value.split("-");
-                    setSortBy(field);
-                    setSortOrder(order);
-                    setPage(1);
-                  }}
-                >
-                  <option value="createdAt-desc">Newest First</option>
-                  <option value="createdAt-asc">Oldest First</option>
-                  <option value="startDate-asc">Start Date (Asc)</option>
-                  <option value="startDate-desc">Start Date (Desc)</option>
-                  <option value="staffName-asc">Employee (A-Z)</option>
-                  <option value="staffName-desc">Employee (Z-A)</option>
-                </select>
+                <ShadcnSelect value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1); }}>
+                  <SelectTrigger className="h-9 w-full lg:w-40 bg-background text-sm">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Statuses</SelectItem>
+                    <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Forwarded">Forwarded</SelectItem>
+                    <SelectItem value="Pending Payroll Approval">Pending Payroll Approval</SelectItem>
+                    <SelectItem value="Approved">Approved</SelectItem>
+                    <SelectItem value="Rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </ShadcnSelect>
+
+                <ShadcnSelect value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setPage(1); }}>
+                  <SelectTrigger className="h-9 w-full lg:w-44 bg-background text-sm">
+                    <SelectValue placeholder="All Leave Types" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Leave Types</SelectItem>
+                    {activeLeaveTypes.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </ShadcnSelect>
+
+                <ShadcnSelect value={`${sortBy}-${sortOrder}`} onValueChange={(val) => {
+                  const [field, order] = val.split("-");
+                  setSortBy(field);
+                  setSortOrder(order);
+                  setPage(1);
+                }}>
+                  <SelectTrigger className="h-9 w-full lg:w-44 bg-background text-sm">
+                    <SelectValue placeholder="Sort By" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="createdAt-desc">Newest First</SelectItem>
+                    <SelectItem value="createdAt-asc">Oldest First</SelectItem>
+                    <SelectItem value="startDate-asc">Start Date (Asc)</SelectItem>
+                    <SelectItem value="startDate-desc">Start Date (Desc)</SelectItem>
+                    <SelectItem value="staffName-asc">Employee (A-Z)</SelectItem>
+                    <SelectItem value="staffName-desc">Employee (Z-A)</SelectItem>
+                  </SelectContent>
+                </ShadcnSelect>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -376,9 +382,11 @@ function LeaveManagement() {
                         <Button
                           variant="outline"
                           size="default"
-                          onClick={() => navigate({ to: "/hr/review-leave", search: { leaveId: row.id } })}
+                          asChild
                         >
-                          View
+                          <Link to="/hr/review-leave" search={{ leaveId: row.id }}>
+                            View
+                          </Link>
                         </Button>
                       )
                     }
@@ -428,9 +436,11 @@ function LeaveManagement() {
                         <Button
                           variant="outline"
                           className="w-full"
-                          onClick={() => navigate({ to: "/hr/review-leave", search: { leaveId: leave.id } })}
+                          asChild
                         >
-                          View Details
+                          <Link to="/hr/review-leave" search={{ leaveId: leave.id }}>
+                            View Details
+                          </Link>
                         </Button>
                       </div>
                     </div>
