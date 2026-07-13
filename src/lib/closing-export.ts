@@ -142,7 +142,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   // 1. Income Streams
   drawSectionHeader("1. INCOME STREAMS");
   drawRow("To Balance B/f (Opening Balance)", fmt(openingBalance));
-  
+
   displayedCategories.forEach((cat: any) => {
     drawRow(cat.label, fmt(cat.total));
     cat.lines.forEach((line: any) => {
@@ -203,7 +203,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
 
   // 2. Expenditures & Advances
   drawSectionHeader("2. EXPENDITURES & ADVANCES");
-  
+
   groupedExpenditures.forEach((group: any) => {
     const catLabel = expCategoriesList.find((c: any) => c.code === group.category)?.label || group.category;
     drawRow(catLabel, fmt(group.total));
@@ -250,9 +250,19 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   drawRow("Add Cash Income Receipts (Payment Channels)", fmt(cashReceipts));
   drawRow("Less Cash Expenditures", `-${fmt(expendituresTotal)}`);
   drawRow("Less Bank Deposit", `-${fmt(bankDeposit)}`);
+  try {
+    const parsed = JSON.parse(report.bankDeposits || "[]");
+    if (Array.isArray(parsed)) {
+      parsed.filter((item: any) => (parseFloat(item.amount) || 0) > 0).forEach((item: any) => {
+        drawRow(`  - ${item.bankName}`, `-${fmt(parseFloat(item.amount))}`);
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
   drawRow("Handover (Sir)", `-${fmt(handoverSir)}`);
   drawRow("Handover (Madam)", `-${fmt(handoverMadam)}`);
-  
+
   y += 2;
   checkPageBreak(8);
   doc.setDrawColor(203, 213, 225);
@@ -265,12 +275,12 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   doc.setFillColor(isReconciled ? 240 : 254, isReconciled ? 253 : 242, isReconciled ? 250 : 242);
   doc.setDrawColor(isReconciled ? 15 : 225, isReconciled ? 118 : 29, isReconciled ? 110 : 72);
   doc.rect(15, y, 180, 22, "FD");
-  
+
   doc.setTextColor(isReconciled ? 15 : 153, isReconciled ? 118 : 27, isReconciled ? 110 : 27);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.text(`RECONCILIATION: ${isReconciled ? "SUCCESSFUL" : "MISMATCH DETECTED"}`, 20, y + 6);
-  
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(51, 65, 85);
@@ -414,7 +424,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
       const colLetter = String.fromCharCode(65 + colIndex);
       const cellRef = `${colLetter}${rowIndex + 1}`;
       let style = cellStyles[colIndex];
-      
+
       // Color-code column D (colIndex === 3) if it is a number
       if (colIndex === 3 && typeof val === "number" && val !== 0) {
         const isPositive = val > 0;
@@ -426,7 +436,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
           }
         };
       }
-      
+
       if (style) {
         sheetStyles[cellRef] = style;
       }
@@ -448,7 +458,14 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   addRow(["Item Description", "", "Quantity/Details", "Amount"], [styleBold, null, styleBold, styleBoldNumber]);
 
   addRow(["Opening Balance B/f", "", "", openingBalance], [styleRegular, null, styleRegular, styleNumber]);
-  
+
+  if (nightServicesTotal > 0) {
+    addRow(["Night / After-EOD Services", "", "", nightServicesTotal], [styleBold, null, styleRegular, styleNumber]);
+    report.serviceLines?.filter((l: any) => l.isNightEntry).forEach((line: any) => {
+      addRow([`  - ${line.serviceName}`, "", `${line.quantity} × ${fmt(line.rate)}`, line.amount], [styleItalic, null, styleItalic, styleNumber]);
+    });
+  }
+
   displayedCategories.forEach((cat: any) => {
     addRow([cat.label, "", "", cat.total], [styleBold, null, styleRegular, styleNumber]);
     cat.lines.forEach((line: any) => {
@@ -471,12 +488,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     addRow(["Additional Incomes", "", "", additionalIncomeTotal], [styleBold, null, styleRegular, styleNumber]);
   }
 
-  if (nightServicesTotal > 0) {
-    addRow(["Night / After-EOD Services", "", "", nightServicesTotal], [styleBold, null, styleRegular, styleNumber]);
-    report.serviceLines?.filter((l: any) => l.isNightEntry).forEach((line: any) => {
-      addRow([`  - ${line.serviceName}`, "", `${line.quantity} × ${fmt(line.rate)}`, line.amount], [styleItalic, null, styleItalic, styleNumber]);
-    });
-  }
+
 
   if (discountsTotal > 0) {
     addRow(["Less: Discounts & Returns", "", "", -discountsTotal], [styleRegular, null, styleRegular, styleNumber]);
@@ -510,7 +522,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   // 3. Cash Management & Reconciliation
   addRow(["3. CASH MANAGEMENT", "", "", ""], [styleSection, null, null, null]);
   addRow(["Cash Component", "", "Details", "Amount"], [styleBold, null, styleBold, styleBoldNumber]);
-  
+
   addRow(["Opening Balance", "", "", openingBalance], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Cash Receipt (Sir)", "", "", cashSir], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Cash Receipt (Mam)", "", "", cashMam], [styleRegular, null, styleRegular, styleNumber]);
@@ -521,9 +533,19 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   addRow(["Add Cash Income Receipts (Channels)", "", "", cashReceipts], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Less Cash Expenditures", "", "", -expendituresTotal], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Less Bank Deposit", "", "", -bankDeposit], [styleRegular, null, styleRegular, styleNumber]);
+  try {
+    const parsed = JSON.parse(report.bankDeposits || "[]");
+    if (Array.isArray(parsed)) {
+      parsed.filter((item: any) => (parseFloat(item.amount) || 0) > 0).forEach((item: any) => {
+        addRow([`  - ${item.bankName}`, "", "", -parseFloat(item.amount)], [styleItalic, null, styleItalic, styleNumber]);
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
   addRow(["Handover (Sir)", "", "", -handoverSir], [styleRegular, null, styleRegular, styleNumber]);
   addRow(["Handover (Madam)", "", "", -handoverMadam], [styleRegular, null, styleRegular, styleNumber]);
-  
+
   addRow(["CALCULATED CLOSING BALANCE", "", "", closingBalance], [styleBold, null, null, styleBoldNumber]);
   addRow(["", "", "", ""], []);
 
