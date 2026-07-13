@@ -12,6 +12,8 @@ import {
   Check,
   X,
   Download,
+  DollarSign,
+  ShieldCheck,
 } from "lucide-react";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { useRpcQuery, queryClient } from "../../../lib/query";
@@ -20,6 +22,7 @@ import { authClient } from "../../../services/auth";
 import { Button } from "../../../ui/button";
 import { Badge } from "../../../ui/badge";
 import { useSystemSettings, useHospitalSettings } from "../../../lib/settings";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../ui/card";
 
 export const Route = createFileRoute("/_authenticated/hr/view-payslip")({
   validateSearch: z.object({ payslipId: z.number().int().positive() }),
@@ -52,6 +55,9 @@ interface PayslipDetail {
   netSalary: number;
   version: number;
   status: string;
+  hrNotes: string | null;
+  cooNotes: string | null;
+  accountsNotes: string | null;
   createdAt: string;
   employeeCode: string;
   name: string;
@@ -144,6 +150,11 @@ function ViewPayslipPage() {
 
   const p = query.data;
 
+  const staffQuery = useRpcQuery<any[]>(["staff"], () => client.hr.staff.$get());
+  const currentStaff = staffQuery.data?.find(
+    (s: any) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
+  );
+
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -166,18 +177,18 @@ function ViewPayslipPage() {
   // Initialize edit fields when data is loaded
   React.useEffect(() => {
     if (p) {
-      setBasicSalary(p.basicSalary);
-      setHra(p.hra);
-      setConveyance(p.conveyance);
-      setMedical(p.medical);
-      setSpecial(p.special);
-      setEpf(p.epf);
-      setEsi(p.esi);
-      setProfessionalTax(p.professionalTax);
-      setOtherDeductions(p.otherDeductions);
-      setLateAttendance(p.lateAttendance);
-      setLeaveDaysTaken(p.leaveDaysTaken);
-      setLeaveDeduction(p.leaveDeduction);
+      setBasicSalary(Number(p.basicSalary ?? 0));
+      setHra(Number(p.hra ?? 0));
+      setConveyance(Number(p.conveyance ?? 0));
+      setMedical(Number(p.medical ?? 0));
+      setSpecial(Number(p.special ?? 0));
+      setEpf(Number(p.epf ?? 0));
+      setEsi(Number(p.esi ?? 0));
+      setProfessionalTax(Number(p.professionalTax ?? 0));
+      setOtherDeductions(Number(p.otherDeductions ?? 0));
+      setLateAttendance(Number(p.lateAttendance ?? 0));
+      setLeaveDaysTaken(Number(p.leaveDaysTaken ?? 0));
+      setLeaveDeduction(Number(p.leaveDeduction ?? 0));
     }
   }, [p, isEditing]);
 
@@ -205,18 +216,18 @@ function ViewPayslipPage() {
     );
   }
 
-  const currentBasic = isEditing ? basicSalary : p.basicSalary;
-  const currentHra = isEditing ? hra : p.hra;
-  const currentConveyance = isEditing ? conveyance : p.conveyance;
-  const currentMedical = isEditing ? medical : p.medical;
-  const currentSpecial = isEditing ? special : p.special;
-  const currentEpf = isEditing ? epf : p.epf;
-  const currentEsi = isEditing ? esi : p.esi;
-  const currentProfTax = isEditing ? professionalTax : p.professionalTax;
-  const currentOtherDed = isEditing ? otherDeductions : p.otherDeductions;
-  const currentLateAttendance = isEditing ? lateAttendance : p.lateAttendance;
-  const currentLeaveDays = isEditing ? leaveDaysTaken : p.leaveDaysTaken;
-  const currentLeaveDeduction = isEditing ? leaveDeduction : p.leaveDeduction;
+  const currentBasic = Number(isEditing ? basicSalary : p.basicSalary);
+  const currentHra = Number(isEditing ? hra : p.hra);
+  const currentConveyance = Number(isEditing ? conveyance : p.conveyance);
+  const currentMedical = Number(isEditing ? medical : p.medical);
+  const currentSpecial = Number(isEditing ? special : p.special);
+  const currentEpf = Number(isEditing ? epf : p.epf);
+  const currentEsi = Number(isEditing ? esi : p.esi);
+  const currentProfTax = Number(isEditing ? professionalTax : p.professionalTax);
+  const currentOtherDed = Number(isEditing ? otherDeductions : p.otherDeductions);
+  const currentLateAttendance = Number(isEditing ? lateAttendance : p.lateAttendance);
+  const currentLeaveDays = Number(isEditing ? leaveDaysTaken : p.leaveDaysTaken);
+  const currentLeaveDeduction = Number(isEditing ? leaveDeduction : p.leaveDeduction);
 
   const gross = currentBasic + currentHra + currentConveyance + currentMedical + currentSpecial;
   const statutoryDeductions = currentEpf + currentEsi + currentProfTax + currentOtherDed + currentLateAttendance;
@@ -229,18 +240,18 @@ function ViewPayslipPage() {
       const res = await (client.hr.payroll.payslips as any)[":id"].edit.$post({
         param: { id: String(payslipId) },
         json: {
-          basicSalary,
-          hra,
-          conveyance,
-          medical,
-          special,
-          epf,
-          esi,
-          professionalTax,
-          otherDeductions,
-          lateAttendance,
-          leaveDaysTaken,
-          leaveDeduction
+          basicSalary: Number(basicSalary),
+          hra: Number(hra),
+          conveyance: Number(conveyance),
+          medical: Number(medical),
+          special: Number(special),
+          epf: Number(epf),
+          esi: Number(esi),
+          professionalTax: Number(professionalTax),
+          otherDeductions: Number(otherDeductions),
+          lateAttendance: Number(lateAttendance),
+          leaveDaysTaken: Number(leaveDaysTaken),
+          leaveDeduction: Number(leaveDeduction)
         }
       });
       if (!res.ok) {
@@ -254,6 +265,35 @@ function ViewPayslipPage() {
       navigate({ to: "/hr/view-payslip", search: { payslipId: newPayslip.id } });
     } catch (err) {
       alert("Failed to save changes: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApprove = async (targetStatus: "Approved by HR" | "Approved by COO" | "Paid") => {
+    const promptMsg = {
+      "Approved by HR": "Enter optional HR approval narration / note:",
+      "Approved by COO": "Enter optional COO approval narration / note:",
+      "Paid": "Enter optional payment reference or Accounts note:"
+    }[targetStatus];
+
+    const note = window.prompt(promptMsg);
+    if (note === null) return; // cancelled
+
+    setSaving(true);
+    try {
+      const res = await (client.hr.payroll.payslips as any)[":id"].approve.$post({
+        param: { id: String(payslipId) },
+        json: { targetStatus, note }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || `HTTP ${res.status}`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["payslips"] });
+      queryClient.invalidateQueries({ queryKey: ["payslip", payslipId] });
+    } catch (err) {
+      alert("Failed to update status: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setSaving(false);
     }
@@ -498,10 +538,44 @@ function ViewPayslipPage() {
                 <Button
                   variant="outline"
                   size="default"
-                  className="gap-1"
+                  className="gap-1 cursor-pointer"
                   onClick={() => setIsEditing(true)}
+                  disabled={saving}
                 >
                   <Pencil size={13} /> Edit
+                </Button>
+              )}
+              {isHrOrAdmin && p.status === "Active" && (
+                <Button
+                  variant="default"
+                  size="default"
+                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                  onClick={() => handleApprove("Approved by HR")}
+                  disabled={saving}
+                >
+                  <CheckCircle2 size={14} /> Approve as HR
+                </Button>
+              )}
+              {currentStaff?.role === "Chief Operating Officer" && p.status === "Approved by HR" && (
+                <Button
+                  variant="default"
+                  size="default"
+                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
+                  onClick={() => handleApprove("Approved by COO")}
+                  disabled={saving}
+                >
+                  <CheckCircle2 size={14} /> Approve as COO
+                </Button>
+              )}
+              {(currentStaff?.departmentName === "Accounts" || session.data?.user.role === "admin") && p.status === "Approved by COO" && (
+                <Button
+                  variant="default"
+                  size="default"
+                  className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                  onClick={() => handleApprove("Paid")}
+                  disabled={saving}
+                >
+                  <DollarSign size={14} /> Mark as Paid
                 </Button>
               )}
               <Button
@@ -509,7 +583,7 @@ function ViewPayslipPage() {
                 size="default"
                 className="gap-1.5"
                 onClick={saveAsPdf}
-                disabled={downloadingPdf}
+                disabled={downloadingPdf || saving}
               >
                 <Download size={15} className={downloadingPdf ? "animate-spin" : ""} />
                 {downloadingPdf ? "Generating..." : "Save PDF"}
@@ -786,6 +860,100 @@ function ViewPayslipPage() {
           Generated by Acme Hospital ERP · Printed on {new Date().toLocaleString("en-IN")} by {currentUserEmail} · Confidential
         </p>
       </div>
+
+      {/* Approval History Timeline (Screen-only, hidden on print) */}
+      <Card className="max-w-4xl mx-auto mt-6 border border-border shadow-xs print:hidden">
+        <CardHeader className="py-4 border-b border-border bg-slate-50/50 dark:bg-slate-900/50 flex flex-row items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-teal-600" />
+          <div>
+            <CardTitle className="text-sm font-semibold">Workflow & Approval History</CardTitle>
+            <CardDescription className="text-[10px]">Track the validation and payment status of this payslip.</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="py-5 space-y-4">
+          <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-3 pl-6 space-y-5 text-xs">
+            {/* Active / Generation */}
+            <div className="relative">
+              <span className="absolute -left-[31px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800 text-[9px] font-bold text-slate-600 ring-2 ring-background">
+                ✓
+              </span>
+              <p className="font-semibold text-foreground">Payslip Generated (Active)</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Generated on {new Date(p.createdAt).toLocaleString("en-IN")}
+              </p>
+            </div>
+
+            {/* Approved by HR */}
+            <div className="relative">
+              <span className={`absolute -left-[31px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ring-2 ring-background ${
+                p.hrNotes || p.status === "Approved by HR" || p.status === "Approved by COO" || p.status === "Paid"
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "bg-slate-100 text-slate-400 dark:bg-slate-900"
+              }`}>
+                {p.status === "Approved by HR" || p.status === "Approved by COO" || p.status === "Paid" ? "✓" : "—"}
+              </span>
+              <p className={`font-semibold ${p.status === "Approved by HR" || p.status === "Approved by COO" || p.status === "Paid" ? "text-foreground" : "text-muted-foreground"}`}>
+                Approved by HR
+              </p>
+              {p.hrNotes ? (
+                <p className="mt-1 p-2 rounded-md bg-muted/60 text-foreground italic border border-border/40">
+                  "{p.hrNotes}"
+                </p>
+              ) : (
+                (p.status === "Approved by HR" || p.status === "Approved by COO" || p.status === "Paid") && (
+                  <p className="text-[10px] text-muted-foreground italic mt-0.5">No comments added.</p>
+                )
+              )}
+            </div>
+
+            {/* Approved by COO */}
+            <div className="relative">
+              <span className={`absolute -left-[31px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ring-2 ring-background ${
+                p.cooNotes || p.status === "Approved by COO" || p.status === "Paid"
+                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                  : "bg-slate-100 text-slate-400 dark:bg-slate-900"
+              }`}>
+                {p.status === "Approved by COO" || p.status === "Paid" ? "✓" : "—"}
+              </span>
+              <p className={`font-semibold ${p.status === "Approved by COO" || p.status === "Paid" ? "text-foreground" : "text-muted-foreground"}`}>
+                Approved by COO
+              </p>
+              {p.cooNotes ? (
+                <p className="mt-1 p-2 rounded-md bg-muted/60 text-foreground italic border border-border/40">
+                  "{p.cooNotes}"
+                </p>
+              ) : (
+                (p.status === "Approved by COO" || p.status === "Paid") && (
+                  <p className="text-[10px] text-muted-foreground italic mt-0.5">No comments added.</p>
+                )
+              )}
+            </div>
+
+            {/* Paid */}
+            <div className="relative">
+              <span className={`absolute -left-[31px] top-0.5 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ring-2 ring-background ${
+                p.status === "Paid"
+                  ? "bg-teal-500 text-white"
+                  : "bg-slate-100 text-slate-400 dark:bg-slate-900"
+              }`}>
+                {p.status === "Paid" ? "✓" : "—"}
+              </span>
+              <p className={`font-semibold ${p.status === "Paid" ? "text-foreground" : "text-muted-foreground"}`}>
+                Paid
+              </p>
+              {p.accountsNotes ? (
+                <p className="mt-1 p-2 rounded-md bg-muted/60 text-foreground italic border border-border/40">
+                  "{p.accountsNotes}"
+                </p>
+              ) : (
+                p.status === "Paid" && (
+                  <p className="text-[10px] text-muted-foreground italic mt-0.5">No comments added.</p>
+                )
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </ModuleLayout>
   );
 }

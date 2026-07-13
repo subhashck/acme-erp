@@ -140,21 +140,21 @@ function PayrollPage() {
 
   React.useEffect(() => {
     if (editingSalaryStaff) {
-      const bVal = editingSalaryStaff.basicSalary ?? 0;
-      const hVal = editingSalaryStaff.hra ?? 0;
-      const cVal = editingSalaryStaff.conveyance ?? 0;
-      const mVal = editingSalaryStaff.medical ?? 0;
-      const sVal = editingSalaryStaff.special ?? 0;
+      const bVal = Number(editingSalaryStaff.basicSalary ?? 0);
+      const hVal = Number(editingSalaryStaff.hra ?? 0);
+      const cVal = Number(editingSalaryStaff.conveyance ?? 0);
+      const mVal = Number(editingSalaryStaff.medical ?? 0);
+      const sVal = Number(editingSalaryStaff.special ?? 0);
       setBasic(bVal);
       setHra(hVal);
       setConveyance(cVal);
       setMedical(mVal);
       setSpecial(sVal);
-      setEpf(editingSalaryStaff.epf ?? 0);
-      setEsi(editingSalaryStaff.esi ?? 0);
-      setPt(editingSalaryStaff.professionalTax ?? 0);
-      setOther(editingSalaryStaff.otherDeductions ?? 0);
-      setLateAttendance(editingSalaryStaff.lateAttendance ?? 0);
+      setEpf(Number(editingSalaryStaff.epf ?? 0));
+      setEsi(Number(editingSalaryStaff.esi ?? 0));
+      setPt(Number(editingSalaryStaff.professionalTax ?? 0));
+      setOther(Number(editingSalaryStaff.otherDeductions ?? 0));
+      setLateAttendance(Number(editingSalaryStaff.lateAttendance ?? 0));
 
       setTargetGross(bVal + hVal + cVal + mVal + sVal);
       setAllowDeductions(true);
@@ -221,17 +221,17 @@ function PayrollPage() {
         pan: editingSalaryStaff.pan ?? "",
         supervisorLevel1Id: editingSalaryStaff.supervisorLevel1Id ?? undefined,
         supervisorLevel2Id: editingSalaryStaff.supervisorLevel2Id ?? undefined,
-        basicSalary: basic,
-        hra,
-        conveyance,
-        medical,
-        special,
-        epf,
-        esi,
-        professionalTax: pt,
-        otherDeductions: other,
-        lateAttendance,
-        salary: Math.max(1, gross)
+        basicSalary: Number(basic),
+        hra: Number(hra),
+        conveyance: Number(conveyance),
+        medical: Number(medical),
+        special: Number(special),
+        epf: Number(epf),
+        esi: Number(esi),
+        professionalTax: Number(pt),
+        otherDeductions: Number(other),
+        lateAttendance: Number(lateAttendance),
+        salary: Math.max(1, Number(gross))
       };
       const res = await client.hr.staff[":id"].$put({
         param: { id: String(editingSalaryStaff.staffId) },
@@ -383,11 +383,11 @@ function PayrollPage() {
       id: "grossSalary",
       label: "Gross Salary",
       render: (row: StaffRow) => {
-        const b = row.basicSalary ?? 0;
-        const h = row.hra ?? 0;
-        const c = row.conveyance ?? 0;
-        const m = row.medical ?? 0;
-        const s = row.special ?? 0;
+        const b = Number(row.basicSalary ?? 0);
+        const h = Number(row.hra ?? 0);
+        const c = Number(row.conveyance ?? 0);
+        const m = Number(row.medical ?? 0);
+        const s = Number(row.special ?? 0);
         const gross = b + h + c + m + s;
         if (gross === 0) {
           return (
@@ -403,16 +403,16 @@ function PayrollPage() {
       id: "netSalary",
       label: "Net Take-Home",
       render: (row: StaffRow) => {
-        const b = row.basicSalary ?? 0;
-        const h = row.hra ?? 0;
-        const c = row.conveyance ?? 0;
-        const m = row.medical ?? 0;
-        const s = row.special ?? 0;
-        const ep = row.epf ?? 0;
-        const es = row.esi ?? 0;
-        const p = row.professionalTax ?? 0;
-        const od = row.otherDeductions ?? 0;
-        const la = row.lateAttendance ?? 0;
+        const b = Number(row.basicSalary ?? 0);
+        const h = Number(row.hra ?? 0);
+        const c = Number(row.conveyance ?? 0);
+        const m = Number(row.medical ?? 0);
+        const s = Number(row.special ?? 0);
+        const ep = Number(row.epf ?? 0);
+        const es = Number(row.esi ?? 0);
+        const p = Number(row.professionalTax ?? 0);
+        const od = Number(row.otherDeductions ?? 0);
+        const la = Number(row.lateAttendance ?? 0);
         const gross = b + h + c + m + s;
         if (gross === 0) {
           return <span className="text-muted-foreground text-xs">—</span>;
@@ -425,11 +425,11 @@ function PayrollPage() {
       id: "actions",
       label: "Actions",
       render: (row: StaffRow) => {
-        const b = row.basicSalary ?? 0;
-        const h = row.hra ?? 0;
-        const c = row.conveyance ?? 0;
-        const m = row.medical ?? 0;
-        const s = row.special ?? 0;
+        const b = Number(row.basicSalary ?? 0);
+        const h = Number(row.hra ?? 0);
+        const c = Number(row.conveyance ?? 0);
+        const m = Number(row.medical ?? 0);
+        const s = Number(row.special ?? 0);
         const hasSalary = (b + h + c + m + s) > 0;
         return (
           <Button onClick={() => setEditingSalaryStaff(row)} variant={hasSalary ? "outline" : "default"} size="default" className="h-8 gap-1 cursor-pointer">
@@ -837,17 +837,17 @@ function PayrollPage() {
                       if (!selectedTplId) return;
                       const tpl = templates.find(t => t.id === selectedTplId);
                       if (tpl) {
-                        setBasic(tpl.basicSalary);
-                        setHra(tpl.hra);
-                        setConveyance(tpl.conveyance);
-                        setMedical(tpl.medical);
-                        setSpecial(tpl.special);
-                        setEpf(tpl.epf);
-                        setEsi(tpl.esi);
-                        setPt(tpl.professionalTax);
-                        setOther(tpl.otherDeductions);
-                        setLateAttendance(tpl.lateAttendance ?? 0);
-                        setTargetGross(tpl.basicSalary + tpl.hra + tpl.conveyance + tpl.medical + tpl.special);
+                        setBasic(Number(tpl.basicSalary));
+                        setHra(Number(tpl.hra));
+                        setConveyance(Number(tpl.conveyance));
+                        setMedical(Number(tpl.medical));
+                        setSpecial(Number(tpl.special));
+                        setEpf(Number(tpl.epf));
+                        setEsi(Number(tpl.esi));
+                        setPt(Number(tpl.professionalTax));
+                        setOther(Number(tpl.otherDeductions));
+                        setLateAttendance(Number(tpl.lateAttendance ?? 0));
+                        setTargetGross(Number(tpl.basicSalary) + Number(tpl.hra) + Number(tpl.conveyance) + Number(tpl.medical) + Number(tpl.special));
                       }
                     }}
                     options={[
@@ -888,19 +888,19 @@ function PayrollPage() {
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Gross Salary</p>
                       <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                        {currencySymbol}{(basic + hra + conveyance + medical + special).toLocaleString("en-IN")}
+                        {currencySymbol}{(Number(basic) + Number(hra) + Number(conveyance) + Number(medical) + Number(special)).toLocaleString("en-IN")}
                       </p>
                     </div>
                     <div className="border-x">
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Total Deductions</p>
                       <p className="text-base font-bold text-rose-600 dark:text-rose-400 mt-0.5">
-                        {currencySymbol}{(epf + esi + pt + other + lateAttendance).toLocaleString("en-IN")}
+                        {currencySymbol}{(Number(epf) + Number(esi) + Number(pt) + Number(other) + Number(lateAttendance)).toLocaleString("en-IN")}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-primary uppercase font-semibold">Net Take-Home</p>
                       <p className="text-base font-extrabold text-primary mt-0.5">
-                        {currencySymbol}{Math.max(0, (basic + hra + conveyance + medical + special) - (epf + esi + pt + other + lateAttendance)).toLocaleString("en-IN")}
+                        {currencySymbol}{Math.max(0, (Number(basic) + Number(hra) + Number(conveyance) + Number(medical) + Number(special)) - (Number(epf) + Number(esi) + Number(pt) + Number(other) + Number(lateAttendance))).toLocaleString("en-IN")}
                       </p>
                     </div>
                   </div>

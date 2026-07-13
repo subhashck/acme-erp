@@ -21,8 +21,8 @@ export const Route = createFileRoute("/login")({
 function Login() {
   const navigate = useNavigate();
   const { redirect } = Route.useSearch();
-  const [email, setEmail] = useState("admin@acmehospital.local");
-  const [password, setPassword] = useState("Admin@12345");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

@@ -82,6 +82,8 @@ export interface ReportPayload {
   cashReceiptSir: number;
   cashReceiptMam: number;
   cashReceiptAcon: number;
+  bankReceiptSir: number;
+  bankReceiptSirBank: string | null;
   cashReceipts: number;
   status: "draft" | "submitted";
   serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean }>;
@@ -132,6 +134,8 @@ export function ReportForm({
   const [cashReceiptSir, setCashReceiptSir] = React.useState("0");
   const [cashReceiptMam, setCashReceiptMam] = React.useState("0");
   const [cashReceiptAcon, setCashReceiptAcon] = React.useState("0");
+  const [bankReceiptSir, setBankReceiptSir] = React.useState("0");
+  const [bankReceiptSirBank, setBankReceiptSirBank] = React.useState("");
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
@@ -330,6 +334,8 @@ export function ReportForm({
     setCashReceiptSir(String(toNum(initialData.cashReceiptSir)));
     setCashReceiptMam(String(toNum(initialData.cashReceiptMam)));
     setCashReceiptAcon(String(toNum(initialData.cashReceiptAcon)));
+    setBankReceiptSir(String(toNum(initialData.bankReceiptSir)));
+    setBankReceiptSirBank(initialData.bankReceiptSirBank || "");
 
     const pChannels = (initialData.paymentChannels ?? []).map((item: any) => ({
       bank: item.bank, channel: item.channel, sourceLabel: item.sourceLabel, amount: toNum(item.amount),
@@ -590,6 +596,8 @@ export function ReportForm({
       cashReceiptSir: cashSirVal,
       cashReceiptMam: cashMamVal,
       cashReceiptAcon: cashAconVal,
+      bankReceiptSir: toNum(bankReceiptSir),
+      bankReceiptSirBank: bankReceiptSirBank || null,
       cashReceipts: cashReceiptsSum,
       status,
       serviceLines: parsedServiceLines,
@@ -1526,6 +1534,30 @@ export function ReportForm({
                         value={cashReceiptAcon}
                         onChange={(e) => handleCashReceiptChange("ACON", e.target.value)}
                       />
+                    </div>
+                    <div className="grid grid-cols-2 items-baseline mt-2 text-emerald-300">
+                      <Label className="text-emerald-300">Bank Receipt (Sir)</Label>
+                      <Input
+                        type="number" step="0.01"
+                        className="font-semibold text-right pr-0 bg-transparent"
+                        value={bankReceiptSir}
+                        onChange={(e) => setBankReceiptSir(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 items-center mt-2 text-emerald-300">
+                      <Label className="text-emerald-300">Receipt Bank</Label>
+                      <select
+                        className="font-semibold text-right bg-slate-900 text-emerald-300 border-none outline-none cursor-pointer text-sm w-full pr-0 focus:ring-0 [&>option]:bg-slate-900 [&>option]:text-emerald-300"
+                        value={bankReceiptSirBank}
+                        onChange={(e) => setBankReceiptSirBank(e.target.value)}
+                      >
+                        <option value="">Select Bank</option>
+                        {BANKS.filter(b => b !== "CASH").map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="flex justify-between text-emerald-300 mt-4">
                       <span className="font-semibold">Add Cash Receipts:</span>

@@ -151,6 +151,7 @@ export function Shell() {
   );
   
   const displayName = currentStaff?.name || session.data?.user?.name;
+  const isAccountsVisible = session.data?.user?.role === "admin" || currentStaff?.departmentName === "Accounts";
   
   // Notification system state and hooks
   const { notifications } = useStore(notificationsStore);
@@ -343,7 +344,7 @@ export function Shell() {
                 )}
               </div>
 
-              <div className="flex flex-col">
+              {/* <div className="flex flex-col">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -368,49 +369,51 @@ export function Shell() {
                     </Link>
                   </div>
                 )}
-              </div>
+              </div> */}
 
               {/* Collapsible Accounts group */}
-              <div className="flex flex-col">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAccountsOpen(!accountsOpen);
-                  }}
-                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
-                >
-                  <div className="flex items-center gap-3">
-                    <Landmark size={18} />
-                    <span>Accounts</span>
-                  </div>
-                  {accountsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                {accountsOpen && (
-                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                    <Link
-                      to="/accounts/consultant-charges"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Consultant Charges
-                    </Link>
-                    <Link
-                      to="/accounts/service-charges"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Service Charges
-                    </Link>
-                    <Link
-                      to="/accounts/reports"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Daily Closing Reports
-                    </Link>
-                  </div>
-                )}
-              </div>
+              {isAccountsVisible && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAccountsOpen(!accountsOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Landmark size={18} />
+                      <span>Accounts</span>
+                    </div>
+                    {accountsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {accountsOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to="/accounts/consultant-charges"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Consultant Charges
+                      </Link>
+                      <Link
+                        to="/accounts/service-charges"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Service Charges
+                      </Link>
+                      <Link
+                        to="/accounts/reports"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Daily Closing Reports
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Collapsible Masters group */}
               {session.data?.user.role === "admin" && (
@@ -615,32 +618,36 @@ export function Shell() {
               <div className="w-8 h-px bg-border my-2" />
 
 
-              <Link
-                to="/accounts/consultant-charges"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Consultant Charges"
-              >
-                <Landmark size={20} />
-              </Link>
+              {isAccountsVisible && (
+                <>
+                  <Link
+                    to="/accounts/consultant-charges"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Consultant Charges"
+                  >
+                    <Landmark size={20} />
+                  </Link>
 
-              <Link
-                to="/accounts/service-charges"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Service Charges"
-              >
-                <Coins size={20} />
-              </Link>
+                  <Link
+                    to="/accounts/service-charges"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Service Charges"
+                  >
+                    <Coins size={20} />
+                  </Link>
 
-              <Link
-                to="/accounts/reports"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Daily Closing Reports"
-              >
-                <CalendarClock size={20} />
-              </Link>
+                  <Link
+                    to="/accounts/reports"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Daily Closing Reports"
+                  >
+                    <CalendarClock size={20} />
+                  </Link>
+                </>
+              )}
 
               {session.data?.user.role === "admin" && (
                 <>
