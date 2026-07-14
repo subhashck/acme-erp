@@ -521,11 +521,11 @@ export const biometricMappingsRelations = relations(biometricMappings, ({ one })
   staff: one(staff, { fields: [biometricMappings.staffId], references: [staff.staffId] })
 }));
 
-export const patientRelations = relations(patients, ({ many }) => ({
-  appointments: many(appointments),
-  prescriptions: many(prescriptions),
-  immunizations: many(immunizationRecords)
-}));
+// export const patientRelations = relations(patients, ({ many }) => ({
+//   appointments: many(appointments),
+//   prescriptions: many(prescriptions),
+//   immunizations: many(immunizationRecords)
+// }));
 
 export const immunizationScheduleRelations = relations(immunizationSchedules, ({ many }) => ({
   records: many(immunizationRecords)
