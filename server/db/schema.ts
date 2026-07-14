@@ -695,6 +695,7 @@ export const dailyExpenditures = sqliteTable("daily_expenditures", {
 export const dailyStaffAdvances = sqliteTable("daily_staff_advances", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
+  staffId: integer("staff_id"),
   staffName: text("staff_name").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });

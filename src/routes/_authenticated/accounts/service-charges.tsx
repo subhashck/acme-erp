@@ -536,7 +536,7 @@ function ServiceCharges() {
   // ── Statistics ────────────────────────────────────────────────────────────
   const totalCount = catalogData.length;
   const avgRate = totalCount > 0
-    ? catalogData.reduce((acc, curr) => acc + curr.defaultRate, 0) / totalCount
+    ? catalogData.reduce((acc, curr) => acc + Number(curr.defaultRate || 0), 0) / totalCount
     : 0;
 
   const categoryCounts = React.useMemo(() => {
@@ -569,7 +569,7 @@ function ServiceCharges() {
 
   const totalExpCount = expCatalogData.length;
   const avgExpAmount = totalExpCount > 0
-    ? expCatalogData.reduce((acc, curr) => acc + curr.defaultAmount, 0) / totalExpCount
+    ? expCatalogData.reduce((acc, curr) => acc + Number(curr.defaultAmount || 0), 0) / totalExpCount
     : 0;
 
   const expCategoryCounts = React.useMemo(() => {

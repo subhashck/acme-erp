@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
+import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
@@ -66,6 +67,11 @@ const AuthenticatedCommunicationRoute =
     path: '/communication',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
+  id: '/shared/report/$token',
+  path: '/shared/report/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedMastersShiftsRoute =
   AuthenticatedMastersShiftsRouteImport.update({
     id: '/masters/shifts',
@@ -245,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/shared/report/$token': typeof SharedReportTokenRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
@@ -277,6 +284,7 @@ export interface FileRoutesByTo {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/shared/report/$token': typeof SharedReportTokenRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/accounts/reports': typeof AuthenticatedAccountsReportsIndexRoute
@@ -311,6 +319,7 @@ export interface FileRoutesById {
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/shared/report/$token': typeof SharedReportTokenRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/_authenticated/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
@@ -345,6 +354,7 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/shared/report/$token'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/accounts/reports/'
@@ -377,6 +387,7 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/shared/report/$token'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/accounts/reports'
@@ -410,6 +421,7 @@ export interface FileRouteTypes {
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
+    | '/shared/report/$token'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
     | '/_authenticated/accounts/reports/'
@@ -419,6 +431,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   LoginRoute: typeof LoginRoute
+  SharedReportTokenRoute: typeof SharedReportTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -457,6 +470,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/communication'
       preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/shared/report/$token': {
+      id: '/shared/report/$token'
+      path: '/shared/report/$token'
+      fullPath: '/shared/report/$token'
+      preLoaderRoute: typeof SharedReportTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/masters/shifts': {
       id: '/_authenticated/masters/shifts'
@@ -720,6 +740,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   LoginRoute: LoginRoute,
+  SharedReportTokenRoute: SharedReportTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
