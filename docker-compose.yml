@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d acme_erp"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d acme_erp" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -33,6 +33,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/acme_erp?sslmode=disable
       - BETTER_AUTH_SECRET=acme-secret-is-greatest
       - BETTER_AUTH_URL=http://localhost:8787
+      - TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://10.10.10.36:8787
       - ADMIN_EMAIL=admin@acmehospital.health
       - ADMIN_PASSWORD=AdminAdmin@12345
     depends_on:
