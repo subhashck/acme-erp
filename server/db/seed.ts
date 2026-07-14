@@ -39,8 +39,8 @@ async function seedAdmin() {
 }
 
 async function seedDomain() {
-  // const [hasDepts] = await db.select().from(departments).limit(1);
-  // if (hasDepts) return;
+  const [hasDepts] = await db.select().from(departments).limit(1);
+  if (hasDepts) return;
 
   await db.insert(leaveTypes).values([
     { name: "Casual Leave", maxDays: 7, payable: true, paymentRate: "100.0" },
