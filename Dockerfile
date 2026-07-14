@@ -38,6 +38,7 @@ COPY --from=builder /app/drizzle.config.ts ./
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh ./
+RUN sed -i 's/\r$//' docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 ENV NODE_ENV=production
