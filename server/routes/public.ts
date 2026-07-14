@@ -1,0 +1,234 @@
+/**
+ * Public routes — no authentication required.
+ * Mounted under /api/public/* in index.ts (bypasses the auth middleware).
+ *
+ * Endpoints:
+ *   GET /public/reports/shared/:token   — verify signed URL and return report JSON
+ */
+
+import { Hono } from "hono";
+import { asc, eq } from "drizzle-orm";
+import { db } from "../db/client.ts";
+import {
+  dailyClosingReports,
+  dailyServiceLines,
+  serviceCatalog,
+  dailyPharmacyIncome,
+  dailyExpenditures,
+  dailyStaffAdvances,
+  dailyIpdAdmissions,
+  dailyIpdDischarges,
+  dailyAdditionalIncome,
+  dailyDiscountsReturns,
+  dailyPaymentChannels,
+  user,
+} from "../db/schema.ts";
+
+// ---------------------------------------------------------------------------
+// HMAC helpers (Web Crypto — available natively in Node 18+)
+// ---------------------------------------------------------------------------
+
+const SECRET = process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-me";
+
+async function getCryptoKey() {
+  const enc = new TextEncoder();
+  return crypto.subtle.importKey(
+    "raw",
+    enc.encode(SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+}
+
+function base64urlEncode(buf: ArrayBuffer): string {
+  return Buffer.from(buf)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+}
+
+function base64urlDecode(str: string): Uint8Array<ArrayBuffer> {
+  // Pad back to standard base64 then decode
+  const padded = str + "=".repeat((4 - (str.length % 4)) % 4);
+  const binary = Buffer.from(padded.replace(/-/g, "+").replace(/_/g, "/"), "base64");
+  // Uint8Array.from gives a fresh typed array, but Node's Buffer types carry
+  // ArrayBufferLike instead of ArrayBuffer. Cast to satisfy crypto.subtle.verify's
+  // BufferSource requirement — at runtime this is always a plain ArrayBuffer.
+  return Uint8Array.from(binary) as unknown as Uint8Array<ArrayBuffer>;
+}
+
+export interface SignedPayload {
+  reportId: number;
+  expiresAt: number; // Unix ms
+}
+
+/** Sign a payload and return a URL-safe token: `<b64url-payload>.<b64url-sig>` */
+export async function signToken(payload: SignedPayload): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await getCryptoKey();
+  const payloadStr = JSON.stringify(payload);
+  const payloadB64 = base64urlEncode(enc.encode(payloadStr).buffer as ArrayBuffer);
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payloadB64));
+  const sigB64 = base64urlEncode(sig);
+  return `${payloadB64}.${sigB64}`;
+}
+
+/** Verify a token. Returns the payload if valid, throws otherwise. */
+export async function verifyToken(token: string): Promise<SignedPayload> {
+  const parts = token.split(".");
+  if (parts.length !== 2) throw new Error("Malformed token");
+  const [payloadB64, sigB64] = parts;
+
+  const enc = new TextEncoder();
+  const key = await getCryptoKey();
+  const sigBuf = base64urlDecode(sigB64);
+
+  const valid = await crypto.subtle.verify(
+    "HMAC",
+    key,
+    sigBuf,
+    enc.encode(payloadB64)
+  );
+  if (!valid) throw new Error("Invalid token signature");
+
+  const payloadStr = Buffer.from(base64urlDecode(payloadB64)).toString("utf8");
+  const payload: SignedPayload = JSON.parse(payloadStr);
+
+  if (Date.now() > payload.expiresAt) {
+    throw new Error("Token expired");
+  }
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// Public Hono routes (no auth)
+// ---------------------------------------------------------------------------
+
+export const publicRoutes = new Hono()
+  /**
+   * GET /public/reports/shared/:token
+   * Verifies the signed token and returns full report detail JSON.
+   */
+  .get("/public/reports/shared/:token", async (c) => {
+    const token = c.req.param("token");
+
+    let payload: SignedPayload;
+    try {
+      payload = await verifyToken(token);
+    } catch (err: any) {
+      const isExpired = err?.message === "Token expired";
+      return c.json(
+        {
+          error: isExpired ? "Link has expired" : "Invalid or tampered link",
+          expired: isExpired,
+        },
+        isExpired ? 410 : 401
+      );
+    }
+
+    const { reportId } = payload;
+
+    const [report] = await db
+      .select()
+      .from(dailyClosingReports)
+      .where(eq(dailyClosingReports.id, reportId))
+      .limit(1)
+      .execute();
+
+    if (!report) {
+      return c.json({ error: "Report not found" }, 404);
+    }
+
+    // Fetch all nested details (same as the authenticated GET /daily-closing/reports/:id)
+    const serviceLines = await db
+      .select({
+        id: dailyServiceLines.id,
+        serviceId: dailyServiceLines.serviceId,
+        rate: dailyServiceLines.rate,
+        quantity: dailyServiceLines.quantity,
+        amount: dailyServiceLines.amount,
+        isNightEntry: dailyServiceLines.isNightEntry,
+        serviceName: serviceCatalog.serviceName,
+        department: serviceCatalog.department,
+        sortOrder: serviceCatalog.sortOrder,
+      })
+      .from(dailyServiceLines)
+      .leftJoin(serviceCatalog, eq(dailyServiceLines.serviceId, serviceCatalog.id))
+      .where(eq(dailyServiceLines.reportId, reportId))
+      .orderBy(asc(serviceCatalog.sortOrder), asc(serviceCatalog.serviceName))
+      .execute();
+
+    const [pharmacyIncome] = await db
+      .select()
+      .from(dailyPharmacyIncome)
+      .where(eq(dailyPharmacyIncome.reportId, reportId))
+      .limit(1)
+      .execute();
+
+    const expenditures = await db
+      .select()
+      .from(dailyExpenditures)
+      .where(eq(dailyExpenditures.reportId, reportId))
+      .execute();
+
+    const staffAdvances = await db
+      .select()
+      .from(dailyStaffAdvances)
+      .where(eq(dailyStaffAdvances.reportId, reportId))
+      .execute();
+
+    const ipdAdmissions = await db
+      .select()
+      .from(dailyIpdAdmissions)
+      .where(eq(dailyIpdAdmissions.reportId, reportId))
+      .execute();
+
+    const ipdDischarges = await db
+      .select()
+      .from(dailyIpdDischarges)
+      .where(eq(dailyIpdDischarges.reportId, reportId))
+      .execute();
+
+    const additionalIncome = await db
+      .select()
+      .from(dailyAdditionalIncome)
+      .where(eq(dailyAdditionalIncome.reportId, reportId))
+      .execute();
+
+    const discountsReturns = await db
+      .select()
+      .from(dailyDiscountsReturns)
+      .where(eq(dailyDiscountsReturns.reportId, reportId))
+      .execute();
+
+    const paymentChannels = await db
+      .select()
+      .from(dailyPaymentChannels)
+      .where(eq(dailyPaymentChannels.reportId, reportId))
+      .execute();
+
+    const [creator] = await db
+      .select({ name: user.name })
+      .from(user)
+      .where(eq(user.id, report.createdBy))
+      .limit(1)
+      .execute();
+
+    return c.json({
+      ...report,
+      creatorName: creator?.name ?? "Unknown",
+      serviceLines,
+      pharmacyIncome: pharmacyIncome ?? null,
+      expenditures,
+      staffAdvances,
+      ipdAdmissions,
+      ipdDischarges,
+      additionalIncome,
+      discountsReturns,
+      paymentChannels,
+      // Include expiry so the frontend can display it
+      _linkExpiresAt: payload.expiresAt,
+    });
+  });

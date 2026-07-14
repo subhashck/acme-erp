@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown, Share2, Copy, CheckCheck, X } from "lucide-react";
 import * as React from "react";
 import { Calendar } from "../../../../components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../../components/ui/popover";
@@ -27,11 +27,135 @@ export const Route = createFileRoute("/_authenticated/accounts/reports/")({
   component: ReportsHistory,
 });
 
+// ---------------------------------------------------------------------------
+// Publish dialog (shown after generating a signed URL)
+// ---------------------------------------------------------------------------
+function PublishDialog({
+  open,
+  onClose,
+  signedUrl,
+  expiresAt,
+}: {
+  open: boolean;
+  onClose: () => void;
+  signedUrl: string;
+  expiresAt: number;
+}) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(signedUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
+
+  if (!open) return null;
+
+  const expiryStr = new Date(expiresAt).toLocaleString([], {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+
+      {/* Dialog */}
+      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-white dark:bg-slate-900 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div className="flex items-center gap-2.5">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-sm">
+              <Share2 size={15} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm">Report Published</h3>
+              <p className="text-[11px] text-muted-foreground">Shareable link generated successfully</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-5">
+          {/* Expiry info */}
+          <div className="flex items-start gap-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3">
+            <div className="mt-0.5 text-amber-600 dark:text-amber-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">Link valid for 2 days</p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                Expires on <strong>{expiryStr}</strong>. Anyone with this link can view the report without logging in.
+              </p>
+            </div>
+          </div>
+
+          {/* URL field */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Shareable URL</label>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0 rounded-lg border bg-muted/40 px-3 py-2.5 text-xs font-mono text-foreground truncate select-all">
+                {signedUrl}
+              </div>
+              <button
+                onClick={handleCopy}
+                className={`shrink-0 flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${copied
+                    ? "bg-emerald-50 border-emerald-300 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-700 dark:text-emerald-400"
+                    : "bg-teal-600 hover:bg-teal-700 border-teal-600 text-white"
+                  }`}
+              >
+                {copied ? <CheckCheck size={13} /> : <Copy size={13} />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+          </div>
+
+          {/* Share hint */}
+          <p className="text-[11px] text-muted-foreground">
+            Share this link via email, WhatsApp, or any messaging platform. The recipient can open it directly in their browser.
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-5">
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 rounded-lg border text-sm font-semibold text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Page
+// ---------------------------------------------------------------------------
 function ReportsHistory() {
   const queryClient = useQueryClient();
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
   const [sortOrder, setSortOrder] = React.useState<"asc" | "desc">("desc");
+
+  // Publish dialog state
+  const [publishDialog, setPublishDialog] = React.useState<{
+    open: boolean;
+    signedUrl: string;
+    expiresAt: number;
+  }>({ open: false, signedUrl: "", expiresAt: 0 });
 
   // Query reports list
   const reportsQuery = useRpcQuery<any[]>(
@@ -41,6 +165,24 @@ function ReportsHistory() {
 
   const reportsData = reportsQuery.data ?? [];
 
+
+  // Publish mutation — generates signed URL
+  const publishMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/daily-closing/reports/${id}/publish`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return response.json() as Promise<{ signedUrl: string; expiresAt: number }>;
+    },
+    onSuccess: (data) => {
+      setPublishDialog({ open: true, signedUrl: data.signedUrl, expiresAt: data.expiresAt });
+    },
+    onError: (err: any) => {
+      alert(err.message || "Failed to generate shareable link");
+    },
+  });
 
   // Delete draft report mutation
   const deleteReportMutation = useMutation({
@@ -375,6 +517,23 @@ function ReportsHistory() {
                             </Link>
                           </Button>
 
+                          {/* Publish button — available for all statuses */}
+                          {report.status === "submitted" && (
+                            <button
+                              onClick={() => publishMutation.mutate(report.id)}
+                              disabled={publishMutation.isPending}
+                              className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold text-teal-700 dark:text-teal-400 border border-teal-300 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/20 hover:bg-teal-100 dark:hover:bg-teal-950/40 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Generate shareable link (valid 2 days)"
+                            >
+                              {publishMutation.isPending && publishMutation.variables === report.id ? (
+                                <RefreshCw size={12} className="animate-spin" />
+                              ) : (
+                                <Share2 size={12} />
+                              )}
+                              Publish
+                            </button>
+                          )}
+
                           {report.status === "draft" && (
                             <>
                               <Button variant="ghost" size="icon" asChild title="Edit Report" className="cursor-pointer">
@@ -420,6 +579,14 @@ function ReportsHistory() {
           )}
         </CardContent>
       </Card>
+
+      {/* Publish dialog */}
+      <PublishDialog
+        open={publishDialog.open}
+        onClose={() => setPublishDialog((d) => ({ ...d, open: false }))}
+        signedUrl={publishDialog.signedUrl}
+        expiresAt={publishDialog.expiresAt}
+      />
     </div>
   );
 }

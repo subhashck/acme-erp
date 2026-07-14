@@ -13,6 +13,8 @@ import {
   staffSalaries,
   rosters,
   attendance,
+  dailyStaffAdvances,
+  dailyClosingReports,
 } from "../db/schema.ts";
 import { idParam, getCurrentStaff } from "./shared.ts";
 
@@ -506,6 +508,24 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .limit(1)
         .then((res: any) => res[0]);
 
+      // Get monthly advances for this staff member
+      const advancesRows = await db
+        .select({ amount: dailyStaffAdvances.amount })
+        .from(dailyStaffAdvances)
+        .innerJoin(dailyClosingReports, eq(dailyStaffAdvances.reportId, dailyClosingReports.id))
+        .where(
+          and(
+            eq(dailyStaffAdvances.staffId, employee.staffId),
+            sql`${dailyClosingReports.reportDate} LIKE ${month + "-%"}`
+          )
+        )
+        .execute();
+
+      const totalAdvances = advancesRows.reduce(
+        (sum, item) => sum + Number(item.amount || 0),
+        0
+      );
+
       let basic = 0,
         hra = 0,
         conveyance = 0,
@@ -536,6 +556,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
         medical = Math.round(total * 0.05);
         special = Math.round(total * 0.05);
       }
+
+      otherDed += totalAdvances;
 
       const gross = basic + hra + conveyance + medical + special;
       const dailyRate = gross / daysInMonth;

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
 import { auth } from "../auth.ts";
 import { db } from "../db/client.ts";
+import { signToken } from "./public.ts";
 import {
   dailyClosingReports,
   serviceCategories,
@@ -599,6 +600,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         ),
         staffAdvances: z.array(
           z.object({
+            staffId: z.number().nullable().optional(),
             staffName: z.string(),
             amount: z.number(),
           })
@@ -778,6 +780,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           .values(
             payload.staffAdvances.map((item) => ({
               reportId: report.id,
+              staffId: item.staffId ?? null,
               staffName: item.staffName,
               amount: item.amount.toString(),
             }))
@@ -925,6 +928,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         ),
         staffAdvances: z.array(
           z.object({
+            staffId: z.number().nullable().optional(),
             staffName: z.string(),
             amount: z.number(),
           })
@@ -1103,6 +1107,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           .values(
             payload.staffAdvances.map((item) => ({
               reportId: id,
+              staffId: item.staffId ?? null,
               staffName: item.staffName,
               amount: item.amount.toString(),
             }))
@@ -1214,4 +1219,35 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       .execute();
 
     return c.json({ success: true, deleted: row });
+  })
+
+  // -------------------------------------------------------------------------
+  // Publish Report — Generate a signed shareable URL (valid 2 days)
+  // -------------------------------------------------------------------------
+  .post("/daily-closing/reports/:id/publish", async (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid ID" }, 400);
+
+    const [report] = await db
+      .select({ id: dailyClosingReports.id })
+      .from(dailyClosingReports)
+      .where(eq(dailyClosingReports.id, id))
+      .limit(1)
+      .execute();
+
+    if (!report) {
+      return c.json({ error: "Report not found" }, 404);
+    }
+
+    const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+    const expiresAt = Date.now() + TWO_DAYS_MS;
+
+    const token = await signToken({ reportId: id, expiresAt });
+
+    // Build absolute URL from the request so it works in any environment
+    const reqUrl = new URL(c.req.url);
+    const origin = `${reqUrl.protocol}//${reqUrl.host}`;
+    const signedUrl = `${origin}/shared/report/${token}`;
+
+    return c.json({ signedUrl, expiresAt });
   });

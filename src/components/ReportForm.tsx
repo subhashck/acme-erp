@@ -13,6 +13,8 @@ import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
+import type { StaffRow } from "../types";
+
 type ServiceCategory = { id: number; code: string; label: string; sortOrder: number; active: boolean; isVariableAmount: boolean };
 
 type ExpenseCategory = {
@@ -70,7 +72,7 @@ type CustomLine = { serviceName: string; department: string; rate: number; quant
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
 type Expenditure = { category: string; details: string; amount: number };
-type StaffAdvance = { staffName: string; amount: number };
+type StaffAdvance = { staffId?: number | null; staffName: string; amount: number };
 // type AdditionalIncome = { label: string; amount: number };
 type DiscountReturn = { label: string; amount: number };
 type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number };
@@ -176,6 +178,17 @@ export function ReportForm({
     () => (client["daily-closing"] as any)["expense-catalog"].$get()
   );
   const expCatalogList = expCatalogQuery.data ?? [];
+
+  // ── staff list query ───────────────────────────
+  const staffQuery = useRpcQuery<StaffRow[]>(
+    ["staff"],
+    () => client.hr.staff.$get()
+  );
+  const staffList = staffQuery.data ?? [];
+
+  const staffOptions = React.useMemo(() => {
+    return staffList.map((s) => [String(s.staffId), `${s.employeeCode} - ${s.name}`] as [string, string]);
+  }, [staffList]);
 
   // ── auto-populate opening balance in new mode ─────────────────
   const pastReportsQuery = useRpcQuery<any[]>(
@@ -325,7 +338,9 @@ export function ReportForm({
       category: item.category, details: item.details, amount: toNum(item.amount),
     })) ?? []);
     setStaffAdvances(initialData.staffAdvances?.map((item: any) => ({
-      staffName: item.staffName, amount: toNum(item.amount),
+      staffId: item.staffId ? toNum(item.staffId) : undefined,
+      staffName: item.staffName,
+      amount: toNum(item.amount),
     })) ?? []);
     // setAdditionalIncome(initialData.additionalIncome?.map((item: any) => ({
     //   label: item.label, amount: toNum(item.amount),
@@ -634,6 +649,7 @@ export function ReportForm({
         amount: toNum(e.amount),
       })),
       staffAdvances: staffAdvances.map((sa) => ({
+        staffId: sa.staffId ?? null,
         staffName: sa.staffName,
         amount: toNum(sa.amount),
       })),
@@ -1303,12 +1319,25 @@ export function ReportForm({
                     {staffAdvances.map((item, idx) => (
                       <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
                         <div className="flex-1 space-y-1">
-                          <Label className="text-[10px]">Staff Name</Label>
-                          <Input
-                            type="text"
-                            value={item.staffName}
-                            onChange={(e) => setStaffAdvances(staffAdvances.map((sa, i) => (i === idx ? { ...sa, staffName: e.target.value } : sa)))}
-                            required
+                          <Autocomplete
+                            label="Staff Member"
+                            value={item.staffId ? String(item.staffId) : ""}
+                            onChange={(val) => {
+                              const selectedStaff = staffList.find((s) => String(s.staffId) === val);
+                              setStaffAdvances(
+                                staffAdvances.map((sa, i) =>
+                                  i === idx
+                                    ? {
+                                        ...sa,
+                                        staffId: val ? Number(val) : undefined,
+                                        staffName: selectedStaff ? selectedStaff.name : "",
+                                      }
+                                    : sa
+                                )
+                              );
+                            }}
+                            options={staffOptions}
+                            placeholder="Select staff..."
                           />
                         </div>
                         <div className="w-48 space-y-1">
@@ -1393,7 +1422,7 @@ export function ReportForm({
 
 
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
               <button
                 type="button"
                 onClick={() => toggleSection("deposits")}

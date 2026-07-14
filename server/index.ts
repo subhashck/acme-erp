@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { auth, type AuthEnv } from "./auth.ts";
 import { api } from "./routes.ts";
+import { publicRoutes } from "./routes/public.ts";
 import { serveStatic } from "@hono/node-server/serve-static";
 
 export const app = new Hono<AuthEnv>();
@@ -19,6 +20,9 @@ app.use(
   })
 );
 
+// Mount public (unauthenticated) API routes BEFORE the auth middleware
+app.route("/api", publicRoutes);
+
 app.use("/api/*", async (c, next) => {
   // Auth endpoints: delegate directly to better-auth and return its response
   if (c.req.path.startsWith("/api/auth/")) {
@@ -32,6 +36,10 @@ app.use("/api/*", async (c, next) => {
       req = new Request(url.toString(), c.req.raw);
     }
     return auth.handler(req);
+  }
+  // Public API routes: skip session check
+  if (c.req.path.startsWith("/api/public/")) {
+    return next();
   }
   const session = await auth.api.getSession({
     headers: c.req.raw.headers
