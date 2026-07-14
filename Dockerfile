@@ -1,5 +1,5 @@
 # Stage 1: Build the Vite frontend
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 RUN npm install -g pnpm
 
 WORKDIR /app
@@ -18,7 +18,7 @@ COPY . .
 RUN pnpm build
 
 # Stage 2: Final runner image
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 RUN npm install -g pnpm
 
 WORKDIR /app
@@ -32,7 +32,6 @@ RUN pnpm install --frozen-lockfile
 
 # Copy build artifacts and server source
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/tsconfig.json /app/tsconfig.server.json ./
 COPY --from=builder /app/drizzle.config.ts ./
