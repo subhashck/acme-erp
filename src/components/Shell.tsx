@@ -416,7 +416,7 @@ export function Shell() {
               )}
 
               {/* Collapsible Masters group */}
-              {session.data?.user.role === "admin" && (
+              {(session.data?.user.role === "admin"||session.data?.user.role === "hr") && (
                 <div className="flex flex-col">
                   <button
                     onClick={(e) => {
