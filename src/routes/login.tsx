@@ -73,7 +73,7 @@ function Login() {
             </form>
           </CardContent>
         </Card>
-        <p className="mt-4 text-center text-xs text-muted-foreground">Seed admin: admin@acmehospital.local / Admin@12345</p>
+        {/* <p className="mt-4 text-center text-xs text-muted-foreground">Seed admin: admin@acmehospital.local / Admin@12345</p> */}
       </div>
     </main>
   );
