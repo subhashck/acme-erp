@@ -53,6 +53,7 @@ const staffSchema = z.object({
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
+  dateOfBirth: z.string().min(1, "Date of birth is required"),
   dateOfJoining: z.string().optional(),
   lastWorkingDate: z.string().optional(),
   isExecutive: z.boolean().optional(),
@@ -106,6 +107,7 @@ const defaultValues: Partial<StaffFormInput> = {
   bankName: "",
   accountNumber: "",
   ifscCode: "",
+  dateOfBirth: "",
   dateOfJoining: "",
   lastWorkingDate: "",
   isExecutive: false,
@@ -121,6 +123,10 @@ const defaultValues: Partial<StaffFormInput> = {
   mmcRegistrationNo: "",
   mmcValidityUpto: ""
 };
+
+// Calculate exactly 100 years ago from today
+  const hundredYearsAgo = new Date()
+  hundredYearsAgo.setFullYear(hundredYearsAgo.getFullYear() - 100)
 
 function AddStaff() {
   const navigate = useNavigate();
@@ -203,6 +209,7 @@ function AddStaff() {
         bankName: (existingStaff as any).bankName ?? "",
         accountNumber: (existingStaff as any).accountNumber ?? "",
         ifscCode: (existingStaff as any).ifscCode ?? "",
+        dateOfBirth: profile?.dateOfBirth ?? "",
         dateOfJoining: profile?.dateOfJoining ?? "",
         lastWorkingDate: profile?.lastWorkingDate ?? "",
         isExecutive: existingStaff.isExecutive ?? false,
@@ -239,6 +246,7 @@ function AddStaff() {
         ifscCode: values.ifscCode,
         isExecutive: !!values.isExecutive,
         hrProfile: {
+          dateOfBirth: values.dateOfBirth,
           fatherName: values.fatherName,
           motherName: values.motherName,
           currentAddress: values.currentAddress,
@@ -381,6 +389,44 @@ function AddStaff() {
                 <Field label="Spouse's Name" {...form.register("spouseName")} error={form.formState.errors.spouseName?.message} />
               )}
 
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Date of Birth <span className="text-destructive">*</span>
+                </Label>
+                <Controller
+                  control={form.control}
+                  name="dateOfBirth"
+                  render={({ field }) => (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal bg-background px-3",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                          {field.value ? format(new Date(field.value), "PPP") : <span>Pick date of birth</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          captionLayout="dropdown"
+                          disabled={[{ before: hundredYearsAgo }, { after: new Date() }]}
+                          selected={field.value ? new Date(field.value) : undefined}
+                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+                {form.formState.errors.dateOfBirth && (
+                  <p className="text-xs text-destructive">{form.formState.errors.dateOfBirth.message}</p>
+                )}
+              </div>
+
               <div className="md:col-span-2 grid gap-4 md:grid-cols-2 mt-2 bg-slate-50/50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                 <Field label="Current Address" {...form.register("currentAddress")} error={form.formState.errors.currentAddress?.message} />
                 <Field label="Permanent Address" {...form.register("permanentAddress")} error={form.formState.errors.permanentAddress?.message} />
@@ -472,7 +518,7 @@ function AddStaff() {
               {nomineeFields.map((field, i) => (
                 <div key={field.id} className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] gap-4 items-end p-4 border rounded-lg bg-muted/10 relative">
                   <Field label="Nominee Name" {...form.register(`nominees.${i}.name`)} error={form.formState.errors.nominees?.[i]?.name?.message} />
-                  <Select label="Relationship" {...form.register(`nominees.${i}.relationship`)} options={["Father", "Mother", "Sister", "Brother", "Children", "Others"]} error={form.formState.errors.nominees?.[i]?.relationship?.message} />
+                  <Select label="Relationship" {...form.register(`nominees.${i}.relationship`)} options={["Spouse","Father", "Mother", "Sister", "Brother", "Children", "Others"]} error={form.formState.errors.nominees?.[i]?.relationship?.message} />
                   <Field label="Percentage (%)" type="number" {...form.register(`nominees.${i}.percentage`)} error={form.formState.errors.nominees?.[i]?.percentage?.message} />
                   <Button type="button" variant="ghost" size="icon" className="text-destructive mb-1" onClick={() => removeNominee(i)}>
                     <Trash2 size={16} />
