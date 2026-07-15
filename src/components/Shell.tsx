@@ -34,7 +34,7 @@ import {
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+// import { Input } from "../ui/input";
 import * as React from "react";
 import { cn } from "../utils/cn";
 import { useHospitalSettings } from "../lib/settings";
@@ -56,12 +56,12 @@ const getBreadcrumbs = (pathname: string) => {
   }
   
   if (pathname === "/hr" || pathname === "/hr/") {
-    items.push({ label: "Employee Details", to: "/hr" });
+    items.push({ label: "Employee Details", to: "/hr/staff-list" });
     return items;
   }
   
   if (pathname.startsWith("/hr/")) {
-    items.push({ label: "HR Management", to: "/hr/" });
+    items.push({ label: "HR Management", to: "/hr/staff-list" });
     const sub = pathname.replace("/hr/", "");
     if (sub === "roster") {
       items.push({ label: "Shift Roster", to: "/hr/roster" });

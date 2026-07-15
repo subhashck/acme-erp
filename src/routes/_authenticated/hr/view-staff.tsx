@@ -288,6 +288,11 @@ function ViewStaff() {
                   <span className="text-muted-foreground font-medium">Sex</span>
                   <span className="font-semibold text-foreground">{profile?.gender || "N/A"}</span>
 
+                  <span className="text-muted-foreground font-medium">Date of Birth</span>
+                  <span className="font-semibold text-foreground">
+                    {profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "N/A"}
+                  </span>
+
                   <span className="text-muted-foreground font-medium">Religion</span>
                   <span className="font-semibold text-foreground">{profile?.religion || "N/A"}</span>
 

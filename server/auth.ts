@@ -20,13 +20,16 @@ if (process.env.RAILWAY_PUBLIC_DOMAIN) {
   extraOrigins.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
 }
 extraOrigins.push("https://acme-erp-production.up.railway.app");
+const envOrigins = process.env.TRUSTED_ORIGINS
+  ? process.env.TRUSTED_ORIGINS.split(",")
+  : [];
 
 export const auth = betterAuth({
   database: pool,
   baseURL: cleanAuthUrl,
   basePath: "/api/auth",
   secret: process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me",
-  trustedOrigins: [cleanAuthUrl, ...extraOrigins],
+  trustedOrigins: [cleanAuthUrl, ...extraOrigins, ...envOrigins],
   emailAndPassword: {
     enabled: true
   },
