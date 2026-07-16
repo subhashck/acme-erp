@@ -389,7 +389,7 @@ function AddStaff() {
                 <Field label="Spouse's Name" {...form.register("spouseName")} error={form.formState.errors.spouseName?.message} />
               )}
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col">
                 <Label>
                   Date of Birth <span className="text-destructive">*</span>
                 </Label>
@@ -579,7 +579,7 @@ function AddStaff() {
 
               <Select label="Employment Status" {...form.register("status")} options={["Active", "Terminated", "Long Leave", "Resigned"]} error={form.formState.errors.status?.message} />
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col ">
                 <Label>Date of Joining</Label>
                 <Controller
                   control={form.control}
@@ -612,7 +612,7 @@ function AddStaff() {
                 {form.formState.errors.dateOfJoining && <p className="text-xs text-destructive">{form.formState.errors.dateOfJoining.message}</p>}
               </div>
 
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col">
                 <Label>Last Working Date</Label>
                 <Controller
                   control={form.control}
@@ -665,7 +665,7 @@ function AddStaff() {
               <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
                 <h3 className="font-semibold md:col-span-2">Council Registrations</h3>
                 <Field label="MNC Registration No" {...form.register("mncRegistrationNo")} error={form.formState.errors.mncRegistrationNo?.message} />
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col">
                   <Label>MNC Validity Upto</Label>
                   <Controller
                     control={form.control}
@@ -699,7 +699,7 @@ function AddStaff() {
                 </div>
 
                 <Field label="MMC Registration No" {...form.register("mmcRegistrationNo")} error={form.formState.errors.mmcRegistrationNo?.message} />
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col">
                   <Label>MMC Validity Upto</Label>
                   <Controller
                     control={form.control}

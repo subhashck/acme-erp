@@ -237,7 +237,7 @@ function ReportsHistory() {
 
         <div className="flex flex-wrap items-center gap-3">
 
-          <Button asChild className="bg-teal-650 hover:bg-teal-700 text-white font-semibold cursor-pointer">
+          <Button asChild className="dark:bg-teal-650 hover:bg-teal-700  font-semibold cursor-pointer">
             <Link to="/accounts/reports/new">
               <Plus size={16} className="mr-1.5" /> New Closing Report
             </Link>

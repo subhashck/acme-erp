@@ -52,7 +52,7 @@ const toNum = (v: unknown): number => {
 
 // const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
 // const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
-const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHER"];
+const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHERS"];
 const CHANNELS = ["CREDIT CARD", "UPI", "DEBIT CARD", "RTGS", "CASH"];
 
 const DEFAULT_PAYMENT_CHANNELS = [
@@ -890,6 +890,7 @@ export function ReportForm({
                         <Calendar
                           mode="single"
                           selected={reportDate ? new Date(reportDate) : undefined}
+                          disabled={{ after: new Date() }}
                           onSelect={(date) => {
                             if (date) {
                               const yyyy = date.getFullYear();
@@ -1557,7 +1558,7 @@ export function ReportForm({
 
           {/* ── Live Summary Sidebar ────────────────────────────── */}
           <div className="lg:col-span-1 space-y-5 lg:sticky lg:top-24">
-            <Card className="border border-teal-600/30 bg-teal-500/5 shadow-md rounded-xl p-5 space-y-4">
+            <Card className="border border-teal-600/30 bg-amber-200/10 dark:bg-teal-500/5  shadow-md rounded-xl p-5 space-y-4">
               <h4 className="font-extrabold text-base border-b pb-2 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
                 Live Summary
               </h4>
@@ -1618,7 +1619,7 @@ export function ReportForm({
                   </div>
                 </div>
                 {/* cash management section */}
-                <div className=" space-y-2 border p-2 -mx-2 rounded-lg border-lime-800">
+                <div className=" space-y-2 border p-2 -mx-2 rounded-lg border-lime-800 bg-slate-700/60">
                   <span className="font-semibold text-lg">Cash Management</span>
                   <hr className="border-b-2 border-fuchsia-800/30" />
                   <div className="flex justify-between text-emerald-300 px-2">
@@ -1662,14 +1663,14 @@ export function ReportForm({
                         onChange={(e) => setBankReceiptSir(e.target.value)}
                       />
                     </div>
-                    <div className="grid grid-cols-2 items-center mt-2 text-emerald-300">
+                    <div className="grid grid-cols-2 items-center mt-2 text-emerald-300 ">
                       <Label className="text-emerald-300">Receipt Bank</Label>
                       <select
-                        className="font-semibold text-right bg-slate-900 text-emerald-300 border-none outline-none cursor-pointer text-sm w-full pr-0 focus:ring-0 [&>option]:bg-slate-900 [&>option]:text-emerald-300"
+                        className="font-semibold dark:bg-slate-900 text-emerald-300 border outline-none cursor-pointer h-8 rounded-lg w-full text-left pl-2 focus:ring-0 [&>option]:bg-slate-800 [&>option]:text-emerald-300"
                         value={bankReceiptSirBank}
                         onChange={(e) => setBankReceiptSirBank(e.target.value)}
                       >
-                        <option value="">Select Bank</option>
+                        <option value="" >Select Bank</option>
                         {BANKS.filter(b => b !== "CASH").map((b) => (
                           <option key={b} value={b}>
                             {b}
