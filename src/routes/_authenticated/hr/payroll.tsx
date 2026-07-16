@@ -693,7 +693,6 @@ function PayrollPage() {
         <>
           <div 
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setShowForm(false)}
           />
           <div 
             className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"
@@ -765,7 +764,6 @@ function PayrollPage() {
       {editingSalaryStaff && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200"
-          onClick={() => setEditingSalaryStaff(null)}
         >
           <div 
             className="relative bg-background rounded-xl border border-border shadow-xl max-w-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200"

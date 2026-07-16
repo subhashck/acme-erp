@@ -491,7 +491,6 @@ function LeaveManagement() {
         <>
           <div 
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={handleCloseForm}
           />
           <div 
             className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"

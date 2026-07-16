@@ -11,7 +11,7 @@ import { Button } from "@/ui/button";
 import { Field } from "@/components/Field";
 import { Select } from "@/ui/select";
 import { Autocomplete } from "@/ui/autocomplete";
-import { Badge } from "@/ui/badge";
+// import { Badge } from "@/ui/badge";
 import type { StaffRow } from "@/types";
 import {
   ShieldAlert,
@@ -29,14 +29,18 @@ import {
   Calendar,
   User,
   Link2,
-  Link2Off
+  Link2Off,
+  KeyRound,
+  AtSign,
+  Trash2
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
   beforeLoad: async () => {
     const session = await authClient.getSession();
-    if (session.data?.user.role !== "admin") {
+    const role = session.data?.user.role;
+    if (role !== "admin" && role !== "hr") {
       throw redirect({
         to: "/"
       });
@@ -60,6 +64,8 @@ interface UserRecord {
 function UserManagementPage() {
   const [selectedUser, setSelectedUser] = React.useState<UserRecord | null>(null);
   const queryClient = useQueryClient();
+  const { data: currentSession } = authClient.useSession();
+  const isAdmin = currentSession?.user.role === "admin";
 
   // Create User state
   const [createSelectedStaffId, setCreateSelectedStaffId] = React.useState("");
@@ -80,6 +86,17 @@ function UserManagementPage() {
   // Link to Staff state
   const [selectedStaffId, setSelectedStaffId] = React.useState<string>("");
   const [submittingLink, setSubmittingLink] = React.useState(false);
+
+  // Reset password state
+  const [submittingResetPassword, setSubmittingResetPassword] = React.useState(false);
+
+  // Change email state
+  const [newEmail, setNewEmail] = React.useState("");
+  const [emailError, setEmailError] = React.useState("");
+  const [submittingEmail, setSubmittingEmail] = React.useState(false);
+
+  // Delete user state
+  const [submittingDelete, setSubmittingDelete] = React.useState(false);
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const staffList = staffQuery.data ?? [];
@@ -110,6 +127,8 @@ function UserManagementPage() {
       const validRole = ["admin", "hr", "staff"].includes(selectedUser.role || "") ? selectedUser.role : "staff";
       setNewRole(validRole as "admin" | "hr" | "staff");
       setBanReason("");
+      setNewEmail("");
+      setEmailError("");
     }
   }, [selectedUser]);
 
@@ -226,6 +245,105 @@ function UserManagementPage() {
       alert(err.message || "Error unbanning user");
     } finally {
       setSubmittingUnban(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!selectedUser) return;
+    const confirmReset = window.confirm(
+      `Are you sure you want to reset the password for ${selectedUser.name} to the default password ("Welcome@123")?`
+    );
+    if (!confirmReset) return;
+
+    setSubmittingResetPassword(true);
+    try {
+      const res = await authClient.admin.setUserPassword({
+        userId: selectedUser.id,
+        newPassword: "Welcome@123"
+      });
+      if (res.error) {
+        alert(res.error.message || "Failed to reset password");
+      } else {
+        alert("Password has been reset successfully to 'Welcome@123'.");
+      }
+    } catch (err: any) {
+      alert(err.message || "Error resetting password");
+    } finally {
+      setSubmittingResetPassword(false);
+    }
+  };
+
+  const handleChangeEmail = async () => {
+    if (!selectedUser) return;
+    setEmailError("");
+    if (!newEmail.trim()) {
+      setEmailError("Please enter a new email address.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail.trim())) {
+      setEmailError("Please enter a valid email address.");
+      return;
+    }
+    if (newEmail.trim().toLowerCase() === selectedUser.email.toLowerCase()) {
+      setEmailError("New email is the same as the current email.");
+      return;
+    }
+    const confirmed = window.confirm(
+      `Change email for ${selectedUser.name} from "${selectedUser.email}" to "${newEmail.trim()}"?\n\nThe user must use the new email to log in. This will also update their linked staff record if any.`
+    );
+    if (!confirmed) return;
+
+    setSubmittingEmail(true);
+    try {
+      const res = await fetch(`/api/admin/users/${selectedUser.id}/email`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newEmail: newEmail.trim() })
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setEmailError(json.error || "Failed to update email.");
+      } else {
+        alert(`Email updated successfully to "${newEmail.trim()}".`);
+        setSelectedUser((prev) => prev ? { ...prev, email: newEmail.trim() } : null);
+        setNewEmail("");
+        usersQuery.refetch();
+        queryClient.invalidateQueries({ queryKey: ["staff"] });
+      }
+    } catch (err: any) {
+      setEmailError(err.message || "Error updating email.");
+    } finally {
+      setSubmittingEmail(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    const confirmed = window.confirm(
+      `PERMANENTLY DELETE the account for ${selectedUser.name} (${selectedUser.email})?\n\nThis will remove their login access and unlink their staff record. This action cannot be undone.`
+    );
+    if (!confirmed) return;
+    // Double-confirm for destructive action
+    const reconfirmed = window.confirm(
+      `Are you absolutely sure? Type OK to confirm deletion of "${selectedUser.name}".`
+    );
+    if (!reconfirmed) return;
+
+    setSubmittingDelete(true);
+    try {
+      const res = await authClient.admin.removeUser({ userId: selectedUser.id });
+      if (res.error) {
+        alert(res.error.message || "Failed to delete user.");
+      } else {
+        alert(`User "${selectedUser.name}" has been permanently deleted.`);
+        setSelectedUser(null);
+        usersQuery.refetch();
+        queryClient.invalidateQueries({ queryKey: ["staff"] });
+      }
+    } catch (err: any) {
+      alert(err.message || "Error deleting user.");
+    } finally {
+      setSubmittingDelete(false);
     }
   };
 
@@ -633,7 +751,7 @@ function UserManagementPage() {
               </div>
 
               {/* Action 2: Ban / Unban Account */}
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 pb-5 border-b border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Ban / Restrict Login Access</h4>
                 {selectedUser.banned ? (
                   <div className="space-y-3 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/35 rounded-lg p-4">
@@ -675,28 +793,91 @@ function UserManagementPage() {
                 )}
               </div>
 
-              {/* Action 3: Impersonate User */}
+              {/* Action: Change Email */}
+              <div className="space-y-2.5 pb-5 border-b border-border">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <AtSign size={13} /> Change Login Email
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Current: <span className="font-mono font-medium text-slate-700 dark:text-slate-300">{selectedUser.email}</span>
+                </p>
+                <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                  <Field
+                    label="New Email Address"
+                    placeholder="Enter new email address"
+                    value={newEmail}
+                    onChange={(e) => { setNewEmail(e.target.value); setEmailError(""); }}
+                    className="flex-1 w-full"
+                  />
+                  <Button
+                    onClick={handleChangeEmail}
+                    disabled={submittingEmail || !newEmail.trim()}
+                    className="h-10 font-bold bg-indigo-600 hover:bg-indigo-700 text-white w-full sm:w-auto flex items-center gap-1.5"
+                  >
+                    <AtSign size={14} /> {submittingEmail ? "Saving..." : "Update Email"}
+                  </Button>
+                </div>
+                {emailError && (
+                  <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-md p-2">
+                    {emailError}
+                  </p>
+                )}
+              </div>
+
+              {/* Action 3: Admin Actions (admin-only: Impersonate, Reset Password, Delete) */}
               <div className="space-y-2.5 pt-5 border-t border-border">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Admin Actions</h4>
-                <Button
-                  onClick={async () => {
-                    try {
-                      const res = await authClient.admin.impersonateUser({
-                        userId: selectedUser.id,
-                      });
-                      if (res.error) {
-                        alert(res.error.message || "Failed to impersonate user");
-                      } else {
-                        window.location.href = "/";
-                      }
-                    } catch (e: any) {
-                      alert(e.message || "Failed to impersonate user");
-                    }
-                  }}
-                  className="w-full font-bold bg-amber-600 hover:bg-amber-700 text-white h-10 flex items-center justify-center gap-1.5"
-                >
-                  <User size={15} /> Impersonate {selectedUser.name}
-                </Button>
+                <div className="flex flex-col gap-2">
+                  {isAdmin && (
+                    <Button
+                      onClick={async () => {
+                        try {
+                          const res = await authClient.admin.impersonateUser({
+                            userId: selectedUser.id,
+                          });
+                          if (res.error) {
+                            alert(res.error.message || "Failed to impersonate user");
+                          } else {
+                            window.location.href = "/";
+                          }
+                        } catch (e: any) {
+                          alert(e.message || "Failed to impersonate user");
+                        }
+                      }}
+                      className="w-full font-bold bg-amber-600 hover:bg-amber-700 text-white h-10 flex items-center justify-center gap-1.5"
+                    >
+                      <User size={15} /> Impersonate {selectedUser.name}
+                    </Button>
+                  )}
+
+                  <Button
+                    onClick={handleResetPassword}
+                    disabled={submittingResetPassword}
+                    className="w-full font-bold bg-rose-600 hover:bg-rose-700 text-white h-10 flex items-center justify-center gap-1.5"
+                  >
+                    <KeyRound size={15} /> {submittingResetPassword ? "Resetting Password..." : "Reset Password to Default"}
+                  </Button>
+
+                  {isAdmin && (() => {
+                    const isLinkedToStaff = staffList.some((s) => (s as any).userId === selectedUser.id);
+                    return (
+                      <div className="pt-2 border-t border-border">
+                        <Button
+                          onClick={handleDeleteUser}
+                          disabled={submittingDelete || isLinkedToStaff}
+                          className="w-full font-bold bg-slate-900 dark:bg-red-950 hover:bg-red-900 dark:hover:bg-red-900 text-white border border-red-800/50 h-10 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 size={15} /> {submittingDelete ? "Deleting User..." : "Delete User Account"}
+                        </Button>
+                        <p className={cn("text-xs mt-1.5 text-center", isLinkedToStaff ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-slate-400 dark:text-slate-500")}>
+                          {isLinkedToStaff
+                            ? "⚠ Unlink this user from their staff record above before deleting."
+                            : "Permanently removes login access. Cannot be undone."}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
 
