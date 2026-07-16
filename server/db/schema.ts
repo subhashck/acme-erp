@@ -16,6 +16,7 @@ export const user = sqliteTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("banReason"),
   banExpires: timestamp("banExpires"),
+  mustChangePassword: boolean("mustChangePassword").notNull().default(false),
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull()
 });

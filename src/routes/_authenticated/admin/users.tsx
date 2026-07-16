@@ -104,15 +104,12 @@ function UserManagementPage() {
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const res = await authClient.admin.listUsers({
-        query: {
-          limit: 1000
-        }
-      });
-      if (res.error) {
-        throw new Error(res.error.message || "Failed to fetch users");
+      const res = await fetch("/api/admin/users");
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error((json as any).error || "Failed to fetch users");
       }
-      return (res.data?.users || []) as UserRecord[];
+      return (await res.json()) as UserRecord[];
     }
   });
 
@@ -165,9 +162,16 @@ function UserManagementPage() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ userId: res.data.user.id }),
             });
+            
+            // Set mustChangePassword flag
+            await fetch(`/api/admin/users/${res.data.user.id}/must-change-password`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" }
+            });
+
             queryClient.invalidateQueries({ queryKey: ["staff"] });
           } catch (e) {
-            console.error("Failed to link user to staff", e);
+            console.error("Failed to link user or set mustChangePassword flag", e);
           }
         }
         
@@ -187,12 +191,14 @@ function UserManagementPage() {
     if (!selectedUser) return;
     setSubmittingRole(true);
     try {
-      const res = await authClient.admin.setRole({
-        userId: selectedUser.id,
-        role: newRole
+      const res = await fetch(`/api/admin/users/${selectedUser.id}/role`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: newRole })
       });
-      if (res.error) {
-        alert(res.error.message || "Failed to update role");
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error || "Failed to update role");
       } else {
         alert(`Role successfully changed to ${newRole}`);
         usersQuery.refetch();
@@ -209,12 +215,14 @@ function UserManagementPage() {
     if (!selectedUser) return;
     setSubmittingBan(true);
     try {
-      const res = await authClient.admin.banUser({
-        userId: selectedUser.id,
-        banReason: banReason || undefined
+      const res = await fetch(`/api/admin/users/${selectedUser.id}/ban`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ banReason: banReason || undefined })
       });
-      if (res.error) {
-        alert(res.error.message || "Failed to ban user");
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error || "Failed to ban user");
       } else {
         alert("User has been banned successfully.");
         usersQuery.refetch();
@@ -231,11 +239,14 @@ function UserManagementPage() {
     if (!selectedUser) return;
     setSubmittingUnban(true);
     try {
-      const res = await authClient.admin.unbanUser({
-        userId: selectedUser.id
+      const res = await fetch(`/api/admin/users/${selectedUser.id}/unban`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
       });
-      if (res.error) {
-        alert(res.error.message || "Failed to unban user");
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error || "Failed to unban user");
       } else {
         alert("User has been unbanned successfully.");
         usersQuery.refetch();
@@ -257,12 +268,14 @@ function UserManagementPage() {
 
     setSubmittingResetPassword(true);
     try {
-      const res = await authClient.admin.setUserPassword({
-        userId: selectedUser.id,
-        newPassword: "Welcome@123"
+      const res = await fetch(`/api/admin/users/${selectedUser.id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newPassword: "Welcome@123" })
       });
-      if (res.error) {
-        alert(res.error.message || "Failed to reset password");
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error || "Failed to reset password");
       } else {
         alert("Password has been reset successfully to 'Welcome@123'.");
       }
