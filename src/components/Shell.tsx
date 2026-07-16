@@ -340,6 +340,15 @@ export function Shell() {
                     >
                       Payroll
                     </Link>
+                    {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
+                      <Link
+                        to="/admin/users"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        User Management
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>

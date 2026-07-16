@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { admin } from "better-auth/plugins";
+import { admin, customSession } from "better-auth/plugins";
 import { pool } from "./db/client.ts";
 
 let rawAuthUrl = process.env.BETTER_AUTH_URL;
@@ -33,11 +33,31 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true
   },
+  user: {
+    additionalFields: {
+      mustChangePassword: {
+        type: "boolean",
+        defaultValue: false,
+        input: false
+      }
+    }
+  },
   plugins: [
     admin({
       defaultRole: "staff",
       adminRoles: ["admin"]
-    })
+    }),
+    customSession(async ({ user, session }) => ({
+      ...session,
+      user: {
+        ...user,
+        role: (user as any).role as string | null,
+        banned: (user as any).banned as boolean | null,
+        banReason: (user as any).banReason as string | null,
+        banExpires: (user as any).banExpires as Date | null,
+        mustChangePassword: (user as any).mustChangePassword ?? false
+      }
+    }))
   ]
 });
 

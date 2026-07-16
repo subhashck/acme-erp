@@ -1,5 +1,5 @@
 import { createAuthClient } from "better-auth/react";
-import { adminClient } from "better-auth/client/plugins";
+import { adminClient, inferAdditionalFields } from "better-auth/client/plugins";
 
 export const authClient = createAuthClient({
   baseURL: typeof window !== "undefined" ? window.location.origin : "http://localhost:8787",
@@ -10,6 +10,11 @@ export const authClient = createAuthClient({
         admin: {} as any,
         hr: {} as any,
         staff: {} as any
+      }
+    }),
+    inferAdditionalFields({
+      user: {
+        mustChangePassword: { type: "boolean" }
       }
     })
   ]
