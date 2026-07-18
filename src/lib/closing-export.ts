@@ -475,9 +475,10 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   // Night Services panel
   if (nightServicesTotal > 0) {
     drawPanelHeader("Night / After-EOD Services", fmt(nightServicesTotal));
-    drawTableRow("Service Rendered", "Quantity × Rate", "Amount", true);
+    drawTableRow("Service Rendered", "Quantity / Rate", "Amount", true);
     sortedNightLines.forEach((line: any) => {
-      drawTableRow(line.serviceName, `${line.quantity} × ${fmt(line.rate)}`, fmt(parseFloat(line.amount)));
+      const rateText = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
+      drawTableRow(line.serviceName, rateText, fmt(parseFloat(line.amount)));
     });
     y += 4;
   }
@@ -485,9 +486,10 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   // Dynamic Categories Services Panels
   displayedCategories.forEach((cat) => {
     drawPanelHeader(cat.label, fmt(cat.total));
-    drawTableRow("Service Rendered", "Quantity × Rate", "Amount", true);
+    drawTableRow("Service Rendered", "Quantity / Rate", "Amount", true);
     cat.lines.forEach((line: any) => {
-      drawTableRow(line.serviceName, `${line.quantity} × ${fmt(line.rate)}`, fmt(parseFloat(line.amount)));
+      const rateText = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
+      drawTableRow(line.serviceName, rateText, fmt(parseFloat(line.amount)));
     });
     y += 4;
   });
@@ -858,14 +860,16 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   if (nightServicesTotal > 0) {
     addRow(["Night / After-EOD Services", "", "", nightServicesTotal], [styleBold, null, styleRegular, styleNumber]);
     report.serviceLines?.filter((l: any) => l.isNightEntry).forEach((line: any) => {
-      addRow([`  - ${line.serviceName}`, "", `${line.quantity} × ${fmt(line.rate)}`, line.amount], [styleItalic, null, styleItalic, styleNumber]);
+      const details = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
+      addRow([`  - ${line.serviceName}`, "", details, line.amount], [styleItalic, null, styleItalic, styleNumber]);
     });
   }
 
   displayedCategories.forEach((cat: any) => {
     addRow([cat.label, "", "", cat.total], [styleBold, null, styleRegular, styleNumber]);
     cat.lines.forEach((line: any) => {
-      addRow([`  - ${line.serviceName}`, "", `${line.quantity} × ${fmt(line.rate)}`, line.amount], [styleItalic, null, styleItalic, styleNumber]);
+      const details = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
+      addRow([`  - ${line.serviceName}`, "", details, line.amount], [styleItalic, null, styleItalic, styleNumber]);
     });
   });
 

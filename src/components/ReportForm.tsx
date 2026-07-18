@@ -380,6 +380,24 @@ export function ReportForm({
     }
   }, [initialData]);
 
+  // ── Keyboard shortcut Ctrl+S to save as draft ────────────────
+  const doSubmitRef = React.useRef<(forcedStatus?: "draft" | "submitted") => void>(undefined);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (isPending) return;
+        setStatus("draft");
+        doSubmitRef.current?.("draft");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isPending]);
+
   // ── derived calculations ──────────────────────────────────────
   const catalogServiceLines = Object.entries(serviceQuantities)
     .filter(([_, data]) => data.quantity > 0)
@@ -476,7 +494,7 @@ export function ReportForm({
     } else {
       setServiceQuantities((prev) => ({
         ...prev,
-        [serviceId]: { rate, quantity: qty, amount: rate * qty },
+        [serviceId]: { rate, quantity: qty, amount: Number((rate * qty).toFixed(2)) },
       }));
     }
   };
@@ -488,9 +506,9 @@ export function ReportForm({
       const data = prev[serviceId];
       if (!data) return prev;
       if (field === "rate") {
-        return { ...prev, [serviceId]: { ...data, rate: val, amount: val * data.quantity } };
+        return { ...prev, [serviceId]: { ...data, rate: val, amount: Number((val * data.quantity).toFixed(2)) } };
       } else {
-        return { ...prev, [serviceId]: { ...data, amount: val } };
+        return { ...prev, [serviceId]: { ...data, rate: 0, amount: val } };
       }
     });
   };
@@ -509,13 +527,16 @@ export function ReportForm({
         } else if (field === "rate") {
           const rateVal = parseFloat(val) || 0;
           copy.rate = rateVal;
-          if (!isVar) copy.amount = rateVal * copy.quantity;
+          if (!isVar) copy.amount = Number((rateVal * copy.quantity).toFixed(2));
         } else if (field === "quantity") {
           const qtyVal = parseInt(val, 10) || 0;
           copy.quantity = qtyVal;
-          if (!isVar) copy.amount = copy.rate * qtyVal;
+          if (!isVar) copy.amount = Number((copy.rate * qtyVal).toFixed(2));
         } else if (field === "amount") {
           copy.amount = parseFloat(val) || 0;
+          if (!isVar) {
+            copy.rate = 0;
+          }
         }
         return copy;
       })
@@ -544,7 +565,7 @@ export function ReportForm({
     setNightServices((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
-        return { ...item, quantity: qty, amount: item.rate * qty };
+        return { ...item, quantity: qty, amount: Number((item.rate * qty).toFixed(2)) };
       })
     );
   };
@@ -556,9 +577,9 @@ export function ReportForm({
       prev.map((item, idx) => {
         if (idx !== index) return item;
         if (field === "rate") {
-          return { ...item, rate: val, amount: val * item.quantity };
+          return { ...item, rate: val, amount: Number((val * item.quantity).toFixed(2)) };
         } else {
-          return { ...item, amount: val };
+          return { ...item, rate: 0, amount: val };
         }
       })
     );
@@ -594,8 +615,8 @@ export function ReportForm({
   };
 
   // ── submit ────────────────────────────────────────────────────
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSubmit = (forcedStatus?: "draft" | "submitted") => {
+    const finalStatus = forcedStatus ?? status;
     const parsedServiceLines = [
       ...entryOrder
         .filter((serviceId) => {
@@ -641,7 +662,7 @@ export function ReportForm({
       bankReceiptSirBank: bankReceiptSirBank || null,
       bankDeposits: JSON.stringify(bankDeposits),
       cashReceipts: cashReceiptsSum,
-      status,
+      status: finalStatus,
       serviceLines: parsedServiceLines,
       expenditures: expenditures.map((e) => ({
         category: e.category,
@@ -668,6 +689,12 @@ export function ReportForm({
     };
 
     onSubmit(payload);
+  };
+  doSubmitRef.current = doSubmit;
+
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    if (e) e.preventDefault();
+    doSubmit();
   };
 
   // ── catalog autocomplete helper ───────────────────────────────
@@ -730,7 +757,8 @@ export function ReportForm({
                           }));
                         }
                       } else {
-                        handleQtyChange(item.id, toNum(item.defaultRate), qtyStr);
+                        const currentRate = state.quantity > 0 ? state.rate : toNum(item.defaultRate);
+                        handleQtyChange(item.id, currentRate, qtyStr);
                       }
                     }}
                     className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
@@ -738,13 +766,25 @@ export function ReportForm({
                 </td>
                 {!isVar && (
                   <td className="p-3 text-right">
-                    <input
-                      type="number" min="0" step="0.01"
-                      value={state.rate}
-                      onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
-                      disabled={state.quantity === 0}
-                      className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
-                    />
+                    {state.rate > 0 ? (
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={state.rate}
+                        onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
+                        disabled={state.quantity === 0}
+                        className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
+                      />
+                    ) : state.quantity > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRateAmtChange(item.id, "rate", String(item.defaultRate || 0))}
+                        className="text-[10px] text-teal-650 hover:underline cursor-pointer font-bold"
+                      >
+                        Reset Rate
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground text-[10px]">—</span>
+                    )}
                   </td>
                 )}
                 <td className="p-3 text-right">
@@ -792,12 +832,25 @@ export function ReportForm({
             </div>
             <div className="space-y-1">
               <Label className="text-[10px]">Rate</Label>
-              <Input
-                type="number" placeholder="0"
-                value={line.rate}
-                onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
-                required
-              />
+              {line.rate > 0 ? (
+                <Input
+                  type="number" placeholder="0"
+                  value={line.rate}
+                  onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
+                  required
+                />
+              ) : (
+                <div className="h-10 flex items-center justify-between border rounded-md px-3 bg-muted/20 text-[10px] text-muted-foreground select-none">
+                  <span>Hidden</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCustomLineChange(actualIdx, "rate", String(line.amount / (line.quantity || 1)))}
+                    className="text-teal-650 hover:underline font-bold cursor-pointer"
+                  >
+                    Show
+                  </button>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 items-center">
               <div className="space-y-1 flex-1">
@@ -978,14 +1031,24 @@ export function ReportForm({
                                       />
                                     </td>
                                     <td className="p-3 text-right">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={item.rate}
-                                        onChange={(e) => handleNightRateAmtChange(idx, "rate", e.target.value)}
-                                        className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
-                                      />
+                                      {item.rate > 0 ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          value={item.rate}
+                                          onChange={(e) => handleNightRateAmtChange(idx, "rate", e.target.value)}
+                                          className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
+                                        />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleNightRateAmtChange(idx, "rate", String(s?.defaultRate || 0))}
+                                          className="text-[10px] text-teal-650 hover:underline cursor-pointer font-bold"
+                                        >
+                                          Reset Rate
+                                        </button>
+                                      )}
                                     </td>
                                     <td className="p-3 text-right">
                                       <input
