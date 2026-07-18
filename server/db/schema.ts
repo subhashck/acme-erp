@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric } from "drizzle-orm/pg-core";
+import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric, pgEnum, date } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -790,4 +790,156 @@ export const dailyPaymentChannelsRelations = relations(dailyPaymentChannels, ({ 
 
 export const dailyDiscountsReturnsRelations = relations(dailyDiscountsReturns, ({ one }) => ({
   report: one(dailyClosingReports, { fields: [dailyDiscountsReturns.reportId], references: [dailyClosingReports.id] })
+}));
+
+// Purchase Orders Module Enums
+export const poStatusEnum = pgEnum("po_status", ["open", "partial", "closed", "cancelled"]);
+export const poPaymentStatusEnum = pgEnum("po_payment_status", ["unpaid", "partial", "paid"]);
+export const paymentModeEnum = pgEnum("payment_mode", ["cash", "upi", "card", "rtgs", "cheque", "other"]);
+
+// Purchase Orders Module Tables
+export const itemTypes = sqliteTable("item_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const items = sqliteTable("items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  itemTypeId: integer("item_type_id").notNull().references(() => itemTypes.id),
+  unit: text("unit").notNull(),
+  rate: numeric("rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const itemTypesRelations = relations(itemTypes, ({ many }) => ({
+  items: many(items),
+}));
+
+export const itemsRelations = relations(items, ({ one }) => ({
+  itemType: one(itemTypes, { fields: [items.itemTypeId], references: [itemTypes.id] }),
+}));
+
+export const vendors = sqliteTable("vendors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  gstNumber: text("gst_number"),
+  contactPerson: text("contact_person"),
+  phone: text("phone"),
+  address: text("address"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const purchaseOrders = sqliteTable("purchase_orders", {
+  id: serial("id").primaryKey(),
+  poNo: text("po_no").unique().notNull(),
+  poDate: date("po_date").notNull(),
+  vendorId: integer("vendor_id").notNull().references(() => vendors.id),
+  poStatus: poStatusEnum("po_status").notNull().default("open"),
+  paymentStatus: poPaymentStatusEnum("payment_status").notNull().default("unpaid"),
+  totalValue: numeric("total_value", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  remarks: text("remarks"),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const poItems = sqliteTable("po_items", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  itemName: text("item_name").notNull(),
+  category: text("category"),
+  unit: text("unit"),
+  orderedQty: numeric("ordered_qty", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  lineValue: numeric("line_value", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const grnStatusEnum = pgEnum("grn_status", ["draft", "posted", "correction"]);
+
+export const grns = sqliteTable("grns", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").references(() => purchaseOrders.id),
+  vendorId: integer("vendor_id").references(() => vendors.id),
+  noPoReason: text("no_po_reason"),
+  grnNo: text("grn_no").unique().notNull(),
+  grnDate: date("grn_date").notNull(),
+  dateOfDelivery: date("date_of_delivery"),
+  remarks: text("remarks"),
+  status: grnStatusEnum("status").notNull().default("draft"),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const grnItems = sqliteTable("grn_items", {
+  id: serial("id").primaryKey(),
+  grnId: integer("grn_id").notNull().references(() => grns.id, { onDelete: "cascade" }),
+  poItemId: integer("po_item_id").references(() => poItems.id),
+  itemId: integer("item_id").references(() => items.id),
+  itemName: text("item_name"),
+  receivedQty: numeric("received_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  freeQty: numeric("free_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }),
+  lineValue: numeric("line_value", { precision: 12, scale: 2, mode: "number" }),
+  batch: text("batch"),
+  expiryDate: date("expiry_date"),
+  notes: text("notes")
+});
+
+export const poPayments = sqliteTable("po_payments", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  paymentDate: date("payment_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  paymentMode: paymentModeEnum("payment_mode").notNull(),
+  referenceNo: text("reference_no"),
+  remarks: text("remarks"),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// Relations Definitions
+export const vendorsRelations = relations(vendors, ({ many }) => ({
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  vendor: one(vendors, { fields: [purchaseOrders.vendorId], references: [vendors.id] }),
+  createdBy: one(user, { fields: [purchaseOrders.createdBy], references: [user.id] }),
+  items: many(poItems),
+  grns: many(grns),
+  payments: many(poPayments),
+}));
+
+export const poItemsRelations = relations(poItems, ({ one, many }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [poItems.poId], references: [purchaseOrders.id] }),
+  grnItems: many(grnItems),
+}));
+
+export const grnsRelations = relations(grns, ({ one, many }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [grns.poId], references: [purchaseOrders.id] }),
+  vendor: one(vendors, { fields: [grns.vendorId], references: [vendors.id] }),
+  createdBy: one(user, { fields: [grns.createdBy], references: [user.id] }),
+  items: many(grnItems),
+}));
+
+export const grnItemsRelations = relations(grnItems, ({ one }) => ({
+  grn: one(grns, { fields: [grnItems.grnId], references: [grns.id] }),
+  poItem: one(poItems, { fields: [grnItems.poItemId], references: [poItems.id] }),
+  item: one(items, { fields: [grnItems.itemId], references: [items.id] }),
+}));
+
+export const poPaymentsRelations = relations(poPayments, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [poPayments.poId], references: [purchaseOrders.id] }),
+  createdBy: one(user, { fields: [poPayments.createdBy], references: [user.id] }),
 }));

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { ArrowLeft, Edit2, Lock, FileText, FileSpreadsheet, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
-import { exportClosingToExcel } from "../../../../lib/closing-export";
+import { exportClosingToExcel, exportClosingToPDF } from "../../../../lib/closing-export";
 import { useRpcQuery } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { Button } from "../../../../ui/button";
@@ -234,9 +234,9 @@ function ReportDetail() {
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
-  // const handleExportPDF = () => {
-  //   exportClosingToPDF(report, categoriesList, expCategoriesList);
-  // };
+  const handleExportPDF = () => {
+    exportClosingToPDF(report, categoriesList, expCategoriesList);
+  };
 
   const handleExportExcel = () => {
     exportClosingToExcel(report, categoriesList, expCategoriesList);
@@ -282,9 +282,9 @@ function ReportDetail() {
               </Link>
             </Button>
           )}
-          {/* <Button onClick={handleExportPDF} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer gap-1.5">
+          <Button onClick={handleExportPDF} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer gap-1.5">
             <FileText size={15} /> Export PDF
-          </Button> */}
+          </Button>
           <Button onClick={handleExportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer gap-1.5">
             <FileSpreadsheet size={15} /> Export to Excel
           </Button>
