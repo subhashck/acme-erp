@@ -16,6 +16,12 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
+import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
+import { Route as AuthenticatedPurchasesUnitTypesRouteImport } from './routes/_authenticated/purchases/unit-types'
+import { Route as AuthenticatedPurchasesPurchaseOrdersRouteImport } from './routes/_authenticated/purchases/purchase-orders'
+import { Route as AuthenticatedPurchasesItemsRouteImport } from './routes/_authenticated/purchases/items'
+import { Route as AuthenticatedPurchasesItemTypesRouteImport } from './routes/_authenticated/purchases/item-types'
+import { Route as AuthenticatedPurchasesBillsRouteImport } from './routes/_authenticated/purchases/bills'
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
@@ -38,10 +44,19 @@ import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_au
 import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authenticated/admin/hospital'
 import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
 import { Route as AuthenticatedAccountsConsultantChargesRouteImport } from './routes/_authenticated/accounts/consultant-charges'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIndexRouteImport } from './routes/_authenticated/purchases/purchase-orders/index'
+import { Route as AuthenticatedPurchasesGrnsIndexRouteImport } from './routes/_authenticated/purchases/grns/index'
 import { Route as AuthenticatedAccountsReportsIndexRouteImport } from './routes/_authenticated/accounts/reports/index'
+import { Route as AuthenticatedPurchasesPurchaseOrdersNewRouteImport } from './routes/_authenticated/purchases/purchase-orders/new'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIdRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id'
+import { Route as AuthenticatedPurchasesGrnsNewRouteImport } from './routes/_authenticated/purchases/grns/new'
+import { Route as AuthenticatedPurchasesGrnsGrnIdRouteImport } from './routes/_authenticated/purchases/grns/$grnId'
 import { Route as AuthenticatedAccountsReportsNewRouteImport } from './routes/_authenticated/accounts/reports/new'
 import { Route as AuthenticatedAccountsReportsIdRouteImport } from './routes/_authenticated/accounts/reports/$id'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.edit'
+import { Route as AuthenticatedPurchasesGrnsGrnIdEditRouteImport } from './routes/_authenticated/purchases/grns/$grnId_.edit'
 import { Route as AuthenticatedAccountsReportsEditIdRouteImport } from './routes/_authenticated/accounts/reports/edit.$id'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIdGrnNewRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.grn.new'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -78,6 +93,42 @@ const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
   path: '/shared/report/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedPurchasesVendorsRoute =
+  AuthenticatedPurchasesVendorsRouteImport.update({
+    id: '/purchases/vendors',
+    path: '/purchases/vendors',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesUnitTypesRoute =
+  AuthenticatedPurchasesUnitTypesRouteImport.update({
+    id: '/purchases/unit-types',
+    path: '/purchases/unit-types',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersRoute =
+  AuthenticatedPurchasesPurchaseOrdersRouteImport.update({
+    id: '/purchases/purchase-orders',
+    path: '/purchases/purchase-orders',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesItemsRoute =
+  AuthenticatedPurchasesItemsRouteImport.update({
+    id: '/purchases/items',
+    path: '/purchases/items',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesItemTypesRoute =
+  AuthenticatedPurchasesItemTypesRouteImport.update({
+    id: '/purchases/item-types',
+    path: '/purchases/item-types',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesBillsRoute =
+  AuthenticatedPurchasesBillsRouteImport.update({
+    id: '/purchases/bills',
+    path: '/purchases/bills',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMastersShiftsRoute =
   AuthenticatedMastersShiftsRouteImport.update({
     id: '/masters/shifts',
@@ -205,10 +256,46 @@ const AuthenticatedAccountsConsultantChargesRoute =
     path: '/accounts/consultant-charges',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPurchasesPurchaseOrdersIndexRoute =
+  AuthenticatedPurchasesPurchaseOrdersIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsIndexRoute =
+  AuthenticatedPurchasesGrnsIndexRouteImport.update({
+    id: '/purchases/grns/',
+    path: '/purchases/grns/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountsReportsIndexRoute =
   AuthenticatedAccountsReportsIndexRouteImport.update({
     id: '/accounts/reports/',
     path: '/accounts/reports/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersNewRoute =
+  AuthenticatedPurchasesPurchaseOrdersNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersIdRoute =
+  AuthenticatedPurchasesPurchaseOrdersIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsNewRoute =
+  AuthenticatedPurchasesGrnsNewRouteImport.update({
+    id: '/purchases/grns/new',
+    path: '/purchases/grns/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsGrnIdRoute =
+  AuthenticatedPurchasesGrnsGrnIdRouteImport.update({
+    id: '/purchases/grns/$grnId',
+    path: '/purchases/grns/$grnId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAccountsReportsNewRoute =
@@ -223,11 +310,29 @@ const AuthenticatedAccountsReportsIdRoute =
     path: '/accounts/reports/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPurchasesPurchaseOrdersIdEditRoute =
+  AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport.update({
+    id: '/$id_/edit',
+    path: '/$id/edit',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsGrnIdEditRoute =
+  AuthenticatedPurchasesGrnsGrnIdEditRouteImport.update({
+    id: '/purchases/grns/$grnId_/edit',
+    path: '/purchases/grns/$grnId/edit',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountsReportsEditIdRoute =
   AuthenticatedAccountsReportsEditIdRouteImport.update({
     id: '/accounts/reports/edit/$id',
     path: '/accounts/reports/edit/$id',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute =
+  AuthenticatedPurchasesPurchaseOrdersIdGrnNewRouteImport.update({
+    id: '/$id_/grn/new',
+    path: '/$id/grn/new',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -258,11 +363,26 @@ export interface FileRoutesByFullPath {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/purchases/bills': typeof AuthenticatedPurchasesBillsRoute
+  '/purchases/item-types': typeof AuthenticatedPurchasesItemTypesRoute
+  '/purchases/items': typeof AuthenticatedPurchasesItemsRoute
+  '/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
+  '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
+  '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
+  '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  '/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
+  '/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
+  '/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
+  '/purchases/grns/$grnId/edit': typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
+  '/purchases/purchase-orders/$id/edit': typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  '/purchases/purchase-orders/$id/grn/new': typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
 }
 export interface FileRoutesByTo {
   '/change-password': typeof ChangePasswordRoute
@@ -292,11 +412,25 @@ export interface FileRoutesByTo {
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/purchases/bills': typeof AuthenticatedPurchasesBillsRoute
+  '/purchases/item-types': typeof AuthenticatedPurchasesItemTypesRoute
+  '/purchases/items': typeof AuthenticatedPurchasesItemsRoute
+  '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
+  '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
+  '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  '/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/accounts/reports': typeof AuthenticatedAccountsReportsIndexRoute
+  '/purchases/grns': typeof AuthenticatedPurchasesGrnsIndexRoute
+  '/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
+  '/purchases/grns/$grnId/edit': typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
+  '/purchases/purchase-orders/$id/edit': typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  '/purchases/purchase-orders/$id/grn/new': typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -328,11 +462,26 @@ export interface FileRoutesById {
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/_authenticated/purchases/bills': typeof AuthenticatedPurchasesBillsRoute
+  '/_authenticated/purchases/item-types': typeof AuthenticatedPurchasesItemTypesRoute
+  '/_authenticated/purchases/items': typeof AuthenticatedPurchasesItemsRoute
+  '/_authenticated/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
+  '/_authenticated/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
+  '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/_authenticated/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  '/_authenticated/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
+  '/_authenticated/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  '/_authenticated/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/_authenticated/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
+  '/_authenticated/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
+  '/_authenticated/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/_authenticated/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
+  '/_authenticated/purchases/grns/$grnId_/edit': typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
+  '/_authenticated/purchases/purchase-orders/$id_/edit': typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  '/_authenticated/purchases/purchase-orders/$id_/grn/new': typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -364,11 +513,26 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/purchases/bills'
+    | '/purchases/item-types'
+    | '/purchases/items'
+    | '/purchases/purchase-orders'
+    | '/purchases/unit-types'
+    | '/purchases/vendors'
     | '/shared/report/$token'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/purchases/grns/$grnId'
+    | '/purchases/grns/new'
+    | '/purchases/purchase-orders/$id'
+    | '/purchases/purchase-orders/new'
     | '/accounts/reports/'
+    | '/purchases/grns/'
+    | '/purchases/purchase-orders/'
     | '/accounts/reports/edit/$id'
+    | '/purchases/grns/$grnId/edit'
+    | '/purchases/purchase-orders/$id/edit'
+    | '/purchases/purchase-orders/$id/grn/new'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/change-password'
@@ -398,11 +562,25 @@ export interface FileRouteTypes {
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/purchases/bills'
+    | '/purchases/item-types'
+    | '/purchases/items'
+    | '/purchases/unit-types'
+    | '/purchases/vendors'
     | '/shared/report/$token'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/purchases/grns/$grnId'
+    | '/purchases/grns/new'
+    | '/purchases/purchase-orders/$id'
+    | '/purchases/purchase-orders/new'
     | '/accounts/reports'
+    | '/purchases/grns'
+    | '/purchases/purchase-orders'
     | '/accounts/reports/edit/$id'
+    | '/purchases/grns/$grnId/edit'
+    | '/purchases/purchase-orders/$id/edit'
+    | '/purchases/purchase-orders/$id/grn/new'
   id:
     | '__root__'
     | '/_authenticated'
@@ -433,11 +611,26 @@ export interface FileRouteTypes {
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
+    | '/_authenticated/purchases/bills'
+    | '/_authenticated/purchases/item-types'
+    | '/_authenticated/purchases/items'
+    | '/_authenticated/purchases/purchase-orders'
+    | '/_authenticated/purchases/unit-types'
+    | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
+    | '/_authenticated/purchases/grns/$grnId'
+    | '/_authenticated/purchases/grns/new'
+    | '/_authenticated/purchases/purchase-orders/$id'
+    | '/_authenticated/purchases/purchase-orders/new'
     | '/_authenticated/accounts/reports/'
+    | '/_authenticated/purchases/grns/'
+    | '/_authenticated/purchases/purchase-orders/'
     | '/_authenticated/accounts/reports/edit/$id'
+    | '/_authenticated/purchases/grns/$grnId_/edit'
+    | '/_authenticated/purchases/purchase-orders/$id_/edit'
+    | '/_authenticated/purchases/purchase-orders/$id_/grn/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -497,6 +690,48 @@ declare module '@tanstack/react-router' {
       fullPath: '/shared/report/$token'
       preLoaderRoute: typeof SharedReportTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/purchases/vendors': {
+      id: '/_authenticated/purchases/vendors'
+      path: '/purchases/vendors'
+      fullPath: '/purchases/vendors'
+      preLoaderRoute: typeof AuthenticatedPurchasesVendorsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/unit-types': {
+      id: '/_authenticated/purchases/unit-types'
+      path: '/purchases/unit-types'
+      fullPath: '/purchases/unit-types'
+      preLoaderRoute: typeof AuthenticatedPurchasesUnitTypesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/purchase-orders': {
+      id: '/_authenticated/purchases/purchase-orders'
+      path: '/purchases/purchase-orders'
+      fullPath: '/purchases/purchase-orders'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/items': {
+      id: '/_authenticated/purchases/items'
+      path: '/purchases/items'
+      fullPath: '/purchases/items'
+      preLoaderRoute: typeof AuthenticatedPurchasesItemsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/item-types': {
+      id: '/_authenticated/purchases/item-types'
+      path: '/purchases/item-types'
+      fullPath: '/purchases/item-types'
+      preLoaderRoute: typeof AuthenticatedPurchasesItemTypesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/bills': {
+      id: '/_authenticated/purchases/bills'
+      path: '/purchases/bills'
+      fullPath: '/purchases/bills'
+      preLoaderRoute: typeof AuthenticatedPurchasesBillsRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/masters/shifts': {
       id: '/_authenticated/masters/shifts'
@@ -652,11 +887,53 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsConsultantChargesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/purchases/purchase-orders/': {
+      id: '/_authenticated/purchases/purchase-orders/'
+      path: '/'
+      fullPath: '/purchases/purchase-orders/'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIndexRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/grns/': {
+      id: '/_authenticated/purchases/grns/'
+      path: '/purchases/grns'
+      fullPath: '/purchases/grns/'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/accounts/reports/': {
       id: '/_authenticated/accounts/reports/'
       path: '/accounts/reports'
       fullPath: '/accounts/reports/'
       preLoaderRoute: typeof AuthenticatedAccountsReportsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/purchase-orders/new': {
+      id: '/_authenticated/purchases/purchase-orders/new'
+      path: '/new'
+      fullPath: '/purchases/purchase-orders/new'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersNewRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/purchase-orders/$id': {
+      id: '/_authenticated/purchases/purchase-orders/$id'
+      path: '/$id'
+      fullPath: '/purchases/purchase-orders/$id'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/grns/new': {
+      id: '/_authenticated/purchases/grns/new'
+      path: '/purchases/grns/new'
+      fullPath: '/purchases/grns/new'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/grns/$grnId': {
+      id: '/_authenticated/purchases/grns/$grnId'
+      path: '/purchases/grns/$grnId'
+      fullPath: '/purchases/grns/$grnId'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/accounts/reports/new': {
@@ -673,6 +950,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsReportsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/purchases/purchase-orders/$id_/edit': {
+      id: '/_authenticated/purchases/purchase-orders/$id_/edit'
+      path: '/$id/edit'
+      fullPath: '/purchases/purchase-orders/$id/edit'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/grns/$grnId_/edit': {
+      id: '/_authenticated/purchases/grns/$grnId_/edit'
+      path: '/purchases/grns/$grnId/edit'
+      fullPath: '/purchases/grns/$grnId/edit'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdEditRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/accounts/reports/edit/$id': {
       id: '/_authenticated/accounts/reports/edit/$id'
       path: '/accounts/reports/edit/$id'
@@ -680,8 +971,42 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsReportsEditIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/purchases/purchase-orders/$id_/grn/new': {
+      id: '/_authenticated/purchases/purchase-orders/$id_/grn/new'
+      path: '/$id/grn/new'
+      fullPath: '/purchases/purchase-orders/$id/grn/new'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
   }
 }
+
+interface AuthenticatedPurchasesPurchaseOrdersRouteChildren {
+  AuthenticatedPurchasesPurchaseOrdersIdRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  AuthenticatedPurchasesPurchaseOrdersNewRoute: typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
+  AuthenticatedPurchasesPurchaseOrdersIndexRoute: typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
+  AuthenticatedPurchasesPurchaseOrdersIdEditRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
+}
+
+const AuthenticatedPurchasesPurchaseOrdersRouteChildren: AuthenticatedPurchasesPurchaseOrdersRouteChildren =
+  {
+    AuthenticatedPurchasesPurchaseOrdersIdRoute:
+      AuthenticatedPurchasesPurchaseOrdersIdRoute,
+    AuthenticatedPurchasesPurchaseOrdersNewRoute:
+      AuthenticatedPurchasesPurchaseOrdersNewRoute,
+    AuthenticatedPurchasesPurchaseOrdersIndexRoute:
+      AuthenticatedPurchasesPurchaseOrdersIndexRoute,
+    AuthenticatedPurchasesPurchaseOrdersIdEditRoute:
+      AuthenticatedPurchasesPurchaseOrdersIdEditRoute,
+    AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute:
+      AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute,
+  }
+
+const AuthenticatedPurchasesPurchaseOrdersRouteWithChildren =
+  AuthenticatedPurchasesPurchaseOrdersRoute._addFileChildren(
+    AuthenticatedPurchasesPurchaseOrdersRouteChildren,
+  )
 
 interface AuthenticatedRouteChildren {
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
@@ -709,10 +1034,20 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
   AuthenticatedMastersSalaryTemplatesRoute: typeof AuthenticatedMastersSalaryTemplatesRoute
   AuthenticatedMastersShiftsRoute: typeof AuthenticatedMastersShiftsRoute
+  AuthenticatedPurchasesBillsRoute: typeof AuthenticatedPurchasesBillsRoute
+  AuthenticatedPurchasesItemTypesRoute: typeof AuthenticatedPurchasesItemTypesRoute
+  AuthenticatedPurchasesItemsRoute: typeof AuthenticatedPurchasesItemsRoute
+  AuthenticatedPurchasesPurchaseOrdersRoute: typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
+  AuthenticatedPurchasesUnitTypesRoute: typeof AuthenticatedPurchasesUnitTypesRoute
+  AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
+  AuthenticatedPurchasesGrnsGrnIdRoute: typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  AuthenticatedPurchasesGrnsNewRoute: typeof AuthenticatedPurchasesGrnsNewRoute
   AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
+  AuthenticatedPurchasesGrnsIndexRoute: typeof AuthenticatedPurchasesGrnsIndexRoute
   AuthenticatedAccountsReportsEditIdRoute: typeof AuthenticatedAccountsReportsEditIdRoute
+  AuthenticatedPurchasesGrnsGrnIdEditRoute: typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -745,12 +1080,24 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMastersSalaryTemplatesRoute:
     AuthenticatedMastersSalaryTemplatesRoute,
   AuthenticatedMastersShiftsRoute: AuthenticatedMastersShiftsRoute,
+  AuthenticatedPurchasesBillsRoute: AuthenticatedPurchasesBillsRoute,
+  AuthenticatedPurchasesItemTypesRoute: AuthenticatedPurchasesItemTypesRoute,
+  AuthenticatedPurchasesItemsRoute: AuthenticatedPurchasesItemsRoute,
+  AuthenticatedPurchasesPurchaseOrdersRoute:
+    AuthenticatedPurchasesPurchaseOrdersRouteWithChildren,
+  AuthenticatedPurchasesUnitTypesRoute: AuthenticatedPurchasesUnitTypesRoute,
+  AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
+  AuthenticatedPurchasesGrnsGrnIdRoute: AuthenticatedPurchasesGrnsGrnIdRoute,
+  AuthenticatedPurchasesGrnsNewRoute: AuthenticatedPurchasesGrnsNewRoute,
   AuthenticatedAccountsReportsIndexRoute:
     AuthenticatedAccountsReportsIndexRoute,
+  AuthenticatedPurchasesGrnsIndexRoute: AuthenticatedPurchasesGrnsIndexRoute,
   AuthenticatedAccountsReportsEditIdRoute:
     AuthenticatedAccountsReportsEditIdRoute,
+  AuthenticatedPurchasesGrnsGrnIdEditRoute:
+    AuthenticatedPurchasesGrnsGrnIdEditRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(

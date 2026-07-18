@@ -13,17 +13,19 @@ interface AutocompleteProps {
   placeholder?: string;
   className?: string;
   error?: string;
+  disabled?: boolean;
+  allowCustomValue?: boolean;
 }
 
 export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps>(
-  ({ label, value, onChange, options, placeholder = "Search...", className, error }, ref) => {
+  ({ label, value, onChange, options, placeholder = "Search...", className, error, disabled, allowCustomValue }, ref) => {
     const [isOpen, setIsOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
     const containerRef = React.useRef<HTMLDivElement>(null);
 
     // Find the current selected option label
     const selectedOption = options.find((opt) => opt[0] === value);
-    const selectedLabel = selectedOption ? selectedOption[1] : "";
+    const selectedLabel = selectedOption ? selectedOption[1] : (allowCustomValue ? value : "");
 
     // Sync query with value externally or initially
     React.useEffect(() => {
@@ -68,6 +70,8 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
       setIsOpen(true);
       if (e.target.value === "") {
         onChange("");
+      } else if (allowCustomValue) {
+        onChange(e.target.value);
       }
     };
 
@@ -85,8 +89,8 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
     };
 
     return (
-      <div className={cn("relative flex flex-col w-full", className)} ref={containerRef}>
-        <Label>{label}</Label>
+      <div className={cn("relative flex flex-col w-full", isOpen && "z-[99999]", className)} ref={containerRef}>
+        {label && <Label>{label}</Label>}
         <div className="relative flex items-center">
           <input
             type="text"
@@ -94,15 +98,16 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
             value={query}
             onChange={handleInputChange}
             onFocus={() => setIsOpen(true)}
+            disabled={disabled}
             className={cn(
-              "flex h-10 w-full rounded-md border bg-background pl-9 pr-10 py-2 text-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring",
+              "flex h-10 w-full rounded-md border bg-background pl-9 pr-10 py-2 text-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed",
               error ? "border-red-500" : ""
             )}
           />
           <div className="absolute left-3 text-muted-foreground pointer-events-none">
             <Search size={16} />
           </div>
-          
+
           <div className="absolute right-2 flex items-center gap-1">
             {query && (
               <button
@@ -124,7 +129,7 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
         </div>
 
         {isOpen && (
-          <ul className="absolute top-[calc(100%+4px)] z-50 w-full max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-200">
+          <ul className="absolute top-[calc(100%+4px)] z-[99999] w-full max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-200">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
                 const isSelected = opt[0] === value;
