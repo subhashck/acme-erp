@@ -1,6 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { client } from "../../../../services/rpc";
 import { ReportForm, ReportPayload } from "../../../../components/ReportForm";
 
@@ -20,10 +21,17 @@ function NewReportForm() {
       if (!response.ok) throw new Error(await response.text());
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data, variables) => {
       setIsInvalidating(true);
       await queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] });
-      router.navigate({ to: "/accounts/reports" });
+      setIsInvalidating(false);
+      if (variables.status === "submitted") {
+        toast.success("Closing report submitted successfully");
+        router.navigate({ to: "/accounts/reports" });
+      } else {
+        toast.success("Draft saved successfully");
+        router.navigate({ to: "/accounts/reports/edit/$id", params: { id: String(data.id) } });
+      }
     },
     onError: (err: any) => {
       setErrorMsg(err.message || "Failed to create closing report");

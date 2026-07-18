@@ -2,6 +2,7 @@ import { createFileRoute, useRouter, Link } from "@tanstack/react-router";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useRpcQuery } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { Button } from "../../../../ui/button";
@@ -34,13 +35,19 @@ function EditReportForm() {
       if (!response.ok) throw new Error(await response.text());
       return response.json();
     },
-    onSuccess: async () => {
+    onSuccess: async (data, variables) => {
       setIsInvalidating(true);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["daily-closing-reports"] }),
         queryClient.invalidateQueries({ queryKey: ["daily-closing-report", id] }),
       ]);
-      router.navigate({ to: "/accounts/reports/$id", params: { id } });
+      setIsInvalidating(false);
+      if (variables.status === "submitted") {
+        toast.success("Closing report submitted and locked successfully");
+        router.navigate({ to: "/accounts/reports/$id", params: { id } });
+      } else {
+        toast.success("Draft changes saved successfully");
+      }
     },
     onError: (err: any) => {
       setErrorMsg(err.message || "Failed to save closing report changes");

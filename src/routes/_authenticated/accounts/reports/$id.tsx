@@ -475,7 +475,7 @@ function ReportDetail() {
                     <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
                       <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
                       <td className="py-2 text-right text-muted-foreground">
-                        {line.quantity} × {fmt(line.rate)}
+                        {parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`}
                       </td>
                       <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
                     </tr>
@@ -495,7 +495,7 @@ function ReportDetail() {
                     <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
                       <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
                       <td className="py-2 text-right text-muted-foreground">
-                        {line.quantity} × {fmt(line.rate)}
+                        {parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`}
                       </td>
                       <td className="py-2 text-right font-semibold text-foreground">{fmt(line.amount)}</td>
                     </tr>
