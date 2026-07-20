@@ -464,6 +464,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         quantity: dailyServiceLines.quantity,
         amount: dailyServiceLines.amount,
         isNightEntry: dailyServiceLines.isNightEntry,
+        narration: dailyServiceLines.narration,
         serviceName: serviceCatalog.serviceName,
         department: serviceCatalog.department,
         sortOrder: serviceCatalog.sortOrder,
@@ -578,6 +579,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             quantity: z.number(),
             amount: z.number(),
             isNightEntry: z.boolean().default(false).optional(),
+            narration: z.string().nullable().optional(),
           })
         ),
         pharmacyIncome: z.object({
@@ -596,6 +598,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             category: z.string(),
             details: z.string(),
             amount: z.number(),
+            narration: z.string().nullable().optional(),
           })
         ),
         staffAdvances: z.array(
@@ -638,6 +641,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             amount: z.number(),
           })
         ),
+        cashDenominations: z.union([z.record(z.string(), z.number()), z.string(), z.null()]).optional(),
+        reconciliationTolerance: z.number().default(0).optional(),
+        soiledNotes: z.string().nullable().optional(),
       })
     );
 
@@ -719,6 +725,15 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           totalExpenditure: totalExpenditure.toFixed(2),
           closingBalance: closingBalance.toFixed(2),
           bankDeposits: payload.bankDeposits || null,
+          cashDenominations: (() => {
+            if (!payload.cashDenominations) return null;
+            if (typeof payload.cashDenominations === "string") {
+              try { return JSON.parse(payload.cashDenominations); } catch { return null; }
+            }
+            return payload.cashDenominations;
+          })(),
+          reconciliationTolerance: (payload.reconciliationTolerance ?? 0).toFixed(2),
+          soiledNotes: payload.soiledNotes ?? null,
           status: payload.status,
         })
         .returning()
@@ -736,6 +751,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               quantity: line.quantity,
               amount: line.amount.toString(),
               isNightEntry: line.isNightEntry ?? false,
+              narration: line.narration ?? null,
             }))
           )
           .execute();
@@ -769,6 +785,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               category: item.category,
               details: item.details,
               amount: item.amount.toString(),
+              narration: item.narration ?? null,
             }))
           )
           .execute();
@@ -906,6 +923,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             quantity: z.number(),
             amount: z.number(),
             isNightEntry: z.boolean().default(false).optional(),
+            narration: z.string().nullable().optional(),
           })
         ),
         pharmacyIncome: z.object({
@@ -924,6 +942,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             category: z.string(),
             details: z.string(),
             amount: z.number(),
+            narration: z.string().nullable().optional(),
           })
         ),
         staffAdvances: z.array(
@@ -966,6 +985,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             amount: z.number(),
           })
         ),
+        cashDenominations: z.union([z.record(z.string(), z.number()), z.string(), z.null()]).optional(),
+        reconciliationTolerance: z.number().default(0).optional(),
+        soiledNotes: z.string().nullable().optional(),
       })
     );
 
@@ -1033,6 +1055,15 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           totalExpenditure: totalExpenditure.toFixed(2),
           closingBalance: closingBalance.toFixed(2),
           bankDeposits: payload.bankDeposits || null,
+          cashDenominations: (() => {
+            if (!payload.cashDenominations) return null;
+            if (typeof payload.cashDenominations === "string") {
+              try { return JSON.parse(payload.cashDenominations); } catch { return null; }
+            }
+            return payload.cashDenominations;
+          })(),
+          reconciliationTolerance: (payload.reconciliationTolerance ?? 0).toFixed(2),
+          soiledNotes: payload.soiledNotes ?? null,
           status: payload.status,
           updatedAt: new Date(),
         })
@@ -1063,6 +1094,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               quantity: line.quantity,
               amount: line.amount.toString(),
               isNightEntry: line.isNightEntry ?? false,
+              narration: line.narration ?? null,
             }))
           )
           .execute();
@@ -1096,6 +1128,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               category: item.category,
               details: item.details,
               amount: item.amount.toString(),
+              narration: item.narration ?? null,
             }))
           )
           .execute();
