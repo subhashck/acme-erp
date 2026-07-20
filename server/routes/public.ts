@@ -150,6 +150,7 @@ export const publicRoutes = new Hono()
         quantity: dailyServiceLines.quantity,
         amount: dailyServiceLines.amount,
         isNightEntry: dailyServiceLines.isNightEntry,
+        narration: dailyServiceLines.narration,
         serviceName: serviceCatalog.serviceName,
         department: serviceCatalog.department,
         sortOrder: serviceCatalog.sortOrder,

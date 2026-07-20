@@ -54,6 +54,7 @@ const toNum = (v: unknown): number => {
 // const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
 const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHERS"];
 const CHANNELS = ["CREDIT CARD", "UPI", "DEBIT CARD", "RTGS", "CASH"];
+const CASH_DENOMINATIONS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
 
 const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "ICICI", channel: "CARD", sourceLabel: "Front OPD Card", amount: 0 },
@@ -66,12 +67,12 @@ const DEFAULT_PAYMENT_CHANNELS = [
 
 // ─────────────────────────── types ───────────────────────────────
 
-type ServiceQty = Record<number, { rate: number; quantity: number; amount: number }>;
-type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number };
+type ServiceQty = Record<number, { rate: number; quantity: number; amount: number; narration?: string }>;
+type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number; narration?: string };
 // type MiscIncome = { label: string; amount: number };
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
-type Expenditure = { category: string; details: string; amount: number };
+type Expenditure = { category: string; details: string; amount: number; narration?: string };
 type StaffAdvance = { staffId?: number | null; staffName: string; amount: number };
 // type AdditionalIncome = { label: string; amount: number };
 type DiscountReturn = { label: string; amount: number };
@@ -91,14 +92,17 @@ export interface ReportPayload {
   bankDeposits?: string | null;
   cashReceipts: number;
   status: "draft" | "submitted";
-  serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean }>;
-  expenditures: Expenditure[];
+  serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean; narration?: string | null }>;
+  expenditures: Array<{ category: string; details: string; amount: number; narration?: string | null }>;
   staffAdvances: StaffAdvance[];
   // ipdAdmissions: IpdAdmission[];
   // ipdDischarges: IpdDischarge[];
   // additionalIncome: AdditionalIncome[];
   discountsReturns: DiscountReturn[];
   paymentChannels: PaymentChannel[];
+  cashDenominations?: Record<string, number> | Record<number, number> | string | null;
+  reconciliationTolerance?: number;
+  soiledNotes?: string | null;
 }
 
 export interface ReportFormProps {
@@ -150,8 +154,13 @@ export function ReportForm({
     add: false,
     discounts: false,
     reconcile: false,
+    denominations: true,
   });
   const toggleSection = (s: string) => setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
+
+  // ── cash denomination & tolerance state ─────────────────────
+  const [cashDenominations, setCashDenominations] = React.useState<Record<number, number>>({});
+  const [reconciliationTolerance, setReconciliationTolerance] = React.useState<string>("0");
 
   // ── categories master query ───────────────────────────────────
   const categoriesQuery = useRpcQuery<ServiceCategory[]>(
@@ -190,11 +199,10 @@ export function ReportForm({
     return staffList.map((s) => [String(s.staffId), `${s.employeeCode} - ${s.name}`] as [string, string]);
   }, [staffList]);
 
-  // ── auto-populate opening balance in new mode ─────────────────
+  // ── past reports query for auto-populating balance and prior denominations reference ──
   const pastReportsQuery = useRpcQuery<any[]>(
     ["daily-closing-reports-latest"],
-    () => client["daily-closing"].reports.$get(),
-    { enabled: mode === "new" }
+    () => client["daily-closing"].reports.$get()
   );
 
   React.useEffect(() => {
@@ -238,6 +246,7 @@ export function ReportForm({
   // ── other form state ──────────────────────────────────────────
   // const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
   // const [ipdDischarges, setIpdDischarges] = React.useState<IpdDischarge[]>([]);
+  const [soiledNotes, setSoiledNotes] = React.useState("");
   const [expenditures, setExpenditures] = React.useState<Expenditure[]>([]);
   const [staffAdvances, setStaffAdvances] = React.useState<StaffAdvance[]>([]);
   // const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
@@ -245,7 +254,7 @@ export function ReportForm({
   const [paymentChannels, setPaymentChannels] = React.useState<PaymentChannel[]>(
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
   );
-  const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number }>>([]);
+  const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number; narration?: string }>>([]);
   const [entryOrder, setEntryOrder] = React.useState<number[]>([]);
 
   // Initialize entryOrder reactively based on mode and catalogList / initialData
@@ -290,12 +299,13 @@ export function ReportForm({
     setOpeningBalance(String(toNum(initialData.openingBalance)));
     setFundHandoverSir(String(toNum(initialData.fundHandoverSir)));
     setFundHandoverMadam(String(toNum(initialData.fundHandoverMadam)));
+    setSoiledNotes(initialData.soiledNotes || "");
     setStatus(initialData.status);
 
     // Service lines
     const quantities: ServiceQty = {};
     const custom: CustomLine[] = [];
-    const night: Array<{ serviceId: number; rate: number; quantity: number; amount: number }> = [];
+    const night: Array<{ serviceId: number; rate: number; quantity: number; amount: number; narration?: string }> = [];
     initialData.serviceLines?.forEach((l: any) => {
       if (l.isNightEntry) {
         if (l.serviceId) {
@@ -304,6 +314,7 @@ export function ReportForm({
             rate: toNum(l.rate),
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
+            narration: l.narration || "",
           });
         }
       } else {
@@ -312,6 +323,7 @@ export function ReportForm({
             rate: toNum(l.rate),
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
+            narration: l.narration || "",
           };
         } else {
           custom.push({
@@ -320,6 +332,7 @@ export function ReportForm({
             rate: toNum(l.rate),
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
+            narration: l.narration || "",
           });
         }
       }
@@ -335,7 +348,7 @@ export function ReportForm({
     //   patientName: item.patientName, amount: toNum(item.amount),
     // })) ?? []);
     setExpenditures(initialData.expenditures?.map((item: any) => ({
-      category: item.category, details: item.details, amount: toNum(item.amount),
+      category: item.category, details: item.details, amount: toNum(item.amount), narration: item.narration || "",
     })) ?? []);
     setStaffAdvances(initialData.staffAdvances?.map((item: any) => ({
       staffId: item.staffId ? toNum(item.staffId) : undefined,
@@ -377,6 +390,23 @@ export function ReportForm({
       setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
     } else {
       setBankDeposits([]);
+    }
+
+    if (initialData.cashDenominations) {
+      try {
+        const parsed = typeof initialData.cashDenominations === "string"
+          ? JSON.parse(initialData.cashDenominations)
+          : initialData.cashDenominations;
+        setCashDenominations(parsed && typeof parsed === "object" ? parsed : {});
+      } catch (e) {
+        setCashDenominations({});
+      }
+    } else {
+      setCashDenominations({});
+    }
+
+    if (initialData.reconciliationTolerance !== undefined && initialData.reconciliationTolerance !== null) {
+      setReconciliationTolerance(String(toNum(initialData.reconciliationTolerance)));
     }
   }, [initialData]);
 
@@ -470,11 +500,80 @@ export function ReportForm({
 
   const closingBalance = openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal;
 
+  const totalDenominationAmount = React.useMemo(() => {
+    return Object.entries(cashDenominations).reduce((sum, [denom, count]) => {
+      const d = parseInt(denom, 10) || 0;
+      const c = typeof count === "number" ? count : (parseInt(count, 10) || 0);
+      return sum + (d * c);
+    }, 0);
+  }, [cashDenominations]);
+
+  // ── prior report & cash denominations reference ──────────────
+  const activeReportDate = mode === "new" ? reportDate : (lockedReportDate || initialData?.reportDate || "");
+
+  const priorReport = React.useMemo(() => {
+    if (!pastReportsQuery.data || !activeReportDate) return null;
+    const filtered = pastReportsQuery.data.filter((r) => r.reportDate < activeReportDate);
+    if (filtered.length === 0) return null;
+    const sorted = [...filtered].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+    return sorted[0];
+  }, [pastReportsQuery.data, activeReportDate]);
+
+  const priorDenominations: Record<number, number> = React.useMemo(() => {
+    if (!priorReport || !priorReport.cashDenominations) return {};
+    try {
+      const parsed = typeof priorReport.cashDenominations === "string"
+        ? JSON.parse(priorReport.cashDenominations)
+        : priorReport.cashDenominations;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }, [priorReport]);
+
+  const priorTotalDenominationAmount = React.useMemo(() => {
+    return Object.entries(priorDenominations).reduce((sum, [denom, count]) => {
+      const d = parseInt(denom, 10) || 0;
+      const c = typeof count === "number" ? count : (parseInt(count, 10) || 0);
+      return sum + (d * c);
+    }, 0);
+  }, [priorDenominations]);
+
+  const handleApplyPriorDenominations = () => {
+    if (Object.keys(priorDenominations).length > 0) {
+      setCashDenominations(priorDenominations);
+    }
+  };
+
+  const toleranceVal = toNum(reconciliationTolerance);
+  const cashTallyDiff = totalDenominationAmount - closingBalance;
+  const isCashTallied = Math.abs(cashTallyDiff) <= toleranceVal;
+
   const revenueToReconcile = totalIncome;
-  const isReconciled = Math.abs(paymentChannelsSum - revenueToReconcile) < 1;
+  const isReconciled = Math.abs(paymentChannelsSum - revenueToReconcile) <= toleranceVal;
 
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
+
+  const handleDenominationChange = (denom: number, countStr: string) => {
+    const count = parseInt(countStr, 10);
+    if (isNaN(count) || count <= 0) {
+      setCashDenominations((prev) => {
+        const copy = { ...prev };
+        delete copy[denom];
+        return copy;
+      });
+    } else {
+      setCashDenominations((prev) => ({
+        ...prev,
+        [denom]: count,
+      }));
+    }
+  };
+
+  const handleClearDenominations = () => {
+    setCashDenominations({});
+  };
 
   // ── event handlers ────────────────────────────────────────────
   const handleCashReceiptChange = (sourceLabel: "SIR" | "MAM" | "ACON", valStr: string) => {
@@ -514,7 +613,21 @@ export function ReportForm({
   };
 
   const handleAddCustomLine = (dept: string) => {
-    setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0 }]);
+    setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0, narration: "" }]);
+  };
+
+  const handleNarrationChange = (serviceId: number, val: string) => {
+    setServiceQuantities((prev) => {
+      const data = prev[serviceId];
+      if (!data) return prev;
+      return { ...prev, [serviceId]: { ...data, narration: val } };
+    });
+  };
+
+  const handleNightNarrationChange = (index: number, val: string) => {
+    setNightServices((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, narration: val } : item))
+    );
   };
 
   const handleCustomLineChange = (index: number, field: string, val: string, isVar: boolean = false) => {
@@ -537,6 +650,8 @@ export function ReportForm({
           if (!isVar) {
             copy.rate = 0;
           }
+        } else if (field === "narration") {
+          copy.narration = val;
         }
         return copy;
       })
@@ -630,6 +745,7 @@ export function ReportForm({
             rate: toNum(data.rate),
             quantity: toNum(data.quantity),
             amount: toNum(data.amount),
+            narration: data.narration || null,
             isNightEntry: false,
           };
         }),
@@ -638,6 +754,7 @@ export function ReportForm({
         rate: toNum(line.rate),
         quantity: toNum(line.quantity),
         amount: toNum(line.amount),
+        narration: line.narration || null,
         isNightEntry: false,
       })),
       ...nightServices.map((line) => ({
@@ -645,6 +762,7 @@ export function ReportForm({
         rate: toNum(line.rate),
         quantity: toNum(line.quantity),
         amount: toNum(line.amount),
+        narration: line.narration || null,
         isNightEntry: true,
       })),
     ];
@@ -668,6 +786,7 @@ export function ReportForm({
         category: e.category,
         details: e.details,
         amount: toNum(e.amount),
+        narration: e.narration || null,
       })),
       staffAdvances: staffAdvances.map((sa) => ({
         staffId: sa.staffId ?? null,
@@ -686,6 +805,9 @@ export function ReportForm({
           sourceLabel: pc.sourceLabel,
           amount: toNum(pc.amount),
         })),
+      cashDenominations,
+      reconciliationTolerance: toleranceVal,
+      soiledNotes: soiledNotes || null,
     };
 
     onSubmit(payload);
@@ -735,7 +857,18 @@ export function ReportForm({
             const state = serviceQuantities[item.id] ?? { rate: item.defaultRate, quantity: 0, amount: 0 };
             return (
               <tr key={item.id} className="hover:bg-muted/10">
-                <td className="p-3 font-semibold text-foreground">{item.serviceName}</td>
+                <td className="p-3 font-semibold text-foreground">
+                  <div>{item.serviceName}</div>
+                  {state.quantity > 0 && (
+                    <textarea
+                      rows={2}
+                      placeholder="Add narration / note (multi-line supported)..."
+                      value={state.narration || ""}
+                      onChange={(e) => handleNarrationChange(item.id, e.target.value)}
+                      className="w-full mt-1.5 text-[11px] font-normal border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                    />
+                  )}
+                </td>
                 <td className="p-3 text-center">
                   <input
                     type="number" min="0" placeholder="0"
@@ -869,6 +1002,16 @@ export function ReportForm({
               >
                 <Trash2 size={15} />
               </button>
+            </div>
+            <div className="sm:col-span-4 space-y-1">
+              <Label className="text-[10px]">Narration / Remarks (Optional)</Label>
+              <textarea
+                rows={2}
+                placeholder="Enter narration or service remarks (multi-line supported)..."
+                value={line.narration || ""}
+                onChange={(e) => handleCustomLineChange(actualIdx, "narration", e.target.value)}
+                className="w-full text-xs font-normal border rounded px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+              />
             </div>
           </div>
         );
@@ -1019,7 +1162,14 @@ export function ReportForm({
                                 return (
                                   <tr key={idx} className="hover:bg-muted/10">
                                     <td className="p-3 font-semibold text-teal-600 dark:text-teal-400">
-                                      {s?.serviceName || "Unknown Service"}
+                                      <div>{s?.serviceName || "Unknown Service"}</div>
+                                      <textarea
+                                        rows={2}
+                                        placeholder="Add narration / note (multi-line supported)..."
+                                        value={item.narration || ""}
+                                        onChange={(e) => handleNightNarrationChange(idx, e.target.value)}
+                                        className="w-full mt-1.5 text-[11px] font-normal border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                                      />
                                     </td>
                                     <td className="p-3 text-center">
                                       <input
@@ -1372,6 +1522,16 @@ export function ReportForm({
                         >
                           <Trash2 size={15} />
                         </button>
+                        <div className="w-full space-y-1 border-t pt-2 mt-1">
+                          <Label className="text-[10px]">Narration Entry (Optional)</Label>
+                          <textarea
+                            rows={2}
+                            placeholder="Enter narration or payment remarks (multi-line supported)..."
+                            value={item.narration || ""}
+                            onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, narration: e.target.value } : ex)))}
+                            className="w-full text-xs font-normal border rounded px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                          />
+                        </div>
                       </div>
                     ))}
                     <Button type="button" variant="outline" onClick={() => setExpenditures([...expenditures, { category: expCategoriesOptions[0] || "MISC", details: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
@@ -1617,6 +1777,230 @@ export function ReportForm({
                 </CardContent>
               )}
             </Card>
+
+            {/* Cash Denomination Form & Closing Tally */}
+            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => toggleSection("denominations")}
+                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
+              >
+                <div>
+                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                    {activeCategories.length + 8}. Cash Denomination &amp; Tally
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Tally physical cash notes/coins with calculated closing balance and set reconciliation tolerance
+                  </CardDescription>
+                </div>
+                <span className="text-xs font-bold text-teal-600">{openSections.denominations ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+              </button>
+              {openSections.denominations && (
+                <CardContent className="p-5 space-y-6">
+                  {/* Tolerance Input & Quick Actions */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 bg-muted/20 rounded-lg border">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="recTolerance" className="text-xs font-bold uppercase text-muted-foreground">
+                          Reconciliation Tolerance (₹)
+                        </Label>
+                        <Input
+                          id="recTolerance"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={reconciliationTolerance}
+                          onChange={(e) => setReconciliationTolerance(e.target.value)}
+                          className="w-36 font-bold h-9 bg-background text-foreground"
+                        />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground self-end pb-1.5">
+                        Allowed variance for closing cash &amp; channel tally
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleClearDenominations}
+                      className="text-xs font-semibold cursor-pointer"
+                      disabled={Object.keys(cashDenominations).length === 0}
+                    >
+                      Clear Denominations
+                    </Button>
+                  </div>
+
+                  {/* Soiled Notes / Mutilated Currency Details */}
+                  <div className="space-y-1.5 p-3.5 bg-muted/20 rounded-lg border">
+                    <Label htmlFor="soiledNotes" className="text-xs font-bold uppercase text-muted-foreground">
+                      Soiled Notes / Mutilated Currency Details (Optional)
+                    </Label>
+                    <textarea
+                      id="soiledNotes"
+                      rows={2}
+                      placeholder="Enter details of soiled, torn, or mutilated currency notes kept for bank exchange..."
+                      value={soiledNotes}
+                      onChange={(e) => setSoiledNotes(e.target.value)}
+                      className="w-full text-xs font-normal border rounded-md px-3 py-2 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                    />
+                  </div>
+
+                  {/* Previous Day Cash Denominations Reference Banner */}
+                  {priorReport ? (
+                    <div className="p-4 rounded-xl border bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
+                        <div>
+                          <h5 className="text-xs font-black uppercase tracking-wider text-teal-650 dark:text-teal-400 flex items-center gap-2">
+                            <span>Previous Day Reference</span>
+                            <span className="bg-teal-500/10 text-teal-650 dark:text-teal-400 px-2 py-0.5 rounded text-[11px] font-bold">
+                              {priorReport.reportDate}
+                            </span>
+                          </h5>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            Physical cash denominations submitted on previous report ({priorReport.reportDate})
+                          </p>
+                        </div>
+                        {Object.keys(priorDenominations).length > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleApplyPriorDenominations}
+                            className="text-xs font-semibold border-teal-500/40 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 cursor-pointer h-8"
+                          >
+                            Copy Previous Denominations
+                          </Button>
+                        )}
+                      </div>
+
+                      {Object.keys(priorDenominations).length > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-2">
+                            {CASH_DENOMINATIONS.map((denom) => {
+                              const count = priorDenominations[denom] || 0;
+                              if (count <= 0) return null;
+                              const subtotal = count * denom;
+                              return (
+                                <div
+                                  key={denom}
+                                  className="px-2.5 py-1.5 rounded-md border bg-background text-xs flex items-center gap-2"
+                                >
+                                  <span className="font-extrabold text-foreground">₹{denom}</span>
+                                  <span className="text-muted-foreground text-[10px]">× {count}</span>
+                                  <span className="font-bold text-teal-650 dark:text-teal-400 text-[11px]">
+                                    = ₹{subtotal.toLocaleString("en-IN")}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex justify-between items-center text-xs font-bold pt-1 text-slate-700 dark:text-slate-300">
+                            <span>Prior Physical Cash Total:</span>
+                            <span className="text-teal-650 dark:text-teal-400">{fmt(priorTotalDenominationAmount)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic">
+                          No cash denomination details recorded for previous report ({priorReport.reportDate}).
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg border border-dashed text-xs text-muted-foreground text-center">
+                      No prior daily closing report found for reference.
+                    </div>
+                  )}
+
+                  {/* Currency Denominations Grid */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                      Cash Currency Count
+                    </h5>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      {CASH_DENOMINATIONS.map((denom) => {
+                        const count = cashDenominations[denom] || 0;
+                        const subtotal = count * denom;
+                        return (
+                          <div
+                            key={denom}
+                            className={cn(
+                              "p-3 rounded-lg border flex flex-col justify-between transition-colors",
+                              count > 0 ? "bg-teal-500/10 border-teal-500/30" : "bg-muted/10 border-slate-200 dark:border-slate-800"
+                            )}
+                          >
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-xs font-extrabold text-foreground">₹{denom}</span>
+                              <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+                                {denom >= 10 ? "Note" : "Coin"}
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={count || ""}
+                              onChange={(e) => handleDenominationChange(denom, e.target.value)}
+                              className="text-center font-bold text-sm h-8"
+                            />
+                            <div className="mt-2 pt-1 border-t text-right text-[11px] font-bold text-teal-650 dark:text-teal-400">
+                              = ₹{subtotal.toLocaleString("en-IN")}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Summary Comparison & Status Banner */}
+                  <div className="p-4 rounded-xl border bg-card space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center border-b pb-3">
+                      <div>
+                        <span className="text-[11px] text-muted-foreground uppercase font-semibold block">Total Physical Cash</span>
+                        <span className="text-base font-black text-teal-650 dark:text-teal-400">{fmt(totalDenominationAmount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground uppercase font-semibold block">Calculated Cash Closing</span>
+                        <span className="text-base font-black text-foreground">{fmt(closingBalance)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground uppercase font-semibold block">Variance / Difference</span>
+                        <span className={cn(
+                          "text-base font-black",
+                          cashTallyDiff === 0 ? "text-emerald-600 dark:text-emerald-400" :
+                          Math.abs(cashTallyDiff) <= toleranceVal ? "text-teal-600 dark:text-teal-400" :
+                          "text-rose-600 dark:text-rose-400"
+                        )}>
+                          {cashTallyDiff > 0 ? `+${fmt(cashTallyDiff)}` : fmt(cashTallyDiff)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn(
+                      "p-3 rounded-lg border text-xs font-bold flex items-center justify-between transition-all",
+                      isCashTallied
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                        : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                    )}>
+                      <div className="flex items-center gap-2">
+                        {isCashTallied ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+                        <span>
+                          {cashTallyDiff === 0
+                            ? "Physical cash exactly matches calculated cash closing balance!"
+                            : isCashTallied
+                            ? `Physical cash tallies within tolerance limit of ±${fmt(toleranceVal)} (Variance: ${fmt(cashTallyDiff)})`
+                            : `Cash Mismatch: ${cashTallyDiff > 0 ? "Excess" : "Shortage"} of ${fmt(Math.abs(cashTallyDiff))} exceeds tolerance of ±${fmt(toleranceVal)}`}
+                        </span>
+                      </div>
+                      <span className={cn(
+                        "px-2.5 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wide shrink-0",
+                        isCashTallied ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                      )}>
+                        {isCashTallied ? "Tallied" : "Mismatch"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
           </form>
 
           {/* ── Live Summary Sidebar ────────────────────────────── */}
@@ -1772,15 +2156,30 @@ export function ReportForm({
                         onChange={(e) => setFundHandoverMadam(e.target.value)}
                       />
                     </div>
+                    <div className="flex justify-between text-slate-200 mt-3 pt-2 border-t border-slate-600/40">
+                      <span className="font-semibold text-xs">Physical Cash (Tally):</span>
+                      <span className="font-bold text-xs">{fmt(totalDenominationAmount)}</span>
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="font-semibold text-xs text-slate-300">Tally Status:</span>
+                      <span className={cn(
+                        "text-[10px] font-black px-2 py-0.5 rounded-full",
+                        isCashTallied ? "bg-emerald-500 text-slate-950" : "bg-rose-500 text-white"
+                      )}>
+                        {isCashTallied ? "Tallied" : `Diff: ${fmt(cashTallyDiff)}`}
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-
 
                 <div className="space-y-1.5 border-t pt-3 mt-3">
                   <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400">
                     <span>Calculated Closing:</span>
                     <span>{fmt(closingBalance)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    <span>Tolerance Limit:</span>
+                    <span>±{fmt(toleranceVal)}</span>
                   </div>
                 </div>
 
@@ -1800,7 +2199,7 @@ export function ReportForm({
                   </div>
                   {!isReconciled && (
                     <p className="mt-1.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-400">
-                      Mismatch: {fmt(Math.abs(paymentChannelsSum - revenueToReconcile))}
+                      Mismatch: {fmt(Math.abs(paymentChannelsSum - revenueToReconcile))} (Tolerance: ±{fmt(toleranceVal)})
                     </p>
                   )}
                 </div>

@@ -421,6 +421,60 @@ function ReportDetail() {
               </div>
             </div>
 
+            {/* Physical Cash Denominations & Soiled Notes Block */}
+            {(() => {
+              const CASH_DENOMS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+              const denomsObj = (() => {
+                if (!report.cashDenominations) return {};
+                if (typeof report.cashDenominations === "string") {
+                  try { return JSON.parse(report.cashDenominations); } catch { return {}; }
+                }
+                return report.cashDenominations as Record<string, number>;
+              })();
+              const physTotal = CASH_DENOMS.reduce((sum, d) => {
+                const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
+                return sum + count * d;
+              }, 0);
+              const activeCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
+
+              if (activeCounts.length === 0 && !report.soiledNotes) return null;
+
+              return (
+                <div className="gap-y-2 mt-4 bg-teal-500/10 p-4 rounded-lg">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="font-semibold text-lg">Physical Cash Denominations</span>
+                    <span className="font-bold text-teal-600 dark:text-teal-300">{fmt(physTotal)}</span>
+                  </div>
+                  <hr className="border-b-2 border-fuchsia-800/30 mb-3" />
+
+                  {activeCounts.length > 0 && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                      {CASH_DENOMS.map((denom) => {
+                        const count = Number(denomsObj[denom] || denomsObj[String(denom)] || 0);
+                        if (count <= 0) return null;
+                        const subtotal = count * denom;
+                        return (
+                          <div key={denom} className="flex justify-between items-center text-[11px] bg-background/50 px-2.5 py-1 rounded border border-muted/30">
+                            <span className="font-medium text-muted-foreground">₹{denom} × {count}</span>
+                            <span className="font-bold text-foreground">₹{subtotal.toLocaleString("en-IN")}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {report.soiledNotes && (
+                    <div className="mt-2 bg-amber-500/15 border border-amber-500/30 p-3 rounded-md text-xs">
+                      <span className="font-extrabold uppercase text-[10px] tracking-wider block text-amber-700 dark:text-amber-300 mb-1">
+                        Soiled Notes / Mutilated Currency Details:
+                      </span>
+                      <p className="whitespace-pre-wrap text-foreground font-medium">{report.soiledNotes}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="space-y-1.5 border-t pt-3 mt-3 p-4">
               <div className="flex justify-between items-center text-sm font-bold text-lime-400">
                 <span>Calculated Closing:</span>
@@ -473,7 +527,14 @@ function ReportDetail() {
                 <tbody>
                   {sortedNightLines.map((line: any) => (
                     <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
-                      <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
+                      <td className="py-2 pr-2 font-medium text-foreground">
+                        <div>{line.serviceName}</div>
+                        {line.narration && (
+                          <div className="text-[10px] text-muted-foreground italic font-normal mt-0.5 whitespace-pre-wrap bg-muted/20 px-1.5 py-0.5 rounded border border-muted/30">
+                            {line.narration}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2 text-right text-muted-foreground">
                         {parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`}
                       </td>
@@ -493,7 +554,14 @@ function ReportDetail() {
                 <tbody>
                   {cat.lines.map((line: any) => (
                     <tr key={line.id} className="border-b last:border-0 hover:bg-muted/10">
-                      <td className="py-2 pr-2 font-medium text-foreground">{line.serviceName}</td>
+                      <td className="py-2 pr-2 font-medium text-foreground">
+                        <div>{line.serviceName}</div>
+                        {line.narration && (
+                          <div className="text-[10px] text-muted-foreground italic font-normal mt-0.5 whitespace-pre-wrap bg-muted/20 px-1.5 py-0.5 rounded border border-muted/30">
+                            {line.narration}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2 text-right text-muted-foreground">
                         {parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`}
                       </td>
@@ -606,7 +674,14 @@ function ReportDetail() {
                         <tbody>
                           {group.items.map((item: any) => (
                             <tr key={item.id} className="border-b last:border-0 hover:bg-muted/10">
-                              <td className="py-1.5 pr-2 pl-2 text-foreground font-medium">{item.details}</td>
+                              <td className="py-1.5 pr-2 pl-2 text-foreground font-medium">
+                                <div>{item.details}</div>
+                                {item.narration && (
+                                  <div className="text-[10px] text-muted-foreground italic font-normal mt-0.5 whitespace-pre-wrap bg-muted/20 px-1.5 py-0.5 rounded border border-muted/30">
+                                    {item.narration}
+                                  </div>
+                                )}
+                              </td>
                               <td className="py-1.5 text-right font-bold text-foreground pr-2">{fmt(item.amount)}</td>
                             </tr>
                           ))}

@@ -454,13 +454,13 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
       drawText(col1, 18.5, y + 4, 7, "bold", cMuted);
       drawText(col2, 120, y + 4, 7, "bold", cMuted, "center");
       drawText(col3, 191.5, y + 4, 7, "bold", cMuted, "right");
-      drawHorizontalLine(18.5, 191.5, y + 6, cBorder, 0.15);
+      drawHorizontalLine(15, 195, y + 6, [203, 213, 225], 0.3);
       y += 8;
     } else {
       drawText(truncate(col1), 18.5, y + 4, 7.5, "normal", cSlate);
       drawText(col2, 120, y + 4, 7, "normal", cMuted, "center");
       drawText(col3, 191.5, y + 4, 7.5, "bold", cSlate, "right");
-      drawHorizontalLine(18.5, 191.5, y + 6, [248, 250, 252], 0.1);
+      drawHorizontalLine(15, 195, y + 6, [226, 232, 240], 0.2);
       y += 6;
     }
   };
@@ -478,7 +478,8 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     drawTableRow("Service Rendered", "Quantity / Rate", "Amount", true);
     sortedNightLines.forEach((line: any) => {
       const rateText = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
-      drawTableRow(line.serviceName, rateText, fmt(parseFloat(line.amount)));
+      const nameWithNarration = line.narration ? `${line.serviceName} (${line.narration.replace(/\n/g, " ")})` : line.serviceName;
+      drawTableRow(nameWithNarration, rateText, fmt(parseFloat(line.amount)));
     });
     y += 4;
   }
@@ -489,7 +490,8 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     drawTableRow("Service Rendered", "Quantity / Rate", "Amount", true);
     cat.lines.forEach((line: any) => {
       const rateText = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
-      drawTableRow(line.serviceName, rateText, fmt(parseFloat(line.amount)));
+      const nameWithNarration = line.narration ? `${line.serviceName} (${line.narration.replace(/\n/g, " ")})` : line.serviceName;
+      drawTableRow(nameWithNarration, rateText, fmt(parseFloat(line.amount)));
     });
     y += 4;
   });
@@ -568,9 +570,10 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
 
       group.items.forEach((item: any) => {
         checkPageBreak(6);
-        drawText(item.details, 22, y + 4, 7, "normal", cSlate);
+        const detailsWithNarration = item.narration ? `${item.details} (${item.narration.replace(/\n/g, " ")})` : item.details;
+        drawText(detailsWithNarration, 22, y + 4, 7, "normal", cSlate);
         drawText(fmt(parseFloat(item.amount)), 188, y + 4, 7, "bold", cSlate, "right");
-        drawHorizontalLine(22, 188, y + 6, [248, 250, 252], 0.1);
+        drawHorizontalLine(18, 192, y + 6, [226, 232, 240], 0.2);
         y += 6;
       });
       y += 2;
@@ -618,7 +621,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
       drawText(item.sourceLabel || "", 120, y + 5, 7, "normal", cMuted, "center");
       drawText(fmt(parseFloat(item.amount)), 191.5, y + 5, 7.5, "bold", cSlate, "right");
       
-      drawHorizontalLine(18.5, 191.5, y + 8.5, [248, 250, 252], 0.15);
+      drawHorizontalLine(15, 195, y + 8.5, [226, 232, 240], 0.2);
       y += 10;
     });
   }
@@ -636,7 +639,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     const color = isNegative ? cRoseDark : cEmeraldDark;
     const sign = isNegative ? "-" : "";
     drawText(`${sign}${fmt(Math.abs(amountVal))}`, 191.5, y + 4, 7.5, "bold", color, "right");
-    drawHorizontalLine(18.5, 191.5, y + 6, [248, 250, 252], 0.1);
+    drawHorizontalLine(15, 195, y + 6, [226, 232, 240], 0.2);
     y += 6;
   };
 
@@ -669,6 +672,48 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     drawBreakdownRow("Fund Handover Madam", handoverMadam, true);
   }
   y += 3;
+
+  // 4. Cash Denominations & Soiled Notes Section
+  const CASH_DENOMS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const denomsObj = (() => {
+    if (!report.cashDenominations) return {};
+    if (typeof report.cashDenominations === "string") {
+      try { return JSON.parse(report.cashDenominations); } catch { return {}; }
+    }
+    return report.cashDenominations as Record<string, number>;
+  })();
+  const totalPhysicalCashPDF = CASH_DENOMS.reduce((sum, d) => {
+    const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
+    return sum + count * d;
+  }, 0);
+  const activeDenomCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
+
+  if (activeDenomCounts.length > 0 || report.soiledNotes) {
+    y += 2;
+    drawDetailSectionHeader("4. CASH DENOMINATIONS & SOILED NOTES");
+    drawPanelHeader("Physical Cash Denominations Tally", fmt(totalPhysicalCashPDF));
+
+    if (activeDenomCounts.length > 0) {
+      drawTableRow("Denomination Note/Coin", "Count", "Subtotal Amount", true);
+      activeDenomCounts.forEach((d) => {
+        const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
+        const subtotal = count * d;
+        drawTableRow(`Rs. ${d} ${d >= 10 ? "Note" : "Coin"}`, `${count} pcs`, fmt(subtotal));
+      });
+      y += 2;
+    }
+
+    if (report.soiledNotes) {
+      checkPageBreak(12);
+      doc.setFillColor(254, 252, 232);
+      doc.setDrawColor(250, 204, 21);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(15, y, 180, 10, 1.5, 1.5, "FD");
+      drawText("SOILED NOTES / MUTILATED CURRENCY:", 18.5, y + 4, 7, "bold", [161, 98, 7]);
+      drawText(report.soiledNotes.replace(/\n/g, " "), 18.5, y + 7.5, 7, "italic", cSlate);
+      y += 12;
+    }
+  }
 
   // Reconciled check box at the end
   checkPageBreak(25);
@@ -861,7 +906,8 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     addRow(["Night / After-EOD Services", "", "", nightServicesTotal], [styleBold, null, styleRegular, styleNumber]);
     report.serviceLines?.filter((l: any) => l.isNightEntry).forEach((line: any) => {
       const details = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
-      addRow([`  - ${line.serviceName}`, "", details, line.amount], [styleItalic, null, styleItalic, styleNumber]);
+      const nameWithNarration = line.narration ? `  - ${line.serviceName} (${line.narration.replace(/\n/g, " ")})` : `  - ${line.serviceName}`;
+      addRow([nameWithNarration, "", details, line.amount], [styleItalic, null, styleItalic, styleNumber]);
     });
   }
 
@@ -869,7 +915,8 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     addRow([cat.label, "", "", cat.total], [styleBold, null, styleRegular, styleNumber]);
     cat.lines.forEach((line: any) => {
       const details = parseFloat(line.rate) > 0 ? `${line.quantity} × ${fmt(line.rate)}` : `${line.quantity} qty`;
-      addRow([`  - ${line.serviceName}`, "", details, line.amount], [styleItalic, null, styleItalic, styleNumber]);
+      const nameWithNarration = line.narration ? `  - ${line.serviceName} (${line.narration.replace(/\n/g, " ")})` : `  - ${line.serviceName}`;
+      addRow([nameWithNarration, "", details, line.amount], [styleItalic, null, styleItalic, styleNumber]);
     });
   });
 
@@ -905,7 +952,8 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     const catLabel = expCategoriesList.find((c: any) => c.code === group.category)?.label || group.category;
     addRow([catLabel, "", "", group.total], [styleBold, null, styleRegular, styleNumber]);
     group.items.forEach((item: any) => {
-      addRow([`  - ${item.details}`, "", "", item.amount], [styleItalic, null, styleItalic, styleNumber]);
+      const detailsWithNarration = item.narration ? `  - ${item.details} (${item.narration.replace(/\n/g, " ")})` : `  - ${item.details}`;
+      addRow([detailsWithNarration, "", "", item.amount], [styleItalic, null, styleItalic, styleNumber]);
     });
   });
 
@@ -953,6 +1001,39 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   addRow(["Payment Channel Sum:", "", "", paymentChannelsTotal], [styleBold, null, null, styleBoldNumber]);
   addRow(["Net Daily Revenues:", "", "", totalIncome], [styleBold, null, null, styleBoldNumber]);
   addRow(["Reconciliation Mismatch:", "", "", Math.abs(paymentChannelsTotal - totalIncome)], [styleBold, null, null, styleBoldNumber]);
+  addRow(["", "", "", ""], []);
+
+  // 4. Cash Denominations & Soiled Notes
+  const CASH_DENOMS_XL = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const denomsObjXL = (() => {
+    if (!report.cashDenominations) return {};
+    if (typeof report.cashDenominations === "string") {
+      try { return JSON.parse(report.cashDenominations); } catch { return {}; }
+    }
+    return report.cashDenominations as Record<string, number>;
+  })();
+  const totalPhysicalCashXL = CASH_DENOMS_XL.reduce((sum, d) => {
+    const count = Number(denomsObjXL[d] || denomsObjXL[String(d)] || 0);
+    return sum + count * d;
+  }, 0);
+  const activeDenomsXL = CASH_DENOMS_XL.filter((d) => Number(denomsObjXL[d] || denomsObjXL[String(d)] || 0) > 0);
+
+  if (activeDenomsXL.length > 0 || report.soiledNotes) {
+    addRow(["4. CASH DENOMINATIONS & SOILED NOTES", "", "", ""], [styleSection, null, null, null]);
+    addRow(["Currency Denomination", "", "Count", "Subtotal Amount"], [styleBold, null, styleBold, styleBoldNumber]);
+
+    activeDenomsXL.forEach((d) => {
+      const count = Number(denomsObjXL[d] || denomsObjXL[String(d)] || 0);
+      const subtotal = count * d;
+      addRow([`₹${d} (${d >= 10 ? "Note" : "Coin"})`, "", `${count} pcs`, subtotal], [styleItalic, null, styleItalic, styleNumber]);
+    });
+
+    addRow(["TOTAL PHYSICAL CASH TALLY", "", "", totalPhysicalCashXL], [styleBold, null, null, styleBoldNumber]);
+
+    if (report.soiledNotes) {
+      addRow(["Soiled Notes / Mutilated Details:", "", report.soiledNotes.replace(/\n/g, " "), ""], [styleBold, null, styleItalic, null]);
+    }
+  }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
 

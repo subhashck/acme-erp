@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric, pgEnum, date } from "drizzle-orm/pg-core";
+import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -618,6 +618,9 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   bankReceiptSir: numeric("bank_receipt_sir", { precision: 12, scale: 2 }).notNull().default("0"),
   bankReceiptSirBank: text("bank_receipt_sir_bank"),
   bankDeposits: text("bank_deposits"),
+  cashDenominations: jsonb("cash_denominations"),
+  reconciliationTolerance: numeric("reconciliation_tolerance", { precision: 12, scale: 2 }).notNull().default("0"),
+  soiledNotes: text("soiled_notes"),
   status: text("status").notNull().default("draft"),
   ...timestamps
 });
@@ -668,7 +671,8 @@ export const dailyServiceLines = sqliteTable("daily_service_lines", {
   rate: numeric("rate", { precision: 12, scale: 2 }).notNull().default("0"),
   quantity: integer("quantity").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
-  isNightEntry: boolean("is_night_entry").notNull().default(false)
+  isNightEntry: boolean("is_night_entry").notNull().default(false),
+  narration: text("narration")
 });
 
 export const dailyPharmacyIncome = sqliteTable("daily_pharmacy_income", {
@@ -690,7 +694,8 @@ export const dailyExpenditures = sqliteTable("daily_expenditures", {
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   category: text("category").notNull(),
   details: text("details").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  narration: text("narration")
 });
 
 export const dailyStaffAdvances = sqliteTable("daily_staff_advances", {
