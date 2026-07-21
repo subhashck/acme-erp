@@ -18,6 +18,7 @@ import { Calendar } from "../../../components/ui/calendar";
 import { Label } from "../../../ui/label";
 import { format } from "date-fns";
 import { authClient } from "../../../services/auth";
+import CurrencyFormat from "react-currency-format";
 
 export const Route = createFileRoute("/_authenticated/hr/add-staff")({
   validateSearch: z.object({ staffId: z.number().optional() }),
@@ -33,10 +34,11 @@ const staffSchema = z.object({
   status: z.enum(["Active", "Terminated", "Long Leave", "Resigned"]),
   aadhar: z.string().regex(/^[2-9]\d{11}$/, "Aadhar must be a valid 12-digit number and cannot start with 0 or 1"),
   pan: z.string().regex(/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/i, "Invalid PAN format").transform((val) => val.toUpperCase()),
-  fatherName: z.string().optional(),
-  motherName: z.string().optional(),
   epfNumber: z.string().optional(),
   esiNumber: z.string().optional(),
+  nationality: z.string().optional(),
+  landmarkCurrentAddress: z.string().optional(),
+  landmarkPermanentAddress: z.string().optional(),
   educationHistory: z.array(z.object({
     qualification: z.string().optional(),
     institution: z.string().optional(),
@@ -48,6 +50,8 @@ const staffSchema = z.object({
     designation: z.string().optional(),
     from: z.string().optional(),
     to: z.string().optional(),
+    lastSalary: z.coerce.number().optional(),
+    reasonForLeaving: z.string().optional(),
     responsibilities: z.string().optional()
   })).default([]),
   bankName: z.string().optional(),
@@ -57,18 +61,34 @@ const staffSchema = z.object({
   dateOfJoining: z.string().optional(),
   lastWorkingDate: z.string().optional(),
   isExecutive: z.boolean().optional(),
+  effectiveDate: z.string().optional(),
+  employmentType: z.enum(["Permanent", "Contract", "Probation", "Intern"]).default("Permanent"),
+  permanentConfirmationDate: z.string().optional(),
+  employmentStartDate: z.string().optional(),
+  employmentEndDate: z.string().optional(),
   supervisor1Id: z.string().optional(),
   supervisor2Id: z.string().optional(),
   gender: z.enum(["Male", "Female", "Others"]).optional(),
   religion: z.string().optional(),
   maritalStatus: z.enum(["Single", "Married", "Divorced", "Widowed"]).optional(),
-  spouseName: z.string().optional(),
   currentAddress: z.string().min(1, "Current address is required"),
   permanentAddress: z.string().min(1, "Permanent address is required"),
   nominees: z.array(z.object({
     name: z.string().min(1, "Nominee name is required"),
     relationship: z.string().min(1, "Relationship is required"),
     percentage: z.coerce.number().min(1, "Percentage must be at least 1").max(100, "Percentage cannot exceed 100")
+  })).default([]),
+  certifications: z.array(z.object({
+    name: z.string().min(1, "Certification Name is required"),
+    issuingOrganization: z.string().min(1, "Issuing Organization is required"),
+    validityPeriod: z.string().min(1, "Validity Period is required"),
+    certificateNumber: z.string().min(1, "Certificate Number is required")
+  })).default([]),
+  familyMembers: z.array(z.object({
+    name: z.string().min(1, "Name is required"),
+    relationship: z.string().min(1, "Relationship is required"),
+    ageDob: z.string().optional(),
+    contactNo: z.string().optional()
   })).default([]),
   mncRegistrationNo: z.string().optional(),
   mncValidityUpto: z.string().optional(),
@@ -86,7 +106,22 @@ const staffSchema = z.object({
     path: ["nominees"],
     message: "The sum of nominee percentages must equal 100%",
   }
-);
+).refine((data) => {
+  const hasFather = data.familyMembers.some(f => f.relationship === "Father");
+  const hasMother = data.familyMembers.some(f => f.relationship === "Mother");
+  return hasFather && hasMother;
+}, {
+  path: ["familyMembers"],
+  message: "Father and Mother details are mandatory in Family Members"
+}).refine((data) => {
+  if (data.maritalStatus === "Married") {
+    return data.familyMembers.some(f => f.relationship === "Spouse");
+  }
+  return true;
+}, {
+  path: ["familyMembers"],
+  message: "Spouse details are mandatory when Marital Status is Married"
+});
 
 type StaffFormInput = z.input<typeof staffSchema>;
 type StaffFormValues = z.output<typeof staffSchema>;
@@ -96,10 +131,10 @@ const defaultValues: Partial<StaffFormInput> = {
   status: "Active",
   aadhar: "",
   pan: "",
-  fatherName: "",
-  motherName: "",
   currentAddress: "",
   permanentAddress: "",
+  landmarkCurrentAddress: "",
+  landmarkPermanentAddress: "",
   epfNumber: "",
   esiNumber: "",
   educationHistory: [],
@@ -116,17 +151,27 @@ const defaultValues: Partial<StaffFormInput> = {
   gender: "Male",
   religion: "",
   maritalStatus: "Single",
-  spouseName: "",
   nominees: [],
+  certifications: [],
+  familyMembers: [
+    { name: "", relationship: "Father", ageDob: "", contactNo: "" },
+    { name: "", relationship: "Mother", ageDob: "", contactNo: "" }
+  ],
   mncRegistrationNo: "",
   mncValidityUpto: "",
   mmcRegistrationNo: "",
-  mmcValidityUpto: ""
+  mmcValidityUpto: "",
+  effectiveDate: new Date().toISOString().split('T')[0],
+  employmentType: "Permanent",
+  permanentConfirmationDate: "",
+  employmentStartDate: "",
+  employmentEndDate: "",
+  nationality: "Indian"
 };
 
 // Calculate exactly 100 years ago from today
-  const hundredYearsAgo = new Date()
-  hundredYearsAgo.setFullYear(hundredYearsAgo.getFullYear() - 100)
+const hundredYearsAgo = new Date()
+hundredYearsAgo.setFullYear(hundredYearsAgo.getFullYear() - 100)
 
 function AddStaff() {
   const navigate = useNavigate();
@@ -148,7 +193,7 @@ function AddStaff() {
 
   const supervisorsQuery = useRpcQuery<any>(
     ["staff-supervisors", staffId, existingStaff?.version],
-    () => (client.hr.staff[":id"].supervisors as any).$get({ 
+    () => (client.hr.staff[":id"].supervisors as any).$get({
       param: { id: String(staffId) },
       query: { version: existingStaff?.version ? String(existingStaff.version) : undefined }
     }),
@@ -162,6 +207,7 @@ function AddStaff() {
 
   const isExecutiveVal = form.watch("isExecutive");
   const maritalStatusVal = form.watch("maritalStatus");
+  const employmentTypeVal = form.watch("employmentType");
 
   const { fields: edFields, append: appendEd, remove: removeEd } = useFieldArray({
     control: form.control,
@@ -178,6 +224,15 @@ function AddStaff() {
     name: "nominees"
   });
 
+  const { fields: certFields, append: appendCert, remove: removeCert } = useFieldArray({
+    control: form.control,
+    name: "certifications"
+  });
+
+  const { fields: familyMemberFields, append: appendFamilyMember, remove: removeFamilyMember } = useFieldArray({
+    control: form.control,
+    name: "familyMembers"
+  });
 
   const session = authClient.useSession();
   const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
@@ -198,10 +253,11 @@ function AddStaff() {
         status: existingStaff.status as StaffFormInput["status"],
         aadhar: existingStaff.aadhar ?? "",
         pan: existingStaff.pan ?? "",
-        fatherName: profile?.fatherName ?? "",
-        motherName: profile?.motherName ?? "",
+        nationality: profile?.nationality ?? "Indian",
         currentAddress: profile?.currentAddress ?? "",
+        landmarkCurrentAddress: profile?.landmarkCurrentAddress ?? "",
         permanentAddress: profile?.permanentAddress ?? "",
+        landmarkPermanentAddress: profile?.landmarkPermanentAddress ?? "",
         epfNumber: profile?.epfNumber ?? "",
         esiNumber: profile?.esiNumber ?? "",
         educationHistory: Array.isArray(profile?.educationHistory) ? profile.educationHistory : [],
@@ -213,13 +269,19 @@ function AddStaff() {
         dateOfJoining: profile?.dateOfJoining ?? "",
         lastWorkingDate: profile?.lastWorkingDate ?? "",
         isExecutive: existingStaff.isExecutive ?? false,
+        effectiveDate: existingStaff.effectiveDate ?? new Date().toISOString().split('T')[0],
+        employmentType: (existingStaff.employmentType as any) ?? "Permanent",
+        permanentConfirmationDate: existingStaff.permanentConfirmationDate ?? "",
+        employmentStartDate: existingStaff.employmentStartDate ?? "",
+        employmentEndDate: existingStaff.employmentEndDate ?? "",
         supervisor1Id: supervisorsQuery.data?.explicitSupervisors?.supervisor1?.staffId?.toString() ?? "",
         supervisor2Id: supervisorsQuery.data?.explicitSupervisors?.supervisor2?.staffId?.toString() ?? "",
         gender: (profile?.gender as any) ?? "Male",
         religion: profile?.religion ?? "",
         maritalStatus: (profile?.maritalStatus as any) ?? "Single",
-        spouseName: profile?.spouseName ?? "",
         nominees: Array.isArray(profile?.nominees) ? profile.nominees : [],
+        certifications: Array.isArray(profile?.certifications) ? profile.certifications : [],
+        familyMembers: Array.isArray(profile?.familyMembers) ? profile.familyMembers : defaultValues.familyMembers,
         mncRegistrationNo: profile?.mncRegistrationNo ?? "",
         mncValidityUpto: profile?.mncValidityUpto ?? "",
         mmcRegistrationNo: profile?.mmcRegistrationNo ?? "",
@@ -228,6 +290,16 @@ function AddStaff() {
       hasInitialized.current = true;
     }
   }, [existingStaff, hrProfileQuery.data, hrProfileQuery.isSuccess, supervisorsQuery.data, supervisorsQuery.isSuccess, isEditing, form]);
+
+  React.useEffect(() => {
+    if (hasInitialized.current && maritalStatusVal === "Married") {
+      const currentMembers = form.getValues("familyMembers") || [];
+      const hasSpouse = currentMembers.some(m => m.relationship === "Spouse");
+      if (!hasSpouse) {
+        appendFamilyMember({ name: "", relationship: "Spouse", ageDob: "", contactNo: "" });
+      }
+    }
+  }, [maritalStatusVal, appendFamilyMember, form]);
 
 
   const submit = form.handleSubmit(async (values) => {
@@ -245,12 +317,17 @@ function AddStaff() {
         accountNumber: values.accountNumber,
         ifscCode: values.ifscCode,
         isExecutive: !!values.isExecutive,
+        effectiveDate: values.effectiveDate,
+        employmentType: values.employmentType,
+        permanentConfirmationDate: values.permanentConfirmationDate,
+        employmentStartDate: values.employmentStartDate,
+        employmentEndDate: values.employmentEndDate,
         hrProfile: {
           dateOfBirth: values.dateOfBirth,
-          fatherName: values.fatherName,
-          motherName: values.motherName,
           currentAddress: values.currentAddress,
+          landmarkCurrentAddress: values.landmarkCurrentAddress,
           permanentAddress: values.permanentAddress,
+          landmarkPermanentAddress: values.landmarkPermanentAddress,
           epfNumber: values.epfNumber,
           esiNumber: values.esiNumber,
           dateOfJoining: values.dateOfJoining,
@@ -260,12 +337,14 @@ function AddStaff() {
           gender: values.gender,
           religion: values.religion,
           maritalStatus: values.maritalStatus,
-          spouseName: values.maritalStatus === "Married" ? values.spouseName : "",
           nominees: values.nominees,
+          certifications: values.certifications,
+          familyMembers: values.familyMembers,
           mncRegistrationNo: values.mncRegistrationNo,
           mncValidityUpto: values.mncValidityUpto,
           mmcRegistrationNo: values.mmcRegistrationNo,
-          mmcValidityUpto: values.mmcValidityUpto
+          mmcValidityUpto: values.mmcValidityUpto,
+          nationality: values.nationality
         }
       };
 
@@ -368,308 +447,344 @@ function AddStaff() {
           </div>
         )}
         <fieldset disabled={form.formState.isSubmitting} className="space-y-5">
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <UserRound size={18} />
-              Personal Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Full Name" {...form.register("name")} error={form.formState.errors.name?.message} />
-              <Field label="Phone" {...form.register("phone")} error={form.formState.errors.phone?.message} />
-              <Field label="Email" type="email" className="md:col-span-2" {...form.register("email")} error={form.formState.errors.email?.message} />
-              <Field label="Father's Name" {...form.register("fatherName")} error={form.formState.errors.fatherName?.message} />
-              <Field label="Mother's Name" {...form.register("motherName")} error={form.formState.errors.motherName?.message} />
-              <Select label="Sex" {...form.register("gender")} options={["Male", "Female", "Others"]} error={form.formState.errors.gender?.message} />
-              <Select label="Religion" {...form.register("religion")} options={["Hinduism", "Sanamahism", "Islam", "Christianity", "Sikhism", "Buddhism", "Jainism", "Others"]} error={form.formState.errors.religion?.message} />
-              <Select label="Marital Status" {...form.register("maritalStatus")} options={["Single", "Married", "Divorced", "Widowed"]} error={form.formState.errors.maritalStatus?.message} />
-              {maritalStatusVal === "Married" && (
-                <Field label="Spouse's Name" {...form.register("spouseName")} error={form.formState.errors.spouseName?.message} />
-              )}
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserRound size={18} />
+                Personal Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Full Name" {...form.register("name")} error={form.formState.errors.name?.message} />
+                <Field label="Phone" {...form.register("phone")} error={form.formState.errors.phone?.message} />
+                <Field label="Email" type="email" className="md:col-span-2" {...form.register("email")} error={form.formState.errors.email?.message} />
+                <Field label="Nationality" {...form.register("nationality")} error={form.formState.errors.nationality?.message} />
+                <Select label="Sex" {...form.register("gender")} options={["Male", "Female", "Others"]} error={form.formState.errors.gender?.message} />
+                <Select label="Religion" {...form.register("religion")} options={["Hinduism", "Sanamahism", "Islam", "Christianity", "Sikhism", "Buddhism", "Jainism", "Others"]} error={form.formState.errors.religion?.message} />
+                <Select label="Marital Status" {...form.register("maritalStatus")} options={["Single", "Married", "Divorced", "Widowed"]} error={form.formState.errors.maritalStatus?.message} />
 
-              <div className="flex flex-col">
-                <Label>
-                  Date of Birth <span className="text-destructive">*</span>
-                </Label>
-                <Controller
-                  control={form.control}
-                  name="dateOfBirth"
-                  render={({ field }) => (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-background px-3",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                          {field.value ? format(new Date(field.value), "PPP") : <span>Pick date of birth</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          captionLayout="dropdown"
-                          disabled={[{ before: hundredYearsAgo }, { after: new Date() }]}
-                          selected={field.value ? new Date(field.value) : undefined}
-                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                />
-                {form.formState.errors.dateOfBirth && (
-                  <p className="text-xs text-destructive">{form.formState.errors.dateOfBirth.message}</p>
-                )}
-              </div>
-
-              <div className="md:col-span-2 grid gap-4 md:grid-cols-2 mt-2 bg-slate-50/50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
-                <Field label="Current Address" {...form.register("currentAddress")} error={form.formState.errors.currentAddress?.message} />
-                <Field label="Permanent Address" {...form.register("permanentAddress")} error={form.formState.errors.permanentAddress?.message} />
-                <div className="md:col-span-2 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="same-address"
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        form.setValue("permanentAddress", form.getValues("currentAddress") || "", { shouldValidate: true });
-                      }
-                    }}
+                <div className="flex flex-col">
+                  <Label>
+                    Date of Birth <span className="text-destructive">*</span>
+                  </Label>
+                  <Controller
+                    control={form.control}
+                    name="dateOfBirth"
+                    render={({ field }) => (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-background px-3",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick date of birth</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            captionLayout="dropdown"
+                            disabled={[{ before: hundredYearsAgo }, { after: new Date() }]}
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    )}
                   />
-                  <label htmlFor="same-address" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
-                    Permanent Address is same as Current Address
-                  </label>
+                  {form.formState.errors.dateOfBirth && (
+                    <p className="text-xs text-destructive">{form.formState.errors.dateOfBirth.message}</p>
+                  )}
                 </div>
-              </div>
 
-              <div className="md:col-span-2 mt-4">
-                <div className="flex items-center justify-between border-b pb-2 mb-4">
-                  <h3 className="font-semibold">Education History</h3>
-                  <Button type="button" variant="outline" onClick={() => appendEd({ qualification: "", institution: "", year: "", grade: "" })}>
-                    <Plus size={16} className="mr-2" /> Add Education
-                  </Button>
+                <div className="md:col-span-2 grid gap-4 md:grid-cols-2 mt-2 bg-slate-50/50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <Field label="Current Address" {...form.register("currentAddress")} error={form.formState.errors.currentAddress?.message} />
+                  <Field label="Landmark (Current Address)" {...form.register("landmarkCurrentAddress")} error={form.formState.errors.landmarkCurrentAddress?.message} />
+                  <Field label="Permanent Address" {...form.register("permanentAddress")} error={form.formState.errors.permanentAddress?.message} />
+                  <Field label="Landmark (Permanent Address)" {...form.register("landmarkPermanentAddress")} error={form.formState.errors.landmarkPermanentAddress?.message} />
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="same-address"
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          form.setValue("permanentAddress", form.getValues("currentAddress") || "", { shouldValidate: true });
+                          form.setValue("landmarkPermanentAddress", form.getValues("landmarkCurrentAddress") || "", { shouldValidate: true });
+                        }
+                      }}
+                    />
+                    <label htmlFor="same-address" className="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+                      Permanent Address is same as Current Address
+                    </label>
+                  </div>
                 </div>
-                <div className="space-y-4">
-                  {edFields.map((field, i) => (
-                    <div key={field.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-start">
-                      <Field placeholder="Qualification (e.g. B.Tech)" {...form.register(`educationHistory.${i}.qualification`)} />
-                      <Field placeholder="Institution" {...form.register(`educationHistory.${i}.institution`)} />
-                      <Field placeholder="Year" {...form.register(`educationHistory.${i}.year`)} />
-                      <Field placeholder="Grade/Score" {...form.register(`educationHistory.${i}.grade`)} />
-                      <Button type="button" variant="ghost" size="icon" className="text-destructive mt-1 md:mt-0" onClick={() => removeEd(i)}>
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  ))}
-                  {edFields.length === 0 && <p className="text-sm text-muted-foreground">No education history added.</p>}
-                </div>
-              </div>
 
-              <div className="md:col-span-2 mt-4">
-                <div className="flex items-center justify-between border-b pb-2 mb-4">
-                  <h3 className="font-semibold">Professional History</h3>
-                  <Button type="button" variant="outline" onClick={() => appendPro({ employer: "", designation: "", from: "", to: "", responsibilities: "" })}>
-                    <Plus size={16} className="mr-2" /> Add Experience
-                  </Button>
+                <div className="md:col-span-2 mt-4">
+                  <div className="flex items-center justify-between border-b pb-2 mb-4">
+                    <h3 className="font-semibold">Education History</h3>
+                    <Button type="button" variant="outline" onClick={() => appendEd({ qualification: "", institution: "", year: "", grade: "" })}>
+                      <Plus size={16} className="mr-2" /> Add Education
+                    </Button>
+                  </div>
+                  <div className="space-y-4">
+                    {edFields.map((field, i) => (
+                      <div key={field.id} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-start">
+                        <Field placeholder="Qualification (e.g. B.Tech)" {...form.register(`educationHistory.${i}.qualification`)} />
+                        <Field placeholder="Institution" {...form.register(`educationHistory.${i}.institution`)} />
+                        <Field placeholder="Year" {...form.register(`educationHistory.${i}.year`)} />
+                        <Field placeholder="Grade/Score" {...form.register(`educationHistory.${i}.grade`)} />
+                        <Button type="button" variant="ghost" size="icon" className="text-destructive mt-1 md:mt-0" onClick={() => removeEd(i)}>
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    ))}
+                    {edFields.length === 0 && <p className="text-sm text-muted-foreground">No education history added.</p>}
+                  </div>
                 </div>
-                <div className="space-y-4">
-                  {proFields.map((field, i) => (
-                    <div key={field.id} className="flex flex-col gap-2 p-4 border rounded-lg relative bg-muted/10">
-                      <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive" onClick={() => removePro(i)}>
-                        <Trash2 size={16} />
-                      </Button>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mr-8">
-                        <Field label="Employer" {...form.register(`professionalHistory.${i}.employer`)} />
-                        <Field label="Designation" {...form.register(`professionalHistory.${i}.designation`)} />
-                        <Field label="From (Year/Month)" {...form.register(`professionalHistory.${i}.from`)} />
-                        <Field label="To (Year/Month)" {...form.register(`professionalHistory.${i}.to`)} />
-                        <div className="md:col-span-2">
-                          <Field label="Responsibilities" {...form.register(`professionalHistory.${i}.responsibilities`)} />
+
+                <div className="md:col-span-2 mt-4">
+                  <div className="flex items-center justify-between border-b pb-2 mb-4">
+                    <h3 className="font-semibold">Employment & Compensation History</h3>
+                    <Button type="button" variant="outline" onClick={() => appendPro({ employer: "", designation: "", from: "", to: "", lastSalary: undefined as any, reasonForLeaving: "", responsibilities: "" })}>
+                      <Plus size={16} className="mr-2" /> Add Experience
+                    </Button>
+                  </div>
+                  <div className="space-y-4">
+                    {proFields.map((field, i) => (
+                      <div key={field.id} className="flex flex-col gap-3 p-4 border rounded-lg relative bg-muted/10">
+                        <Button type="button" variant="ghost" size="icon" className="absolute top-2 right-2 text-destructive" onClick={() => removePro(i)}>
+                          <Trash2 size={16} />
+                        </Button>
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mr-8 items-start">
+                          <Field placeholder="Employer" {...form.register(`professionalHistory.${i}.employer`)} />
+                          <Field placeholder="Designation" {...form.register(`professionalHistory.${i}.designation`)} />
+
+                          <Controller
+                            control={form.control}
+                            name={`professionalHistory.${i}.from`}
+                            render={({ field }) => (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3 h-10", !field.value && "text-muted-foreground")}>
+                                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                                    {field.value ? format(new Date(field.value), "MMM yyyy") : <span>From</span>}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                  <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                                </PopoverContent>
+                              </Popover>
+                            )}
+                          />
+
+                          <Controller
+                            control={form.control}
+                            name={`professionalHistory.${i}.to`}
+                            render={({ field }) => (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3 h-10", !field.value && "text-muted-foreground")}>
+                                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                                    {field.value ? format(new Date(field.value), "MMM yyyy") : <span>To</span>}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                  <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                                </PopoverContent>
+                              </Popover>
+                            )}
+                          />
+
+                          <Controller
+                            control={form.control}
+                            name={`professionalHistory.${i}.lastSalary`}
+                            render={({ field }) => (
+                              <CurrencyFormat
+                                customInput={Field as any}
+                                placeholder="Last Salary"
+                                thousandSeparator={true}
+                                prefix="₹"
+                                value={(field.value as number | string | undefined) ?? ""}
+                                onValueChange={(values) => {
+                                  field.onChange(values.floatValue);
+                                }}
+                              />
+                            )}
+                          />
+
+                          <div className="md:col-span-5">
+                            <Field placeholder="Reason for Leaving" {...form.register(`professionalHistory.${i}.reasonForLeaving`)} />
+                          </div>
+                          <div className="md:col-span-5">
+                            <Field placeholder="Responsibilities" {...form.register(`professionalHistory.${i}.responsibilities`)} />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                  {proFields.length === 0 && <p className="text-sm text-muted-foreground">No professional history added.</p>}
+                    ))}
+                    {proFields.length === 0 && <p className="text-sm text-muted-foreground">No employment & compensation history added.</p>}
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center justify-between text-base">
-              <span className="flex items-center gap-2">
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <Users size={18} />
-                Nominee Details
-              </span>
-              <Button type="button" variant="outline" size="default" onClick={() => appendNominee({ name: "", relationship: "", percentage: 100 })}>
-                <Plus size={16} className="mr-1" /> Add Nominee
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="space-y-4">
-              {nomineeFields.map((field, i) => (
-                <div key={field.id} className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] gap-4 items-end p-4 border rounded-lg bg-muted/10 relative">
-                  <Field label="Nominee Name" {...form.register(`nominees.${i}.name`)} error={form.formState.errors.nominees?.[i]?.name?.message} />
-                  <Select label="Relationship" {...form.register(`nominees.${i}.relationship`)} options={["Spouse","Father", "Mother", "Sister", "Brother", "Children", "Others"]} error={form.formState.errors.nominees?.[i]?.relationship?.message} />
-                  <Field label="Percentage (%)" type="number" {...form.register(`nominees.${i}.percentage`)} error={form.formState.errors.nominees?.[i]?.percentage?.message} />
-                  <Button type="button" variant="ghost" size="icon" className="text-destructive mb-1" onClick={() => removeNominee(i)}>
-                    <Trash2 size={16} />
-                  </Button>
-                </div>
-              ))}
-              {nomineeFields.length === 0 && (
-                <p className="text-sm text-muted-foreground">No nominees added. Add one or more nominees if applicable.</p>
-              )}
-              {form.formState.errors.nominees && (
-                <p className="text-sm font-semibold text-destructive mt-2">{form.formState.errors.nominees.message}</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <BriefcaseBusiness size={18} />
-              Employment Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Select label="Role" {...form.register("role")} options={activeRoles} error={form.formState.errors.role?.message} />
-              <Select label="Department" {...form.register("departmentId")} options={deptOptions} error={form.formState.errors.departmentId?.message} />
-
-
-              <div className="flex items-center gap-2 md:col-span-2 py-2">
-                <input
-                  type="checkbox"
-                  id="isExecutive"
-                  className="rounded border-input text-primary focus:ring-ring h-4 w-4"
-                  {...form.register("isExecutive")}
-                />
-                <Label htmlFor="isExecutive" className="text-sm font-medium cursor-pointer select-none">
-                  Executive Level Staff (has direct supervisors)
-                </Label>
+                Family Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between border-b pb-2 mb-4">
+                <h3 className="font-semibold">Family Members</h3>
+                <Button type="button" variant="outline" size="default" onClick={() => appendFamilyMember({ name: "", relationship: "", ageDob: "", contactNo: "" })}>
+                  <Plus size={16} className="mr-1" /> Add Member
+                </Button>
               </div>
+              <div className="space-y-4">
+                {familyMemberFields.map((field, i) => {
+                  const rel = form.watch(`familyMembers.${i}.relationship`);
+                  const isMandatory = rel === "Father" || rel === "Mother" || (rel === "Spouse" && maritalStatusVal === "Married");
 
-              {isExecutiveVal && (
-                <>
-                  <Select
-                    label="Supervisor 1"
-                    {...form.register("supervisor1Id")}
-                    options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
-                    error={form.formState.errors.supervisor1Id?.message}
-                  />
-                  <Select
-                    label="Supervisor 2"
-                    {...form.register("supervisor2Id")}
-                    options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
-                    error={form.formState.errors.supervisor2Id?.message}
-                  />
-                </>
-              )}
+                  return (
+                    <div key={field.id} className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_1fr_auto] gap-4 items-baseline p-4 border rounded-lg bg-muted/10 relative ">
+                      <Field label="Name" {...form.register(`familyMembers.${i}.name`)} error={form.formState.errors.familyMembers?.[i]?.name?.message} />
+                      <Select disabled={isMandatory} label="Relationship" {...form.register(`familyMembers.${i}.relationship`)} options={["Spouse", "Father", "Mother", "Sister", "Brother", "Children", "Others"]} error={form.formState.errors.familyMembers?.[i]?.relationship?.message} />
+                      <Field label="Age/DOB" {...form.register(`familyMembers.${i}.ageDob`)} error={form.formState.errors.familyMembers?.[i]?.ageDob?.message} />
+                      <Field label="Contact No" {...form.register(`familyMembers.${i}.contactNo`)} error={form.formState.errors.familyMembers?.[i]?.contactNo?.message} />
 
-              <Select label="Employment Status" {...form.register("status")} options={["Active", "Terminated", "Long Leave", "Resigned"]} error={form.formState.errors.status?.message} />
-
-              <div className="flex flex-col ">
-                <Label>Date of Joining</Label>
-                <Controller
-                  control={form.control}
-                  name="dateOfJoining"
-                  render={({ field }) => (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-background px-3",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                          {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                      {!isMandatory ? (
+                        <Button type="button" variant="ghost" size="icon" className="text-destructive mb-1" onClick={() => removeFamilyMember(i)}>
+                          <Trash2 size={16} />
                         </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          captionLayout="dropdown"
-                          selected={field.value ? new Date(field.value) : undefined}
-                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                />
-                {form.formState.errors.dateOfJoining && <p className="text-xs text-destructive">{form.formState.errors.dateOfJoining.message}</p>}
+                      ) : (
+                        <div className="w-9 h-9" />
+                      )}
+                    </div>
+                  );
+                })}
+                {familyMemberFields.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No family members added.</p>
+                )}
+                {form.formState.errors.familyMembers && (
+                  <p className="text-sm font-semibold text-destructive mt-2">{form.formState.errors.familyMembers.message}</p>
+                )}
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="flex flex-col">
-                <Label>Last Working Date</Label>
-                <Controller
-                  control={form.control}
-                  name="lastWorkingDate"
-                  render={({ field }) => (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal bg-background px-3",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                          {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          captionLayout="dropdown"
-                          selected={field.value ? new Date(field.value) : undefined}
-                          onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                />
-                {form.formState.errors.lastWorkingDate && <p className="text-xs text-destructive">{form.formState.errors.lastWorkingDate.message}</p>}
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="flex items-center gap-2">
+                  <Users size={18} />
+                  Nominee Details
+                </span>
+                <Button type="button" variant="outline" size="default" onClick={() => appendNominee({ name: "", relationship: "", percentage: 100 })}>
+                  <Plus size={16} className="mr-1" /> Add Nominee
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                {nomineeFields.map((field, i) => (
+                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_auto] gap-4 items-end p-4 border rounded-lg bg-muted/10 relative">
+                    <Field label="Nominee Name" {...form.register(`nominees.${i}.name`)} error={form.formState.errors.nominees?.[i]?.name?.message} />
+                    <Select label="Relationship" {...form.register(`nominees.${i}.relationship`)} options={["Spouse", "Father", "Mother", "Sister", "Brother", "Children", "Others"]} error={form.formState.errors.nominees?.[i]?.relationship?.message} />
+                    <Field label="Percentage (%)" type="number" {...form.register(`nominees.${i}.percentage`)} error={form.formState.errors.nominees?.[i]?.percentage?.message} />
+                    <Button type="button" variant="ghost" size="icon" className="text-destructive mb-1" onClick={() => removeNominee(i)}>
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                ))}
+                {nomineeFields.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No nominees added. Add one or more nominees if applicable.</p>
+                )}
+                {form.formState.errors.nominees && (
+                  <p className="text-sm font-semibold text-destructive mt-2">{form.formState.errors.nominees.message}</p>
+                )}
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="border-b">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <IdCard size={18} />
-              Compliance & Bank Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Aadhar Number" className="uppercase" {...form.register("aadhar")} error={form.formState.errors.aadhar?.message} />
-              <Field label="PAN Number" className="uppercase" {...form.register("pan")} error={form.formState.errors.pan?.message} />
-              <Field label="EPF Number" {...form.register("epfNumber")} error={form.formState.errors.epfNumber?.message} />
-              <Field label="ESI Number" {...form.register("esiNumber")} error={form.formState.errors.esiNumber?.message} />
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center justify-between text-base">
+                <span className="flex items-center gap-2">
+                  <BriefcaseBusiness size={18} />
+                  Certifications
+                </span>
+                <Button type="button" variant="outline" size="default" onClick={() => appendCert({ name: "", issuingOrganization: "", validityPeriod: "", certificateNumber: "" })}>
+                  <Plus size={16} className="mr-1" /> Add Certification
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                {certFields.map((field, i) => (
+                  <div key={field.id} className="grid grid-cols-1 md:grid-cols-[2fr_2fr_1fr_1fr_auto] gap-4 items-end p-4 border rounded-lg bg-muted/10 relative">
+                    <Field label="Certification Name" {...form.register(`certifications.${i}.name`)} error={form.formState.errors.certifications?.[i]?.name?.message} />
+                    <Field label="Issuing Organization" {...form.register(`certifications.${i}.issuingOrganization`)} error={form.formState.errors.certifications?.[i]?.issuingOrganization?.message} />
+                    <Field label="Validity Period" {...form.register(`certifications.${i}.validityPeriod`)} error={form.formState.errors.certifications?.[i]?.validityPeriod?.message} />
+                    <Field label="Certificate Number" {...form.register(`certifications.${i}.certificateNumber`)} error={form.formState.errors.certifications?.[i]?.certificateNumber?.message} />
+                    <Button type="button" variant="ghost" size="icon" className="text-destructive mb-1" onClick={() => removeCert(i)}>
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                ))}
+                {certFields.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No certifications added. Add one or more certifications if applicable.</p>
+                )}
+                {form.formState.errors.certifications && (
+                  <p className="text-sm font-semibold text-destructive mt-2">{form.formState.errors.certifications.message}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
-              <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
-                <h3 className="font-semibold md:col-span-2">Council Registrations</h3>
-                <Field label="MNC Registration No" {...form.register("mncRegistrationNo")} error={form.formState.errors.mncRegistrationNo?.message} />
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <BriefcaseBusiness size={18} />
+                Employment Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+
+
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col">
-                  <Label>MNC Validity Upto</Label>
+                  <Label>Effective Date of Details</Label>
                   <Controller
                     control={form.control}
-                    name="mncValidityUpto"
+                    name="effectiveDate"
+                    render={({ field }) => (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
+                            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                  />
+                </div>
+                <div className="flex flex-col ">
+                  <Label>Date of Joining</Label>
+                  <Controller
+                    control={form.control}
+                    name="dateOfJoining"
                     render={({ field }) => (
                       <Popover>
                         <PopoverTrigger asChild>
@@ -695,15 +810,120 @@ function AddStaff() {
                       </Popover>
                     )}
                   />
-                  {form.formState.errors.mncValidityUpto && <p className="text-xs text-destructive">{form.formState.errors.mncValidityUpto.message}</p>}
+                  {form.formState.errors.dateOfJoining && <p className="text-xs text-destructive">{form.formState.errors.dateOfJoining.message}</p>}
+                </div>
+                <Select label="Role" {...form.register("role")} options={activeRoles} error={form.formState.errors.role?.message} />
+                <Select label="Department" {...form.register("departmentId")} options={deptOptions} error={form.formState.errors.departmentId?.message} />
+
+
+                <div className="flex items-center gap-2 md:col-span-2 py-2">
+                  <input
+                    type="checkbox"
+                    id="isExecutive"
+                    className="rounded border-input text-primary focus:ring-ring h-4 w-4"
+                    {...form.register("isExecutive")}
+                  />
+                  <Label htmlFor="isExecutive" className="text-sm font-medium cursor-pointer select-none">
+                    Executive Level Staff (has direct supervisors)
+                  </Label>
                 </div>
 
-                <Field label="MMC Registration No" {...form.register("mmcRegistrationNo")} error={form.formState.errors.mmcRegistrationNo?.message} />
+                {isExecutiveVal && (
+                  <>
+                    <Select
+                      label="Supervisor 1"
+                      {...form.register("supervisor1Id")}
+                      options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
+                      error={form.formState.errors.supervisor1Id?.message}
+                    />
+                    <Select
+                      label="Supervisor 2"
+                      {...form.register("supervisor2Id")}
+                      options={(staffQuery.data?.filter(s => s.active && s.staffId !== staffId) || []).map(s => [s.staffId.toString(), `${s.name} (${s.employeeCode})`])}
+                      error={form.formState.errors.supervisor2Id?.message}
+                    />
+                  </>
+                )}
+
+                <Select label="Employment Status" {...form.register("status")} options={["Active", "Terminated", "Long Leave", "Resigned"]} error={form.formState.errors.status?.message} />
+
+
+
+
+
+                <Select label="Employment Type" {...form.register("employmentType")} options={["Permanent", "Contract", "Probation", "Intern"]} error={form.formState.errors.employmentType?.message} />
+
+                {employmentTypeVal === "Permanent" ? (
+                  <div className="flex flex-col">
+                    <Label>Permanent Confirmation Date</Label>
+                    <Controller
+                      control={form.control}
+                      name="permanentConfirmationDate"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-col">
+                      <Label>{employmentTypeVal} Start Date</Label>
+                      <Controller
+                        control={form.control}
+                        name="employmentStartDate"
+                        render={({ field }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
+                                <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                                {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
+                    </div>
+                    <div className="flex flex-col">
+                      <Label>{employmentTypeVal} End Date</Label>
+                      <Controller
+                        control={form.control}
+                        name="employmentEndDate"
+                        render={({ field }) => (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
+                                <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                                {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="flex flex-col">
-                  <Label>MMC Validity Upto</Label>
+                  <Label>Last Working Date</Label>
                   <Controller
                     control={form.control}
-                    name="mmcValidityUpto"
+                    name="lastWorkingDate"
                     render={({ field }) => (
                       <Popover>
                         <PopoverTrigger asChild>
@@ -729,32 +949,123 @@ function AddStaff() {
                       </Popover>
                     )}
                   />
-                  {form.formState.errors.mmcValidityUpto && <p className="text-xs text-destructive">{form.formState.errors.mmcValidityUpto.message}</p>}
+                  {form.formState.errors.lastWorkingDate && <p className="text-xs text-destructive">{form.formState.errors.lastWorkingDate.message}</p>}
                 </div>
               </div>
+            </CardContent>
+          </Card>
 
-              <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
-                <h3 className="font-semibold md:col-span-2">Bank Details</h3>
-                <Select label="Bank Name" {...form.register("bankName")} options={activeBanks} error={form.formState.errors.bankName?.message} />
-                <Field label="Account Number" {...form.register("accountNumber")} error={form.formState.errors.accountNumber?.message} />
-                <Field label="IFSC Code" className="uppercase" {...form.register("ifscCode")} error={form.formState.errors.ifscCode?.message} />
-              </div>
-              <div className="md:col-span-2 rounded-lg border bg-muted/35 p-4 text-sm text-muted-foreground mt-4">
-                Aadhar, PAN, EPF, and ESI are stored against the active employee version and carried forward when HR edits create a new staff version.
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="border-b">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <IdCard size={18} />
+                Compliance & Bank Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Aadhar Number" className="uppercase" {...form.register("aadhar")} error={form.formState.errors.aadhar?.message} />
+                <Field label="PAN Number" className="uppercase" {...form.register("pan")} error={form.formState.errors.pan?.message} />
+                <Field label="EPF Number" {...form.register("epfNumber")} error={form.formState.errors.epfNumber?.message} />
+                <Field label="ESI Number" {...form.register("esiNumber")} error={form.formState.errors.esiNumber?.message} />
 
-        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-end">
-          <Button type="button" variant="outline" onClick={() => navigate({ to: "/hr/staff-list" })}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={form.formState.isSubmitting}>
-            {isEditing ? <Save size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />}
-            {isEditing ? "Save Changes" : "Add Staff"}
-          </Button>
-        </div>
+                <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
+                  <h3 className="font-semibold md:col-span-2">Council Registrations</h3>
+                  <Field label="MNC Registration No" {...form.register("mncRegistrationNo")} error={form.formState.errors.mncRegistrationNo?.message} />
+                  <div className="flex flex-col">
+                    <Label>MNC Validity Upto</Label>
+                    <Controller
+                      control={form.control}
+                      name="mncValidityUpto"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-background px-3",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              captionLayout="dropdown"
+                              startMonth={new Date((new Date()).getFullYear() - 20, 0)}
+                              endMonth={new Date((new Date()).getFullYear() + 20, 11)}
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {form.formState.errors.mncValidityUpto && <p className="text-xs text-destructive">{form.formState.errors.mncValidityUpto.message}</p>}
+                  </div>
+
+                  <Field label="MMC Registration No" {...form.register("mmcRegistrationNo")} error={form.formState.errors.mmcRegistrationNo?.message} />
+                  <div className="flex flex-col">
+                    <Label>MMC Validity Upto</Label>
+                    <Controller
+                      control={form.control}
+                      name="mmcValidityUpto"
+                      render={({ field }) => (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "w-full justify-start text-left font-normal bg-background px-3",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              captionLayout="dropdown"
+                              startMonth={new Date((new Date()).getFullYear() - 20, 0)}
+                              endMonth={new Date((new Date()).getFullYear() + 20, 11)}
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    />
+                    {form.formState.errors.mmcValidityUpto && <p className="text-xs text-destructive">{form.formState.errors.mmcValidityUpto.message}</p>}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
+                  <h3 className="font-semibold md:col-span-2">Bank Details</h3>
+                  <Select label="Bank Name" {...form.register("bankName")} options={activeBanks} error={form.formState.errors.bankName?.message} />
+                  <Field label="Account Number" {...form.register("accountNumber")} error={form.formState.errors.accountNumber?.message} />
+                  <Field label="IFSC Code" className="uppercase" {...form.register("ifscCode")} error={form.formState.errors.ifscCode?.message} />
+                </div>
+                <div className="md:col-span-2 rounded-lg border bg-muted/35 p-4 text-sm text-muted-foreground mt-4">
+                  Aadhar, PAN, EPF, and ESI are stored against the active employee version and carried forward when HR edits create a new staff version.
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => navigate({ to: "/hr/staff-list" })}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {isEditing ? <Save size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />}
+              {isEditing ? "Save Changes" : "Add Staff"}
+            </Button>
+          </div>
         </fieldset>
       </form>
     </ModuleLayout>

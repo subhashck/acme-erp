@@ -643,7 +643,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         ),
         cashDenominations: z.union([z.record(z.string(), z.number()), z.string(), z.null()]).optional(),
         reconciliationTolerance: z.number().default(0).optional(),
-        soiledNotes: z.string().nullable().optional(),
+        soiledNotes: z.number().nullable().optional(),
       })
     );
 
@@ -733,7 +733,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             return payload.cashDenominations;
           })(),
           reconciliationTolerance: (payload.reconciliationTolerance ?? 0).toFixed(2),
-          soiledNotes: payload.soiledNotes ?? null,
+          soiledNotes: payload.soiledNotes ? payload.soiledNotes.toString() : null,
           status: payload.status,
         })
         .returning()
@@ -987,7 +987,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         ),
         cashDenominations: z.union([z.record(z.string(), z.number()), z.string(), z.null()]).optional(),
         reconciliationTolerance: z.number().default(0).optional(),
-        soiledNotes: z.string().nullable().optional(),
+        soiledNotes: z.number().nullable().optional(),
       })
     );
 
@@ -1063,7 +1063,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             return payload.cashDenominations;
           })(),
           reconciliationTolerance: (payload.reconciliationTolerance ?? 0).toFixed(2),
-          soiledNotes: payload.soiledNotes ?? null,
+          soiledNotes: payload.soiledNotes ? payload.soiledNotes.toString() : null,
           status: payload.status,
           updatedAt: new Date(),
         })

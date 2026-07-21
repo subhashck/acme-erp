@@ -28,6 +28,11 @@ export type StaffRow = {
   salary?: number | null;
   userId?: string | null;
   isExecutive?: boolean;
+  effectiveDate?: string | null;
+  employmentType?: string | null;
+  permanentConfirmationDate?: string | null;
+  employmentStartDate?: string | null;
+  employmentEndDate?: string | null;
   supervisorLevel1Id?: number | null;
   supervisorLevel2Id?: number | null;
   createdAt: string;

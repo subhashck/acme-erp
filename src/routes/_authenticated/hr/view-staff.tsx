@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import * as React from "react";
-import { ArrowLeft, Edit2, User, ShieldCheck, AlertTriangle, History, ChevronRight, BriefcaseBusiness, IdCard, UserRound, GraduationCap, Building2, Users } from "lucide-react";
+import { ArrowLeft, Edit2, User, ShieldCheck, AlertTriangle, History, ChevronRight, BriefcaseBusiness, IdCard, UserRound, GraduationCap, Building2, Users, Download } from "lucide-react";
 import { useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
 import { Button } from "../../../ui/button";
@@ -10,6 +10,8 @@ import type { StaffRow } from "../../../types";
 import { z } from "zod";
 import { cn } from "../../../lib/utils";
 import { authClient } from "../../../services/auth";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/_authenticated/hr/view-staff")({
   validateSearch: z.object({
@@ -83,6 +85,206 @@ function ViewStaff() {
 
   const isLoading = employeeQuery.isLoading || versionsQuery.isLoading || hrProfileQuery.isLoading || supervisorsQuery.isLoading;
 
+  const handleExportPDF = () => {
+    if (!employee) return;
+    const doc = new jsPDF();
+    
+    // Helper to add a section header
+    const addSectionHeader = (title: string, yPos: number) => {
+      doc.setFontSize(14);
+      doc.setTextColor(33, 37, 41);
+      doc.text(title, 14, yPos);
+      return yPos + 6;
+    };
+
+    // Main Header
+    doc.setFontSize(22);
+    doc.setTextColor(33, 37, 41);
+    doc.text("Staff Profile", 14, 20);
+    doc.setFontSize(12);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 28);
+    
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`${employee.name} (${employee.employeeCode})`, 14, 38);
+
+    let finalY = 46;
+
+    // --- 1. Basic Information ---
+    finalY = addSectionHeader("Personal & Contact Info", finalY);
+    autoTable(doc, {
+      startY: finalY,
+      theme: 'plain',
+      styles: { cellPadding: 2, fontSize: 10 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 }, 2: { fontStyle: 'bold', cellWidth: 40 } },
+      body: [
+        ["Email", employee.email || "N/A", "Phone", employee.phone || "N/A"],
+        ["Role", employee.role, "Department", employee.departmentName || "N/A"],
+        ["Status", employee.status, "Blood Group", profile?.bloodGroup || "N/A"],
+        ["Aadhar", canViewSensitive ? (employee.aadhar || "N/A") : maskString(employee.aadhar), "PAN", canViewSensitive ? (employee.pan || "N/A") : maskString(employee.pan)],
+        ["Nationality", profile?.nationality || "N/A", "Marital Status", profile?.maritalStatus || "N/A"],
+        ["Date of Birth", profile?.dateOfBirth || "N/A", "Gender", profile?.gender || "N/A"],
+        ["Religion", profile?.religion || "N/A", "", ""]
+      ]
+    });
+    finalY = (doc as any).lastAutoTable.finalY + 10;
+
+    // --- 2. Employment & Compliance ---
+    finalY = addSectionHeader("Employment & Compliance", finalY);
+    
+    const empDetails1 = ["Employment Type", employee.employmentType || "Permanent", "Date of Joining", profile?.dateOfJoining || "N/A"];
+    const empDetails2 = employee.employmentType === "Permanent" 
+      ? ["Confirmation Date", employee.permanentConfirmationDate || "N/A", "", ""]
+      : ["Start Date", employee.employmentStartDate || "N/A", "End Date", employee.employmentEndDate || "N/A"];
+    
+    const empBody = [
+      empDetails1,
+      empDetails2,
+      ["Last Working Date", profile?.lastWorkingDate || "N/A", "", ""]
+    ];
+
+    if (canViewSensitive) {
+      empBody.push(["EPF Number", profile?.epfNumber || "N/A", "ESI Number", profile?.esiNumber || "N/A"]);
+      empBody.push(["MNC Reg. No", profile?.mncRegistrationNo || "N/A", "MNC Validity", profile?.mncValidityUpto || "N/A"]);
+      empBody.push(["MMC Reg. No", profile?.mmcRegistrationNo || "N/A", "MMC Validity", profile?.mmcValidityUpto || "N/A"]);
+    }
+
+    autoTable(doc, {
+      startY: finalY,
+      theme: 'plain',
+      styles: { cellPadding: 2, fontSize: 10 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 }, 2: { fontStyle: 'bold', cellWidth: 40 } },
+      body: empBody
+    });
+    finalY = (doc as any).lastAutoTable.finalY + 10;
+
+    // --- 3. Payroll & Bank Details ---
+    if (canViewSensitive) {
+      finalY = addSectionHeader("Payroll & Bank Details", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'plain',
+        styles: { cellPadding: 2, fontSize: 10 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 }, 2: { fontStyle: 'bold', cellWidth: 40 } },
+        body: [
+          ["Basic Salary", employee.basicSalary?.toString() || "0", "Gross Salary", employee.salary?.toString() || "0"],
+          ["Bank Name", employee.bankName || "N/A", "Account Number", employee.accountNumber || "N/A"],
+          ["IFSC Code", employee.ifscCode || "N/A", "", ""]
+        ]
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // --- 4. Address Information ---
+    finalY = addSectionHeader("Address Information", finalY);
+    autoTable(doc, {
+      startY: finalY,
+      theme: 'plain',
+      styles: { cellPadding: 2, fontSize: 10 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
+      body: [
+        ["Current Address", profile?.currentAddress || "N/A"],
+        ["Current Landmark", profile?.landmarkCurrentAddress || "N/A"],
+        ["Permanent Address", profile?.permanentAddress || "N/A"],
+        ["Permanent Landmark", profile?.landmarkPermanentAddress || "N/A"]
+      ]
+    });
+    finalY = (doc as any).lastAutoTable.finalY + 10;
+
+    // --- 5. Supervisors ---
+    if (supervisorsData?.explicitSupervisors) {
+      finalY = addSectionHeader("Supervisors", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'plain',
+        styles: { cellPadding: 2, fontSize: 10 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
+        body: [
+          ["Supervisor 1", supervisorsData.explicitSupervisors.supervisor1?.name || "None"],
+          ["Supervisor 2", supervisorsData.explicitSupervisors.supervisor2?.name || "None"],
+          ["Department Head", supervisorsData.departmentLeaders?.headName || "None"],
+          ["Dept Sub-Head", supervisorsData.departmentLeaders?.subheadName || "None"]
+        ]
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // --- 6. Emergency Contact ---
+    if (profile?.emergencyContactName) {
+      finalY = addSectionHeader("Emergency Contact", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'plain',
+        styles: { cellPadding: 2, fontSize: 10 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 }, 2: { fontStyle: 'bold', cellWidth: 40 } },
+        body: [
+          ["Name", profile.emergencyContactName, "Phone", profile.emergencyContactPhone || "N/A"]
+        ]
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // --- 7. Family Members ---
+    if (Array.isArray(profile?.familyMembers) && profile.familyMembers.length > 0) {
+      finalY = addSectionHeader("Family Members", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+        styles: { fontSize: 10 },
+        head: [['Name', 'Relation', 'Date of Birth', 'Blood Group', 'Phone']],
+        body: profile.familyMembers.map((m: any) => [m.name, m.relation, m.dateOfBirth || 'N/A', m.bloodGroup || 'N/A', m.phone || 'N/A'])
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // --- 8. Education History ---
+    if (Array.isArray(profile?.educationHistory) && profile.educationHistory.length > 0) {
+      finalY = addSectionHeader("Education History", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+        styles: { fontSize: 10 },
+        head: [['Degree', 'Institution', 'Year of Passing', 'Grade']],
+        body: profile.educationHistory.map((e: any) => [e.degree, e.institution, e.yearOfPassing, e.grade])
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // --- 9. Professional History ---
+    if (Array.isArray(profile?.professionalHistory) && profile.professionalHistory.length > 0) {
+      finalY = addSectionHeader("Professional History", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+        styles: { fontSize: 10 },
+        head: [['Company', 'Role', 'Start Date', 'End Date', 'Reason for Leaving']],
+        body: profile.professionalHistory.map((p: any) => [p.company, p.role, p.startDate, p.endDate, p.reasonForLeaving || 'N/A'])
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+    
+    // --- 10. Certifications ---
+    if (Array.isArray(profile?.certifications) && profile.certifications.length > 0) {
+      finalY = addSectionHeader("Certifications", finalY);
+      autoTable(doc, {
+        startY: finalY,
+        theme: 'grid',
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0] },
+        styles: { fontSize: 10 },
+        head: [['Name', 'Issuer', 'Issue Date', 'Expiry Date', 'ID/URL']],
+        body: profile.certifications.map((c: any) => [c.name, c.issuer, c.issueDate || 'N/A', c.expiryDate || 'N/A', c.credentialId || c.credentialUrl || 'N/A'])
+      });
+      finalY = (doc as any).lastAutoTable.finalY + 10;
+    }
+
+    // Save PDF
+    doc.save(`Staff_${employee.employeeCode}_${employee.name.replace(/\s+/g, "_")}.pdf`);
+  };
+
   if (isLoading) {
     return (
       <ModuleLayout title="Staff Details" description="Loading employee information...">
@@ -116,6 +318,9 @@ function ViewStaff() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => navigate({ to: "/hr/staff-list" })}>
             <ArrowLeft size={16} className="mr-2" /> Back
+          </Button>
+          <Button variant="outline" onClick={handleExportPDF}>
+            <Download size={16} className="mr-2" /> Export PDF
           </Button>
           {employee.active && isAdminOrHr && (
             <Button asChild>
@@ -215,6 +420,65 @@ function ViewStaff() {
             </Card>
           </div>
 
+          <div className="md:col-span-3">
+            {/* Employment Details History */}
+            <Card>
+              <CardHeader className="flex flex-row items-center gap-2">
+                <BriefcaseBusiness className="text-muted-foreground" size={18} />
+                <CardTitle className="text-base">Employment Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                  {versionsQuery.data && versionsQuery.data.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <div className="min-w-225 rounded-md border text-sm">
+                        <div className="grid grid-cols-[80px_1fr_1fr_140px_100px_100px_120px] bg-muted/50 text-muted-foreground border-b text-left">
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Version</div>
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Role</div>
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Department</div>
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Employment Type</div>
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Status</div>
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Salary</div>
+                          <div className="py-2 px-3 font-medium whitespace-nowrap">Effective Date</div>
+                        </div>
+                        <div className="flex flex-col">
+                          {versionsQuery.data.map((v: any, i: number) => (
+                            <div key={i} className={cn("grid grid-cols-[80px_1fr_1fr_140px_100px_100px_120px] border-b last:border-0 items-center", v.active && "bg-primary/5")}>
+                              <div className="py-2 px-3 flex items-center gap-2 font-medium">
+                                v{v.version}
+                                {v.active && <span className="w-2 h-2 rounded-full bg-primary" title="Current Active Version" />}
+                              </div>
+                              <div className="py-2 px-3 font-medium">{v.role}</div>
+                              <div className="py-2 px-3 text-muted-foreground">{v.departmentName || "No Department"}</div>
+                              <div className="py-2 px-3 text-muted-foreground">{v.employmentType || "Permanent"}</div>
+                              <div className="py-2 px-3">
+                                <span className={cn(
+                                  "px-2 py-0.5 rounded text-[11px] font-medium whitespace-nowrap",
+                                  v.status === "Active" && "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+                                  v.status === "Long Leave" && "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+                                  v.status === "Terminated" && "bg-destructive/10 text-destructive dark:bg-red-950/30 dark:text-red-300",
+                                  v.status === "Resigned" && "bg-slate-100 text-slate-800 dark:bg-slate-950 dark:text-slate-300"
+                                )}>
+                                  {v.status}
+                                </span>
+                              </div>
+                              <div className="py-2 px-3">
+                                {canViewSensitive ? `₹${Number(v.salary).toLocaleString()}` : '••••'}
+                              </div>
+                              <div className="py-2 px-3 text-muted-foreground whitespace-nowrap">
+                                {new Date(v.effectiveDate || v.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No employment history available.</p>
+                  )}
+              </CardContent>
+            </Card>
+          </div>
+
           <div className="md:col-span-2 space-y-6">
             {/* Employment & Compliance */}
             <Card>
@@ -224,9 +488,26 @@ function ViewStaff() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
+                  <span className="text-muted-foreground font-medium">Employment Type</span>
+                  <span className="font-semibold text-foreground">{employee.employmentType || "Permanent"}</span>
+
                   <span className="text-muted-foreground font-medium">Date of Joining</span>
                   <span className="font-semibold text-foreground">{profile?.dateOfJoining || "N/A"}</span>
                   
+                  {employee.employmentType === "Permanent" ? (
+                    <>
+                      <span className="text-muted-foreground font-medium">Confirmation Date</span>
+                      <span className="font-semibold text-foreground">{employee.permanentConfirmationDate || "N/A"}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground font-medium">Start Date</span>
+                      <span className="font-semibold text-foreground">{employee.employmentStartDate || "N/A"}</span>
+                      <span className="text-muted-foreground font-medium">End Date</span>
+                      <span className="font-semibold text-foreground">{employee.employmentEndDate || "N/A"}</span>
+                    </>
+                  )}
+
                   <span className="text-muted-foreground font-medium">Last Working Date</span>
                   <span className="font-semibold text-foreground">{profile?.lastWorkingDate || "N/A"}</span>
 
@@ -277,11 +558,11 @@ function ViewStaff() {
               </Card>
             )}
 
-            {/* Demographics & Family Details */}
+            {/* Demographics Details */}
             <Card>
               <CardHeader className="flex flex-row items-center gap-2">
                 <UserRound className="text-muted-foreground" size={18} />
-                <CardTitle className="text-base">Demographics &amp; Family Details</CardTitle>
+                <CardTitle className="text-base">Demographics Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
@@ -293,30 +574,56 @@ function ViewStaff() {
                     {profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" }) : "N/A"}
                   </span>
 
+                  <span className="text-muted-foreground font-medium">Nationality</span>
+                  <span className="font-semibold text-foreground">{profile?.nationality || "N/A"}</span>
+
                   <span className="text-muted-foreground font-medium">Religion</span>
                   <span className="font-semibold text-foreground">{profile?.religion || "N/A"}</span>
 
                   <span className="text-muted-foreground font-medium">Marital Status</span>
                   <span className="font-semibold text-foreground">{profile?.maritalStatus || "N/A"}</span>
 
-                  {profile?.maritalStatus === "Married" && (
-                    <>
-                      <span className="text-muted-foreground font-medium">Spouse's Name</span>
-                      <span className="font-semibold text-foreground">{profile?.spouseName || "N/A"}</span>
-                    </>
-                  )}
-
                   <span className="text-muted-foreground font-medium">Current Address</span>
                   <span className="font-semibold text-foreground break-words">{profile?.currentAddress || "N/A"}</span>
+
+                  <span className="text-muted-foreground font-medium">Landmark (Current Address)</span>
+                  <span className="font-semibold text-foreground break-words">{profile?.landmarkCurrentAddress || "N/A"}</span>
 
                   <span className="text-muted-foreground font-medium">Permanent Address</span>
                   <span className="font-semibold text-foreground break-words">{profile?.permanentAddress || "N/A"}</span>
 
-                  <span className="text-muted-foreground font-medium">Father's Name</span>
-                  <span className="font-semibold text-foreground">{profile?.fatherName || "N/A"}</span>
-                  
-                  <span className="text-muted-foreground font-medium">Mother's Name</span>
-                  <span className="font-semibold text-foreground">{profile?.motherName || "N/A"}</span>
+                  <span className="text-muted-foreground font-medium">Landmark (Permanent Address)</span>
+                  <span className="font-semibold text-foreground break-words">{profile?.landmarkPermanentAddress || "N/A"}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Family Details */}
+            <Card>
+              <CardHeader className="flex flex-row items-center gap-2">
+                <Users className="text-muted-foreground" size={18} />
+                <CardTitle className="text-base">Family Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <h4 className="font-semibold mb-3">Family Members</h4>
+                  {Array.isArray(profile?.familyMembers) && profile.familyMembers.length > 0 ? (
+                    <div className="space-y-4">
+                      {profile.familyMembers.map((member: any, i: number) => (
+                        <div key={i} className="border-l-2 border-primary/20 pl-4 py-1">
+                          <p className="font-semibold text-sm">{member.name}</p>
+                          <p className="text-xs text-muted-foreground">Relationship: {member.relationship}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {member.ageDob && `Age/DOB: ${member.ageDob}`}
+                            {member.ageDob && member.contactNo && " | "}
+                            {member.contactNo && `Contact No: ${member.contactNo}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No family members recorded.</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -363,6 +670,33 @@ function ViewStaff() {
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">No education history recorded.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Certifications */}
+            <Card>
+              <CardHeader className="flex flex-row items-center gap-2">
+                <BriefcaseBusiness className="text-muted-foreground" size={18} />
+                <CardTitle className="text-base">Certifications</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {Array.isArray(profile?.certifications) && profile.certifications.length > 0 ? (
+                  <div className="space-y-4">
+                    {profile.certifications.map((cert: any, i: number) => (
+                      <div key={i} className="border-l-2 border-primary/20 pl-4 py-1">
+                        <p className="font-semibold text-sm">{cert.name}</p>
+                        <p className="text-xs text-muted-foreground">{cert.issuingOrganization}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {cert.validityPeriod && `Validity: ${cert.validityPeriod}`}
+                          {cert.validityPeriod && cert.certificateNumber && " | "}
+                          {cert.certificateNumber && `Cert No: ${cert.certificateNumber}`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No certifications recorded.</p>
                 )}
               </CardContent>
             </Card>

@@ -102,7 +102,7 @@ export interface ReportPayload {
   paymentChannels: PaymentChannel[];
   cashDenominations?: Record<string, number> | Record<number, number> | string | null;
   reconciliationTolerance?: number;
-  soiledNotes?: string | null;
+  soiledNotes?: number | null;
 }
 
 export interface ReportFormProps {
@@ -246,7 +246,7 @@ export function ReportForm({
   // ── other form state ──────────────────────────────────────────
   // const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
   // const [ipdDischarges, setIpdDischarges] = React.useState<IpdDischarge[]>([]);
-  const [soiledNotes, setSoiledNotes] = React.useState("");
+  const [soiledNotes, setSoiledNotes] = React.useState("0");
   const [expenditures, setExpenditures] = React.useState<Expenditure[]>([]);
   const [staffAdvances, setStaffAdvances] = React.useState<StaffAdvance[]>([]);
   // const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
@@ -299,7 +299,7 @@ export function ReportForm({
     setOpeningBalance(String(toNum(initialData.openingBalance)));
     setFundHandoverSir(String(toNum(initialData.fundHandoverSir)));
     setFundHandoverMadam(String(toNum(initialData.fundHandoverMadam)));
-    setSoiledNotes(initialData.soiledNotes || "");
+    setSoiledNotes(initialData.soiledNotes ? String(toNum(initialData.soiledNotes)) : "0");
     setStatus(initialData.status);
 
     // Service lines
@@ -505,8 +505,8 @@ export function ReportForm({
       const d = parseInt(denom, 10) || 0;
       const c = typeof count === "number" ? count : (parseInt(count, 10) || 0);
       return sum + (d * c);
-    }, 0);
-  }, [cashDenominations]);
+    }, 0) + toNum(soiledNotes);
+  }, [cashDenominations, soiledNotes]);
 
   // ── prior report & cash denominations reference ──────────────
   const activeReportDate = mode === "new" ? reportDate : (lockedReportDate || initialData?.reportDate || "");
@@ -807,7 +807,7 @@ export function ReportForm({
         })),
       cashDenominations,
       reconciliationTolerance: toleranceVal,
-      soiledNotes: soiledNotes || null,
+      soiledNotes: toNum(soiledNotes) || null,
     };
 
     onSubmit(payload);
@@ -1808,10 +1808,14 @@ export function ReportForm({
                           id="recTolerance"
                           type="number"
                           min="0"
+                          max="50"
                           step="0.01"
                           placeholder="0.00"
                           value={reconciliationTolerance}
-                          onChange={(e) => setReconciliationTolerance(e.target.value)}
+                          onChange={(e) => {
+                            if (Number(e.target.value) > 50) return;
+                            setReconciliationTolerance(e.target.value);
+                          }}
                           className="w-36 font-bold h-9 bg-background text-foreground"
                         />
                       </div>
@@ -1833,18 +1837,19 @@ export function ReportForm({
                   {/* Soiled Notes / Mutilated Currency Details */}
                   <div className="space-y-1.5 p-3.5 bg-muted/20 rounded-lg border">
                     <Label htmlFor="soiledNotes" className="text-xs font-bold uppercase text-muted-foreground">
-                      Soiled Notes / Mutilated Currency Details (Optional)
+                      Soiled Notes Amount (INR)
                     </Label>
-                    <textarea
+                    <Input
                       id="soiledNotes"
-                      rows={2}
-                      placeholder="Enter details of soiled, torn, or mutilated currency notes kept for bank exchange..."
+                      type="number"
+                      min="0"
+                      placeholder="0"
                       value={soiledNotes}
                       onChange={(e) => setSoiledNotes(e.target.value)}
-                      className="w-full text-xs font-normal border rounded-md px-3 py-2 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                      className="w-36 font-bold h-9 bg-background text-foreground"
                     />
                   </div>
-
+of p
                   {/* Previous Day Cash Denominations Reference Banner */}
                   {priorReport ? (
                     <div className="p-4 rounded-xl border bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 space-y-3">
