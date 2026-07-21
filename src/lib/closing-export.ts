@@ -685,7 +685,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   const totalPhysicalCashPDF = CASH_DENOMS.reduce((sum, d) => {
     const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
     return sum + count * d;
-  }, 0);
+  }, 0) + Number(report.soiledNotes || 0);
   const activeDenomCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
 
   if (activeDenomCounts.length > 0 || report.soiledNotes) {
@@ -693,26 +693,16 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     drawDetailSectionHeader("4. CASH DENOMINATIONS & SOILED NOTES");
     drawPanelHeader("Physical Cash Denominations Tally", fmt(totalPhysicalCashPDF));
 
-    if (activeDenomCounts.length > 0) {
-      drawTableRow("Denomination Note/Coin", "Count", "Subtotal Amount", true);
-      activeDenomCounts.forEach((d) => {
-        const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
-        const subtotal = count * d;
-        drawTableRow(`Rs. ${d} ${d >= 10 ? "Note" : "Coin"}`, `${count} pcs`, fmt(subtotal));
-      });
-      y += 2;
-    }
-
+    drawTableRow("Denomination Note/Coin", "Count", "Subtotal Amount", true);
+    activeDenomCounts.forEach((d) => {
+      const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
+      const subtotal = count * d;
+      drawTableRow(`Rs. ${d} ${d >= 10 ? "Note" : "Coin"}`, `${count} pcs`, fmt(subtotal));
+    });
     if (report.soiledNotes) {
-      checkPageBreak(12);
-      doc.setFillColor(254, 252, 232);
-      doc.setDrawColor(250, 204, 21);
-      doc.setLineWidth(0.3);
-      doc.roundedRect(15, y, 180, 10, 1.5, 1.5, "FD");
-      drawText("SOILED NOTES / MUTILATED CURRENCY:", 18.5, y + 4, 7, "bold", [161, 98, 7]);
-      drawText(report.soiledNotes.replace(/\n/g, " "), 18.5, y + 7.5, 7, "italic", cSlate);
-      y += 12;
+      drawTableRow("Soiled Notes Amount", "-", fmt(Number(report.soiledNotes)));
     }
+    y += 2;
   }
 
   // Reconciled check box at the end
@@ -1015,7 +1005,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   const totalPhysicalCashXL = CASH_DENOMS_XL.reduce((sum, d) => {
     const count = Number(denomsObjXL[d] || denomsObjXL[String(d)] || 0);
     return sum + count * d;
-  }, 0);
+  }, 0) + Number(report.soiledNotes || 0);
   const activeDenomsXL = CASH_DENOMS_XL.filter((d) => Number(denomsObjXL[d] || denomsObjXL[String(d)] || 0) > 0);
 
   if (activeDenomsXL.length > 0 || report.soiledNotes) {
@@ -1028,11 +1018,11 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
       addRow([`₹${d} (${d >= 10 ? "Note" : "Coin"})`, "", `${count} pcs`, subtotal], [styleItalic, null, styleItalic, styleNumber]);
     });
 
-    addRow(["TOTAL PHYSICAL CASH TALLY", "", "", totalPhysicalCashXL], [styleBold, null, null, styleBoldNumber]);
-
     if (report.soiledNotes) {
-      addRow(["Soiled Notes / Mutilated Details:", "", report.soiledNotes.replace(/\n/g, " "), ""], [styleBold, null, styleItalic, null]);
+      addRow(["Soiled Notes Amount", "", "-", Number(report.soiledNotes)], [styleItalic, null, styleItalic, styleNumber]);
     }
+
+    addRow(["TOTAL PHYSICAL CASH TALLY", "", "", totalPhysicalCashXL], [styleBold, null, null, styleBoldNumber]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);

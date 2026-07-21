@@ -119,6 +119,11 @@ export const staff = sqliteTable("staff", {
   active: boolean("active").notNull().default(true),
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
   isExecutive: boolean("is_executive").notNull().default(false),
+  effectiveDate: text("effective_date"),
+  employmentType: text("employment_type").notNull().default("Permanent"),
+  permanentConfirmationDate: text("permanent_confirmation_date"),
+  employmentStartDate: text("employment_start_date"),
+  employmentEndDate: text("employment_end_date"),
   ...timestamps
 }, (table) => [
   primaryKey({ columns: [table.staffId, table.version] })
@@ -191,18 +196,18 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   staffId: integer("staff_id").notNull(),
   staffVersion: integer("staff_version").notNull().default(1),
   dateOfBirth: text("date_of_birth"),
+  nationality: text("nationality").default("Indian"), //d
   gender: text("gender"),
   maritalStatus: text("marital_status"),
   bloodGroup: text("blood_group"),
-  fatherName: text("father_name"),
-  motherName: text("mother_name"),
-  spouseName: text("spouse_name"),
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
   currentAddress: text("current_address"),
+  landmarkCurrentAddress: text("landmar_current_address"), //d
   permanentAddress: text("permanent_address"),
-  educationHistory: text("education_history").notNull().default("[]"),
-  professionalHistory: text("professional_history").notNull().default("[]"),
+  landmarkPermanentAddress:text("landmark_permanent_address"), //d
+  educationHistory: jsonb("education_history").notNull().default([]),
+  professionalHistory: jsonb("professional_history").notNull().default([]),
   uan: text("uan"),
   epfNumber: text("epf_number"),
   esiNumber: text("esi_number"),
@@ -210,6 +215,8 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   lastWorkingDate: text("last_working_date"),
   religion: text("religion"),
   nominees: text("nominees").notNull().default("[]"),
+  certifications: jsonb("certifications").notNull().default([]),
+  familyMembers: jsonb("family_members").notNull().default([]),
   mncRegistrationNo: text("mnc_registration_no"),
   mncValidityUpto: text("mnc_validity_upto"),
   mmcRegistrationNo: text("mmc_registration_no"),

@@ -181,6 +181,11 @@ export const staffInput = z.object({
   salary: z.coerce.number().positive().default(1),
   status: z.string().default("Active"),
   isExecutive: z.boolean().optional().default(false),
+  employmentType: z.enum(["Permanent", "Contract", "Probation", "Intern"]).default("Permanent"),
+  effectiveDate: z.string().optional(),
+  permanentConfirmationDate: z.string().optional(),
+  employmentStartDate: z.string().optional(),
+  employmentEndDate: z.string().optional(),
   aadhar: z
     .string()
     .regex(
@@ -197,9 +202,9 @@ export const staffInput = z.object({
       gender: z.string().optional(),
       maritalStatus: z.string().optional(),
       bloodGroup: z.string().optional(),
-      fatherName: z.string().optional(),
-      motherName: z.string().optional(),
-      spouseName: z.string().optional(),
+      nationality: z.string().optional(),
+      landmarkCurrentAddress: z.string().optional(),
+      landmarkPermanentAddress: z.string().optional(),
       emergencyContactName: z.string().optional(),
       emergencyContactPhone: z.string().optional(),
       currentAddress: z.string().min(1, "Current address is required"),
@@ -237,6 +242,26 @@ export const staffInput = z.object({
             name: z.string().optional(),
             percentage: z.coerce.number().optional(),
             relationship: z.string().optional(),
+          })
+        )
+        .default([]),
+      certifications: z
+        .array(
+          z.object({
+            name: z.string().optional(),
+            issuingOrganization: z.string().optional(),
+            validityPeriod: z.string().optional(),
+            certificateNumber: z.string().optional(),
+          })
+        )
+        .default([]),
+      familyMembers: z
+        .array(
+          z.object({
+            name: z.string().optional(),
+            relationship: z.string().optional(),
+            ageDob: z.string().optional(),
+            contactNo: z.string().optional(),
           })
         )
         .default([]),

@@ -53,6 +53,11 @@ export const staffRoutes = new Hono<AuthEnv>()
         version: staff.version,
         active: staff.active,
         isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
         userId: staff.userId,
         createdAt: staff.createdAt,
       })
@@ -164,11 +169,11 @@ export const staffRoutes = new Hono<AuthEnv>()
           staffVersion: row.version,
           ...hrProfile,
           educationHistory: hrProfile.educationHistory
-            ? JSON.stringify(hrProfile.educationHistory)
-            : "[]",
+            ? hrProfile.educationHistory
+            : [],
           professionalHistory: hrProfile.professionalHistory
-            ? JSON.stringify(hrProfile.professionalHistory)
-            : "[]",
+            ? hrProfile.professionalHistory
+            : [],
           nominees: hrProfile.nominees
             ? JSON.stringify(hrProfile.nominees)
             : "[]",
@@ -394,31 +399,39 @@ export const staffRoutes = new Hono<AuthEnv>()
         staffId: newStaffRow.staffId,
         staffVersion: newStaffRow.version,
         dateOfBirth: hrProfile?.dateOfBirth ?? oldProfile?.dateOfBirth,
+        nationality: hrProfile?.nationality ?? oldProfile?.nationality,
         gender: hrProfile?.gender ?? oldProfile?.gender,
         maritalStatus: hrProfile?.maritalStatus ?? oldProfile?.maritalStatus,
         bloodGroup: hrProfile?.bloodGroup ?? oldProfile?.bloodGroup,
-        fatherName: hrProfile?.fatherName ?? oldProfile?.fatherName,
-        motherName: hrProfile?.motherName ?? oldProfile?.motherName,
-        spouseName: hrProfile?.spouseName ?? oldProfile?.spouseName,
         emergencyContactName:
           hrProfile?.emergencyContactName ?? oldProfile?.emergencyContactName,
         emergencyContactPhone:
           hrProfile?.emergencyContactPhone ?? oldProfile?.emergencyContactPhone,
         currentAddress: hrProfile?.currentAddress ?? oldProfile?.currentAddress,
+        landmarkCurrentAddress: hrProfile?.landmarkCurrentAddress ?? oldProfile?.landmarkCurrentAddress,
         permanentAddress: hrProfile?.permanentAddress ?? oldProfile?.permanentAddress,
+        landmarkPermanentAddress: hrProfile?.landmarkPermanentAddress ?? oldProfile?.landmarkPermanentAddress,
         uan: oldProfile?.uan,
         epfNumber: hrProfile?.epfNumber ?? oldProfile?.epfNumber,
         esiNumber: hrProfile?.esiNumber ?? oldProfile?.esiNumber,
         educationHistory: hrProfile?.educationHistory
-          ? JSON.stringify(hrProfile.educationHistory)
-          : (oldProfile?.educationHistory ?? "[]"),
+          ? hrProfile.educationHistory
+          : (oldProfile?.educationHistory ?? []),
         professionalHistory: hrProfile?.professionalHistory
-          ? JSON.stringify(hrProfile.professionalHistory)
-          : (oldProfile?.professionalHistory ?? "[]"),
+          ? hrProfile.professionalHistory
+          : (oldProfile?.professionalHistory ?? []),
         religion: hrProfile?.religion ?? oldProfile?.religion,
         nominees: hrProfile?.nominees
           ? JSON.stringify(hrProfile.nominees)
           : (oldProfile?.nominees ?? "[]"),
+        certifications: hrProfile?.certifications
+          ? hrProfile.certifications
+          : (oldProfile?.certifications ?? []),
+        familyMembers: hrProfile?.familyMembers
+          ? hrProfile.familyMembers
+          : (oldProfile?.familyMembers ?? []),
+        dateOfJoining: hrProfile?.dateOfJoining ?? oldProfile?.dateOfJoining,
+        lastWorkingDate: hrProfile?.lastWorkingDate ?? oldProfile?.lastWorkingDate,
         mncRegistrationNo: hrProfile?.mncRegistrationNo ?? oldProfile?.mncRegistrationNo,
         mncValidityUpto: hrProfile?.mncValidityUpto ?? oldProfile?.mncValidityUpto,
         mmcRegistrationNo: hrProfile?.mmcRegistrationNo ?? oldProfile?.mmcRegistrationNo,
@@ -487,15 +500,13 @@ export const staffRoutes = new Hono<AuthEnv>()
     if (profile) {
       return c.json({
         ...profile,
-        educationHistory: JSON.parse(profile.educationHistory || "[]"),
-        professionalHistory: JSON.parse(profile.professionalHistory || "[]"),
+        educationHistory: profile.educationHistory || [],
+        professionalHistory: profile.professionalHistory || [],
         nominees: JSON.parse(profile.nominees || "[]"),
       });
     }
 
     return c.json({
-      fatherName: "",
-      motherName: "",
       currentAddress: "",
       permanentAddress: "",
       epfNumber: "",
@@ -504,12 +515,13 @@ export const staffRoutes = new Hono<AuthEnv>()
       professionalHistory: [],
       religion: "",
       nominees: [],
+      certifications: [],
+      familyMembers: [],
       mncRegistrationNo: "",
       mncValidityUpto: "",
       mmcRegistrationNo: "",
       mmcValidityUpto: "",
       maritalStatus: "",
-      spouseName: "",
       gender: "",
     });
   })
@@ -550,6 +562,13 @@ export const staffRoutes = new Hono<AuthEnv>()
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)
@@ -612,6 +631,13 @@ export const staffRoutes = new Hono<AuthEnv>()
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)
@@ -685,6 +711,13 @@ export const staffRoutes = new Hono<AuthEnv>()
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)

@@ -434,7 +434,7 @@ function ReportDetail() {
               const physTotal = CASH_DENOMS.reduce((sum, d) => {
                 const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
                 return sum + count * d;
-              }, 0);
+              }, 0) + Number(report.soiledNotes || 0);
               const activeCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
 
               if (activeCounts.length === 0 && !report.soiledNotes) return null;
@@ -463,14 +463,12 @@ function ReportDetail() {
                     </div>
                   )}
 
-                  {report.soiledNotes && (
-                    <div className="mt-2 bg-amber-500/15 border border-amber-500/30 p-3 rounded-md text-xs">
-                      <span className="font-extrabold uppercase text-[10px] tracking-wider block text-amber-700 dark:text-amber-300 mb-1">
-                        Soiled Notes / Mutilated Currency Details:
-                      </span>
-                      <p className="whitespace-pre-wrap text-foreground font-medium">{report.soiledNotes}</p>
+                  {report.soiledNotes ? (
+                    <div className="flex justify-between items-center text-[11px] bg-background/50 px-2.5 py-1 rounded border border-muted/30 mt-2">
+                      <span className="font-medium text-muted-foreground">Soiled Notes Amount</span>
+                      <span className="font-bold text-foreground">{fmt(Number(report.soiledNotes))}</span>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               );
             })()}
