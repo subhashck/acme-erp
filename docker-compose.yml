@@ -39,6 +39,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    entrypoint: ["/bin/sh", "-c", "pnpm db:push && pnpm db:seed && exec pnpm start"]
 
 volumes:
   postgres_data:
