@@ -109,7 +109,15 @@ function Roles() {
         </Card>
         <Card className="xl:col-span-2">
           <CardContent className="p-0">
-            <DataTable rows={query.data ?? []} columns={columns} isLoading={query.isLoading} />
+            <DataTable
+              rows={query.data ?? []}
+              columns={columns}
+              isLoading={query.isLoading}
+              enablePagination
+              enableSorting
+              enableFiltering
+              filterPlaceholder="Search roles..."
+            />
           </CardContent>
         </Card>
       </div>

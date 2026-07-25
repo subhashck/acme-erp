@@ -34,7 +34,8 @@ import {
   ShoppingBag,
   Package,
   Layers,
-  Scale
+  Scale,
+  CalendarOff
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -86,6 +87,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Review Leave", to: "/hr/review-leave" });
     } else if(sub === "staff-list") {
       items.push({ label: "Staff List", to: "/hr/staff-list" });
+    } else if (sub === "off-day-requests") {
+      items.push({ label: "Off-Day Requests", to: "/hr/off-day-requests" });
     }
     return items;
   }
@@ -105,6 +108,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Salary Templates", to: "/masters/salary-templates" });
     } else if (sub === "banks") {
       items.push({ label: "Banks", to: "/masters/banks" });
+    } else if (sub === "management-approvers") {
+      items.push({ label: "Management Approvers", to: "/masters/management-approvers" });
     }
     return items;
   }
@@ -355,6 +360,13 @@ export function Shell() {
                       Leave Management
                     </Link>
                     <Link
+                      to="/hr/off-day-requests"
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Off-Day Requests
+                    </Link>
+                    <Link
                       to="/hr/attendance"
                       className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                       activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
@@ -426,13 +438,13 @@ export function Shell() {
                   </button>
                   {accountsOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                      <Link
+                      {/* <Link
                         to="/accounts/consultant-charges"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Consultant Charges
-                      </Link>
+                      </Link> */}
                       <Link
                         to="/accounts/service-charges"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -601,6 +613,15 @@ export function Shell() {
                       >
                         Banks
                       </Link>
+                      {session.data?.user.role === "admin" && (
+                        <Link
+                          to="/masters/management-approvers"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Management Approvers
+                        </Link>
+                      )}
                     </div>
                   )}
                 </div>
@@ -723,6 +744,15 @@ export function Shell() {
               </Link>
 
               <Link
+                to="/hr/off-day-requests"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Off-Day Requests"
+              >
+                <CalendarOff size={20} />
+              </Link>
+
+              <Link
                 to="/hr/payroll"
                 className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
@@ -745,14 +775,14 @@ export function Shell() {
 
               {isAccountsVisible && (
                 <>
-                  <Link
+                  {/* <Link
                     to="/accounts/consultant-charges"
                     className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
                     title="Consultant Charges"
                   >
                     <Landmark size={20} />
-                  </Link>
+                  </Link> */}
 
                   <Link
                     to="/accounts/service-charges"

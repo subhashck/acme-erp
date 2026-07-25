@@ -18,11 +18,16 @@ export type StaffRow = {
   basicSalary?: number | null;
   hra?: number | null;
   conveyance?: number | null;
-  medical?: number | null;
+  skillAllowance?: number | null;
   special?: number | null;
   epf?: number | null;
   esi?: number | null;
   professionalTax?: number | null;
+  deductTds?: boolean | null;
+  tdsPercent?: number | null;
+  tds?: number | null;
+  securityDepositTotal?: number | null;
+  securityDeposit?: number | null;
   otherDeductions?: number | null;
   lateAttendance?: number | null;
   salary?: number | null;

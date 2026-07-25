@@ -8,9 +8,11 @@ import {
   departments,
   designations,
   leaveTypes,
+  managementApprovers,
   shifts,
   staff,
 } from "../db/schema.ts";
+import { z } from "zod";
 import {
   bankInput,
   departmentInput,
@@ -252,6 +254,86 @@ export const mastersRoutes = new Hono<AuthEnv>()
       .returning()
       .execute();
     return c.json(row);
+  })
+
+  // -------------------------------------------------------------------------
+  // Management Approvers (Staff who can approve payroll after HR)
+  // -------------------------------------------------------------------------
+  .get("/masters/management-approvers", async (c) => {
+    const rows = await db
+      .select({
+        id: managementApprovers.id,
+        staffId: managementApprovers.staffId,
+        active: managementApprovers.active,
+        createdAt: managementApprovers.createdAt,
+        name: staff.name,
+        employeeCode: staff.employeeCode,
+        role: staff.role,
+      })
+      .from(managementApprovers)
+      .innerJoin(
+        staff,
+        sql`${managementApprovers.staffId} = ${staff.staffId} AND ${staff.active} = true`
+      )
+      .orderBy(staff.name)
+      .execute();
+
+    return c.json(rows);
+  })
+  .post("/masters/management-approvers", requireAdmin, async (c) => {
+    const input = z.object({ staffId: z.number().int().positive() }).parse(await c.req.json());
+
+    // Check if entry already exists for staffId
+    const existing = await db
+      .select()
+      .from(managementApprovers)
+      .where(eq(managementApprovers.staffId, input.staffId))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (existing) {
+      if (!existing.active) {
+        const [updated] = await db
+          .update(managementApprovers)
+          .set({ active: true })
+          .where(eq(managementApprovers.id, existing.id))
+          .returning()
+          .execute();
+        return c.json(updated);
+      }
+      return c.json(existing);
+    }
+
+    const [row] = await db
+      .insert(managementApprovers)
+      .values({ staffId: input.staffId, active: true })
+      .returning()
+      .execute();
+
+    return c.json(row, 201);
+  })
+  .put("/masters/management-approvers/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = z.object({ active: z.boolean() }).parse(await c.req.json());
+
+    const [row] = await db
+      .update(managementApprovers)
+      .set({ active: input.active })
+      .where(eq(managementApprovers.id, id))
+      .returning()
+      .execute();
+
+    return c.json(row);
+  })
+  .delete("/masters/management-approvers/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    await db
+      .delete(managementApprovers)
+      .where(eq(managementApprovers.id, id))
+      .execute();
+
+    return c.json({ ok: true });
   })
 
   // -------------------------------------------------------------------------

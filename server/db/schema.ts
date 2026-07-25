@@ -91,6 +91,13 @@ export const banks = sqliteTable("banks", {
   ...timestamps
 });
 
+export const managementApprovers = sqliteTable("management_approvers", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
 /**
  * staff — versioned employee records.
  *
@@ -167,11 +174,16 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   basicSalary: numeric("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   hra: numeric("hra", { precision: 12, scale: 2 }).notNull().default("0"),
   conveyance: numeric("conveyance", { precision: 12, scale: 2 }).notNull().default("0"),
-  medical: numeric("medical", { precision: 12, scale: 2 }).notNull().default("0"),
+  skillAllowance: numeric("skill_allowance", { precision: 12, scale: 2 }).notNull().default("0"),
   special: numeric("special", { precision: 12, scale: 2 }).notNull().default("0"),
   epf: numeric("epf", { precision: 12, scale: 2 }).notNull().default("0"),
   esi: numeric("esi", { precision: 12, scale: 2 }).notNull().default("0"),
   professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  deductTds: boolean("deduct_tds").notNull().default(false),
+  tdsPercent: numeric("tds_percent", { precision: 5, scale: 2 }).notNull().default("10"),
+  tds: numeric("tds", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDepositTotal: numeric("security_deposit_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   bankName: text("bank_name"),
@@ -290,6 +302,38 @@ export const rosters = sqliteTable("rosters", {
   ...timestamps
 });
 
+/**
+ * staffOffDayRequests — an off-day change request submitted by a staff member.
+ * Staff can request to move their scheduled off day from one date to another.
+ * HR/admin reviews (approve / reject). Requester can cancel their own pending request.
+ */
+export const staffOffDayRequests = sqliteTable("staff_off_day_requests", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
+  originalDate: text("original_date").notNull(),   // ISO date — the off day they currently have
+  requestedDate: text("requested_date").notNull(),  // ISO date — the day they want off instead
+  reason: text("reason"),
+  status: text("status").notNull().default("Pending"), // Pending | Approved | Rejected | Cancelled
+  reviewedById: text("reviewed_by_id").references(() => user.id, { onDelete: "set null" }),
+  reviewerNote: text("reviewer_note"),
+  ...timestamps
+});
+
+/**
+ * staffWeeklyOffDays — recurring weekly off-day rules for staff.
+ * daysOfWeek: jsonb array of day numbers (0 = Sunday, 1 = Monday, ..., 6 = Saturday).
+ * effectiveFrom / effectiveTo: date range for when this rule applies.
+ */
+export const staffWeeklyOffDays = sqliteTable("staff_weekly_off_days", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
+  daysOfWeek: jsonb("days_of_week").notNull().default([]),
+  effectiveFrom: text("effective_from").notNull(),
+  effectiveTo: text("effective_to"),
+  notes: text("notes"),
+  ...timestamps
+});
+
 export const leaveRequests = sqliteTable("leave_requests", {
   id: serial("id").primaryKey(),
   requestNo: text("request_no").notNull().unique(),
@@ -315,21 +359,41 @@ export const payslips = sqliteTable("payslips", {
   basicSalary: numeric("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   hra: numeric("hra", { precision: 12, scale: 2 }).notNull().default("0"),
   conveyance: numeric("conveyance", { precision: 12, scale: 2 }).notNull().default("0"),
-  medical: numeric("medical", { precision: 12, scale: 2 }).notNull().default("0"),
+  skillAllowance: numeric("skill_allowance", { precision: 12, scale: 2 }).notNull().default("0"),
   special: numeric("special", { precision: 12, scale: 2 }).notNull().default("0"),
+  earnedLeaveEncashment: numeric("earned_leave_encashment", { precision: 12, scale: 2 }).notNull().default("0"),
+  extraDayAllowance: numeric("extra_day_allowance", { precision: 12, scale: 2 }).notNull().default("0"),
   epf: numeric("epf", { precision: 12, scale: 2 }).notNull().default("0"),
   esi: numeric("esi", { precision: 12, scale: 2 }).notNull().default("0"),
   professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  tds: numeric("tds", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   leaveDaysTaken: numeric("leave_days_taken", { precision: 5, scale: 2 }).notNull().default("0"),
   leaveDeduction: numeric("leave_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
   netSalary: numeric("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   version: integer("version").notNull().default(1),
-  status: text("status").notNull().default("Active"),
+  status: text("status").notNull().default("Draft"),
+  paymentMode: text("payment_mode").notNull().default("Bank Transfer"),
+  bankName: text("bank_name"),
+  accountNumber: text("account_number"),
+  ifscCode: text("ifsc_code"),
+  chequeNumber: text("cheque_number"),
+  chequeDate: text("cheque_date"),
   hrNotes: text("hr_notes"),
   cooNotes: text("coo_notes"),
   accountsNotes: text("accounts_notes"),
+  ...timestamps
+});
+
+export const securityDepositRefunds = sqliteTable("security_deposit_refunds", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(), // stable staffId
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  refundDate: text("refund_date").notNull(),
+  notes: text("notes"),
+  processedBy: text("processed_by").references(() => user.id, { onDelete: "set null" }),
   ...timestamps
 });
 
