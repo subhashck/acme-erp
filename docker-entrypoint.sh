@@ -11,10 +11,6 @@ pnpm db:push
 echo "Running database seed..."
 pnpm db:seed
 
-if [ "$#" -gt 0 ]; then
-  exec "$@"
-else
-  # Start the Node Hono API server
-  echo "Starting Hono API server..."
-  exec pnpm start
-fi
+# Start the Node Hono API server
+echo "Starting Hono API server..."
+exec pnpm start
