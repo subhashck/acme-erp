@@ -26,11 +26,16 @@ function SalaryTemplatesPage() {
   const [basic, setBasic] = React.useState(0);
   const [hra, setHra] = React.useState(0);
   const [conveyance, setConveyance] = React.useState(0);
-  const [medical, setMedical] = React.useState(0);
+  const [skillAllowance, setSkillAllowance] = React.useState(0);
   const [special, setSpecial] = React.useState(0);
   const [epf, setEpf] = React.useState(0);
   const [esi, setEsi] = React.useState(0);
   const [pt, setPt] = React.useState(0);
+  const [deductTds, setDeductTds] = React.useState(false);
+  const [tdsPercent, setTdsPercent] = React.useState(10);
+  const [tds, setTds] = React.useState(0);
+  const [securityDepositTotal, setSecurityDepositTotal] = React.useState(0);
+  const [securityDeposit, setSecurityDeposit] = React.useState(0);
   const [other, setOther] = React.useState(0);
 
   // Auto calculation helper states
@@ -43,17 +48,22 @@ function SalaryTemplatesPage() {
       setBasic(editingTemplate.basicSalary);
       setHra(editingTemplate.hra);
       setConveyance(editingTemplate.conveyance);
-      setMedical(editingTemplate.medical);
+      setSkillAllowance(editingTemplate.skillAllowance ?? 0);
       setSpecial(editingTemplate.special);
       setEpf(editingTemplate.epf);
       setEsi(editingTemplate.esi);
       setPt(editingTemplate.professionalTax);
+      setDeductTds(editingTemplate.deductTds ?? false);
+      setTdsPercent(editingTemplate.tdsPercent ?? 10);
+      setTds(editingTemplate.tds ?? 0);
+      setSecurityDepositTotal(editingTemplate.securityDepositTotal ?? 0);
+      setSecurityDeposit(editingTemplate.securityDeposit ?? 0);
       setOther(editingTemplate.otherDeductions);
       setTargetGross(
         editingTemplate.basicSalary +
         editingTemplate.hra +
         editingTemplate.conveyance +
-        editingTemplate.medical +
+        (editingTemplate.skillAllowance ?? 0) +
         editingTemplate.special
       );
       setAllowDeductions(true);
@@ -62,11 +72,16 @@ function SalaryTemplatesPage() {
       setBasic(0);
       setHra(0);
       setConveyance(0);
-      setMedical(0);
+      setSkillAllowance(0);
       setSpecial(0);
       setEpf(0);
       setEsi(0);
       setPt(0);
+      setDeductTds(false);
+      setTdsPercent(10);
+      setTds(0);
+      setSecurityDepositTotal(0);
+      setSecurityDeposit(0);
       setOther(0);
       setTargetGross(0);
       setAllowDeductions(true);
@@ -77,19 +92,19 @@ function SalaryTemplatesPage() {
     const basicPct = payrollSettings.basicPct ?? 50;
     const hraPct = payrollSettings.hraPct ?? 30;
     const conveyancePct = payrollSettings.conveyancePct ?? 10;
-    const medicalPct = payrollSettings.medicalPct ?? 5;
+    const skillPct = payrollSettings.skillAllowancePct ?? 5;
     const specialPct = payrollSettings.specialPct ?? 5;
 
     const computedBasic = Math.round((basicPct / 100) * targetGross);
     const computedHra = Math.round((hraPct / 100) * targetGross);
     const computedConveyance = Math.round((conveyancePct / 100) * targetGross);
-    const computedMedical = Math.round((medicalPct / 100) * targetGross);
+    const computedSkill = Math.round((skillPct / 100) * targetGross);
     const computedSpecial = Math.round((specialPct / 100) * targetGross);
 
     setBasic(computedBasic);
     setHra(computedHra);
     setConveyance(computedConveyance);
-    setMedical(computedMedical);
+    setSkillAllowance(computedSkill);
     setSpecial(computedSpecial);
 
     if (allowDeductions) {
@@ -103,10 +118,15 @@ function SalaryTemplatesPage() {
       setEpf(computedEpf);
       setEsi(computedEsi);
       setPt(ptDefault);
+
+      if (deductTds) {
+        setTds(Math.round(((tdsPercent || 10) / 100) * targetGross));
+      }
     } else {
       setEpf(0);
       setEsi(0);
       setPt(0);
+      setTds(0);
     }
   };
 
@@ -123,11 +143,16 @@ function SalaryTemplatesPage() {
       basicSalary: basic,
       hra,
       conveyance,
-      medical,
+      skillAllowance,
       special,
       epf,
       esi,
       professionalTax: pt,
+      deductTds,
+      tdsPercent,
+      tds: deductTds ? tds : 0,
+      securityDepositTotal,
+      securityDeposit,
       otherDeductions: other,
     };
 
@@ -165,7 +190,7 @@ function SalaryTemplatesPage() {
       id: "grossSalary",
       label: "Gross Salary",
       render: (row: SalaryTemplate) => {
-        const gross = row.basicSalary + row.hra + row.conveyance + row.medical + row.special;
+        const gross = row.basicSalary + row.hra + row.conveyance + (row.skillAllowance ?? 0) + row.special;
         return <span>{currencySymbol}{gross.toLocaleString("en-IN")}</span>;
       },
     },
@@ -173,8 +198,8 @@ function SalaryTemplatesPage() {
       id: "netSalary",
       label: "Net Take-Home",
       render: (row: SalaryTemplate) => {
-        const gross = row.basicSalary + row.hra + row.conveyance + row.medical + row.special;
-        const ded = row.epf + row.esi + row.professionalTax + row.otherDeductions;
+        const gross = row.basicSalary + row.hra + row.conveyance + (row.skillAllowance ?? 0) + row.special;
+        const ded = row.epf + row.esi + row.professionalTax + (row.tds ?? 0) + (row.securityDeposit ?? 0) + row.otherDeductions;
         return <span className="font-semibold text-emerald-600">{currencySymbol}{Math.max(0, gross - ded).toLocaleString("en-IN")}</span>;
       },
     },
@@ -333,7 +358,7 @@ function SalaryTemplatesPage() {
                     <Field label="Basic Salary" type="number" value={basic} onChange={(e) => setBasic(Number(e.target.value))} />
                     <Field label="House Rent Allowance (HRA)" type="number" value={hra} onChange={(e) => setHra(Number(e.target.value))} />
                     <Field label="Conveyance Allowance" type="number" value={conveyance} onChange={(e) => setConveyance(Number(e.target.value))} />
-                    <Field label="Medical Allowance" type="number" value={medical} onChange={(e) => setMedical(Number(e.target.value))} />
+                    <Field label="Skill Allowance" type="number" value={skillAllowance} onChange={(e) => setSkillAllowance(Number(e.target.value))} />
                     <Field label="Special Allowance" type="number" value={special} onChange={(e) => setSpecial(Number(e.target.value))} />
                   </div>
 
@@ -343,6 +368,71 @@ function SalaryTemplatesPage() {
                     <Field label="EPF (Provident Fund)" type="number" value={epf} onChange={(e) => setEpf(Number(e.target.value))} />
                     <Field label="ESI (State Insurance)" type="number" value={esi} onChange={(e) => setEsi(Number(e.target.value))} />
                     <Field label="Professional Tax" type="number" value={pt} onChange={(e) => setPt(Number(e.target.value))} />
+                    
+                    {/* TDS Section */}
+                    <div className="border border-border/80 p-3 rounded-lg bg-muted/20 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="deduct-tds-tpl"
+                          checked={deductTds}
+                          onChange={(e) => {
+                            setDeductTds(e.target.checked);
+                            if (e.target.checked && tds === 0) {
+                              const grossTemp = basic + hra + conveyance + skillAllowance + special;
+                              setTds(Math.round(((tdsPercent || 10) / 100) * grossTemp));
+                            }
+                          }}
+                          className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                        />
+                        <label htmlFor="deduct-tds-tpl" className="text-xs font-semibold text-foreground cursor-pointer select-none">
+                          Deduct Tax at Source (TDS)
+                        </label>
+                      </div>
+                      {deductTds && (
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <Field
+                            label="TDS Target %"
+                            type="number"
+                            value={tdsPercent}
+                            onChange={(e) => {
+                              const pct = Number(e.target.value);
+                              setTdsPercent(pct);
+                              const grossTemp = basic + hra + conveyance + skillAllowance + special;
+                              setTds(Math.round((pct / 100) * grossTemp));
+                            }}
+                          />
+                          <Field
+                            label="TDS Amount (₹)"
+                            type="number"
+                            value={tds}
+                            onChange={(e) => setTds(Number(e.target.value))}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Security Deposit Section */}
+                    <div className="border border-border/80 p-3 rounded-lg bg-muted/20 space-y-2">
+                      <p className="text-xs font-semibold text-foreground">Security Deposit Setup</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field
+                          label="Target Total (₹)"
+                          type="number"
+                          value={securityDepositTotal}
+                          onChange={(e) => setSecurityDepositTotal(Number(e.target.value))}
+                          placeholder="e.g. 10000"
+                        />
+                        <Field
+                          label="Monthly Deduction (₹)"
+                          type="number"
+                          value={securityDeposit}
+                          onChange={(e) => setSecurityDeposit(Number(e.target.value))}
+                          placeholder="e.g. 2000"
+                        />
+                      </div>
+                    </div>
+
                     <Field label="Other Deductions" type="number" value={other} onChange={(e) => setOther(Number(e.target.value))} />
                   </div>
                 </div>
@@ -354,19 +444,19 @@ function SalaryTemplatesPage() {
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Gross Salary</p>
                       <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-                        {currencySymbol}{(basic + hra + conveyance + medical + special).toLocaleString("en-IN")}
+                        {currencySymbol}{(basic + hra + conveyance + skillAllowance + special).toLocaleString("en-IN")}
                       </p>
                     </div>
                     <div className="border-x">
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Total Deductions</p>
                       <p className="text-base font-bold text-rose-600 dark:text-rose-400 mt-0.5">
-                        {currencySymbol}{(epf + esi + pt + other).toLocaleString("en-IN")}
+                        {currencySymbol}{(epf + esi + pt + (deductTds ? tds : 0) + securityDeposit + other).toLocaleString("en-IN")}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-primary uppercase font-semibold">Net Take-Home</p>
                       <p className="text-base font-extrabold text-primary mt-0.5">
-                        {currencySymbol}{Math.max(0, (basic + hra + conveyance + medical + special) - (epf + esi + pt + other)).toLocaleString("en-IN")}
+                        {currencySymbol}{Math.max(0, (basic + hra + conveyance + skillAllowance + special) - (epf + esi + pt + (deductTds ? tds : 0) + securityDeposit + other)).toLocaleString("en-IN")}
                       </p>
                     </div>
                   </div>

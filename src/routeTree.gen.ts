@@ -25,6 +25,7 @@ import { Route as AuthenticatedPurchasesBillsRouteImport } from './routes/_authe
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
+import { Route as AuthenticatedMastersManagementApproversRouteImport } from './routes/_authenticated/masters/management-approvers'
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
 import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
@@ -34,6 +35,7 @@ import { Route as AuthenticatedHrStaffListRouteImport } from './routes/_authenti
 import { Route as AuthenticatedHrRosterRouteImport } from './routes/_authenticated/hr/roster'
 import { Route as AuthenticatedHrReviewLeaveRouteImport } from './routes/_authenticated/hr/review-leave'
 import { Route as AuthenticatedHrPayrollRouteImport } from './routes/_authenticated/hr/payroll'
+import { Route as AuthenticatedHrOffDayRequestsRouteImport } from './routes/_authenticated/hr/off-day-requests'
 import { Route as AuthenticatedHrLeavesRouteImport } from './routes/_authenticated/hr/leaves'
 import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authenticated/hr/attendance'
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
@@ -147,6 +149,12 @@ const AuthenticatedMastersRolesRoute =
     path: '/masters/roles',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedMastersManagementApproversRoute =
+  AuthenticatedMastersManagementApproversRouteImport.update({
+    id: '/masters/management-approvers',
+    path: '/masters/management-approvers',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMastersLeaveTypesRoute =
   AuthenticatedMastersLeaveTypesRouteImport.update({
     id: '/masters/leave-types',
@@ -199,6 +207,12 @@ const AuthenticatedHrPayrollRoute = AuthenticatedHrPayrollRouteImport.update({
   path: '/hr/payroll',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedHrOffDayRequestsRoute =
+  AuthenticatedHrOffDayRequestsRouteImport.update({
+    id: '/hr/off-day-requests',
+    path: '/hr/off-day-requests',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedHrLeavesRoute = AuthenticatedHrLeavesRouteImport.update({
   id: '/hr/leaves',
   path: '/hr/leaves',
@@ -351,6 +365,7 @@ export interface FileRoutesByFullPath {
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
+  '/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/hr/payroll': typeof AuthenticatedHrPayrollRoute
   '/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/hr/roster': typeof AuthenticatedHrRosterRoute
@@ -360,6 +375,7 @@ export interface FileRoutesByFullPath {
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
+  '/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
@@ -400,6 +416,7 @@ export interface FileRoutesByTo {
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
+  '/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/hr/payroll': typeof AuthenticatedHrPayrollRoute
   '/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/hr/roster': typeof AuthenticatedHrRosterRoute
@@ -409,6 +426,7 @@ export interface FileRoutesByTo {
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
+  '/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
@@ -450,6 +468,7 @@ export interface FileRoutesById {
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/_authenticated/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/_authenticated/hr/leaves': typeof AuthenticatedHrLeavesRoute
+  '/_authenticated/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/_authenticated/hr/payroll': typeof AuthenticatedHrPayrollRoute
   '/_authenticated/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/_authenticated/hr/roster': typeof AuthenticatedHrRosterRoute
@@ -459,6 +478,7 @@ export interface FileRoutesById {
   '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
+  '/_authenticated/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
@@ -501,6 +521,7 @@ export interface FileRouteTypes {
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
+    | '/hr/off-day-requests'
     | '/hr/payroll'
     | '/hr/review-leave'
     | '/hr/roster'
@@ -510,6 +531,7 @@ export interface FileRouteTypes {
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
+    | '/masters/management-approvers'
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
@@ -550,6 +572,7 @@ export interface FileRouteTypes {
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
+    | '/hr/off-day-requests'
     | '/hr/payroll'
     | '/hr/review-leave'
     | '/hr/roster'
@@ -559,6 +582,7 @@ export interface FileRouteTypes {
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
+    | '/masters/management-approvers'
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
@@ -599,6 +623,7 @@ export interface FileRouteTypes {
     | '/_authenticated/hr/add-staff'
     | '/_authenticated/hr/attendance'
     | '/_authenticated/hr/leaves'
+    | '/_authenticated/hr/off-day-requests'
     | '/_authenticated/hr/payroll'
     | '/_authenticated/hr/review-leave'
     | '/_authenticated/hr/roster'
@@ -608,6 +633,7 @@ export interface FileRouteTypes {
     | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
+    | '/_authenticated/masters/management-approvers'
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
@@ -754,6 +780,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMastersRolesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/masters/management-approvers': {
+      id: '/_authenticated/masters/management-approvers'
+      path: '/masters/management-approvers'
+      fullPath: '/masters/management-approvers'
+      preLoaderRoute: typeof AuthenticatedMastersManagementApproversRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/masters/leave-types': {
       id: '/_authenticated/masters/leave-types'
       path: '/masters/leave-types'
@@ -815,6 +848,13 @@ declare module '@tanstack/react-router' {
       path: '/hr/payroll'
       fullPath: '/hr/payroll'
       preLoaderRoute: typeof AuthenticatedHrPayrollRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/hr/off-day-requests': {
+      id: '/_authenticated/hr/off-day-requests'
+      path: '/hr/off-day-requests'
+      fullPath: '/hr/off-day-requests'
+      preLoaderRoute: typeof AuthenticatedHrOffDayRequestsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/hr/leaves': {
@@ -1022,6 +1062,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
   AuthenticatedHrAttendanceRoute: typeof AuthenticatedHrAttendanceRoute
   AuthenticatedHrLeavesRoute: typeof AuthenticatedHrLeavesRoute
+  AuthenticatedHrOffDayRequestsRoute: typeof AuthenticatedHrOffDayRequestsRoute
   AuthenticatedHrPayrollRoute: typeof AuthenticatedHrPayrollRoute
   AuthenticatedHrReviewLeaveRoute: typeof AuthenticatedHrReviewLeaveRoute
   AuthenticatedHrRosterRoute: typeof AuthenticatedHrRosterRoute
@@ -1031,6 +1072,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
+  AuthenticatedMastersManagementApproversRoute: typeof AuthenticatedMastersManagementApproversRoute
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
   AuthenticatedMastersSalaryTemplatesRoute: typeof AuthenticatedMastersSalaryTemplatesRoute
   AuthenticatedMastersShiftsRoute: typeof AuthenticatedMastersShiftsRoute
@@ -1067,6 +1109,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHrAddStaffRoute: AuthenticatedHrAddStaffRoute,
   AuthenticatedHrAttendanceRoute: AuthenticatedHrAttendanceRoute,
   AuthenticatedHrLeavesRoute: AuthenticatedHrLeavesRoute,
+  AuthenticatedHrOffDayRequestsRoute: AuthenticatedHrOffDayRequestsRoute,
   AuthenticatedHrPayrollRoute: AuthenticatedHrPayrollRoute,
   AuthenticatedHrReviewLeaveRoute: AuthenticatedHrReviewLeaveRoute,
   AuthenticatedHrRosterRoute: AuthenticatedHrRosterRoute,
@@ -1076,6 +1119,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
+  AuthenticatedMastersManagementApproversRoute:
+    AuthenticatedMastersManagementApproversRoute,
   AuthenticatedMastersRolesRoute: AuthenticatedMastersRolesRoute,
   AuthenticatedMastersSalaryTemplatesRoute:
     AuthenticatedMastersSalaryTemplatesRoute,

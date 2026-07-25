@@ -37,11 +37,16 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -96,11 +101,16 @@ export const staffRoutes = new Hono<AuthEnv>()
       basicSalary,
       hra,
       conveyance,
-      medical,
+      skillAllowance,
       special,
       epf,
       esi,
       professionalTax,
+      deductTds,
+      tdsPercent,
+      tds,
+      securityDepositTotal,
+      securityDeposit,
       otherDeductions,
       bankName,
       accountNumber,
@@ -136,11 +146,16 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: String(basicSalary),
         hra: String(hra),
         conveyance: String(conveyance),
-        medical: String(medical),
+        skillAllowance: String(skillAllowance || 0),
         special: String(special),
         epf: String(epf),
         esi: String(esi),
         professionalTax: String(professionalTax),
+        deductTds: Boolean(deductTds),
+        tdsPercent: String(tdsPercent ?? 10),
+        tds: String(tds || 0),
+        securityDepositTotal: String(securityDepositTotal || 0),
+        securityDeposit: String(securityDeposit || 0),
         otherDeductions: String(otherDeductions),
         bankName,
         accountNumber,
@@ -204,11 +219,16 @@ export const staffRoutes = new Hono<AuthEnv>()
       basicSalary,
       hra,
       conveyance,
-      medical,
+      skillAllowance,
       special,
       epf,
       esi,
       professionalTax,
+      deductTds,
+      tdsPercent,
+      tds,
+      securityDepositTotal,
+      securityDeposit,
       otherDeductions,
       bankName,
       accountNumber,
@@ -239,11 +259,16 @@ export const staffRoutes = new Hono<AuthEnv>()
     const finalBasicSalary = "basicSalary" in rawBody ? Number(basicSalary) : Number(currentSalary?.basicSalary ?? 0);
     const finalHra = "hra" in rawBody ? Number(hra) : Number(currentSalary?.hra ?? 0);
     const finalConveyance = "conveyance" in rawBody ? Number(conveyance) : Number(currentSalary?.conveyance ?? 0);
-    const finalMedical = "medical" in rawBody ? Number(medical) : Number(currentSalary?.medical ?? 0);
+    const finalSkillAllowance = "skillAllowance" in rawBody ? Number(skillAllowance) : Number(currentSalary?.skillAllowance ?? 0);
     const finalSpecial = "special" in rawBody ? Number(special) : Number(currentSalary?.special ?? 0);
     const finalEpf = "epf" in rawBody ? Number(epf) : Number(currentSalary?.epf ?? 0);
     const finalEsi = "esi" in rawBody ? Number(esi) : Number(currentSalary?.esi ?? 0);
     const finalPt = "professionalTax" in rawBody ? Number(professionalTax) : Number(currentSalary?.professionalTax ?? 0);
+    const finalDeductTds = "deductTds" in rawBody ? Boolean(deductTds) : Boolean(currentSalary?.deductTds ?? false);
+    const finalTdsPercent = "tdsPercent" in rawBody ? Number(tdsPercent) : Number(currentSalary?.tdsPercent ?? 10);
+    const finalTds = "tds" in rawBody ? Number(tds) : Number(currentSalary?.tds ?? 0);
+    const finalSecTotal = "securityDepositTotal" in rawBody ? Number(securityDepositTotal) : Number(currentSalary?.securityDepositTotal ?? 0);
+    const finalSecMonthly = "securityDeposit" in rawBody ? Number(securityDeposit) : Number(currentSalary?.securityDeposit ?? 0);
     const finalOther = "otherDeductions" in rawBody ? Number(otherDeductions) : Number(currentSalary?.otherDeductions ?? 0);
     const finalBankName = "bankName" in rawBody ? bankName : (currentSalary?.bankName ?? null);
     const finalAccountNumber = "accountNumber" in rawBody ? accountNumber : (currentSalary?.accountNumber ?? null);
@@ -253,17 +278,22 @@ export const staffRoutes = new Hono<AuthEnv>()
       Number(currentSalary.basicSalary) !== finalBasicSalary ||
       Number(currentSalary.hra) !== finalHra ||
       Number(currentSalary.conveyance) !== finalConveyance ||
-      Number(currentSalary.medical) !== finalMedical ||
+      Number(currentSalary.skillAllowance) !== finalSkillAllowance ||
       Number(currentSalary.special) !== finalSpecial ||
       Number(currentSalary.epf) !== finalEpf ||
       Number(currentSalary.esi) !== finalEsi ||
       Number(currentSalary.professionalTax) !== finalPt ||
+      Boolean(currentSalary.deductTds) !== finalDeductTds ||
+      Number(currentSalary.tdsPercent) !== finalTdsPercent ||
+      Number(currentSalary.tds) !== finalTds ||
+      Number(currentSalary.securityDepositTotal) !== finalSecTotal ||
+      Number(currentSalary.securityDeposit) !== finalSecMonthly ||
       Number(currentSalary.otherDeductions) !== finalOther ||
       currentSalary.bankName !== finalBankName ||
       currentSalary.accountNumber !== finalAccountNumber ||
       currentSalary.ifscCode !== finalIfscCode;
 
-    const computedGross = finalBasicSalary + finalHra + finalConveyance + finalMedical + finalSpecial;
+    const computedGross = finalBasicSalary + finalHra + finalConveyance + finalSkillAllowance + finalSpecial;
 
     const newVersion = currentStaff.version + 1;
 
@@ -308,11 +338,16 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: String(finalBasicSalary),
         hra: String(finalHra),
         conveyance: String(finalConveyance),
-        medical: String(finalMedical),
+        skillAllowance: String(finalSkillAllowance),
         special: String(finalSpecial),
         epf: String(finalEpf),
         esi: String(finalEsi),
         professionalTax: String(finalPt),
+        deductTds: finalDeductTds,
+        tdsPercent: String(finalTdsPercent),
+        tds: String(finalTds),
+        securityDepositTotal: String(finalSecTotal),
+        securityDeposit: String(finalSecMonthly),
         otherDeductions: String(finalOther),
         bankName: finalBankName,
         accountNumber: finalAccountNumber,
@@ -547,11 +582,16 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -616,11 +656,16 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -696,11 +741,16 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,

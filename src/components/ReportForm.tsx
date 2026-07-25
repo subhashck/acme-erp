@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2, Lock } from "lucide-react";
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { Button } from "../ui/button";
@@ -732,6 +732,16 @@ export function ReportForm({
   // ── submit ────────────────────────────────────────────────────
   const doSubmit = (forcedStatus?: "draft" | "submitted") => {
     const finalStatus = forcedStatus ?? status;
+
+    if (!isCashTallied || !isReconciled) {
+      alert("Submission blocked due to tally mismatch! Physical cash and payment channel totals must match calculated figures before saving.");
+      return;
+    }
+
+    if (toNum(reconciliationTolerance) > 100) {
+      alert("Submission blocked! Reconciliation Tolerance exceeds the maximum allowed limit of ₹100.");
+      return;
+    }
     const parsedServiceLines = [
       ...entryOrder
         .filter((serviceId) => {
@@ -1467,73 +1477,150 @@ export function ReportForm({
                       ))}
                     </datalist>
 
-                    {expenditures.map((item, idx) => (
-                      <div key={idx} className="flex flex-wrap gap-3 items-end bg-muted/15 p-2.5 rounded border">
-                        <Select
-                          label="Category"
-                          options={expCategoriesOptions}
-                          value={item.category}
-                          className="w-48"
-                          onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, category: e.target.value } : ex)))}
-                          required
-                        />
-                        <div className="flex-1 space-y-1">
-                          <Label className="text-[10px]">Details / Payee</Label>
-                          <Input
-                            type="text"
-                            list="predefined-expenses"
-                            placeholder="e.g. M/S SB Surgical, Bamboo purchase"
-                            value={item.details}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const matched = expCatalogList.find((x) => x.itemName.toUpperCase() === val.toUpperCase());
-                              if (matched) {
-                                setExpenditures(
-                                  expenditures.map((ex, i) =>
-                                    i === idx
-                                      ? { ...ex, details: val, category: matched.category, amount: toNum(matched.defaultAmount) }
-                                      : ex
-                                  )
-                                );
-                              } else {
-                                setExpenditures(
-                                  expenditures.map((ex, i) =>
-                                    i === idx ? { ...ex, details: val } : ex
-                                  )
-                                );
-                              }
-                            }}
-                            required
-                          />
-                        </div>
-                        <div className="w-36 space-y-1">
-                          <Label className="text-[10px]">Amount (INR)</Label>
-                          <Input
-                            type="number"
-                            value={item.amount || ""}
-                            onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, amount: parseFloat(e.target.value) || 0 } : ex)))}
-                            required
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setExpenditures(expenditures.filter((_, i) => i !== idx))}
-                          className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                    {expenditures.map((item, idx) => {
+                      const isAutoExpenditure =
+                        item.category === "Salary" &&
+                        (item.details?.startsWith("Salary Payment -") ||
+                          item.narration?.includes("Payslip #") ||
+                          item.narration?.includes("Cash salary payment"));
+
+                      return (
+                        <div
+                          key={idx}
+                          className={cn(
+                            "flex flex-wrap gap-3 items-end p-2.5 rounded border transition-colors",
+                            isAutoExpenditure
+                              ? "bg-amber-50/30 dark:bg-amber-950/10 border-amber-200/70 dark:border-amber-900/50"
+                              : "bg-muted/15"
+                          )}
                         >
-                          <Trash2 size={15} />
-                        </button>
-                        <div className="w-full space-y-1 border-t pt-2 mt-1">
-                          <Label className="text-[10px]">Narration Entry (Optional)</Label>
-                          <textarea
-                            rows={2}
-                            placeholder="Enter narration or payment remarks (multi-line supported)..."
-                            value={item.narration || ""}
-                            onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, narration: e.target.value } : ex)))}
-                            className="w-full text-xs font-normal border rounded px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                          {isAutoExpenditure && (
+                            <div className="w-full mb-1 flex items-center justify-between text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded border border-amber-200/70 dark:border-amber-900/50">
+                              <span className="flex items-center gap-1.5">
+                                <Lock size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span>Auto-Generated Payroll Cash Outflow Entry (Locked)</span>
+                              </span>
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 italic hidden sm:inline">
+                                Read-only &mdash; Managed via HR Payroll Workflow
+                              </span>
+                            </div>
+                          )}
+
+                          <Select
+                            label="Category"
+                            options={expCategoriesOptions}
+                            value={item.category}
+                            className="w-48"
+                            onChange={(e) =>
+                              setExpenditures(
+                                expenditures.map((ex, i) => (i === idx ? { ...ex, category: e.target.value } : ex))
+                              )
+                            }
+                            required
                           />
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-[10px]">Details / Payee</Label>
+                            <Input
+                              type="text"
+                              list="predefined-expenses"
+                              placeholder="e.g. M/S SB Surgical, Bamboo purchase"
+                              value={item.details}
+                              readOnly={isAutoExpenditure}
+                              className={cn(
+                                isAutoExpenditure && "bg-muted/70 text-muted-foreground cursor-not-allowed font-medium"
+                              )}
+                              onChange={(e) => {
+                                if (isAutoExpenditure) return;
+                                const val = e.target.value;
+                                const matched = expCatalogList.find(
+                                  (x) => x.itemName.toUpperCase() === val.toUpperCase()
+                                );
+                                if (matched) {
+                                  setExpenditures(
+                                    expenditures.map((ex, i) =>
+                                      i === idx
+                                        ? {
+                                            ...ex,
+                                            details: val,
+                                            category: matched.category,
+                                            amount: toNum(matched.defaultAmount),
+                                          }
+                                        : ex
+                                    )
+                                  );
+                                } else {
+                                  setExpenditures(
+                                    expenditures.map((ex, i) => (i === idx ? { ...ex, details: val } : ex))
+                                  );
+                                }
+                              }}
+                              required
+                            />
+                          </div>
+                          <div className="w-36 space-y-1">
+                            <Label className="text-[10px]">Amount (INR)</Label>
+                            <Input
+                              type="number"
+                              value={item.amount || ""}
+                              readOnly={isAutoExpenditure}
+                              className={cn(
+                                isAutoExpenditure && "bg-muted/70 text-muted-foreground font-bold cursor-not-allowed"
+                              )}
+                              onChange={(e) =>
+                                !isAutoExpenditure &&
+                                setExpenditures(
+                                  expenditures.map((ex, i) =>
+                                    i === idx ? { ...ex, amount: parseFloat(e.target.value) || 0 } : ex
+                                  )
+                                )
+                              }
+                              required
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isAutoExpenditure}
+                            title={
+                              isAutoExpenditure
+                                ? "Automatic payroll expenditure entries cannot be deleted directly."
+                                : "Remove outflow record"
+                            }
+                            onClick={() =>
+                              !isAutoExpenditure && setExpenditures(expenditures.filter((_, i) => i !== idx))
+                            }
+                            className={cn(
+                              "p-2 border rounded-md mb-0.5",
+                              isAutoExpenditure
+                                ? "opacity-40 cursor-not-allowed text-muted-foreground border-border"
+                                : "hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                            )}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                          <div className="w-full space-y-1 border-t pt-2 mt-1">
+                            <Label className="text-[10px]">Narration Entry (Optional)</Label>
+                            <textarea
+                              rows={2}
+                              placeholder="Enter narration or payment remarks (multi-line supported)..."
+                              value={item.narration || ""}
+                              readOnly={isAutoExpenditure}
+                              onChange={(e) =>
+                                !isAutoExpenditure &&
+                                setExpenditures(
+                                  expenditures.map((ex, i) => (i === idx ? { ...ex, narration: e.target.value } : ex))
+                                )
+                              }
+                              className={cn(
+                                "w-full text-xs font-normal border rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y",
+                                isAutoExpenditure
+                                  ? "bg-muted/70 text-muted-foreground cursor-not-allowed"
+                                  : "bg-background text-foreground"
+                              )}
+                            />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     <Button type="button" variant="outline" onClick={() => setExpenditures([...expenditures, { category: expCategoriesOptions[0] || "MISC", details: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
                       <Plus size={13} className="mr-1" /> Add Outflow Record
                     </Button>
@@ -1552,10 +1639,10 @@ export function ReportForm({
                                 staffAdvances.map((sa, i) =>
                                   i === idx
                                     ? {
-                                        ...sa,
-                                        staffId: val ? Number(val) : undefined,
-                                        staffName: selectedStaff ? selectedStaff.name : "",
-                                      }
+                                      ...sa,
+                                      staffId: val ? Number(val) : undefined,
+                                      staffName: selectedStaff ? selectedStaff.name : "",
+                                    }
                                     : sa
                                 )
                               );
@@ -1798,40 +1885,50 @@ export function ReportForm({
               {openSections.denominations && (
                 <CardContent className="p-5 space-y-6">
                   {/* Tolerance Input & Quick Actions */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 bg-muted/20 rounded-lg border">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div className="space-y-1">
-                        <Label htmlFor="recTolerance" className="text-xs font-bold uppercase text-muted-foreground">
-                          Reconciliation Tolerance (₹)
-                        </Label>
-                        <Input
-                          id="recTolerance"
-                          type="number"
-                          min="0"
-                          max="50"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={reconciliationTolerance}
-                          onChange={(e) => {
-                            if (Number(e.target.value) > 50) return;
-                            setReconciliationTolerance(e.target.value);
-                          }}
-                          className="w-36 font-bold h-9 bg-background text-foreground"
-                        />
+                  <div className="flex flex-col gap-2 p-3.5 bg-muted/20 rounded-lg border">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="recTolerance" className="text-xs font-bold uppercase text-muted-foreground">
+                            Reconciliation Tolerance (₹)
+                          </Label>
+                          <Input
+                            id="recTolerance"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={reconciliationTolerance}
+                            onChange={(e) => {
+                              setReconciliationTolerance(e.target.value);
+                            }}
+                            className={cn(
+                              "w-36 font-bold h-9 bg-background text-foreground",
+                              toNum(reconciliationTolerance) > 100 && "border-amber-500 ring-1 ring-amber-500 text-amber-600"
+                            )}
+                          />
+                        </div>
+                        <span className="text-[11px] text-rose-200 self-end pb-1.5">
+                          Allowed variance for closing cash &amp; channel tally (Max limit: ₹100)
+                        </span>
                       </div>
-                      <span className="text-[11px] text-muted-foreground self-end pb-1.5">
-                        Allowed variance for closing cash &amp; channel tally
-                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleClearDenominations}
+                        className="text-xs font-semibold cursor-pointer"
+                        disabled={Object.keys(cashDenominations).length === 0}
+                      >
+                        Clear Denominations
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleClearDenominations}
-                      className="text-xs font-semibold cursor-pointer"
-                      disabled={Object.keys(cashDenominations).length === 0}
-                    >
-                      Clear Denominations
-                    </Button>
+
+                    {toNum(reconciliationTolerance) > 100 && (
+                      <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-md border border-amber-300 dark:border-amber-900/60 mt-1">
+                        <AlertTriangle size={15} className="shrink-0 text-amber-600" />
+                        <span>Warning: Reconciliation Tolerance (₹{reconciliationTolerance}) exceeds the allowed limit of ₹100! Submission is blocked until reduced.</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Soiled Notes / Mutilated Currency Details */}
@@ -1849,7 +1946,7 @@ export function ReportForm({
                       className="w-36 font-bold h-9 bg-background text-foreground"
                     />
                   </div>
-of p
+
                   {/* Previous Day Cash Denominations Reference Banner */}
                   {priorReport ? (
                     <div className="p-4 rounded-xl border bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 space-y-3">
@@ -1971,8 +2068,8 @@ of p
                         <span className={cn(
                           "text-base font-black",
                           cashTallyDiff === 0 ? "text-emerald-600 dark:text-emerald-400" :
-                          Math.abs(cashTallyDiff) <= toleranceVal ? "text-teal-600 dark:text-teal-400" :
-                          "text-rose-600 dark:text-rose-400"
+                            Math.abs(cashTallyDiff) <= toleranceVal ? "text-teal-600 dark:text-teal-400" :
+                              "text-rose-600 dark:text-rose-400"
                         )}>
                           {cashTallyDiff > 0 ? `+${fmt(cashTallyDiff)}` : fmt(cashTallyDiff)}
                         </span>
@@ -1991,8 +2088,8 @@ of p
                           {cashTallyDiff === 0
                             ? "Physical cash exactly matches calculated cash closing balance!"
                             : isCashTallied
-                            ? `Physical cash tallies within tolerance limit of ±${fmt(toleranceVal)} (Variance: ${fmt(cashTallyDiff)})`
-                            : `Cash Mismatch: ${cashTallyDiff > 0 ? "Excess" : "Shortage"} of ${fmt(Math.abs(cashTallyDiff))} exceeds tolerance of ±${fmt(toleranceVal)}`}
+                              ? `Physical cash tallies within tolerance limit of ±${fmt(toleranceVal)} (Variance: ${fmt(cashTallyDiff)})`
+                              : `Cash Mismatch: ${cashTallyDiff > 0 ? "Excess" : "Shortage"} of ${fmt(Math.abs(cashTallyDiff))} exceeds tolerance of ±${fmt(toleranceVal)}`}
                         </span>
                       </div>
                       <span className={cn(
@@ -2212,6 +2309,20 @@ of p
 
               {/* Submission Actions */}
               <div className="space-y-2 pt-2">
+                {(!isCashTallied || !isReconciled || toNum(reconciliationTolerance) > 100) && (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-bold space-y-1">
+                    <div className="flex items-center gap-1.5 font-extrabold text-rose-800 dark:text-rose-200">
+                      <AlertTriangle size={15} className="shrink-0 text-rose-600" />
+                      <span>Submission Blocked</span>
+                    </div>
+                    <ul className="list-disc list-inside text-[11px] font-medium space-y-0.5 opacity-90">
+                      {!isCashTallied && <li>Cash Tally Mismatch: Cash variance exceeds tolerance limit.</li>}
+                      {!isReconciled && <li>Channel Tally Mismatch: Channel receipts do not match total income.</li>}
+                      {toNum(reconciliationTolerance) > 100 && <li>Tolerance (₹{reconciliationTolerance}) exceeds max limit of ₹100.</li>}
+                    </ul>
+                  </div>
+                )}
+
                 <Select
                   label="Save Status"
                   options={[["draft", "Draft Log"], ["submitted", "Submit & Lock"]]}
@@ -2221,8 +2332,8 @@ of p
                 />
                 <Button
                   onClick={handleSubmit}
-                  className="w-full bg-teal-650 hover:bg-teal-700 text-white font-bold cursor-pointer gap-1.5 mt-2 h-10"
-                  disabled={isPending}
+                  className="w-full bg-teal-650 hover:bg-teal-700 text-white font-bold cursor-pointer gap-1.5 mt-2 h-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isPending || !isCashTallied || !isReconciled || toNum(reconciliationTolerance) > 100}
                 >
                   <Save size={16} />
                   {isPending

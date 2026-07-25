@@ -168,9 +168,9 @@ function ViewStaff() {
         styles: { cellPadding: 2, fontSize: 10 },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 }, 2: { fontStyle: 'bold', cellWidth: 40 } },
         body: [
-          ["Basic Salary", employee.basicSalary?.toString() || "0", "Gross Salary", employee.salary?.toString() || "0"],
-          ["Bank Name", employee.bankName || "N/A", "Account Number", employee.accountNumber || "N/A"],
-          ["IFSC Code", employee.ifscCode || "N/A", "", ""]
+          ["Basic Salary", (employee as any).basicSalary?.toString() || "0", "Gross Salary", employee.salary?.toString() || "0"],
+          ["Bank Name", (employee as any).bankName || "N/A", "Account Number", (employee as any).accountNumber || "N/A"],
+          ["IFSC Code", (employee as any).ifscCode || "N/A", "", ""]
         ]
       });
       finalY = (doc as any).lastAutoTable.finalY + 10;

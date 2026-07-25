@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { db } from "../db/client.ts";
 import { auth, type AuthEnv } from "../auth.ts";
@@ -15,8 +16,18 @@ export const idParam = z.object({ id: z.coerce.number().int().positive() });
 export const code = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 
-export const jsonBody = async <T extends z.ZodTypeAny>(c: Context, schema: T) =>
-  schema.parse(await c.req.json());
+export const jsonBody = async <T extends z.ZodTypeAny>(c: Context, schema: T) => {
+  try {
+    const body = await c.req.json();
+    return schema.parse(body);
+  } catch (err: any) {
+    if (err instanceof z.ZodError) {
+      const message = err.issues.map((i) => i.message).join(", ");
+      throw new HTTPException(400, { message, cause: err });
+    }
+    throw err;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // Auth helpers
@@ -169,11 +180,16 @@ export const staffInput = z.object({
   basicSalary: z.coerce.number().min(0).default(0),
   hra: z.coerce.number().min(0).default(0),
   conveyance: z.coerce.number().min(0).default(0),
-  medical: z.coerce.number().min(0).default(0),
+  skillAllowance: z.coerce.number().min(0).default(0),
   special: z.coerce.number().min(0).default(0),
   epf: z.coerce.number().min(0).default(0),
   esi: z.coerce.number().min(0).default(0),
   professionalTax: z.coerce.number().min(0).default(0),
+  deductTds: z.boolean().optional().default(false),
+  tdsPercent: z.coerce.number().min(0).max(100).optional().default(10),
+  tds: z.coerce.number().min(0).optional().default(0),
+  securityDepositTotal: z.coerce.number().min(0).optional().default(0),
+  securityDeposit: z.coerce.number().min(0).optional().default(0),
   otherDeductions: z.coerce.number().min(0).default(0),
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
@@ -431,3 +447,26 @@ export const rosterInput = z
     path: ["endDate"],
     message: "End date must be on or after start date",
   });
+
+export const offDayRequestInput = z.object({
+  staffId: z.number().int().positive().optional(),
+  originalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+  requestedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+  reason: z.string().optional(),
+});
+
+export const offDayReviewInput = z.object({
+  status: z.enum(["Approved", "Rejected"]),
+  reviewerNote: z.string().optional(),
+});
+
+export const weeklyOffDayInput = z.object({
+  staffId: z.number().int().positive(),
+  daysOfWeek: z.array(z.number().int().min(0).max(6)).min(1, "Select at least one off day"),
+  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+  effectiveTo: z.preprocess(
+    (val) => (val === "" || val === undefined ? null : val),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").nullable().optional()
+  ),
+  notes: z.string().optional(),
+});
