@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import {
   Coins, Plus, Edit2, Trash2, Search, Filter, RefreshCw,
-  Layers, DollarSign, ListOrdered, AlertTriangle, Tag, ChevronDown, ChevronUp,
+  Layers, DollarSign, AlertTriangle, Tag, ChevronDown, ChevronUp,
+  ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
 } from "lucide-react";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
@@ -53,9 +54,11 @@ function ServiceCharges() {
 
   const [activeTab, setActiveTab] = React.useState<"services" | "expenses">("services");
 
-  // ── Expense Filter states ──────────────────────────────────────────────────
+  // ── Expense Filter & Pagination states ────────────────────────────────────
   const [expSearchQuery, setExpSearchQuery] = React.useState("");
   const [selectedExpDept, setSelectedExpDept] = React.useState("ALL");
+  const [expCurrentPage, setExpCurrentPage] = React.useState(1);
+  const [expPageSize, setExpPageSize] = React.useState(10);
 
   // ── Expense Modal states ───────────────────────────────────────────────────
   const [isExpAddOpen, setIsExpAddOpen] = React.useState(false);
@@ -78,9 +81,11 @@ function ServiceCharges() {
   });
   const [expFormError, setExpFormError] = React.useState("");
 
-  // ── Filter states ─────────────────────────────────────────────────────────
+  // ── Filter & Pagination states ────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedDept, setSelectedDept] = React.useState("ALL");
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
 
   // ── Modal states ──────────────────────────────────────────────────────────
   const [isAddOpen, setIsAddOpen] = React.useState(false);
@@ -533,25 +538,25 @@ function ServiceCharges() {
       });
   }, [catalogData, searchQuery, selectedDept]);
 
+  const totalServiceItems = filteredData.length;
+  const totalServicePages = Math.ceil(totalServiceItems / pageSize);
+  const serviceStartIndex = (currentPage - 1) * pageSize;
+  const paginatedData = React.useMemo(() => {
+    return filteredData.slice(serviceStartIndex, serviceStartIndex + pageSize);
+  }, [filteredData, serviceStartIndex, pageSize]);
+
+  React.useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredData.length / pageSize));
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage);
+    }
+  }, [filteredData.length, pageSize, currentPage]);
+
   // ── Statistics ────────────────────────────────────────────────────────────
   const totalCount = catalogData.length;
   const avgRate = totalCount > 0
     ? catalogData.reduce((acc, curr) => acc + Number(curr.defaultRate || 0), 0) / totalCount
     : 0;
-
-  const categoryCounts = React.useMemo(() => {
-    const counts: Record<string, number> = {};
-    catalogData.forEach((item) => {
-      counts[item.department] = (counts[item.department] ?? 0) + 1;
-    });
-    return counts;
-  }, [catalogData]);
-
-  // Only show categories that have at least one catalog item in the filter
-  const usedCategories = React.useMemo(
-    () => activeCategories.filter((c) => (categoryCounts[c.code] ?? 0) > 0),
-    [activeCategories, categoryCounts]
-  );
 
   // ── Expense Catalog list filters ───────────────────────────────────────────
   const filteredExpData = React.useMemo(() => {
@@ -567,23 +572,24 @@ function ServiceCharges() {
       });
   }, [expCatalogData, expSearchQuery, selectedExpDept]);
 
+  const totalExpItems = filteredExpData.length;
+  const totalExpPages = Math.ceil(totalExpItems / expPageSize);
+  const expStartIndex = (expCurrentPage - 1) * expPageSize;
+  const paginatedExpData = React.useMemo(() => {
+    return filteredExpData.slice(expStartIndex, expStartIndex + expPageSize);
+  }, [filteredExpData, expStartIndex, expPageSize]);
+
+  React.useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filteredExpData.length / expPageSize));
+    if (expCurrentPage > maxPage) {
+      setExpCurrentPage(maxPage);
+    }
+  }, [filteredExpData.length, expPageSize, expCurrentPage]);
+
   const totalExpCount = expCatalogData.length;
   const avgExpAmount = totalExpCount > 0
     ? expCatalogData.reduce((acc, curr) => acc + Number(curr.defaultAmount || 0), 0) / totalExpCount
     : 0;
-
-  const expCategoryCounts = React.useMemo(() => {
-    const counts: Record<string, number> = {};
-    expCatalogData.forEach((item) => {
-      counts[item.category] = (counts[item.category] ?? 0) + 1;
-    });
-    return counts;
-  }, [expCatalogData]);
-
-  const usedExpCategories = React.useMemo(
-    () => expCategories.filter((c) => (expCategoryCounts[c.code] ?? 0) > 0),
-    [expCategories, expCategoryCounts]
-  );
 
   const fmt = (val: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(val);
@@ -651,56 +657,33 @@ function ServiceCharges() {
       {activeTab === "services" && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
-          <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Services</CardTitle>
-            <Layers className="size-4 text-slate-400 animate-pulse" />
-          </CardHeader>
-          <CardContent className="pb-4">
-            <div className="text-2xl font-black text-slate-800 dark:text-slate-100">
-              {catalogQuery.isLoading ? "..." : totalCount}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">Configured items in database catalog</p>
-          </CardContent>
-        </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+              <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Services</CardTitle>
+                <Layers className="size-4 text-slate-400 animate-pulse" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-2xl font-black text-slate-800 dark:text-slate-100">
+                  {catalogQuery.isLoading ? "..." : totalCount}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Configured items in database catalog</p>
+              </CardContent>
+            </Card>
 
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
-          <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Average Charge Rate</CardTitle>
-            <DollarSign className="size-4 text-slate-400" />
-          </CardHeader>
-          <CardContent className="pb-4">
-            <div className="text-2xl font-black text-teal-700 dark:text-teal-400">
-              {catalogQuery.isLoading ? "..." : fmt(avgRate)}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">Mean charge rate across all services</p>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm border-slate-200 dark:border-slate-800">
-          <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Categories Breakdown</CardTitle>
-            <ListOrdered className="size-4 text-slate-400" />
-          </CardHeader>
-          <CardContent className="pb-4">
-            <div className="text-xs flex gap-2 font-bold flex-wrap mt-1">
-              {usedCategories.length === 0 ? (
-                <span className="text-muted-foreground text-[10px]">No categories yet</span>
-              ) : usedCategories.map((cat) => (
-                <Badge
-                  key={cat.code}
-                  className={cn("border cursor-pointer", deptBadgeClass(cat.code))}
-                  onClick={() => setSelectedDept(cat.code)}
-                >
-                  {cat.label}: {categoryCounts[cat.code] ?? 0}
-                </Badge>
-              ))}
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-2">Click a category to filter</p>
-          </CardContent>
-        </Card>
-      </div>
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800">
+              <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Average Charge Rate</CardTitle>
+                <DollarSign className="size-4 text-slate-400" />
+              </CardHeader>
+              <CardContent className="pb-4">
+                <div className="text-2xl font-black text-teal-700 dark:text-teal-400">
+                  {catalogQuery.isLoading ? "..." : fmt(avgRate)}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">Mean charge rate across all services</p>
+              </CardContent>
+            </Card>
+          </div>
 
       {/* Filters & Catalog Table */}
       <Card className="shadow-sm border-slate-200 dark:border-slate-800">
@@ -713,7 +696,10 @@ function ServiceCharges() {
                   placeholder="Search service name..."
                   className="pl-9 bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1);
+                  }}
                 />
               </div>
 
@@ -721,7 +707,10 @@ function ServiceCharges() {
                 <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
                 <select
                   value={selectedDept}
-                  onChange={(e) => setSelectedDept(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedDept(e.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="text-xs font-semibold h-9 px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-lg cursor-pointer outline-none"
                 >
                   <option value="ALL">All Categories</option>
@@ -770,7 +759,7 @@ function ServiceCharges() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-900">
-                  {filteredData.map((item) => {
+                  {paginatedData.map((item) => {
                     const catMeta = activeCategories.find((c) => c.code === item.department);
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
@@ -817,6 +806,78 @@ function ServiceCharges() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {totalServiceItems > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span>Show</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {[5, 10, 20, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <span>entries</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <span>
+                  Showing {serviceStartIndex + 1} to {Math.min(serviceStartIndex + pageSize, totalServiceItems)} of {totalServiceItems} entries
+                </span>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronsLeft className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="px-2 text-xs font-medium">
+                    Page {currentPage} of {totalServicePages || 1}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalServicePages))}
+                    disabled={currentPage === totalServicePages || totalServicePages === 0}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setCurrentPage(totalServicePages)}
+                    disabled={currentPage === totalServicePages || totalServicePages === 0}
+                  >
+                    <ChevronsRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </CardContent>
@@ -1002,7 +1063,7 @@ function ServiceCharges() {
       {activeTab === "expenses" && (
         <>
           {/* Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 font-sans">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-sans">
             <Card className="shadow-sm border-slate-200 dark:border-slate-800">
               <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total Predefined Expenses</CardTitle>
@@ -1028,29 +1089,6 @@ function ServiceCharges() {
                 <p className="text-[10px] text-muted-foreground mt-1">Mean amount across all predefined expenses</p>
               </CardContent>
             </Card>
-
-            <Card className="shadow-sm border-slate-200 dark:border-slate-800">
-              <CardHeader className="py-4 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Categories Breakdown</CardTitle>
-                <ListOrdered className="size-4 text-slate-400" />
-              </CardHeader>
-              <CardContent className="pb-4">
-                <div className="text-xs flex gap-2 font-bold flex-wrap mt-1">
-                  {usedExpCategories.length === 0 ? (
-                    <span className="text-muted-foreground text-[10px]">No categories yet</span>
-                  ) : usedExpCategories.map((cat) => (
-                    <Badge
-                      key={cat.code}
-                      className={cn("border cursor-pointer", deptBadgeClass(cat.code))}
-                      onClick={() => setSelectedExpDept(cat.code)}
-                    >
-                      {cat.label}: {expCategoryCounts[cat.code] ?? 0}
-                    </Badge>
-                  ))}
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-2">Click a category to filter</p>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Filters & Catalog Table */}
@@ -1064,7 +1102,10 @@ function ServiceCharges() {
                       placeholder="Search expense name..."
                       className="pl-9 bg-slate-50/50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-800"
                       value={expSearchQuery}
-                      onChange={(e) => setExpSearchQuery(e.target.value)}
+                      onChange={(e) => {
+                        setExpSearchQuery(e.target.value);
+                        setExpCurrentPage(1);
+                      }}
                     />
                   </div>
 
@@ -1072,7 +1113,10 @@ function ServiceCharges() {
                     <Filter className="h-4 w-4 text-muted-foreground shrink-0" />
                     <select
                       value={selectedExpDept}
-                      onChange={(e) => setSelectedExpDept(e.target.value)}
+                      onChange={(e) => {
+                        setSelectedExpDept(e.target.value);
+                        setExpCurrentPage(1);
+                      }}
                       className="text-xs font-semibold h-9 px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 rounded-lg cursor-pointer outline-none"
                     >
                       <option value="ALL">All Categories</option>
@@ -1120,7 +1164,7 @@ function ServiceCharges() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-900">
-                      {filteredExpData.map((item) => {
+                      {paginatedExpData.map((item) => {
                         const catMeta = activeExpCategories.find((c) => c.code === item.category);
                         return (
                           <tr key={item.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
@@ -1157,6 +1201,78 @@ function ServiceCharges() {
                       })}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Pagination Controls */}
+              {totalExpItems > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-4 border-t text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <span>Show</span>
+                    <select
+                      value={expPageSize}
+                      onChange={(e) => {
+                        setExpPageSize(Number(e.target.value));
+                        setExpCurrentPage(1);
+                      }}
+                      className="h-8 rounded-md border border-slate-200 dark:border-slate-800 bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {[5, 10, 20, 50, 100].map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                    <span>entries</span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    <span>
+                      Showing {expStartIndex + 1} to {Math.min(expStartIndex + expPageSize, totalExpItems)} of {totalExpItems} entries
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setExpCurrentPage(1)}
+                        disabled={expCurrentPage === 1}
+                      >
+                        <ChevronsLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setExpCurrentPage((prev) => Math.max(prev - 1, 1))}
+                        disabled={expCurrentPage === 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <span className="px-2 text-xs font-medium">
+                        Page {expCurrentPage} of {totalExpPages || 1}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setExpCurrentPage((prev) => Math.min(prev + 1, totalExpPages))}
+                        disabled={expCurrentPage === totalExpPages || totalExpPages === 0}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setExpCurrentPage(totalExpPages)}
+                        disabled={expCurrentPage === totalExpPages || totalExpPages === 0}
+                      >
+                        <ChevronsRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
