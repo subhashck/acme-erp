@@ -33,7 +33,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/acme_erp?sslmode=disable
       - BETTER_AUTH_SECRET=ee3e644fc63c3c50d5a15b3ff79057725f35f43698a91f194b34f7ccbff289cd
       - BETTER_AUTH_URL=http://localhost:8787
-      - TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://10.10.10.36:8787,http://10.10.10.30:8787
+      - TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8787
       - ADMIN_EMAIL=admin@acmehospital.health
       - ADMIN_PASSWORD=AdminAdmin@12345
     depends_on:
