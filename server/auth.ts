@@ -10,7 +10,7 @@ if (!rawAuthUrl && process.env.RAILWAY_STATIC_URL) {
   rawAuthUrl = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
 }
 
-const cleanAuthUrl = (rawAuthUrl ?? "http://localhost:8787").replace(/\/$/, "");
+const cleanAuthUrl = (rawAuthUrl ?? "http://localhost:8787").trim().replace(/\/+$/, "");
 
 const extraOrigins: string[] = ["http://localhost:5173"];
 if (process.env.RAILWAY_STATIC_URL) {
@@ -20,16 +20,23 @@ if (process.env.RAILWAY_PUBLIC_DOMAIN) {
   extraOrigins.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
 }
 extraOrigins.push("https://acme-erp-production.up.railway.app");
+
 const envOrigins = process.env.TRUSTED_ORIGINS
   ? process.env.TRUSTED_ORIGINS.split(",")
+      .map((origin) => origin.trim().replace(/\/+$/, ""))
+      .filter(Boolean)
   : [];
+
+const trustedOrigins = Array.from(
+  new Set([cleanAuthUrl, ...extraOrigins, ...envOrigins].map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean))
+);
 
 export const auth = betterAuth({
   database: pool,
   baseURL: cleanAuthUrl,
   basePath: "/api/auth",
   secret: process.env.BETTER_AUTH_SECRET ?? "dev-secret-change-me-dev-secret-change-me",
-  trustedOrigins: [cleanAuthUrl, ...extraOrigins, ...envOrigins],
+  trustedOrigins,
   emailAndPassword: {
     enabled: true
   },
