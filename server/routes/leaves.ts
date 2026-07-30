@@ -634,14 +634,25 @@ export const leavesRoutes = new Hono<AuthEnv>()
         const startDateStr = getLocalDateStr(leaveRequest.startDate);
         const endDateStr = getLocalDateStr(leaveRequest.endDate);
 
-        await db.insert(rosters).values({
-          staffId: employee.staffId,
-          departmentId: activeDept.departmentId,
-          shiftId: leaveShift.id,
-          startDate: startDateStr,
-          endDate: endDateStr,
-          notes: `Leave Request: ${leaveRequest.requestNo}`,
-        }).execute();
+        // Expand the leave date range to individual per-day roster rows
+        const leaveDates: string[] = [];
+        const curr = new Date(startDateStr + "T00:00:00Z");
+        const last = new Date(endDateStr + "T00:00:00Z");
+        while (curr <= last) {
+          leaveDates.push(curr.toISOString().slice(0, 10));
+          curr.setUTCDate(curr.getUTCDate() + 1);
+        }
+
+        if (leaveDates.length > 0) {
+          const leaveRosterValues = leaveDates.map((date) => ({
+            staffId: employee.staffId,
+            departmentId: activeDept.departmentId,
+            shiftId: leaveShift.id,
+            date,
+            notes: `Leave Request: ${leaveRequest.requestNo}`,
+          }));
+          await db.insert(rosters).values(leaveRosterValues).onConflictDoNothing().execute();
+        }
       }
     } catch (err) {
       console.error("Failed to add leave to shift roster:", err);

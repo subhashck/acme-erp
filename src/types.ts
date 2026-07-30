@@ -120,8 +120,8 @@ export type RosterRow = {
   shiftId: number;
   shift: string;
   isOffDay: boolean;
-  startDate: string;
-  endDate: string;
+  /** Single calendar date (YYYY-MM-DD). One row = one day. */
+  date: string;
   notes?: string | null;
   createdAt: string;
 };

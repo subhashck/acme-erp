@@ -16,9 +16,38 @@ import { cn } from "../../../utils/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Calendar } from "../../../components/ui/calendar";
 import { Label } from "../../../ui/label";
-import { format } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { authClient } from "../../../services/auth";
 import CurrencyFormat from "react-currency-format";
+
+function safeParseDate(value: string | Date | undefined | null): Date | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return isValid(value) ? value : undefined;
+  try {
+    const str = String(value).trim();
+    if (!str || str === "null" || str === "undefined" || str === "Invalid Date") return undefined;
+    const parsed = str.includes("T") ? parseISO(str) : new Date(str);
+    return isValid(parsed) && !isNaN(parsed.getTime()) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function safeFormatDate(value: string | Date | undefined | null, formatStr: string = "PPP"): string | null {
+  const d = safeParseDate(value);
+  if (!d) return null;
+  try {
+    return format(d, formatStr);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeDateString(dateVal: any): string {
+  if (!dateVal) return "";
+  const d = safeParseDate(dateVal);
+  return d ? format(d, "yyyy-MM-dd") : "";
+}
 
 export const Route = createFileRoute("/_authenticated/hr/add-staff")({
   validateSearch: z.object({ staffId: z.number().optional() }),
@@ -261,19 +290,23 @@ function AddStaff() {
         epfNumber: profile?.epfNumber ?? "",
         esiNumber: profile?.esiNumber ?? "",
         educationHistory: Array.isArray(profile?.educationHistory) ? profile.educationHistory : [],
-        professionalHistory: Array.isArray(profile?.professionalHistory) ? profile.professionalHistory : [],
+        professionalHistory: Array.isArray(profile?.professionalHistory) ? profile.professionalHistory.map((item: any) => ({
+          ...item,
+          from: normalizeDateString(item.from),
+          to: normalizeDateString(item.to)
+        })) : [],
         bankName: (existingStaff as any).bankName ?? "",
         accountNumber: (existingStaff as any).accountNumber ?? "",
         ifscCode: (existingStaff as any).ifscCode ?? "",
-        dateOfBirth: profile?.dateOfBirth ?? "",
-        dateOfJoining: profile?.dateOfJoining ?? "",
-        lastWorkingDate: profile?.lastWorkingDate ?? "",
+        dateOfBirth: normalizeDateString(profile?.dateOfBirth),
+        dateOfJoining: normalizeDateString(profile?.dateOfJoining),
+        lastWorkingDate: normalizeDateString(profile?.lastWorkingDate),
         isExecutive: existingStaff.isExecutive ?? false,
-        effectiveDate: existingStaff.effectiveDate ?? new Date().toISOString().split('T')[0],
+        effectiveDate: normalizeDateString(existingStaff.effectiveDate) || new Date().toISOString().split('T')[0],
         employmentType: (existingStaff.employmentType as any) ?? "Permanent",
-        permanentConfirmationDate: existingStaff.permanentConfirmationDate ?? "",
-        employmentStartDate: existingStaff.employmentStartDate ?? "",
-        employmentEndDate: existingStaff.employmentEndDate ?? "",
+        permanentConfirmationDate: normalizeDateString(existingStaff.permanentConfirmationDate),
+        employmentStartDate: normalizeDateString(existingStaff.employmentStartDate),
+        employmentEndDate: normalizeDateString(existingStaff.employmentEndDate),
         supervisor1Id: supervisorsQuery.data?.explicitSupervisors?.supervisor1?.staffId?.toString() ?? "",
         supervisor2Id: supervisorsQuery.data?.explicitSupervisors?.supervisor2?.staffId?.toString() ?? "",
         gender: (profile?.gender as any) ?? "Male",
@@ -283,9 +316,9 @@ function AddStaff() {
         certifications: Array.isArray(profile?.certifications) ? profile.certifications : [],
         familyMembers: Array.isArray(profile?.familyMembers) ? profile.familyMembers : defaultValues.familyMembers,
         mncRegistrationNo: profile?.mncRegistrationNo ?? "",
-        mncValidityUpto: profile?.mncValidityUpto ?? "",
+        mncValidityUpto: normalizeDateString(profile?.mncValidityUpto),
         mmcRegistrationNo: profile?.mmcRegistrationNo ?? "",
-        mmcValidityUpto: profile?.mmcValidityUpto ?? ""
+        mmcValidityUpto: normalizeDateString(profile?.mmcValidityUpto)
       });
       hasInitialized.current = true;
     }
@@ -482,7 +515,7 @@ function AddStaff() {
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick date of birth</span>}
+                            {safeFormatDate(field.value, "PPP") || <span>Pick date of birth</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
@@ -490,8 +523,8 @@ function AddStaff() {
                             mode="single"
                             captionLayout="dropdown"
                             disabled={[{ before: hundredYearsAgo }, { after: new Date() }]}
-                            selected={field.value ? new Date(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            selected={safeParseDate(field.value)}
+                            onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")}
                           />
                         </PopoverContent>
                       </Popover>
@@ -573,11 +606,11 @@ function AddStaff() {
                                 <PopoverTrigger asChild>
                                   <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3 h-10", !field.value && "text-muted-foreground")}>
                                     <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                                    {field.value ? format(new Date(field.value), "MMM yyyy") : <span>From</span>}
+                                    {safeFormatDate(field.value, "MMM yyyy") || <span>From</span>}
                                   </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0" align="start">
-                                  <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                                  <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                                 </PopoverContent>
                               </Popover>
                             )}
@@ -591,11 +624,11 @@ function AddStaff() {
                                 <PopoverTrigger asChild>
                                   <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3 h-10", !field.value && "text-muted-foreground")}>
                                     <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                                    {field.value ? format(new Date(field.value), "MMM yyyy") : <span>To</span>}
+                                    {safeFormatDate(field.value, "MMM yyyy") || <span>To</span>}
                                   </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-auto p-0" align="start">
-                                  <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                                  <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                                 </PopoverContent>
                               </Popover>
                             )}
@@ -770,11 +803,11 @@ function AddStaff() {
                         <PopoverTrigger asChild>
                           <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
                             <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                          <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                         </PopoverContent>
                       </Popover>
                     )}
@@ -796,15 +829,15 @@ function AddStaff() {
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
                             captionLayout="dropdown"
-                            selected={field.value ? new Date(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            selected={safeParseDate(field.value)}
+                            onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")}
                           />
                         </PopoverContent>
                       </Popover>
@@ -864,11 +897,11 @@ function AddStaff() {
                           <PopoverTrigger asChild>
                             <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                            <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                           </PopoverContent>
                         </Popover>
                       )}
@@ -886,11 +919,11 @@ function AddStaff() {
                             <PopoverTrigger asChild>
                               <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
                                 <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                                {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                                {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                              <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                             </PopoverContent>
                           </Popover>
                         )}
@@ -906,11 +939,11 @@ function AddStaff() {
                             <PopoverTrigger asChild>
                               <Button variant="outline" className={cn("w-full justify-start text-left font-normal bg-background px-3", !field.value && "text-muted-foreground")}>
                                 <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                                {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                                {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar mode="single" captionLayout="dropdown" selected={field.value ? new Date(field.value) : undefined} onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")} />
+                              <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                             </PopoverContent>
                           </Popover>
                         )}
@@ -935,15 +968,15 @@ function AddStaff() {
                             )}
                           >
                             <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                            {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                            {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
                             captionLayout="dropdown"
-                            selected={field.value ? new Date(field.value) : undefined}
-                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                            selected={safeParseDate(field.value)}
+                            onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")}
                           />
                         </PopoverContent>
                       </Popover>
@@ -988,7 +1021,7 @@ function AddStaff() {
                               )}
                             >
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -997,8 +1030,8 @@ function AddStaff() {
                               captionLayout="dropdown"
                               startMonth={new Date((new Date()).getFullYear() - 20, 0)}
                               endMonth={new Date((new Date()).getFullYear() + 20, 11)}
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                              selected={safeParseDate(field.value)}
+                              onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")}
                             />
                           </PopoverContent>
                         </Popover>
@@ -1024,7 +1057,7 @@ function AddStaff() {
                               )}
                             >
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              {safeFormatDate(field.value, "PPP") || <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -1033,8 +1066,8 @@ function AddStaff() {
                               captionLayout="dropdown"
                               startMonth={new Date((new Date()).getFullYear() - 20, 0)}
                               endMonth={new Date((new Date()).getFullYear() + 20, 11)}
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                              selected={safeParseDate(field.value)}
+                              onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")}
                             />
                           </PopoverContent>
                         </Popover>

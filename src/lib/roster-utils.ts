@@ -10,7 +10,7 @@ export const SHIFT_CONFIG: Record<string, {
   borderClass: string; 
   textColorClass: string; 
   gradientClass: string; 
-  Icon: React.ComponentType<{ size?: number }> 
+  Icon: React.ComponentType<{ size?: number; className?: string }> 
 }> = {
   Morning:   { colorClass: "text-sky-500 dark:text-sky-400", bgClass: "bg-sky-50 dark:bg-sky-950/20", borderClass: "border-sky-200 dark:border-sky-900/30", textColorClass: "text-sky-700 dark:text-sky-400", gradientClass: "from-sky-50 to-white dark:from-sky-950/20 dark:to-card", Icon: Sunrise },
   Afternoon: { colorClass: "text-emerald-600 dark:text-emerald-400", bgClass: "bg-emerald-50 dark:bg-emerald-950/20", borderClass: "border-emerald-200 dark:border-emerald-900/30", textColorClass: "text-emerald-800 dark:text-emerald-400", gradientClass: "from-emerald-50 to-white dark:from-emerald-950/20 dark:to-card", Icon: Sun },
@@ -47,5 +47,65 @@ export const shortDay = (dateStr: string) =>
 export const rollingWeek = (startOffset = 0, length = 7): string[] =>
   Array.from({ length }, (_, i) => isoDate(startOffset + i));
 
-export const isActiveToday = (r: RosterRow, date = today()) =>
-  r.startDate <= date && r.endDate >= date;
+export const isActiveToday = (r: RosterRow, date = today()) => r.date === date;
+
+// ── Off-Day Helpers ───────────────────────────────────────────────────────────
+
+export interface WeeklyOffDayRule {
+  staffId: number;
+  daysOfWeek: number[] | string;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+}
+
+export interface ApprovedOffDayRequest {
+  staffId: number;
+  originalDate: string;
+  requestedDate: string;
+  status: string;
+}
+
+export function isStaffOffDay(
+  staffId: number,
+  dateStr: string,
+  weeklyOffDays: WeeklyOffDayRule[] = [],
+  offDayRequests: ApprovedOffDayRequest[] = []
+): boolean {
+  if (!staffId || !dateStr) return false;
+
+  // 1. Check approved swap requests
+  const requests = offDayRequests.filter(
+    (r) => Number(r.staffId) === Number(staffId) && r.status === "Approved"
+  );
+  for (const req of requests) {
+    if (req.originalDate === dateStr) return false;
+    if (req.requestedDate === dateStr) return true;
+  }
+
+  // 2. Check recurring weekly off-day rules
+  const d = new Date(dateStr + "T00:00:00Z");
+  const dayOfWeek = d.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+
+  const staffRules = weeklyOffDays.filter((w) => Number(w.staffId) === Number(staffId));
+  for (const rule of staffRules) {
+    if (
+      dateStr >= rule.effectiveFrom &&
+      (!rule.effectiveTo || dateStr <= rule.effectiveTo)
+    ) {
+      let days: any[] = [];
+      if (Array.isArray(rule.daysOfWeek)) {
+        days = rule.daysOfWeek;
+      } else if (typeof rule.daysOfWeek === "string") {
+        try {
+          days = JSON.parse(rule.daysOfWeek);
+        } catch {
+          days = [rule.daysOfWeek];
+        }
+      }
+      const numDays = days.map(Number);
+      if (numDays.includes(dayOfWeek)) return true;
+    }
+  }
+
+  return false;
+}

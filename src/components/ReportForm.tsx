@@ -67,12 +67,12 @@ const DEFAULT_PAYMENT_CHANNELS = [
 
 // ─────────────────────────── types ───────────────────────────────
 
-type ServiceQty = Record<number, { rate: number; quantity: number; amount: number; narration?: string }>;
-type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number; narration?: string };
+type ServiceQty = Record<number, { rate: number; quantity: number; amount: number; narration?: string; showNarration?: boolean }>;
+type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number; narration?: string; showNarration?: boolean };
 // type MiscIncome = { label: string; amount: number };
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
-type Expenditure = { category: string; details: string; amount: number; narration?: string };
+type Expenditure = { category: string; details: string; amount: number; narration?: string; showNarration?: boolean };
 type StaffAdvance = { staffId?: number | null; staffName: string; amount: number };
 // type AdditionalIncome = { label: string; amount: number };
 type DiscountReturn = { label: string; amount: number };
@@ -307,6 +307,7 @@ export function ReportForm({
     const custom: CustomLine[] = [];
     const night: Array<{ serviceId: number; rate: number; quantity: number; amount: number; narration?: string }> = [];
     initialData.serviceLines?.forEach((l: any) => {
+      const hasNarration = Boolean(l.narration && String(l.narration).trim() !== "");
       if (l.isNightEntry) {
         if (l.serviceId) {
           night.push({
@@ -324,6 +325,7 @@ export function ReportForm({
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
             narration: l.narration || "",
+            showNarration: hasNarration,
           };
         } else {
           custom.push({
@@ -333,6 +335,7 @@ export function ReportForm({
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
             narration: l.narration || "",
+            showNarration: hasNarration,
           });
         }
       }
@@ -348,7 +351,11 @@ export function ReportForm({
     //   patientName: item.patientName, amount: toNum(item.amount),
     // })) ?? []);
     setExpenditures(initialData.expenditures?.map((item: any) => ({
-      category: item.category, details: item.details, amount: toNum(item.amount), narration: item.narration || "",
+      category: item.category,
+      details: item.details,
+      amount: toNum(item.amount),
+      narration: item.narration || "",
+      showNarration: Boolean(item.narration && String(item.narration).trim() !== ""),
     })) ?? []);
     setStaffAdvances(initialData.staffAdvances?.map((item: any) => ({
       staffId: item.staffId ? toNum(item.staffId) : undefined,
@@ -613,7 +620,7 @@ export function ReportForm({
   };
 
   const handleAddCustomLine = (dept: string) => {
-    setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0, narration: "" }]);
+    setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0, narration: "", showNarration: false }]);
   };
 
   const handleNarrationChange = (serviceId: number, val: string) => {
@@ -622,6 +629,35 @@ export function ReportForm({
       if (!data) return prev;
       return { ...prev, [serviceId]: { ...data, narration: val } };
     });
+  };
+
+  const toggleNarration = (serviceId: number) => {
+    setServiceQuantities((prev) => {
+      const data = prev[serviceId];
+      if (!data) return prev;
+      const currentShow = data.showNarration ?? Boolean(data.narration && data.narration.trim() !== "");
+      return { ...prev, [serviceId]: { ...data, showNarration: !currentShow } };
+    });
+  };
+
+  const toggleCustomLineNarration = (index: number) => {
+    setCustomLines((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const currentShow = item.showNarration ?? Boolean(item.narration && item.narration.trim() !== "");
+        return { ...item, showNarration: !currentShow };
+      })
+    );
+  };
+
+  const toggleExpenditureNarration = (index: number) => {
+    setExpenditures((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const currentShow = item.showNarration ?? Boolean(item.narration && item.narration.trim() !== "");
+        return { ...item, showNarration: !currentShow };
+      })
+    );
   };
 
   const handleNightNarrationChange = (index: number, val: string) => {
@@ -733,8 +769,8 @@ export function ReportForm({
   const doSubmit = (forcedStatus?: "draft" | "submitted") => {
     const finalStatus = forcedStatus ?? status;
 
-    if (!isCashTallied || !isReconciled) {
-      alert("Submission blocked due to tally mismatch! Physical cash and payment channel totals must match calculated figures before saving.");
+    if (finalStatus === "submitted" && (!isCashTallied || !isReconciled)) {
+      alert("Submission blocked due to tally mismatch! Physical cash and payment channel totals must match calculated figures before submitting.");
       return;
     }
 
@@ -865,18 +901,43 @@ export function ReportForm({
         <tbody className="divide-y">
           {catalog.map((item) => {
             const state = serviceQuantities[item.id] ?? { rate: item.defaultRate, quantity: 0, amount: 0 };
+            const isNarrationVisible = state.showNarration ?? Boolean(state.narration && state.narration.trim() !== "");
             return (
               <tr key={item.id} className="hover:bg-muted/10">
                 <td className="p-3 font-semibold text-foreground">
                   <div>{item.serviceName}</div>
                   {state.quantity > 0 && (
-                    <textarea
-                      rows={2}
-                      placeholder="Add narration / note (multi-line supported)..."
-                      value={state.narration || ""}
-                      onChange={(e) => handleNarrationChange(item.id, e.target.value)}
-                      className="w-full mt-1.5 text-[11px] font-normal border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
-                    />
+                    <div className="mt-1">
+                      {isNarrationVisible ? (
+                        <div className="space-y-1 mt-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground font-medium">Narration / Remarks</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleNarration(item.id)}
+                              className="text-[10px] text-muted-foreground hover:text-rose-500 font-semibold cursor-pointer"
+                            >
+                              Hide Narration
+                            </button>
+                          </div>
+                          <textarea
+                            rows={2}
+                            placeholder="Add narration / note (multi-line supported)..."
+                            value={state.narration || ""}
+                            onChange={(e) => handleNarrationChange(item.id, e.target.value)}
+                            className="w-full text-[11px] font-normal border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleNarration(item.id)}
+                          className="text-[10px] text-teal-650 dark:text-teal-400 hover:underline font-semibold cursor-pointer mt-0.5 inline-flex items-center gap-1"
+                        >
+                          + Add Narration
+                        </button>
+                      )}
+                    </div>
                   )}
                 </td>
                 <td className="p-3 text-center">
@@ -953,78 +1014,100 @@ export function ReportForm({
       .filter((l) => l.department === dept)
       .map((line, cIdx) => {
         const actualIdx = customLines.indexOf(line);
+        const isCustomNarrationVisible = line.showNarration ?? Boolean(line.narration && line.narration.trim() !== "");
         return (
           <div key={cIdx} className="grid grid-cols-1 gap-2.5 sm:grid-cols-4 items-end bg-muted/20 p-3 rounded-lg border">
-            <div className="sm:col-span-1 space-y-1">
-              <Label className="text-[10px]">Service Name</Label>
-              <Input
-                type="text" placeholder="Service name"
-                value={line.serviceName}
-                onChange={(e) => handleCustomLineChange(actualIdx, "serviceName", e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px]">Qty</Label>
-              <Input
-                type="number" placeholder="1"
-                value={line.quantity}
-                onChange={(e) => handleCustomLineChange(actualIdx, "quantity", e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px]">Rate</Label>
-              {line.rate > 0 ? (
-                <Input
-                  type="number" placeholder="0"
-                  value={line.rate}
-                  onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
-                  required
-                />
-              ) : (
-                <div className="h-10 flex items-center justify-between border rounded-md px-3 bg-muted/20 text-[10px] text-muted-foreground select-none">
-                  <span>Hidden</span>
+                <div className="sm:col-span-1 space-y-1">
+                  <Label className="text-[10px]">Service Name</Label>
+                  <Input
+                    type="text" placeholder="Service name"
+                    value={line.serviceName}
+                    onChange={(e) => handleCustomLineChange(actualIdx, "serviceName", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Qty</Label>
+                  <Input
+                    type="number" placeholder="1"
+                    value={line.quantity}
+                    onChange={(e) => handleCustomLineChange(actualIdx, "quantity", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Rate</Label>
+                  {line.rate > 0 ? (
+                    <Input
+                      type="number" placeholder="0"
+                      value={line.rate}
+                      onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
+                      required
+                    />
+                  ) : (
+                    <div className="h-10 flex items-center justify-between border rounded-md px-3 bg-muted/20 text-[10px] text-muted-foreground select-none">
+                      <span>Hidden</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCustomLineChange(actualIdx, "rate", String(line.amount / (line.quantity || 1)))}
+                        className="text-teal-650 hover:underline font-bold cursor-pointer"
+                      >
+                        Show
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <div className="space-y-1 flex-1">
+                    <Label className="text-[10px]">Total</Label>
+                    <Input
+                      type="number"
+                      value={line.amount}
+                      onChange={(e) => handleCustomLineChange(actualIdx, "amount", e.target.value)}
+                      required
+                    />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => handleCustomLineChange(actualIdx, "rate", String(line.amount / (line.quantity || 1)))}
-                    className="text-teal-650 hover:underline font-bold cursor-pointer"
+                    onClick={() => handleRemoveCustomLine(actualIdx)}
+                    className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 self-end mb-0.5 cursor-pointer"
                   >
-                    Show
+                    <Trash2 size={15} />
                   </button>
                 </div>
-              )}
-            </div>
-            <div className="flex gap-2 items-center">
-              <div className="space-y-1 flex-1">
-                <Label className="text-[10px]">Total</Label>
-                <Input
-                  type="number"
-                  value={line.amount}
-                  onChange={(e) => handleCustomLineChange(actualIdx, "amount", e.target.value)}
-                  required
-                />
+                <div className="sm:col-span-4 space-y-1">
+                  {isCustomNarrationVisible ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[10px]">Narration / Remarks (Optional)</Label>
+                        <button
+                          type="button"
+                          onClick={() => toggleCustomLineNarration(actualIdx)}
+                          className="text-[10px] text-muted-foreground hover:text-rose-500 font-semibold cursor-pointer"
+                        >
+                          Hide Narration
+                        </button>
+                      </div>
+                      <textarea
+                        rows={2}
+                        placeholder="Enter narration or service remarks (multi-line supported)..."
+                        value={line.narration || ""}
+                        onChange={(e) => handleCustomLineChange(actualIdx, "narration", e.target.value)}
+                        className="w-full text-xs font-normal border rounded px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleCustomLineNarration(actualIdx)}
+                      className="text-[10px] text-teal-650 dark:text-teal-400 hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
+                    >
+                      + Add Narration / Remarks
+                    </button>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveCustomLine(actualIdx)}
-                className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 self-end mb-0.5 cursor-pointer"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-            <div className="sm:col-span-4 space-y-1">
-              <Label className="text-[10px]">Narration / Remarks (Optional)</Label>
-              <textarea
-                rows={2}
-                placeholder="Enter narration or service remarks (multi-line supported)..."
-                value={line.narration || ""}
-                onChange={(e) => handleCustomLineChange(actualIdx, "narration", e.target.value)}
-                className="w-full text-xs font-normal border rounded px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
-              />
-            </div>
-          </div>
-        );
+            );
       });
 
   // ── render ────────────────────────────────────────────────────
@@ -1597,26 +1680,49 @@ export function ReportForm({
                           >
                             <Trash2 size={15} />
                           </button>
-                          <div className="w-full space-y-1 border-t pt-2 mt-1">
-                            <Label className="text-[10px]">Narration Entry (Optional)</Label>
-                            <textarea
-                              rows={2}
-                              placeholder="Enter narration or payment remarks (multi-line supported)..."
-                              value={item.narration || ""}
-                              readOnly={isAutoExpenditure}
-                              onChange={(e) =>
-                                !isAutoExpenditure &&
-                                setExpenditures(
-                                  expenditures.map((ex, i) => (i === idx ? { ...ex, narration: e.target.value } : ex))
-                                )
-                              }
-                              className={cn(
-                                "w-full text-xs font-normal border rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y",
-                                isAutoExpenditure
-                                  ? "bg-muted/70 text-muted-foreground cursor-not-allowed"
-                                  : "bg-background text-foreground"
-                              )}
-                            />
+                          <div className="w-full border-t pt-2 mt-1">
+                            {(item.showNarration ?? Boolean(item.narration && item.narration.trim() !== "")) ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[10px]">Narration Entry (Optional)</Label>
+                                  {!isAutoExpenditure && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpenditureNarration(idx)}
+                                      className="text-[10px] text-muted-foreground hover:text-rose-500 font-semibold cursor-pointer"
+                                    >
+                                      Hide Narration
+                                    </button>
+                                  )}
+                                </div>
+                                <textarea
+                                  rows={2}
+                                  placeholder="Enter narration or payment remarks (multi-line supported)..."
+                                  value={item.narration || ""}
+                                  readOnly={isAutoExpenditure}
+                                  onChange={(e) =>
+                                    !isAutoExpenditure &&
+                                    setExpenditures(
+                                      expenditures.map((ex, i) => (i === idx ? { ...ex, narration: e.target.value } : ex))
+                                    )
+                                  }
+                                  className={cn(
+                                    "w-full text-xs font-normal border rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y",
+                                    isAutoExpenditure
+                                      ? "bg-muted/70 text-muted-foreground cursor-not-allowed"
+                                      : "bg-background text-foreground"
+                                  )}
+                                />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpenditureNarration(idx)}
+                                className="text-[10px] text-teal-650 dark:text-teal-400 hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
+                              >
+                                + Add Narration Entry
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
@@ -2309,7 +2415,7 @@ export function ReportForm({
 
               {/* Submission Actions */}
               <div className="space-y-2 pt-2">
-                {(!isCashTallied || !isReconciled || toNum(reconciliationTolerance) > 100) && (
+                {((status === "submitted" && (!isCashTallied || !isReconciled)) || toNum(reconciliationTolerance) > 100) && (
                   <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-bold space-y-1">
                     <div className="flex items-center gap-1.5 font-extrabold text-rose-800 dark:text-rose-200">
                       <AlertTriangle size={15} className="shrink-0 text-rose-600" />
@@ -2333,7 +2439,7 @@ export function ReportForm({
                 <Button
                   onClick={handleSubmit}
                   className="w-full bg-teal-650 hover:bg-teal-700 text-white font-bold cursor-pointer gap-1.5 mt-2 h-10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isPending || !isCashTallied || !isReconciled || toNum(reconciliationTolerance) > 100}
+                  disabled={isPending || (status === "submitted" && (!isCashTallied || !isReconciled)) || toNum(reconciliationTolerance) > 100}
                 >
                   <Save size={16} />
                   {isPending

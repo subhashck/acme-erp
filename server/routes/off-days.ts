@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
-import { staff, staffOffDayRequests, staffWeeklyOffDays, user } from "../db/schema.ts";
+import { staff, staffDepartments, staffOffDayRequests, staffWeeklyOffDays, user } from "../db/schema.ts";
 import { sendNotification } from "../utils/notifier.ts";
 import {
   getCurrentStaff,
@@ -38,22 +38,15 @@ export const offDaysRoutes = new Hono<AuthEnv>()
    * List all weekly off-day rules.
    */
   .get("/hr/weekly-off-days", async (c) => {
-    const session = c.get("session");
-    const isAdminOrHr =
-      session?.user?.role === "admin" || session?.user?.role === "hr";
-
     const staffIdFilter = c.req.query("staffId");
-    const currentStaff = isAdminOrHr ? null : await getCurrentStaff(c);
+    const departmentIdFilter = c.req.query("departmentId");
 
     const conditions: any[] = [];
-    if (!isAdminOrHr) {
-      if (currentStaff) {
-        conditions.push(eq(staffWeeklyOffDays.staffId, currentStaff.staffId));
-      } else {
-        return c.json([]);
-      }
-    } else if (staffIdFilter) {
+    if (staffIdFilter) {
       conditions.push(eq(staffWeeklyOffDays.staffId, parseInt(staffIdFilter)));
+    }
+    if (departmentIdFilter) {
+      conditions.push(eq(staffDepartments.departmentId, parseInt(departmentIdFilter)));
     }
 
     const rows = await db
@@ -72,6 +65,10 @@ export const offDaysRoutes = new Hono<AuthEnv>()
       .innerJoin(
         staff,
         sql`${staffWeeklyOffDays.staffId} = ${staff.staffId} AND ${staff.active} = true`
+      )
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staff.version} = ${staffDepartments.staffVersion} AND ${staffDepartments.status} = 'Active'`
       )
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(staffWeeklyOffDays.effectiveFrom))
@@ -169,27 +166,15 @@ export const offDaysRoutes = new Hono<AuthEnv>()
    * - Staff: see only their own.
    */
   .get("/hr/off-day-requests", async (c) => {
-    const session = c.get("session");
-    const isAdminOrHr =
-      session?.user?.role === "admin" || session?.user?.role === "hr";
-
     const statusFilter = c.req.query("status");
     const staffIdFilter = c.req.query("staffId");
-
-    const currentStaff = isAdminOrHr ? null : await getCurrentStaff(c);
+    const departmentIdFilter = c.req.query("departmentId");
 
     const conditions: any[] = [];
 
-    if (!isAdminOrHr) {
-      if (currentStaff) {
-        conditions.push(eq(staffOffDayRequests.staffId, currentStaff.staffId));
-      } else {
-        return c.json([]);
-      }
-    }
     if (statusFilter) conditions.push(eq(staffOffDayRequests.status, statusFilter));
-    if (isAdminOrHr && staffIdFilter)
-      conditions.push(eq(staffOffDayRequests.staffId, parseInt(staffIdFilter)));
+    if (staffIdFilter) conditions.push(eq(staffOffDayRequests.staffId, parseInt(staffIdFilter)));
+    if (departmentIdFilter) conditions.push(eq(staffDepartments.departmentId, parseInt(departmentIdFilter)));
 
     const rows = await db
       .select({
@@ -210,6 +195,10 @@ export const offDaysRoutes = new Hono<AuthEnv>()
       .innerJoin(
         staff,
         sql`${staffOffDayRequests.staffId} = ${staff.staffId} AND ${staff.active} = true`
+      )
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staff.version} = ${staffDepartments.staffVersion} AND ${staffDepartments.status} = 'Active'`
       )
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(staffOffDayRequests.createdAt))

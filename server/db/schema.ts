@@ -296,11 +296,13 @@ export const rosters = sqliteTable("rosters", {
   staffId: integer("staff_id").notNull(), // stable staffId, no FK
   departmentId: integer("department_id").notNull().references(() => departments.id),
   shiftId: integer("shift_id").notNull().references(() => shifts.id),
-  startDate: text("start_date").notNull(),
-  endDate: text("end_date").notNull(),
+  /** Single calendar date (YYYY-MM-DD) — one row per staff per day. */
+  date: text("date").notNull(),
   notes: text("notes"),
   ...timestamps
-});
+}, (table) => [
+  unique("rosters_staff_id_date_unique").on(table.staffId, table.date)
+]);
 
 /**
  * staffOffDayRequests — an off-day change request submitted by a staff member.

@@ -439,6 +439,7 @@ export const rosterInput = z
     staffId: z.number().int().positive(),
     departmentId: z.number().int().positive(),
     shiftId: z.number().int().positive(),
+    /** startDate and endDate define the range; server expands to per-day rows. */
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
     notes: z.string().optional(),
@@ -447,6 +448,12 @@ export const rosterInput = z
     path: ["endDate"],
     message: "End date must be on or after start date",
   });
+
+/** Used by PUT /hr/roster/:id — only shift and notes are editable on a per-day row. */
+export const rosterUpdateInput = z.object({
+  shiftId: z.number().int().positive(),
+  notes: z.string().optional(),
+});
 
 export const offDayRequestInput = z.object({
   staffId: z.number().int().positive().optional(),

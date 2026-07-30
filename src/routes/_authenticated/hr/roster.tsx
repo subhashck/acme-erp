@@ -1,9 +1,12 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
-import { Plus, Edit2, ChevronDown, ChevronUp, Users, CalendarDays, Download, Clock, Trash2 } from "lucide-react";
-import { useForm } from "react-hook-form";
+import { Plus, Edit2, ChevronDown, ChevronUp, Users, CalendarDays, Download, Clock, Trash2, Calendar as CalendarIcon, Palmtree } from "lucide-react";
+import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
+import { format, addDays, differenceInCalendarDays, parseISO } from "date-fns";
+import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
@@ -15,6 +18,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { Select } from "../../../ui/select";
 import { Autocomplete } from "../../../ui/autocomplete";
 import { MonthPicker } from "../../../components/ui/month-picker";
+import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
+import { Calendar } from "../../../components/ui/calendar";
+import { cn } from "../../../lib/utils";
 import type { RosterRow, StaffRow, DepartmentRow, ShiftRow } from "../../../types";
 import {
   today,
@@ -23,7 +29,10 @@ import {
   rollingWeek,
   isActiveToday,
   SHIFT_CONFIG,
-  getShiftConfig
+  getShiftConfig,
+  isStaffOffDay,
+  type WeeklyOffDayRule,
+  type ApprovedOffDayRequest,
 } from "../../../lib/roster-utils";
 import {
   ShiftBadge,
@@ -51,9 +60,74 @@ const rosterSchema = z
   .refine((v) => v.endDate >= v.startDate, {
     path: ["endDate"],
     message: "End date must be on or after start date"
-  });
+  })
+  .refine(
+    (v) => {
+      const start = parseISO(v.startDate);
+      const end = parseISO(v.endDate);
+      return differenceInCalendarDays(end, start) <= 6;
+    },
+    {
+      path: ["endDate"],
+      message: "Assignment date range cannot exceed 7 days (1 week)"
+    }
+  );
 
 type RosterInput = z.output<typeof rosterSchema>;
+
+// ── DatePickerField Component ────────────────────────────────────────────────
+
+function DatePickerField({
+  label,
+  value,
+  onChange,
+  error,
+  disabledDate,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  error?: string;
+  disabledDate?: (date: Date) => boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const selectedDate = value ? parseISO(value) : undefined;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs font-semibold text-foreground">{label}</span>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              "w-full justify-start text-left font-normal bg-background px-3 h-10 border-input",
+              !value && "text-muted-foreground"
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+            {value ? format(parseISO(value), "PPP") : <span>Pick date</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0 z-50" align="start">
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={(date) => {
+              if (date) {
+                onChange(format(date, "yyyy-MM-dd"));
+                setOpen(false);
+              }
+            }}
+            disabled={disabledDate}
+          />
+        </PopoverContent>
+      </Popover>
+      {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
+    </div>
+  );
+}
 
 // ── Main component ───────────────────────────────────────────────────────────
 
@@ -82,7 +156,51 @@ function Roster() {
     () => client.hr.roster.$get(departmentId ? { query: { departmentId: departmentId.toString() } } : {})
   );
 
+  const weeklyOffDaysQuery = useQuery({
+    queryKey: ["weeklyOffDays", departmentId],
+    queryFn: async () => {
+      const url = departmentId
+        ? `/api/hr/weekly-off-days?departmentId=${departmentId}`
+        : `/api/hr/weekly-off-days`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return (await res.json()) as WeeklyOffDayRule[];
+    },
+  });
+
+  const offDayRequestsQuery = useQuery({
+    queryKey: ["offDayRequests", "Approved", departmentId],
+    queryFn: async () => {
+      const url = departmentId
+        ? `/api/hr/off-day-requests?status=Approved&departmentId=${departmentId}`
+        : `/api/hr/off-day-requests?status=Approved`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      return (await res.json()) as ApprovedOffDayRequest[];
+    },
+  });
+
+  const checkIsOffDay = React.useCallback(
+    (staffId: number, dateStr: string) => {
+      return isStaffOffDay(
+        staffId,
+        dateStr,
+        weeklyOffDaysQuery.data ?? [],
+        offDayRequestsQuery.data ?? []
+      );
+    },
+    [weeklyOffDaysQuery.data, offDayRequestsQuery.data]
+  );
+
+  const pendingDrops = React.useRef(new Set<string>());
   const handleDropStaff = async (staffId: number, date: string, shiftId: number) => {
+    if (checkIsOffDay(staffId, date)) {
+      toast.error(`Cannot assign shift: ${date} is a scheduled off-day for this staff member.`);
+      return;
+    }
+    const key = `${staffId}-${date}-${shiftId}`;
+    if (pendingDrops.current.has(key)) return;
+    pendingDrops.current.add(key);
     try {
       const res = await client.hr.roster.$post({
         json: {
@@ -100,7 +218,9 @@ function Roster() {
       }
       queryClient.invalidateQueries({ queryKey: ["rosters"] });
     } catch (err) {
-      alert("Failed to assign staff: " + (err instanceof Error ? err.message : String(err)));
+      toast.error("Failed to assign staff: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      pendingDrops.current.delete(key);
     }
   };
 
@@ -189,8 +309,8 @@ function Roster() {
       departmentId: r.departmentId,
       staffId: r.staffId,
       shiftId: r.shiftId,
-      startDate: r.startDate,
-      endDate: r.endDate,
+      startDate: r.date,
+      endDate: r.date,
       notes: r.notes || ""
     });
     setShowForm(true);
@@ -223,11 +343,34 @@ function Roster() {
 
   const weeklyData = week.map((date) => ({
     date,
-    rosters: rosters.filter((r) => r.startDate <= date && r.endDate >= date)
+    rosters: rosters.filter((r) => r.date === date)
   }));
 
   const deptStaff = (staffQuery.data ?? []).filter((s) => s.departmentId === departmentId);
   const filteredDeptStaff = deptStaff.filter((s) => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
+
+  // Build a dept-scoped map: staffId → unique initials label.
+  // If two staff share the same initials, disambiguate with -1, -2, ... suffix.
+  const initialsMap = React.useMemo(() => {
+    const getInitials = (name: string) =>
+      name.split(" ").map((n) => n[0] ?? "").join("").slice(0, 2).toUpperCase();
+    const groups = new Map<string, number[]>();
+    for (const s of deptStaff) {
+      const init = getInitials(s.name);
+      if (!groups.has(init)) groups.set(init, []);
+      groups.get(init)!.push(s.staffId);
+    }
+    const map = new Map<number, string>();
+    for (const [init, ids] of groups) {
+      ids.sort((a, b) => a - b); // stable ordering by staffId
+      if (ids.length === 1) {
+        map.set(ids[0], init);
+      } else {
+        ids.forEach((id, i) => map.set(id, `${init}-${i + 1}`));
+      }
+    }
+    return map;
+  }, [deptStaff]);
 
   const staffOptions: [string, string][] = deptStaff.map((s) => [s.staffId.toString(), `${s.name} (${s.role})`] as [string, string]);
 
@@ -334,17 +477,53 @@ function Roster() {
                   </div>
 
                   <div>
-                    <Field label="From" type="date" {...form.register("startDate")} />
-                    {form.formState.errors.startDate && (
-                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.startDate.message}</p>
-                    )}
+                    <Controller
+                      control={form.control}
+                      name="startDate"
+                      render={({ field }) => (
+                        <DatePickerField
+                          label="From Date"
+                          value={field.value}
+                          onChange={(newStart) => {
+                            field.onChange(newStart);
+                            const currentEnd = form.getValues("endDate");
+                            if (!currentEnd || currentEnd < newStart) {
+                              form.setValue("endDate", newStart, { shouldValidate: true });
+                            } else {
+                              const startD = parseISO(newStart);
+                              const endD = parseISO(currentEnd);
+                              if (differenceInCalendarDays(endD, startD) > 6) {
+                                form.setValue("endDate", format(addDays(startD, 6), "yyyy-MM-dd"), { shouldValidate: true });
+                              }
+                            }
+                          }}
+                          error={form.formState.errors.startDate?.message}
+                        />
+                      )}
+                    />
                   </div>
 
                   <div>
-                    <Field label="To" type="date" {...form.register("endDate")} />
-                    {form.formState.errors.endDate && (
-                      <p className="text-xs text-red-500 mt-1">{form.formState.errors.endDate.message}</p>
-                    )}
+                    <Controller
+                      control={form.control}
+                      name="endDate"
+                      render={({ field }) => (
+                        <DatePickerField
+                          label="To Date (Max 7 Days)"
+                          value={field.value}
+                          onChange={field.onChange}
+                          disabledDate={(d) => {
+                            const startVal = form.watch("startDate");
+                            if (!startVal) return false;
+                            const startD = parseISO(startVal);
+                            const maxEnd = addDays(startD, 6);
+                            const dayStr = format(d, "yyyy-MM-dd");
+                            return dayStr < startVal || dayStr > format(maxEnd, "yyyy-MM-dd");
+                          }}
+                          error={form.formState.errors.endDate?.message}
+                        />
+                      )}
+                    />
                   </div>
 
                   <div className="col-span-full">
@@ -379,15 +558,15 @@ function Roster() {
             </CardHeader>
             <CardContent>
               {onDutyNow.length > 0 ? (
-                <div className="flex gap-2.5 flex-wrap">
-                  {onDutyNow.map((r) => <OnDutyCard key={r.id} roster={r} />)}
+                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                  {onDutyNow.map((r) => (
+                    <OnDutyCard key={r.id} roster={r} />
+                  ))}
                 </div>
               ) : (
-                <div className="text-center py-6 text-muted-foreground/60">
-                  <Clock size={28} className="mx-auto mb-2 opacity-40" />
-                  <p className="m-0 text-sm">No staff assigned for today in {selectedDept?.name}</p>
-                  <p className="mt-1 mb-0 text-xs text-amber-500">⚠ Coverage gap — add an assignment</p>
-                </div>
+                <p className="text-center text-muted-foreground/60 py-6 text-sm m-0">
+                  No staff members currently on duty for this department.
+                </p>
               )}
             </CardContent>
           </Card>
@@ -426,7 +605,7 @@ function Roster() {
                   {viewMode === "daily" ? (
                     weekOffset === 0 ? "Next 7 Days" : `Week of ${new Date(week[0] + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
                   ) : (
-                    `Monthly View - ${exportMonth}`
+                    new Date(exportMonth + "-01T00:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })
                   )} — {selectedDept?.name}
                 </span>
                 {viewMode === "daily" && (
@@ -453,6 +632,41 @@ function Roster() {
                       className="px-3 py-1.5 h-8 text-xs"
                     >
                       Next Week →
+                    </Button>
+                  </div>
+                )}
+                {viewMode === "monthly" && (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const [y, m] = exportMonth.split("-").map(Number);
+                        const prev = new Date(Date.UTC(y, m - 2, 1));
+                        setExportMonth(`${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`);
+                      }}
+                      className="px-3 py-1.5 h-8 text-xs"
+                    >
+                      ← Prev
+                    </Button>
+                    {exportMonth !== currentYearMonth() && (
+                      <Button
+                        variant="ghost"
+                        onClick={() => setExportMonth(currentYearMonth())}
+                        className="px-3 py-1.5 h-8 text-xs text-primary"
+                      >
+                        This Month
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const [y, m] = exportMonth.split("-").map(Number);
+                        const next = new Date(Date.UTC(y, m, 1));
+                        setExportMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
+                      }}
+                      className="px-3 py-1.5 h-8 text-xs"
+                    >
+                      Next →
                     </Button>
                   </div>
                 )}
@@ -504,7 +718,7 @@ function Roster() {
                         </h3>
                         <p className="text-xs text-muted-foreground mt-0.5 mb-0">Drag staff from here to assign them to shifts on the calendar below</p>
                       </div>
-                      <div className="w-full sm:w-[240px]">
+                      <div className="w-full sm:w-60">
                         <input
                           type="text"
                           placeholder="Search staff..."
@@ -546,11 +760,18 @@ function Roster() {
 
                               {/* Initial circle */}
                               <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-foreground shrink-0">
-                                {member.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
+                                {initialsMap?.get(member.staffId) ?? member.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
                               </div>
 
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold text-foreground truncate m-0">{member.name}</p>
+                                <div className="flex items-center justify-between gap-1">
+                                  <p className="text-xs font-semibold text-foreground truncate m-0">{member.name}</p>
+                                  {checkIsOffDay(member.staffId, todayStr) && (
+                                    <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded-md px-1 py-0.2 shrink-0">
+                                      OFF
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[10px] text-muted-foreground truncate m-0">{member.role}</p>
                               </div>
                             </div>
@@ -563,7 +784,7 @@ function Roster() {
                   </div>
 
                   <div className="overflow-x-auto">
-                  <div className="flex gap-2 min-w-[700px]">
+                  <div className="flex gap-2 min-w-175">
                     {weeklyData.map(({ date, rosters: dayRosters }) => (
                       <DayColumn
                         key={date}
@@ -573,6 +794,8 @@ function Roster() {
                         onDropStaff={handleDropStaff}
                         onDeleteRoster={deleteRoster}
                         canAssign={canAssign}
+                        initialsMap={initialsMap}
+                        offStaffList={deptStaff.filter((s) => checkIsOffDay(s.staffId, date))}
                       />
                     ))}
                   </div>
@@ -585,6 +808,7 @@ function Roster() {
                     rosters={rosters}
                     shifts={shifts}
                     allStaff={deptStaff}
+                    isOffDay={checkIsOffDay}
                     onDropShift={handleDropStaff}
                     onDeleteRoster={deleteRoster}
                     canAssign={canAssign}
@@ -665,7 +889,7 @@ function Roster() {
                         <table className="w-full border-collapse text-sm">
                           <thead>
                             <tr className="bg-muted/50 text-left">
-                              {["Staff", "Shift", "From", "To", "Notes", ""].map((h) => (
+                              {["Staff", "Shift", "Date", "Notes", ""].map((h) => (
                                 <th key={h} className="px-3.5 py-2.5 font-semibold text-muted-foreground text-xs">{h}</th>
                               ))}
                             </tr>
@@ -690,8 +914,7 @@ function Roster() {
                                   <td className="px-3.5 py-2.5">
                                     <ShiftBadge shift={r.shift} />
                                   </td>
-                                  <td className="px-3.5 py-2.5 text-muted-foreground">{r.startDate}</td>
-                                  <td className="px-3.5 py-2.5 text-muted-foreground">{r.endDate}</td>
+                                  <td className="px-3.5 py-2.5 text-muted-foreground">{r.date}</td>
                                   <td className="px-3.5 py-2.5 text-muted-foreground/60 italic">{r.notes || "—"}</td>
                                   <td className="px-3.5 py-2.5 flex gap-1.5">
                                     <button

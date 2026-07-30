@@ -69,7 +69,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
       .from(rosters)
       .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
       .where(
-        sql`${rosters.startDate} <= ${date} AND ${rosters.endDate} >= ${date}`
+        sql`${rosters.date} = ${date}`
       )
       .execute();
     const rosterMap = new Map(activeRosters.map((r) => [r.staffId, r]));
@@ -159,7 +159,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
         .from(rosters)
         .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
         .where(
-          sql`${rosters.staffId} = ${input.staffId} AND ${rosters.startDate} <= ${input.date} AND ${rosters.endDate} >= ${input.date}`
+          sql`${rosters.staffId} = ${input.staffId} AND ${rosters.date} = ${input.date}`
         )
         .limit(1)
         .then((res: any) => res[0]);
@@ -265,7 +265,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
         .from(rosters)
         .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
         .where(
-          sql`${rosters.staffId} = ${staffRecord.staffId} AND ${rosters.startDate} <= ${today} AND ${rosters.endDate} >= ${today}`
+          sql`${rosters.staffId} = ${staffRecord.staffId} AND ${rosters.date} = ${today}`
         )
         .limit(1)
         .then((res: any) => res[0]);
@@ -514,7 +514,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
             .from(rosters)
             .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
             .where(
-              sql`${rosters.staffId} = ${item.staffId} AND ${rosters.startDate} <= ${item.date} AND ${rosters.endDate} >= ${item.date}`
+              sql`${rosters.staffId} = ${item.staffId} AND ${rosters.date} = ${item.date}`
             )
             .limit(1)
             .then((res: any) => res[0]);
@@ -615,7 +615,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
         .from(rosters)
         .innerJoin(shifts, eq(rosters.shiftId, shifts.id))
         .where(
-          sql`${rosters.startDate} <= ${dateStr} AND ${rosters.endDate} >= ${dateStr}`
+          sql`${rosters.date} = ${dateStr}`
         )
         .execute();
       const rosterMap = new Map(activeRosters.map((r) => [r.staffId, r]));

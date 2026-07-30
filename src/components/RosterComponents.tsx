@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Palmtree } from "lucide-react";
 import type { RosterRow, ShiftRow, StaffRow } from "../types";
 import { getShiftConfig, today, shortDay } from "../lib/roster-utils";
 
@@ -40,9 +40,11 @@ interface ShiftSlotProps {
   onDropStaff: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
   canAssign?: boolean;
+  /** staffId → unique dept-scoped label (e.g. "AB" or "AB-2") */
+  initialsMap?: Map<number, string>;
 }
 
-export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoster, canAssign }: ShiftSlotProps) {
+export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoster, canAssign, initialsMap }: ShiftSlotProps) {
   const [isOver, setIsOver] = React.useState(false);
   const cfg = getShiftConfig(shift.name);
   const Icon = cfg.Icon;
@@ -73,42 +75,46 @@ export function ShiftSlot({ date, shift, assignments, onDropStaff, onDeleteRoste
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`rounded-xl border-[1.5px] p-2 transition-all duration-155 flex flex-col gap-1.5 min-h-[58px] ${
+      className={`rounded-xl p-2 min-h-[72px] transition-all border flex flex-col gap-1.5 ${
         isOver
-          ? "border-primary bg-primary/10 scale-[1.02]"
-          : assignments.length === 0 
-            ? "border-dashed border-border bg-muted/20 hover:bg-muted/40 hover:border-muted-foreground/30 items-center justify-center" 
-            : "border-transparent bg-transparent"
+          ? "border-primary border-dashed bg-primary/15 scale-[1.02] shadow-sm"
+          : `${cfg.bgClass} ${cfg.borderClass}`
       }`}
     >
       {assignments.length === 0 ? (
-        <>
-          <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
-            <span className="opacity-60"><Icon size={10} /></span> {shift.name}
-          </span>
-          <span className="text-[9px] text-muted-foreground/40">Drop staff here</span>
-        </>
+        <div className="h-full min-h-[56px] flex flex-col items-center justify-center text-center p-1">
+          <div className={`p-1 rounded-full mb-1 ${cfg.bgClass}`}>
+            <Icon size={14} className={cfg.colorClass} />
+          </div>
+          <span className={`text-[10px] font-bold ${cfg.textColorClass}`}>{shift.name}</span>
+          {canAssign && (
+            <span className="text-[9px] text-muted-foreground/60 mt-0.5">Drag staff here</span>
+          )}
+        </div>
       ) : (
         <>
           <span className="text-[10px] font-bold text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1 px-1">
             <span className="opacity-60"><Icon size={10} /></span> {shift.name}
           </span>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {assignments.map(assignment => (
               <div
                 key={assignment.id}
-                className={`group relative rounded-lg p-2 text-[12px] border shadow-xs flex justify-between items-center ${cfg.bgClass} ${cfg.borderClass}`}
+                className={`group relative rounded-lg border shadow-xs flex items-center justify-center ${cfg.bgClass} ${cfg.borderClass} ${canAssign ? 'w-8 h-8' : 'w-7 h-7'}`}
+                title={assignment.staffName}
               >
-                <span className={`font-semibold truncate pr-2 ${cfg.textColorClass}`} title={assignment.staffName}>
-                  {assignment.staffName}
+                {/* Unique initials circle */}
+                <span className={`font-black leading-none select-none ${cfg.textColorClass} ${canAssign ? 'text-[10px]' : 'text-[9px]'}`}>
+                  {initialsMap?.get(assignment.staffId)
+                    ?? assignment.staffName.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()}
                 </span>
                 {canAssign && (
                   <button
                     onClick={() => onDeleteRoster(assignment.id)}
-                    className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-opacity p-0.5 rounded-md hover:bg-destructive/15 dark:hover:bg-red-950/30 cursor-pointer border-0 bg-transparent shrink-0"
-                    title="Remove assignment"
+                    className="absolute inset-0 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 bg-destructive/80 text-destructive-foreground cursor-pointer transition-opacity border-0"
+                    title={`Remove ${assignment.staffName}`}
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={10} />
                   </button>
                 )}
               </div>
@@ -126,7 +132,9 @@ export function DayColumn({
   shifts,
   onDropStaff,
   onDeleteRoster,
-  canAssign
+  canAssign,
+  initialsMap,
+  offStaffList,
 }: {
   date: string;
   rosters: RosterRow[];
@@ -134,9 +142,18 @@ export function DayColumn({
   onDropStaff: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
   canAssign?: boolean;
+  initialsMap?: Map<number, string>;
+  offStaffList?: StaffRow[];
 }) {
   const isToday = date === today();
   const isPast = date < today();
+
+  const leaveShifts = shifts.filter(
+    (s) => s.name.toLowerCase().includes("leave") || s.isOffDay
+  );
+  const workShifts = shifts.filter(
+    (s) => !s.name.toLowerCase().includes("leave") && !s.isOffDay
+  );
 
   return (
     <div
@@ -172,11 +189,51 @@ export function DayColumn({
         )}
       </div>
 
-      {/* Shift slots */}
+      {/* ── TOP SECTION: Scheduled Off, Leave, Half Day Leave ── */}
+      {offStaffList && offStaffList.length > 0 && (
+        <div className="rounded-xl p-2 bg-amber-500/10 border border-amber-500/30 mb-1">
+          <div className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider flex items-center gap-1 mb-1 px-0.5">
+            <Palmtree size={11} className="text-amber-500" /> Scheduled Off ({offStaffList.length})
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {offStaffList.map((s) => (
+              <div
+                key={s.staffId}
+                className="w-7 h-7 rounded-lg border border-amber-500/30 bg-amber-500/20 flex items-center justify-center text-[9px] font-black text-amber-800 dark:text-amber-300"
+                title={`${s.name} (Scheduled Off Day)`}
+              >
+                {initialsMap?.get(s.staffId) ?? s.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Leave & Half Day Leave shifts (placed at top) */}
+      {leaveShifts.map((shift) => {
+        const assignments = rosters.filter(
+          (r) => r.date === date && r.shiftId === shift.id
+        );
+        if (assignments.length === 0 && !canAssign) return null;
+        return (
+          <ShiftSlot
+            key={shift.id}
+            date={date}
+            shift={shift}
+            assignments={assignments}
+            onDropStaff={onDropStaff}
+            onDeleteRoster={onDeleteRoster}
+            canAssign={canAssign}
+            initialsMap={initialsMap}
+          />
+        );
+      })}
+
+      {/* ── WORK SHIFTS SECTION: Morning, Afternoon, Evening, Night ── */}
       <div className="flex flex-col gap-2">
-        {shifts.map((shift) => {
+        {workShifts.map((shift) => {
           const assignments = rosters.filter(
-            (r) => r.shiftId === shift.id || r.shift === shift.name
+            (r) => r.date === date && r.shiftId === shift.id
           );
           return (
             <ShiftSlot
@@ -187,6 +244,7 @@ export function DayColumn({
               onDropStaff={onDropStaff}
               onDeleteRoster={onDeleteRoster}
               canAssign={canAssign}
+              initialsMap={initialsMap}
             />
           );
         })}
@@ -201,6 +259,7 @@ function MonthlyTableCell({
   activeAssignment,
   shiftCode,
   cfg,
+  isOffDay,
   onDropShift,
   onDeleteRoster,
   canAssign
@@ -210,6 +269,7 @@ function MonthlyTableCell({
   activeAssignment?: RosterRow;
   shiftCode?: string;
   cfg?: any;
+  isOffDay?: boolean;
   onDropShift: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
   canAssign?: boolean;
@@ -246,7 +306,7 @@ function MonthlyTableCell({
         className={`p-0 border-l border-border relative group transition-colors ${isOver ? "bg-primary/20" : ""}`}
       >
         <div
-          className={`flex items-center justify-center w-full h-full min-h-[36px] font-bold text-[11px] ${cfg.bgClass} ${cfg.textColorClass}`}
+          className={`flex items-center justify-center w-full h-full min-h-9 font-bold text-[11px] ${cfg.bgClass} ${cfg.textColorClass}`}
           title={activeAssignment.shift}
         >
           {shiftCode}
@@ -260,6 +320,24 @@ function MonthlyTableCell({
             <Trash2 size={14} />
           </button>
         )}
+      </td>
+    );
+  }
+
+  if (isOffDay) {
+    return (
+      <td
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`p-0 border-l border-border transition-colors ${isOver ? "bg-primary/20" : ""}`}
+      >
+        <div
+          className="flex items-center justify-center w-full h-full min-h-[36px] font-bold text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-400"
+          title="Scheduled Off Day"
+        >
+          OFF
+        </div>
       </td>
     );
   }
@@ -283,6 +361,7 @@ export function MonthlyTableView({
   rosters,
   shifts,
   allStaff,
+  isOffDay,
   onDropShift,
   onDeleteRoster,
   canAssign
@@ -291,6 +370,7 @@ export function MonthlyTableView({
   rosters: RosterRow[];
   shifts: ShiftRow[];
   allStaff: StaffRow[];
+  isOffDay?: (staffId: number, dateStr: string) => boolean;
   onDropShift: (staffId: number, date: string, shiftId: number) => void;
   onDeleteRoster: (rosterId: number) => void;
   canAssign?: boolean;
@@ -303,7 +383,7 @@ export function MonthlyTableView({
   const lastDay = `${exportMonth}-${numDays.toString().padStart(2, "0")}`;
 
   const monthRosters = rosters.filter(
-    (r) => r.startDate <= lastDay && r.endDate >= firstDay
+    (r) => r.date >= firstDay && r.date <= lastDay
   );
 
   const dayDates: string[] = [];
@@ -335,11 +415,29 @@ export function MonthlyTableView({
             <th className="px-3 py-2 text-left font-semibold sticky left-0 bg-muted/90 z-20 w-[150px] shadow-[1px_0_0_rgba(0,0,0,0.1)] border-r">
               Staff Member
             </th>
-            {dayDates.map((dateStr, idx) => (
-              <th key={dateStr} className="px-1 py-2 text-center font-medium min-w-[32px] border-l border-border">
-                {idx + 1}
-              </th>
-            ))}
+            {dayDates.map((dateStr, idx) => {
+              const dayDate = new Date(dateStr + "T00:00:00");
+              const dayOfWeekStr = dayDate.toLocaleDateString("en-US", { weekday: "short" }).slice(0, 2);
+              const dayOfWeekNum = dayDate.getDay();
+              // const isWeekend = dayOfWeekNum === 0 || dayOfWeekNum === 6;
+              const isWeekend = dayOfWeekNum === 0;
+
+              return (
+                <th
+                  key={dateStr}
+                  className={`px-1 py-1 text-center font-medium min-w-9 border-l border-border select-none ${
+                    isWeekend ? "bg-amber-500/10 dark:bg-rose-800" : ""
+                  }`}
+                >
+                  <div className={`text-[9px] font-bold uppercase ${isWeekend ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground/70"}`}>
+                    {dayOfWeekStr}
+                  </div>
+                  <div className="text-[11px] font-extrabold text-foreground leading-tight">
+                    {idx + 1}
+                  </div>
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -352,7 +450,7 @@ export function MonthlyTableView({
                 </td>
                 {dayDates.map((dateStr) => {
                   const activeAssignment = staffRosters.find(
-                    (r) => r.startDate <= dateStr && r.endDate >= dateStr
+                    (r) => r.date === dateStr
                   );
 
                   let shiftCode;
@@ -363,6 +461,8 @@ export function MonthlyTableView({
                     cfg = getShiftConfig(activeAssignment.shift);
                   }
 
+                  const staffIsOff = isOffDay ? isOffDay(staff.staffId, dateStr) : false;
+
                   return (
                     <MonthlyTableCell
                       key={dateStr}
@@ -371,6 +471,7 @@ export function MonthlyTableView({
                       activeAssignment={activeAssignment}
                       shiftCode={shiftCode}
                       cfg={cfg}
+                      isOffDay={staffIsOff}
                       onDropShift={onDropShift}
                       onDeleteRoster={onDeleteRoster}
                       canAssign={canAssign}
