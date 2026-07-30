@@ -22,7 +22,7 @@ export const exportRosterToExcel = async ({
   const lastDay = `${exportMonth}-${numDays.toString().padStart(2, "0")}`;
 
   const monthRosters = rosters.filter(
-    (r) => r.startDate <= lastDay && r.endDate >= firstDay
+    (r) => r.date >= firstDay && r.date <= lastDay
   );
 
   if (monthRosters.length === 0) {
@@ -196,7 +196,7 @@ export const exportRosterToExcel = async ({
     dayDates.forEach((dateStr, colIdx) => {
       const colLetter = getColLetter(colIdx + 2);
       const activeAssignment = staffRosters.find(
-        (r) => r.startDate <= dateStr && r.endDate >= dateStr
+        (r) => r.date === dateStr
       );
 
       if (activeAssignment) {
