@@ -10,10 +10,10 @@ import { Badge } from "../../../../ui/badge";
 import { cn } from "../../../../utils/cn";
 
 
-const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = "" }: any) => {
+const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = "", id }: any) => {
   const [expanded, setExpanded] = React.useState(defaultExpanded);
   return (
-    <Card className="card border bg-card">
+    <Card id={id} className="card border bg-card scroll-mt-20">
       <CardHeader
         className="py-3 bg-muted/20 border-b cursor-pointer hover:bg-muted/30 transition-colors select-none"
         onClick={() => setExpanded(!expanded)}
@@ -231,6 +231,25 @@ function ReportDetail() {
   const paymentChannelsListTotal = report.paymentChannels?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
   const isReconciled = Math.abs(paymentChannelsTotal - totalIncome) < 1;
 
+  const CASH_DENOMS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const denomsObj = (() => {
+    if (!report.cashDenominations) return {};
+    if (typeof report.cashDenominations === "string") {
+      try { return JSON.parse(report.cashDenominations); } catch { return {}; }
+    }
+    return report.cashDenominations as Record<string, number>;
+  })();
+  const totalPhysicalCash = CASH_DENOMS.reduce((sum, d) => {
+    const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
+    return sum + count * d;
+  }, 0) + Number(report.soiledNotes || 0);
+
+  const activeDenomCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
+  const hasPhysicalCashData = activeDenomCounts.length > 0 || Number(report.soiledNotes || 0) > 0;
+  const toleranceVal = parseFloat(report.reconciliationTolerance) || 0;
+  const cashTallyDiff = totalPhysicalCash - closingBalance;
+  const isCashTallied = !hasPhysicalCashData || Math.abs(cashTallyDiff) <= toleranceVal;
+
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
 
@@ -291,7 +310,7 @@ function ReportDetail() {
         </div>
       </div>
 
-      {/* Discrepancy Alert Banner */}
+      {/* Discrepancy Alert Banners */}
       {!isReconciled && (
         <div className="bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-455 p-4 rounded-lg border border-rose-200 text-sm font-semibold flex items-center gap-2.5 animate-in fade-in duration-300">
           <AlertTriangle size={18} className="shrink-0" />
@@ -299,6 +318,18 @@ function ReportDetail() {
             <span>Payment channels reconciliation mismatch detected!</span>
             <p className="text-xs font-normal text-muted-foreground mt-0.5">
               Total channel transactions sum to <strong className="text-rose-700 dark:text-rose-400">{fmt(paymentChannelsTotal)}</strong>, but net daily revenues sum to <strong className="text-rose-700 dark:text-rose-400">{fmt(totalIncome)}</strong>. Mismatch: <strong className="text-rose-700 dark:text-rose-400">{fmt(Math.abs(paymentChannelsTotal - totalIncome))}</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasPhysicalCashData && !isCashTallied && (
+        <div className="bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-455 p-4 rounded-lg border border-rose-200 text-sm font-semibold flex items-center gap-2.5 animate-in fade-in duration-300">
+          <AlertTriangle size={18} className="shrink-0" />
+          <div>
+            <span>Physical cash tally mismatch detected!</span>
+            <p className="text-xs font-normal text-muted-foreground mt-0.5">
+              Total physical cash is <strong className="text-rose-700 dark:text-rose-400">{fmt(totalPhysicalCash)}</strong>, but calculated cash closing is <strong className="text-rose-700 dark:text-rose-400">{fmt(closingBalance)}</strong>. Cash Mismatch ({cashTallyDiff > 0 ? "Excess" : "Shortage"}): <strong className="text-rose-700 dark:text-rose-400">{fmt(Math.abs(cashTallyDiff))}</strong>.
             </p>
           </div>
         </div>
@@ -317,25 +348,38 @@ function ReportDetail() {
               <p className="font-semibold text-lg">Income and Expenditure</p>
               <hr className="border-b-2 border-fuchsia-800/30" />
 
-              <div className="text-emerald-400">
+              <div className="text-emerald-400 space-y-0.5">
                 {nightServicesTotal > 0 && (
-                  <div className="flex justify-between text-indigo-400 dark:text-indigo-300">
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("sec-night")?.scrollIntoView({ behavior: "smooth" })}
+                    className="w-full flex justify-between text-indigo-400 dark:text-indigo-300 hover:underline cursor-pointer text-left py-0.5"
+                  >
                     <span className="font-semibold">Night / After-EOD Services</span>
                     <span className="font-bold">{fmt(nightServicesTotal)}</span>
-                  </div>
+                  </button>
                 )}
                 {displayedCategories.map((cat) => (
-                  <div key={cat.code} className="flex justify-between">
+                  <button
+                    type="button"
+                    key={cat.code}
+                    onClick={() => document.getElementById(`sec-cat-${cat.code}`)?.scrollIntoView({ behavior: "smooth" })}
+                    className="w-full flex justify-between hover:underline cursor-pointer text-left py-0.5"
+                  >
                     <span className="font-semibold">{cat.label}</span>
                     <span className="font-bold">{fmt(cat.total)}</span>
-                  </div>
+                  </button>
                 ))}
 
                 {discountsTotal > 0 && (
-                  <div className="flex justify-between text-rose-400 dark:text-rose-300">
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById("sec-discounts")?.scrollIntoView({ behavior: "smooth" })}
+                    className="w-full flex justify-between text-rose-400 dark:text-rose-300 hover:underline cursor-pointer text-left py-0.5"
+                  >
                     <span className="font-semibold">Less: Discounts/Returns:</span>
                     <span className="font-bold">-{fmt(discountsTotal)}</span>
-                  </div>
+                  </button>
                 )}
               </div>
 
@@ -343,19 +387,31 @@ function ReportDetail() {
                 <span>Total Income:</span>
                 <span>{fmt(totalIncome)}</span>
               </div>
-              <div className="flex justify-between pl-4 font-semibold text-teal-600/80 dark:text-teal-450/80">
+              <button
+                type="button"
+                onClick={() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" })}
+                className="w-full flex justify-between pl-4 font-semibold text-teal-600/80 dark:text-teal-450/80 hover:underline cursor-pointer text-left py-0.5"
+              >
                 <span>Cash Receipts</span>
                 <span>{fmt(cashReceipts)}</span>
-              </div>
-              <div className="flex justify-between pl-4 font-semibold text-teal-600/80 dark:text-teal-450/80 pb-2">
+              </button>
+              <button
+                type="button"
+                onClick={() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" })}
+                className="w-full flex justify-between pl-4 font-semibold text-teal-600/80 dark:text-teal-450/80 pb-2 hover:underline cursor-pointer text-left py-0.5"
+              >
                 <span>Bank Receipts</span>
                 <span>{fmt(bankReceiptsTotal)}</span>
-              </div>
+              </button>
 
-              <div className="flex justify-between border-b pb-2 pt-1 text-rose-400 dark:text-rose-355">
+              <button
+                type="button"
+                onClick={() => document.getElementById("sec-expenditures")?.scrollIntoView({ behavior: "smooth" })}
+                className="w-full flex justify-between border-b pb-2 pt-1 text-rose-400 dark:text-rose-355 hover:underline cursor-pointer text-left"
+              >
                 <span className="font-semibold">Total Expenditures:</span>
                 <span className="font-bold">{fmt(totalExpenditure)}</span>
-              </div>
+              </button>
               <div className="flex justify-between font-bold">
                 <span>Gross Balance:</span>
                 <span>{fmt(netBalance)}</span>
@@ -371,34 +427,48 @@ function ReportDetail() {
               </div>
 
               <div>
-                <div className="flex justify-between text-emerald-300">
-                  <span className="font-semibold">Cash Receipt (Sir):</span>
-                  <span className="font-bold">{fmt(cashSir)}</span>
-                </div>
-                <div className="flex justify-between text-emerald-300">
-                  <span className="font-semibold">Cash Receipt (Mam):</span>
-                  <span className="font-bold">{fmt(cashMam)}</span>
-                </div>
-                <div className="flex justify-between text-emerald-300">
-                  <span className="font-semibold">Cash Receipt (Acon):</span>
-                  <span className="font-bold">{fmt(cashAcon)}</span>
-                </div>
-                {bankReceiptSir > 0 && (
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("sec-bank-handovers")?.scrollIntoView({ behavior: "smooth" })}
+                  className="w-full text-left space-y-0.5 hover:underline cursor-pointer"
+                >
                   <div className="flex justify-between text-emerald-300">
-                    <span className="font-semibold">Bank Receipt (Sir) [{bankReceiptSirBank}]:</span>
-                    <span className="font-bold">{fmt(bankReceiptSir)}</span>
+                    <span className="font-semibold">Cash Receipt (Sir):</span>
+                    <span className="font-bold">{fmt(cashSir)}</span>
                   </div>
-                )}
-                <div className="flex justify-between text-emerald-300 mb-2">
-                  <span className="font-semibold">Add Cash Income Receipts:</span>
-                  <span className="font-bold">{fmt(cashReceipts)}</span>
-                </div>
-                <div className="flex justify-between text-rose-300">
+                  <div className="flex justify-between text-emerald-300">
+                    <span className="font-semibold">Cash Receipt (Mam):</span>
+                    <span className="font-bold">{fmt(cashMam)}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-300">
+                    <span className="font-semibold">Cash Receipt (Acon):</span>
+                    <span className="font-bold">{fmt(cashAcon)}</span>
+                  </div>
+                  {bankReceiptSir > 0 && (
+                    <div className="flex justify-between text-emerald-300">
+                      <span className="font-semibold">Bank Receipt (Sir) [{bankReceiptSirBank}]:</span>
+                      <span className="font-bold">{fmt(bankReceiptSir)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-emerald-300 mb-2">
+                    <span className="font-semibold">Add Cash Income Receipts:</span>
+                    <span className="font-bold">{fmt(cashReceipts)}</span>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("sec-expenditures")?.scrollIntoView({ behavior: "smooth" })}
+                  className="w-full flex justify-between text-rose-300 hover:underline cursor-pointer text-left"
+                >
                   <span className="font-semibold">Less Cash Expenditure:</span>
                   <span className="font-bold">{fmt(expendituresTotal)}</span>
-                </div>
+                </button>
 
-                <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("sec-bank-handovers")?.scrollIntoView({ behavior: "smooth" })}
+                  className="w-full text-left space-y-1 hover:underline cursor-pointer"
+                >
                   <div className="flex justify-between text-rose-300">
                     <span className="font-semibold">Less Bank Deposit:</span>
                     <span className="font-bold">{fmt(bankDeposit)}</span>
@@ -409,7 +479,7 @@ function ReportDetail() {
                       <span>{fmt(item.amount)}</span>
                     </div>
                   ))}
-                </div>
+                </button>
                 <div className="flex justify-between text-rose-300">
                   <span className="font-semibold">Handover (Sir):</span>
                   <span className="font-bold">{fmt(handoverSir)}</span>
@@ -422,56 +492,85 @@ function ReportDetail() {
             </div>
 
             {/* Physical Cash Denominations & Soiled Notes Block */}
-            {(() => {
-              const CASH_DENOMS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
-              const denomsObj = (() => {
-                if (!report.cashDenominations) return {};
-                if (typeof report.cashDenominations === "string") {
-                  try { return JSON.parse(report.cashDenominations); } catch { return {}; }
-                }
-                return report.cashDenominations as Record<string, number>;
-              })();
-              const physTotal = CASH_DENOMS.reduce((sum, d) => {
-                const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
-                return sum + count * d;
-              }, 0) + Number(report.soiledNotes || 0);
-              const activeCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
-
-              if (activeCounts.length === 0 && !report.soiledNotes) return null;
-
-              return (
-                <div className="gap-y-2 mt-4 bg-teal-500/10 p-4 rounded-lg">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold text-lg">Physical Cash Denominations</span>
-                    <span className="font-bold text-teal-600 dark:text-teal-300">{fmt(physTotal)}</span>
-                  </div>
-                  <hr className="border-b-2 border-fuchsia-800/30 mb-3" />
-
-                  {activeCounts.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
-                      {CASH_DENOMS.map((denom) => {
-                        const count = Number(denomsObj[denom] || denomsObj[String(denom)] || 0);
-                        if (count <= 0) return null;
-                        const subtotal = count * denom;
-                        return (
-                          <div key={denom} className="flex justify-between items-center text-[11px] bg-background/50 px-2.5 py-1 rounded border border-muted/30">
-                            <span className="font-medium text-muted-foreground">₹{denom} × {count}</span>
-                            <span className="font-bold text-foreground">₹{subtotal.toLocaleString("en-IN")}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {report.soiledNotes ? (
-                    <div className="flex justify-between items-center text-[11px] bg-background/50 px-2.5 py-1 rounded border border-muted/30 mt-2">
-                      <span className="font-medium text-muted-foreground">Soiled Notes Amount</span>
-                      <span className="font-bold text-foreground">{fmt(Number(report.soiledNotes))}</span>
-                    </div>
-                  ) : null}
+            {hasPhysicalCashData && (
+              <div className="gap-y-2 mt-4 bg-teal-500/10 p-4 rounded-lg">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="font-semibold text-lg">Physical Cash Denominations</span>
+                  <span className="font-bold text-teal-600 dark:text-teal-300">{fmt(totalPhysicalCash)}</span>
                 </div>
-              );
-            })()}
+                <hr className="border-b-2 border-fuchsia-800/30 mb-3" />
+
+                {activeDenomCounts.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                    {CASH_DENOMS.map((denom) => {
+                      const count = Number(denomsObj[denom] || denomsObj[String(denom)] || 0);
+                      if (count <= 0) return null;
+                      const subtotal = count * denom;
+                      return (
+                        <div key={denom} className="flex justify-between items-center text-[11px] bg-background/50 px-2.5 py-1 rounded border border-muted/30">
+                          <span className="font-medium text-muted-foreground">₹{denom} × {count}</span>
+                          <span className="font-bold text-foreground">₹{subtotal.toLocaleString("en-IN")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {report.soiledNotes ? (
+                  <div className="flex justify-between items-center text-[11px] bg-background/50 px-2.5 py-1 rounded border border-muted/30 mt-2">
+                    <span className="font-medium text-muted-foreground">Soiled Notes Amount</span>
+                    <span className="font-bold text-foreground">{fmt(Number(report.soiledNotes))}</span>
+                  </div>
+                ) : null}
+
+                {/* Cash Tally Comparison & Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center text-xs mt-3 pt-3 border-t border-muted/40">
+                  <div className="bg-background/40 p-2 rounded border border-muted/30">
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Total Physical Cash</span>
+                    <span className="font-bold text-teal-600 dark:text-teal-300">{fmt(totalPhysicalCash)}</span>
+                  </div>
+                  <div className="bg-background/40 p-2 rounded border border-muted/30">
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Calculated Cash Closing</span>
+                    <span className="font-bold text-foreground">{fmt(closingBalance)}</span>
+                  </div>
+                  <div className="bg-background/40 p-2 rounded border border-muted/30">
+                    <span className="text-[10px] text-muted-foreground uppercase font-semibold block">Variance / Difference</span>
+                    <span className={cn(
+                      "font-bold",
+                      cashTallyDiff === 0 ? "text-emerald-600 dark:text-emerald-400" :
+                        isCashTallied ? "text-teal-600 dark:text-teal-300" :
+                          "text-rose-600 dark:text-rose-400"
+                    )}>
+                      {cashTallyDiff > 0 ? `+${fmt(cashTallyDiff)}` : fmt(cashTallyDiff)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={cn(
+                  "p-2.5 rounded-lg border text-xs font-bold flex items-center justify-between mt-3 transition-all",
+                  isCashTallied
+                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                    : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                )}>
+                  <div className="flex items-center gap-1.5">
+                    {isCashTallied ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                    <span>
+                      {cashTallyDiff === 0
+                        ? "Physical cash matches calculated closing cash balance!"
+                        : isCashTallied
+                          ? `Physical cash tallies within tolerance limit of ±${fmt(toleranceVal)} (Variance: ${fmt(cashTallyDiff)})`
+                          : `Cash Mismatch: ${cashTallyDiff > 0 ? "Excess" : "Shortage"} of ${fmt(Math.abs(cashTallyDiff))} exceeds tolerance of ±${fmt(toleranceVal)}`}
+                    </span>
+                  </div>
+                  <span className={cn(
+                    "px-2 py-0.5 rounded text-[9px] uppercase font-extrabold tracking-wide shrink-0",
+                    isCashTallied ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                  )}>
+                    {isCashTallied ? "Tallied" : "Mismatch"}
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5 border-t pt-3 mt-3 p-4">
               <div className="flex justify-between items-center text-sm font-bold text-lime-400">
@@ -482,21 +581,28 @@ function ReportDetail() {
 
             <div className={cn(
               "border p-3 rounded-lg mt-4 text-center text-[11px] font-bold transition-all",
-              isReconciled
+              (isReconciled && isCashTallied)
                 ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                 : "bg-rose-500/10 text-rose-600 border-rose-500/20"
             )}>
               <div className="flex items-center justify-center gap-1">
-                {isReconciled ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                <span>RECONCILIATION CHECK</span>
+                {(isReconciled && isCashTallied) ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                <span>RECONCILIATION &amp; CASH TALLY CHECK</span>
               </div>
-              <div className="mt-1 font-semibold text-muted-foreground">
-                Channel sum: {fmt(paymentChannelsTotal)}<br />
-                Net revenue: {fmt(totalIncome)}
+              <div className="mt-1 font-semibold text-muted-foreground space-y-0.5">
+                <div>Channel sum: {fmt(paymentChannelsTotal)} | Net revenue: {fmt(totalIncome)}</div>
+                {hasPhysicalCashData && (
+                  <div>Physical Cash: {fmt(totalPhysicalCash)} | Calculated Closing: {fmt(closingBalance)}</div>
+                )}
               </div>
               {!isReconciled && (
-                <p className="mt-1.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-400">
-                  Mismatch: {fmt(Math.abs(paymentChannelsTotal - totalIncome))}
+                <p className="mt-1 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-400">
+                  Channel Mismatch: {fmt(Math.abs(paymentChannelsTotal - totalIncome))}
+                </p>
+              )}
+              {hasPhysicalCashData && !isCashTallied && (
+                <p className="mt-1 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-400">
+                  Physical Cash Mismatch ({cashTallyDiff > 0 ? "Excess" : "Shortage"}): {fmt(Math.abs(cashTallyDiff))}
                 </p>
               )}
             </div>
@@ -520,7 +626,7 @@ function ReportDetail() {
 
           {/* Night Services Panel */}
           {nightServicesTotal > 0 && (
-            <Panel title="Night / After-EOD Services" amount={fmt(nightServicesTotal)} titleClass="text-indigo-650 dark:text-indigo-400">
+            <Panel id="sec-night" title="Night / After-EOD Services" amount={fmt(nightServicesTotal)} titleClass="text-indigo-650 dark:text-indigo-400">
               <table className="w-full text-xs text-left">
                 <tbody>
                   {sortedNightLines.map((line: any) => (
@@ -546,7 +652,7 @@ function ReportDetail() {
 
           {/* Dynamic Categories Services */}
           {displayedCategories.map((cat) => (
-            <Panel key={cat.code} title={cat.label} amount={fmt(cat.total)} titleClass="text-teal-650 dark:text-teal-400">
+            <Panel id={`sec-cat-${cat.code}`} key={cat.code} title={cat.label} amount={fmt(cat.total)} titleClass="text-teal-650 dark:text-teal-400">
 
               <table className="w-full text-xs text-left">
                 <tbody>
@@ -635,7 +741,7 @@ function ReportDetail() {
 
           {/* Discounts & Returns */}
           {discountsReturnsList.length > 0 && (
-            <Panel title="Discounts & Returns" amount={"-" + fmt(discountsTotal)} titleClass="text-rose-600 dark:text-rose-455">
+            <Panel id="sec-discounts" title="Discounts & Returns" amount={"-" + fmt(discountsTotal)} titleClass="text-rose-600 dark:text-rose-455">
               <div className="space-y-2 text-xs">
 
                 {discountsReturnsList.map((item: any) => (
@@ -658,7 +764,7 @@ function ReportDetail() {
           </h4>
 
           {/* Expenditures */}
-          <Panel title="Expenditures (Out)" amount={fmt(expendituresTotal)} titleClass="text-rose-600 dark:text-rose-400" defaultExpanded={true}>
+          <Panel id="sec-expenditures" title="Expenditures (Out)" amount={fmt(expendituresTotal)} titleClass="text-rose-600 dark:text-rose-400" defaultExpanded={true}>
 
             {groupedExpenditures.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-4">No logged expenses.</p>
@@ -720,7 +826,7 @@ function ReportDetail() {
           </h4>
 
           {/* Payment channels breakdown */}
-          <Panel title="Payment Channel Collections" amount={fmt(paymentChannelsListTotal)} titleClass="text-slate-800 dark:text-slate-200">
+          <Panel id="sec-payment-channels" title="Payment Channel Collections" amount={fmt(paymentChannelsListTotal)} titleClass="text-slate-800 dark:text-slate-200">
 
             {report.paymentChannels?.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-4">No logged payment channels.</p>
@@ -753,7 +859,7 @@ function ReportDetail() {
           </Panel>
 
           {/* Bank deposit & Handover */}
-          <Panel title="Bank Deposits & Handovers" amount="" defaultExpanded={true}>
+          <Panel id="sec-bank-handovers" title="Bank Deposits & Handovers" amount="" defaultExpanded={true}>
             <div className="space-y-2.5 text-xs">
 
               {(cashSir > 0 || cashMam > 0 || cashAcon > 0 || bankReceiptSir > 0) && (

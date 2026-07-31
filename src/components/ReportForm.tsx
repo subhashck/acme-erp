@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2, Lock } from "lucide-react";
+import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2, Lock, Receipt, ArrowDownCircle, CreditCard, Coins } from "lucide-react";
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { Button } from "../ui/button";
@@ -157,6 +157,9 @@ export function ReportForm({
     denominations: true,
   });
   const toggleSection = (s: string) => setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
+
+  // ── form tab state ──────────────────────────────────────────
+  const [formTab, setFormTab] = React.useState<"income" | "expenses" | "channels" | "tally">("income");
 
   // ── cash denomination & tolerance state ─────────────────────
   const [cashDenominations, setCashDenominations] = React.useState<Record<number, number>>({});
@@ -1146,6 +1149,84 @@ export function ReportForm({
           {/* ── Form panel ─────────────────────────────────────── */}
           <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-5">
 
+            {/* ── Tab Navigation ──────────────────────────────── */}
+            <div className="sticky top-16 z-20 flex gap-1 p-1 bg-background/90 dark:bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setFormTab("income")}
+                className={cn(
+                  "flex-1 min-w-[110px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "income"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <Receipt size={14} />
+                Income
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormTab("expenses")}
+                className={cn(
+                  "flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "expenses"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <ArrowDownCircle size={14} />
+                Expenditures
+                {totalExpenditures > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] font-black">
+                    {fmt(totalExpenditures)}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormTab("channels")}
+                className={cn(
+                  "flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "channels"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <CreditCard size={14} />
+                Payment Channels
+                {paymentChannelsSum > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-650 dark:text-teal-400 text-[10px] font-black">
+                    {fmt(paymentChannelsSum)}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormTab("tally")}
+                className={cn(
+                  "flex-1 min-w-[110px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "tally"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <Coins size={14} />
+                Cash Tally
+                {totalDenominationAmount > 0 && (
+                  <span className={cn(
+                    "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black",
+                    isCashTallied
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                  )}>
+                    {isCashTallied ? "Tallied" : "Mismatch"}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* ── Income & Reconciliation Tab ─────────────────── */}
+            {formTab === "income" && (<>
             {/* 1. Header Details */}
             <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
               <CardHeader className="pb-3">
@@ -1209,7 +1290,7 @@ export function ReportForm({
                   />
                 </div>
                 {/* Separator and Night Services */}
-                <div className="sm:col-span-2 border-t pt-4 mt-2 space-y-4">
+                <div id="sec-night" className="sm:col-span-2 border-t pt-4 mt-2 space-y-4 scroll-mt-24">
                   <button
                     type="button"
                     onClick={() => toggleSection("night")}
@@ -1336,7 +1417,7 @@ export function ReportForm({
               const isOpen = openSections[sectionKey] ?? false;
               const deptCatalog = getCatalogForDept(cat.code);
               return (
-                <Card key={cat.code} className="border shadow-xs bg-white/70 dark:bg-slate-900/40">
+                <Card id={`sec-cat-${cat.code}`} key={cat.code} className="border shadow-xs bg-white/70 dark:bg-slate-900/40 scroll-mt-24">
                   <button
                     type="button"
                     onClick={() => toggleSection(sectionKey)}
@@ -1480,7 +1561,7 @@ export function ReportForm({
             )}
           </Card> */}
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <Card id="sec-discounts" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("discounts")}
@@ -1533,22 +1614,17 @@ export function ReportForm({
                 </CardContent>
               )}
             </Card>
+            </>)}
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
-              <button
-                type="button"
-                onClick={() => toggleSection("exp")}
-                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-              >
-                <div>
-                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 3}. Expenditures &amp; Staff Advances
-                  </CardTitle>
-                  <CardDescription className="text-xs">Daily payouts, vendor settlements, and salaries</CardDescription>
-                </div>
-                <span className="text-xs font-bold text-teal-600">{openSections.exp ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-              </button>
-              {openSections.exp && (
+            {/* ── Expenditures Tab ───────────────────────────────── */}
+            {formTab === "expenses" && (<>
+            <Card id="sec-expenditures" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                  Expenditures &amp; Staff Advances
+                </CardTitle>
+                <CardDescription className="text-xs">Daily payouts, vendor settlements, and salaries</CardDescription>
+              </CardHeader>
                 <CardContent className="p-5 space-y-5">
                   <div className="space-y-3">
                     <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Outflow Payments</h5>
@@ -1780,66 +1856,13 @@ export function ReportForm({
                     </Button>
                   </div>
                 </CardContent>
-              )}
             </Card>
+            </>)}
 
-            {/* <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
-            <button
-              type="button"
-              onClick={() => toggleSection("add")}
-              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-            >
-              <div>
-                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  {activeCategories.length + 4}. Additional Income
-                </CardTitle>
-                <CardDescription className="text-xs">IVF injections, Lifecell, outsourced diagnostic sales, and fund transfers</CardDescription>
-              </div>
-              <span className="text-xs font-bold text-teal-600">{openSections.add ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-            </button>
-            {openSections.add && (
-              <CardContent className="p-5 space-y-4">
-                {additionalIncome.map((item, idx) => (
-                  <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-[10px]">Income Label</Label>
-                      <Input
-                        type="text"
-                        placeholder="e.g. IVF Injection, Lifecell"
-                        value={item.label}
-                        onChange={(e) => setAdditionalIncome(additionalIncome.map((add, i) => (i === idx ? { ...add, label: e.target.value } : add)))}
-                        required
-                      />
-                    </div>
-                    <div className="w-48 space-y-1">
-                      <Label className="text-[10px]">Amount (INR)</Label>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        value={item.amount || ""}
-                        onChange={(e) => setAdditionalIncome(additionalIncome.map((add, i) => (i === idx ? { ...add, amount: parseFloat(e.target.value) || 0 } : add)))}
-                        required
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAdditionalIncome(additionalIncome.filter((_, i) => i !== idx))}
-                      className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
-                <Button type="button" variant="outline" onClick={() => setAdditionalIncome([...additionalIncome, { label: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
-                  <Plus size={13} className="mr-1" /> Add Additional Income
-                </Button>
-              </CardContent>
-            )}
-          </Card> */}
-
-
-
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
+            {/* ── Payment Channels Tab ───────────────────────────── */}
+            {formTab === "channels" && (<>
+            {/* Bank Deposits section */}
+            <Card id="sec-bank-deposits" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("deposits")}
@@ -1847,7 +1870,7 @@ export function ReportForm({
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 6}. Bank Deposits
+                    Bank Deposits
                   </CardTitle>
                   <CardDescription className="text-xs">Record cash deposits made to specific bank accounts</CardDescription>
                 </div>
@@ -1899,7 +1922,7 @@ export function ReportForm({
               )}
             </Card>
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <Card id="sec-payment-channels" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("reconcile")}
@@ -1970,9 +1993,11 @@ export function ReportForm({
                 </CardContent>
               )}
             </Card>
-
+            </>)}
+            {/* ── Cash Tally Tab ────────────────────────────────── */}
+            {formTab === "tally" && (<>
             {/* Cash Denomination Form & Closing Tally */}
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <Card id="sec-cash-tally" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("denominations")}
@@ -1980,7 +2005,7 @@ export function ReportForm({
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 8}. Cash Denomination &amp; Tally
+                    Cash Denomination &amp; Tally
                   </CardTitle>
                   <CardDescription className="text-xs">
                     Tally physical cash notes/coins with calculated closing balance and set reconciliation tolerance
@@ -2015,7 +2040,9 @@ export function ReportForm({
                           />
                         </div>
                         <span className="text-[11px] text-rose-200 self-end pb-1.5">
-                          Allowed variance for closing cash &amp; channel tally (Max limit: ₹100)
+                          {toNum(reconciliationTolerance) > 100
+                            ? "Tolerance limit is set unusually high (> ₹100)."
+                            : "Tolerance allows minor count discrepancies (up to ±₹100)."}
                         </span>
                       </div>
                       <Button
@@ -2054,46 +2081,32 @@ export function ReportForm({
                   </div>
 
                   {/* Previous Day Cash Denominations Reference Banner */}
-                  {priorReport ? (
-                    <div className="p-4 rounded-xl border bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 space-y-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
-                        <div>
-                          <h5 className="text-xs font-black uppercase tracking-wider text-teal-650 dark:text-teal-400 flex items-center gap-2">
-                            <span>Previous Day Reference</span>
-                            <span className="bg-teal-500/10 text-teal-650 dark:text-teal-400 px-2 py-0.5 rounded text-[11px] font-bold">
-                              {priorReport.reportDate}
-                            </span>
-                          </h5>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">
-                            Physical cash denominations submitted on previous report ({priorReport.reportDate})
-                          </p>
-                        </div>
-                        {Object.keys(priorDenominations).length > 0 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleApplyPriorDenominations}
-                            className="text-xs font-semibold border-teal-500/40 text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 cursor-pointer h-8"
-                          >
-                            Copy Previous Denominations
-                          </Button>
-                        )}
+                  {pastReportsQuery.isLoading ? (
+                    <div className="p-3 text-xs text-muted-foreground animate-pulse">
+                      Loading prior report details...
+                    </div>
+                  ) : priorReport ? (
+                    <div className="p-3 bg-muted/20 rounded-lg border space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold text-foreground">
+                        <span>Prior Report Reference ({priorReport.reportDate})</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleApplyPriorDenominations}
+                          className="h-7 text-xs font-semibold text-teal-650 dark:text-teal-400 hover:bg-teal-500/10 cursor-pointer"
+                        >
+                          Copy Denominations from {priorReport.reportDate}
+                        </Button>
                       </div>
-
-                      {Object.keys(priorDenominations).length > 0 ? (
+                      {priorTotalDenominationAmount > 0 ? (
                         <div className="space-y-2">
-                          <div className="flex flex-wrap gap-2">
-                            {CASH_DENOMINATIONS.map((denom) => {
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                            {CASH_DENOMINATIONS.filter((denom) => (priorDenominations[denom] || 0) > 0).map((denom) => {
                               const count = priorDenominations[denom] || 0;
-                              if (count <= 0) return null;
                               const subtotal = count * denom;
                               return (
-                                <div
-                                  key={denom}
-                                  className="px-2.5 py-1.5 rounded-md border bg-background text-xs flex items-center gap-2"
-                                >
-                                  <span className="font-extrabold text-foreground">₹{denom}</span>
-                                  <span className="text-muted-foreground text-[10px]">× {count}</span>
+                                <div key={denom} className="p-2 rounded bg-background border flex justify-between items-center">
+                                  <span className="font-semibold text-muted-foreground">₹{denom} × {count}</span>
                                   <span className="font-bold text-teal-650 dark:text-teal-400 text-[11px]">
                                     = ₹{subtotal.toLocaleString("en-IN")}
                                   </span>
@@ -2209,6 +2222,7 @@ export function ReportForm({
                 </CardContent>
               )}
             </Card>
+            </>)}
           </form>
 
           {/* ── Live Summary Sidebar ────────────────────────────── */}
@@ -2223,58 +2237,101 @@ export function ReportForm({
                 <div className="space-y-2 border p-2 -mx-2 my-3 rounded-lg border-lime-800">
                   <p className="font-semibold text-lg">Income and Expenditure</p>
                   <hr className="border-b-2 border-fuchsia-800/30" />
-                  <div className="text-emerald-400  px-2">
+                  <div className="text-emerald-400 px-2 space-y-0.5">
                     {activeCategories.map((cat) => (
-                      <div key={cat.code} className="flex justify-between">
+                      <button
+                        type="button"
+                        key={cat.code}
+                        onClick={() => {
+                          setFormTab("income");
+                          setTimeout(() => document.getElementById(`sec-cat-${cat.code}`)?.scrollIntoView({ behavior: "smooth" }), 50);
+                        }}
+                        className="w-full flex justify-between hover:underline cursor-pointer text-left py-0.5"
+                      >
                         <span className="font-semibold">{cat.label}</span>
                         <span className="font-bold">{fmt(categoryTotals[cat.code] ?? 0)}</span>
-                      </div>
+                      </button>
                     ))}
 
                     {nightServicesTotal > 0 && (
-                      <div className="flex justify-between text-indigo-400">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormTab("income");
+                          setTimeout(() => document.getElementById("sec-night")?.scrollIntoView({ behavior: "smooth" }), 50);
+                        }}
+                        className="w-full flex justify-between text-indigo-400 hover:underline cursor-pointer text-left py-0.5"
+                      >
                         <span className="font-semibold">Night Income</span>
                         <span className="font-bold">{fmt(nightServicesTotal)}</span>
-                      </div>
+                      </button>
                     )}
 
                     {discountsTotal > 0 && (
-                      <div className="flex justify-between text-rose-400 dark:text-rose-300">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormTab("income");
+                          setTimeout(() => document.getElementById("sec-discounts")?.scrollIntoView({ behavior: "smooth" }), 50);
+                        }}
+                        className="w-full flex justify-between text-rose-400 dark:text-rose-300 hover:underline cursor-pointer text-left py-0.5"
+                      >
                         <span className="font-semibold">Less: Discounts/Returns:</span>
                         <span className="font-bold">-{fmt(discountsTotal)}</span>
-                      </div>
+                      </button>
                     )}
                   </div>
                   <div className="bg-emerald-500/40 pb-2 px-2 rounded-xl">
-                    <div className="grid grid-cols-2  pt-2 font-bold ">
+                    <div className="grid grid-cols-2 pt-2 font-bold">
                       <span>Total Income:</span>
                       <span className="text-right">{fmt(totalIncome)}</span>
                     </div>
 
-                    <div className="grid grid-cols-4  pt-2 font-bold ">
-                      <span>  </span>
-                      <span>Cash </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full grid grid-cols-4 pt-2 font-bold hover:underline cursor-pointer text-left"
+                    >
+                      <span></span>
+                      <span>Cash</span>
                       <span className="text-right col-span-2">{fmt(cashReceiptsSum)}</span>
-                    </div>
+                    </button>
 
-                    <div className="grid grid-cols-4  font-bold ">
-                      <span>  </span>
-                      <span>Bank </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full grid grid-cols-4 font-bold hover:underline cursor-pointer text-left"
+                    >
+                      <span></span>
+                      <span>Bank</span>
                       <span className="text-right col-span-2">{fmt(bankReceiptsSum)}</span>
-                    </div>
+                    </button>
                   </div>
 
-                  <div className="flex justify-between border-b pb-2 pt-1 px-2 bg-rose-500/60 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormTab("expenses");
+                      setTimeout(() => document.getElementById("sec-expenditures")?.scrollIntoView({ behavior: "smooth" }), 50);
+                    }}
+                    className="w-full flex justify-between border-b pb-2 pt-1 px-2 bg-rose-500/60 rounded-xl hover:opacity-90 cursor-pointer text-left"
+                  >
                     <span className="font-semibold text-slate-50">Total Expenditures:</span>
-                    <span className="font-bold ">{fmt(totalExpenditures)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold  px-2">
+                    <span className="font-bold">{fmt(totalExpenditures)}</span>
+                  </button>
+                  <div className="flex justify-between font-bold px-2">
                     <span>Net Balance:</span>
                     <span>{fmt(netBalance)}</span>
                   </div>
                 </div>
                 {/* cash management section */}
-                <div className=" space-y-2 border p-2 -mx-2 rounded-lg border-lime-800 bg-slate-700/60">
+                <div className="space-y-2 border p-2 -mx-2 rounded-lg border-lime-800 bg-slate-700/60">
                   <span className="font-semibold text-lg">Cash Management</span>
                   <hr className="border-b-2 border-fuchsia-800/30" />
                   <div className="flex justify-between text-emerald-300 px-2">
@@ -2333,19 +2390,40 @@ export function ReportForm({
                         ))}
                       </select>
                     </div>
-                    <div className="flex justify-between text-emerald-300 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between text-emerald-300 mt-4 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold">Add Cash Receipts:</span>
                       <span className="font-bold">{fmt(cashReceiptsSum)}</span>
-                    </div>
-                    <div className="flex justify-between text-rose-300 mt-2 mb-4">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("expenses");
+                        setTimeout(() => document.getElementById("sec-expenditures")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between text-rose-300 mt-2 mb-4 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold">Less Expenditure:</span>
                       <span className="font-bold">{fmt(totalExpenditures)}</span>
-                    </div>
+                    </button>
 
-                    <div className="flex justify-between items-baseline mt-2 text-rose-300">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-bank-deposits")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between items-baseline mt-2 text-rose-300 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold text-xs">Less Bank Deposit</span>
                       <span className="font-bold text-xs">{fmt(derivedBankDepositTotal)}</span>
-                    </div>
+                    </button>
                     <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
                       <Label className=" text-rose-300"> Handover (Sir)</Label>
                       <Input
@@ -2364,10 +2442,17 @@ export function ReportForm({
                         onChange={(e) => setFundHandoverMadam(e.target.value)}
                       />
                     </div>
-                    <div className="flex justify-between text-slate-200 mt-3 pt-2 border-t border-slate-600/40">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("tally");
+                        setTimeout(() => document.getElementById("sec-cash-tally")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between text-slate-200 mt-3 pt-2 border-t border-slate-600/40 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold text-xs">Physical Cash (Tally):</span>
                       <span className="font-bold text-xs">{fmt(totalDenominationAmount)}</span>
-                    </div>
+                    </button>
                     <div className="flex justify-between items-center mt-1">
                       <span className="font-semibold text-xs text-slate-300">Tally Status:</span>
                       <span className={cn(
