@@ -117,6 +117,24 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   const paymentChannelsListTotal = report.paymentChannels?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
   const isReconciled = Math.abs(paymentChannelsTotal - totalIncome) < 1;
 
+  const CASH_DENOMS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+  const denomsObjPDF = (() => {
+    if (!report.cashDenominations) return {};
+    if (typeof report.cashDenominations === "string") {
+      try { return JSON.parse(report.cashDenominations); } catch { return {}; }
+    }
+    return report.cashDenominations as Record<string, number>;
+  })();
+  const totalPhysicalCashPDF = CASH_DENOMS.reduce((sum, d) => {
+    const count = Number(denomsObjPDF[d] || denomsObjPDF[String(d)] || 0);
+    return sum + count * d;
+  }, 0) + Number(report.soiledNotes || 0);
+  const activeDenomCounts = CASH_DENOMS.filter((d) => Number(denomsObjPDF[d] || denomsObjPDF[String(d)] || 0) > 0);
+  const hasPhysicalCashDataPDF = activeDenomCounts.length > 0 || Number(report.soiledNotes || 0) > 0;
+  const toleranceValPDF = parseFloat(report.reconciliationTolerance) || 0;
+  const cashTallyDiffPDF = totalPhysicalCashPDF - closingBalance;
+  const isCashTalliedPDF = !hasPhysicalCashDataPDF || Math.abs(cashTallyDiffPDF) <= toleranceValPDF;
+
   // Initialize jsPDF
   const doc = new jsPDF("p", "mm", "a4");
 
@@ -245,7 +263,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
 
   y += 28;
 
-  // Discrepancy Banner (if applicable)
+  // Discrepancy Banners (if applicable)
   if (!isReconciled) {
     checkPageBreak(20);
     doc.setFillColor(cRoseLight[0], cRoseLight[1], cRoseLight[2]);
@@ -253,8 +271,21 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     doc.setLineWidth(0.4);
     doc.roundedRect(15, y, 180, 16, 2, 2, "FD");
 
-    drawText("RECONCILIATION MISMATCH DETECTED!", 20, y + 6, 8.5, "bold", cRoseDark);
+    drawText("CHANNEL RECONCILIATION MISMATCH DETECTED!", 20, y + 6, 8.5, "bold", cRoseDark);
     drawText(`Channel Sum: ${fmt(paymentChannelsTotal)} | Net Revenue: ${fmt(totalIncome)} | Mismatch: ${fmt(Math.abs(paymentChannelsTotal - totalIncome))}`, 20, y + 11, 7.5, "normal", cSlateLight);
+    y += 22;
+  }
+
+  if (hasPhysicalCashDataPDF && !isCashTalliedPDF) {
+    checkPageBreak(20);
+    doc.setFillColor(cRoseLight[0], cRoseLight[1], cRoseLight[2]);
+    doc.setDrawColor(cRose[0], cRose[1], cRose[2]);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(15, y, 180, 16, 2, 2, "FD");
+
+    const varianceType = cashTallyDiffPDF > 0 ? "Excess" : "Shortage";
+    drawText("PHYSICAL CASH TALLY MISMATCH DETECTED!", 20, y + 6, 8.5, "bold", cRoseDark);
+    drawText(`Physical Cash: ${fmt(totalPhysicalCashPDF)} | Calculated Closing: ${fmt(closingBalance)} | Cash Variance (${varianceType}): ${fmt(Math.abs(cashTallyDiffPDF))}`, 20, y + 11, 7.5, "normal", cSlateLight);
     y += 22;
   }
 
@@ -401,12 +432,20 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   let recTitle = "RECONCILIATION SUCCESSFUL";
   let recSub = `Channel sum equals Net revenues exactly.`;
 
-  if (!isReconciled) {
+  if (!isReconciled || (hasPhysicalCashDataPDF && !isCashTalliedPDF)) {
     recBg = cRoseLight;
     recBorder = cRose;
     recText = cRoseDark;
-    recTitle = "RECONCILIATION MISMATCH";
-    recSub = `Diff: ${fmt(Math.abs(paymentChannelsTotal - totalIncome))}`;
+    if (!isReconciled && hasPhysicalCashDataPDF && !isCashTalliedPDF) {
+      recTitle = "RECONCILIATION & CASH MISMATCH";
+      recSub = `Chan: ${fmt(Math.abs(paymentChannelsTotal - totalIncome))} | Cash: ${fmt(Math.abs(cashTallyDiffPDF))}`;
+    } else if (!isReconciled) {
+      recTitle = "RECONCILIATION MISMATCH";
+      recSub = `Channel Diff: ${fmt(Math.abs(paymentChannelsTotal - totalIncome))}`;
+    } else {
+      recTitle = "PHYSICAL CASH MISMATCH";
+      recSub = `Cash Variance: ${fmt(Math.abs(cashTallyDiffPDF))}`;
+    }
   }
 
   doc.setFillColor(recBg[0], recBg[1], recBg[2]);
@@ -443,7 +482,7 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   };
 
   // Helper to draw table rows with clean spacing and truncation
-  const drawTableRow = (col1: string, col2: string, col3: string, isHeader = false) => {
+  const drawTableRow = (col1: string, col2: string, col3: string, isHeader = false, isHighlightRed = false) => {
     checkPageBreak(6);
     const truncate = (str: string, limit = 55) => {
       if (str.length > limit) return str.substring(0, limit - 3) + "...";
@@ -457,10 +496,12 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
       drawHorizontalLine(15, 195, y + 6, [203, 213, 225], 0.3);
       y += 8;
     } else {
-      drawText(truncate(col1), 18.5, y + 4, 7.5, "normal", cSlate);
-      drawText(col2, 120, y + 4, 7, "normal", cMuted, "center");
-      drawText(col3, 191.5, y + 4, 7.5, "bold", cSlate, "right");
-      drawHorizontalLine(15, 195, y + 6, [226, 232, 240], 0.2);
+      const textColor = isHighlightRed ? cRoseDark : cSlate;
+      const col2Color = isHighlightRed ? cRoseDark : cMuted;
+      drawText(truncate(col1), 18.5, y + 4, 7.5, isHighlightRed ? "bold" : "normal", textColor);
+      drawText(col2, 120, y + 4, 7, isHighlightRed ? "bold" : "normal", col2Color, "center");
+      drawText(col3, 191.5, y + 4, 7.5, "bold", textColor, "right");
+      drawHorizontalLine(15, 195, y + 6, isHighlightRed ? [252, 165, 165] : [226, 232, 240], 0.2);
       y += 6;
     }
   };
@@ -674,20 +715,6 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
   y += 3;
 
   // 4. Cash Denominations & Soiled Notes Section
-  const CASH_DENOMS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
-  const denomsObj = (() => {
-    if (!report.cashDenominations) return {};
-    if (typeof report.cashDenominations === "string") {
-      try { return JSON.parse(report.cashDenominations); } catch { return {}; }
-    }
-    return report.cashDenominations as Record<string, number>;
-  })();
-  const totalPhysicalCashPDF = CASH_DENOMS.reduce((sum, d) => {
-    const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
-    return sum + count * d;
-  }, 0) + Number(report.soiledNotes || 0);
-  const activeDenomCounts = CASH_DENOMS.filter((d) => Number(denomsObj[d] || denomsObj[String(d)] || 0) > 0);
-
   if (activeDenomCounts.length > 0 || report.soiledNotes) {
     y += 2;
     drawDetailSectionHeader("4. CASH DENOMINATIONS & SOILED NOTES");
@@ -695,13 +722,32 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
 
     drawTableRow("Denomination Note/Coin", "Count", "Subtotal Amount", true);
     activeDenomCounts.forEach((d) => {
-      const count = Number(denomsObj[d] || denomsObj[String(d)] || 0);
+      const count = Number(denomsObjPDF[d] || denomsObjPDF[String(d)] || 0);
       const subtotal = count * d;
       drawTableRow(`Rs. ${d} ${d >= 10 ? "Note" : "Coin"}`, `${count} pcs`, fmt(subtotal));
     });
     if (report.soiledNotes) {
       drawTableRow("Soiled Notes Amount", "-", fmt(Number(report.soiledNotes)));
     }
+
+    drawTableRow("Calculated Cash Closing", "-", fmt(closingBalance));
+    const varianceLabelPDF = cashTallyDiffPDF === 0
+      ? "Match"
+      : cashTallyDiffPDF > 0
+        ? "Excess"
+        : "Shortage";
+    const tallyStatusTextPDF = cashTallyDiffPDF === 0
+      ? "(Exact Match)"
+      : isCashTalliedPDF
+        ? "(Within Tolerance)"
+        : "(MISMATCH)";
+    drawTableRow(
+      `Physical Cash Variance / Tally ${tallyStatusTextPDF}`,
+      varianceLabelPDF,
+      cashTallyDiffPDF > 0 ? `+${fmt(cashTallyDiffPDF)}` : fmt(cashTallyDiffPDF),
+      false,
+      !isCashTalliedPDF
+    );
     y += 2;
   }
 
@@ -848,6 +894,22 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     numFmt: '"₹"#,##0.00'
   };
 
+  const styleRedBold = {
+    font: { name: "Calibri", sz: 10, bold: true, color: { rgb: "B91C1C" } }
+  };
+
+  const styleRedBoldNumber = {
+    font: { name: "Calibri", sz: 10, bold: true, color: { rgb: "B91C1C" } },
+    alignment: { horizontal: "right" },
+    numFmt: '"₹"#,##0.00'
+  };
+
+  const styleGreenBoldNumber = {
+    font: { name: "Calibri", sz: 10, bold: true, color: { rgb: "15803D" } },
+    alignment: { horizontal: "right" },
+    numFmt: '"₹"#,##0.00'
+  };
+
   const sheetStyles: { [key: string]: any } = {};
 
   const addRow = (cellValues: any[], cellStyles: any[]) => {
@@ -858,14 +920,15 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
       const cellRef = `${colLetter}${rowIndex + 1}`;
       let style = cellStyles[colIndex];
 
-      // Color-code column D (colIndex === 3) if it is a number
+      // Color-code column D (colIndex === 3) if it is a number and no explicit font color was set
       if (colIndex === 3 && typeof val === "number" && val !== 0) {
         const isPositive = val > 0;
+        const defaultColor = isPositive ? "15803D" : "B91C1C"; // Green-700 / Red-700
         style = {
           ...style,
           font: {
             ...style?.font,
-            color: { rgb: isPositive ? "15803D" : "B91C1C" } // Green-700 / Red-700
+            color: style?.font?.color ?? { rgb: defaultColor }
           }
         };
       }
@@ -883,7 +946,7 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
 
   // Metadata
   addRow(["Report Date:", report.reportDate, "Status:", report.status.toUpperCase()], [styleBold, styleRegular, styleBold, styleRegular]);
-  addRow(["Creator:", report.creatorName, "Reconciled:", isReconciled ? "YES" : "NO"], [styleBold, styleRegular, styleBold, styleRegular]);
+  addRow(["Creator:", report.creatorName, "Reconciled:", isReconciled ? "YES" : "NO"], [styleBold, styleRegular, styleBold, isReconciled ? { font: { name: "Calibri", sz: 10, bold: true, color: { rgb: "15803D" } } } : styleRedBold]);
   addRow(["", "", "", ""], []);
 
   // 1. Income Streams
@@ -957,8 +1020,25 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   addRow(["TOTAL EXPENDITURE", "", "", totalExpenditure], [styleBold, null, null, styleBoldNumber]);
   addRow(["", "", "", ""], []);
 
-  // 3. Cash Management & Reconciliation
-  addRow(["3. CASH MANAGEMENT", "", "", ""], [styleSection, null, null, null]);
+  // 3. Channel Reconciliation & Cash Management
+  addRow(["3. CHANNEL RECONCILIATION", "", "", ""], [styleSection, null, null, null]);
+
+  // Payment Channel Collections
+  const paymentChannelsListTotal = report.paymentChannels?.reduce((sum: number, item: any) => sum + parseFloat(item.amount), 0) ?? 0;
+  addRow(["Payment Channel Collections", "", "", paymentChannelsListTotal], [styleBold, null, styleBold, styleBoldNumber]);
+  addRow(["Channel / Bank", "", "Transaction Source", "Amount"], [styleBold, null, styleBold, styleBoldNumber]);
+
+  if (!report.paymentChannels || report.paymentChannels.length === 0) {
+    addRow(["No logged payment channels.", "", "", ""], [styleItalic, null, null, null]);
+  } else {
+    report.paymentChannels.forEach((item: any) => {
+      const channelAndBank = item.bank ? `  - ${item.channel} (${item.bank.toUpperCase()})` : `  - ${item.channel}`;
+      addRow([channelAndBank, "", item.sourceLabel || "", parseFloat(item.amount)], [styleItalic, null, styleItalic, styleNumber]);
+    });
+  }
+  addRow(["", "", "", ""], []);
+
+  addRow(["Cash Management & Handovers", "", "", ""], [styleBold, null, null, null]);
   addRow(["Cash Component", "", "Details", "Amount"], [styleBold, null, styleBold, styleBoldNumber]);
 
   addRow(["Opening Balance", "", "", openingBalance], [styleRegular, null, styleRegular, styleNumber]);
@@ -987,10 +1067,19 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
   addRow(["CALCULATED CLOSING BALANCE", "", "", closingBalance], [styleBold, null, null, styleBoldNumber]);
   addRow(["", "", "", ""], []);
 
+  const channelMismatch = Math.abs(paymentChannelsTotal - totalIncome);
   addRow(["RECONCILIATION SUMMARY", "", "", ""], [styleSection, null, null, null]);
   addRow(["Payment Channel Sum:", "", "", paymentChannelsTotal], [styleBold, null, null, styleBoldNumber]);
   addRow(["Net Daily Revenues:", "", "", totalIncome], [styleBold, null, null, styleBoldNumber]);
-  addRow(["Reconciliation Mismatch:", "", "", Math.abs(paymentChannelsTotal - totalIncome)], [styleBold, null, null, styleBoldNumber]);
+  addRow(
+    ["Reconciliation Mismatch:", "", "", channelMismatch],
+    [
+      !isReconciled ? styleRedBold : styleBold,
+      null,
+      null,
+      !isReconciled ? styleRedBoldNumber : (channelMismatch === 0 ? styleGreenBoldNumber : styleBoldNumber)
+    ]
+  );
   addRow(["", "", "", ""], []);
 
   // 4. Cash Denominations & Soiled Notes
@@ -1023,6 +1112,33 @@ export function exportClosingToExcel(report: any, categoriesList: any[], expCate
     }
 
     addRow(["TOTAL PHYSICAL CASH TALLY", "", "", totalPhysicalCashXL], [styleBold, null, null, styleBoldNumber]);
+    addRow(["Calculated Cash Closing", "", "", closingBalance], [styleRegular, null, styleRegular, styleNumber]);
+
+    const cashTallyDiffXL = totalPhysicalCashXL - closingBalance;
+    const toleranceValXL = parseFloat(report.reconciliationTolerance) || 0;
+    const isCashTalliedXL = Math.abs(cashTallyDiffXL) <= toleranceValXL;
+    const varianceLabelXL = cashTallyDiffXL === 0
+      ? "Match"
+      : cashTallyDiffXL > 0
+        ? "Excess"
+        : "Shortage";
+    const tallyStatusTextXL = cashTallyDiffXL === 0
+      ? "(Exact Match)"
+      : isCashTalliedXL
+        ? "(Within Tolerance)"
+        : "(MISMATCH)";
+
+    const isPhysicalCashMismatch = !isCashTalliedXL;
+
+    addRow(
+      [`Physical Cash Tally Variance ${tallyStatusTextXL}`, "", varianceLabelXL, cashTallyDiffXL],
+      [
+        isPhysicalCashMismatch ? styleRedBold : styleBold,
+        null,
+        isPhysicalCashMismatch ? styleRedBold : styleBold,
+        isPhysicalCashMismatch ? styleRedBoldNumber : (cashTallyDiffXL === 0 ? styleGreenBoldNumber : styleBoldNumber)
+      ]
+    );
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
