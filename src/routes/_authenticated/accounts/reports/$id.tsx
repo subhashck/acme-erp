@@ -5,7 +5,7 @@ import { exportClosingToExcel, exportClosingToPDF } from "../../../../lib/closin
 import { useRpcQuery } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { Button } from "../../../../ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../../ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "../../../../ui/card";
 import { Badge } from "../../../../ui/badge";
 import { cn } from "../../../../utils/cn";
 

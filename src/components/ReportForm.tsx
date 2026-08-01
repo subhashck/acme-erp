@@ -72,11 +72,11 @@ type CustomLine = { serviceName: string; department: string; rate: number; quant
 // type MiscIncome = { label: string; amount: number };
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
-type Expenditure = { category: string; details: string; amount: number; narration?: string; showNarration?: boolean };
-type StaffAdvance = { staffId?: number | null; staffName: string; amount: number };
+type Expenditure = { category: string; details: string; amount: number | string; narration?: string; showNarration?: boolean };
+type StaffAdvance = { staffId?: number | null; staffName: string; amount: number | string };
 // type AdditionalIncome = { label: string; amount: number };
-type DiscountReturn = { label: string; amount: number };
-type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number };
+type DiscountReturn = { label: string; amount: number | string };
+type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number | string };
 
 export interface ReportPayload {
   reportDate?: string;
@@ -94,12 +94,12 @@ export interface ReportPayload {
   status: "draft" | "submitted";
   serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean; narration?: string | null }>;
   expenditures: Array<{ category: string; details: string; amount: number; narration?: string | null }>;
-  staffAdvances: StaffAdvance[];
+  staffAdvances: Array<{ staffId?: number | null; staffName: string; amount: number }>;
   // ipdAdmissions: IpdAdmission[];
   // ipdDischarges: IpdDischarge[];
   // additionalIncome: AdditionalIncome[];
-  discountsReturns: DiscountReturn[];
-  paymentChannels: PaymentChannel[];
+  discountsReturns: Array<{ label: string; amount: number }>;
+  paymentChannels: Array<{ bank: string; channel: string; sourceLabel: string; amount: number }>;
   cashDenominations?: Record<string, number> | Record<number, number> | string | null;
   reconciliationTolerance?: number;
   soiledNotes?: number | null;
@@ -135,16 +135,16 @@ export function ReportForm({
 }: ReportFormProps) {
   // ── header state ──────────────────────────────────────────────
   const [reportDate, setReportDate] = React.useState(() => new Date().toISOString().split("T")[0]);
-  const [openingBalance, setOpeningBalance] = React.useState("0");
-  const [fundHandoverSir, setFundHandoverSir] = React.useState("0");
-  const [fundHandoverMadam, setFundHandoverMadam] = React.useState("0");
+  const [openingBalance, setOpeningBalance] = React.useState("");
+  const [fundHandoverSir, setFundHandoverSir] = React.useState("");
+  const [fundHandoverMadam, setFundHandoverMadam] = React.useState("");
   const [status, setStatus] = React.useState<"draft" | "submitted">("draft");
-  const [cashReceiptSir, setCashReceiptSir] = React.useState("0");
-  const [cashReceiptMam, setCashReceiptMam] = React.useState("0");
-  const [cashReceiptAcon, setCashReceiptAcon] = React.useState("0");
-  const [bankReceiptSir, setBankReceiptSir] = React.useState("0");
+  const [cashReceiptSir, setCashReceiptSir] = React.useState("");
+  const [cashReceiptMam, setCashReceiptMam] = React.useState("");
+  const [cashReceiptAcon, setCashReceiptAcon] = React.useState("");
+  const [bankReceiptSir, setBankReceiptSir] = React.useState("");
   const [bankReceiptSirBank, setBankReceiptSirBank] = React.useState("");
-  const [bankDeposits, setBankDeposits] = React.useState<{ bankName: string; amount: number }[]>([]);
+  const [bankDeposits, setBankDeposits] = React.useState<{ bankName: string; amount: number | string }[]>([]);
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
@@ -163,7 +163,7 @@ export function ReportForm({
 
   // ── cash denomination & tolerance state ─────────────────────
   const [cashDenominations, setCashDenominations] = React.useState<Record<number, number>>({});
-  const [reconciliationTolerance, setReconciliationTolerance] = React.useState<string>("0");
+  const [reconciliationTolerance, setReconciliationTolerance] = React.useState<string>("");
 
   // ── categories master query ───────────────────────────────────
   const categoriesQuery = useRpcQuery<ServiceCategory[]>(
@@ -215,11 +215,11 @@ export function ReportForm({
         const sorted = [...priorReports].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
         const latest = sorted[0];
         if (latest) {
-          setOpeningBalance(String(latest.closingBalance || 0));
+          setOpeningBalance(latest.closingBalance ? String(latest.closingBalance) : "");
           return;
         }
       }
-      setOpeningBalance("0");
+      setOpeningBalance("");
     }
   }, [pastReportsQuery.data, reportDate, mode]);
 
@@ -249,7 +249,7 @@ export function ReportForm({
   // ── other form state ──────────────────────────────────────────
   // const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
   // const [ipdDischarges, setIpdDischarges] = React.useState<IpdDischarge[]>([]);
-  const [soiledNotes, setSoiledNotes] = React.useState("0");
+  const [soiledNotes, setSoiledNotes] = React.useState("");
   const [expenditures, setExpenditures] = React.useState<Expenditure[]>([]);
   const [staffAdvances, setStaffAdvances] = React.useState<StaffAdvance[]>([]);
   // const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
@@ -299,10 +299,10 @@ export function ReportForm({
   React.useEffect(() => {
     if (!initialData) return;
 
-    setOpeningBalance(String(toNum(initialData.openingBalance)));
-    setFundHandoverSir(String(toNum(initialData.fundHandoverSir)));
-    setFundHandoverMadam(String(toNum(initialData.fundHandoverMadam)));
-    setSoiledNotes(initialData.soiledNotes ? String(toNum(initialData.soiledNotes)) : "0");
+    setOpeningBalance(toNum(initialData.openingBalance) ? String(toNum(initialData.openingBalance)) : "");
+    setFundHandoverSir(toNum(initialData.fundHandoverSir) ? String(toNum(initialData.fundHandoverSir)) : "");
+    setFundHandoverMadam(toNum(initialData.fundHandoverMadam) ? String(toNum(initialData.fundHandoverMadam)) : "");
+    setSoiledNotes(initialData.soiledNotes && toNum(initialData.soiledNotes) ? String(toNum(initialData.soiledNotes)) : "");
     setStatus(initialData.status);
 
     // Service lines
@@ -371,10 +371,10 @@ export function ReportForm({
     setDiscountsReturns(initialData.discountsReturns?.map((item: any) => ({
       label: item.label, amount: toNum(item.amount),
     })) ?? []);
-    setCashReceiptSir(String(toNum(initialData.cashReceiptSir)));
-    setCashReceiptMam(String(toNum(initialData.cashReceiptMam)));
-    setCashReceiptAcon(String(toNum(initialData.cashReceiptAcon)));
-    setBankReceiptSir(String(toNum(initialData.bankReceiptSir)));
+    setCashReceiptSir(toNum(initialData.cashReceiptSir) ? String(toNum(initialData.cashReceiptSir)) : "");
+    setCashReceiptMam(toNum(initialData.cashReceiptMam) ? String(toNum(initialData.cashReceiptMam)) : "");
+    setCashReceiptAcon(toNum(initialData.cashReceiptAcon) ? String(toNum(initialData.cashReceiptAcon)) : "");
+    setBankReceiptSir(toNum(initialData.bankReceiptSir) ? String(toNum(initialData.bankReceiptSir)) : "");
     setBankReceiptSirBank(initialData.bankReceiptSirBank || "");
 
     const pChannels = (initialData.paymentChannels ?? []).map((item: any) => ({
@@ -416,7 +416,7 @@ export function ReportForm({
     }
 
     if (initialData.reconciliationTolerance !== undefined && initialData.reconciliationTolerance !== null) {
-      setReconciliationTolerance(String(toNum(initialData.reconciliationTolerance)));
+      setReconciliationTolerance(toNum(initialData.reconciliationTolerance) ? String(toNum(initialData.reconciliationTolerance)) : "");
     }
   }, [initialData]);
 
@@ -462,25 +462,25 @@ export function ReportForm({
     return totals;
   }, [catalogServiceLines, customLines, activeCategories]);
 
-  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + toNum(v), 0);
+  const totalCategoryIncome = Number(Object.values(categoryTotals).reduce((s, v) => s + toNum(v), 0).toFixed(2));
 
-  const expTotal = expenditures.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const advTotal = staffAdvances.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const totalExpenditures = expTotal + advTotal;
+  const expTotal = Number(expenditures.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  const advTotal = Number(staffAdvances.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  const totalExpenditures = Number((expTotal + advTotal).toFixed(2));
 
   // const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + toNum(item.amount), 0);
   // const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + toNum(item.amount), 0);
   // const additionalTotal = additionalIncome.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const discountsTotal = discountsReturns.reduce((sum, item) => sum + toNum(item.amount), 0);
+  const discountsTotal = Number(discountsReturns.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
 
   const openBal = toNum(openingBalance);
 
-  const nightServicesTotal = nightServices.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const totalIncome = totalCategoryIncome + nightServicesTotal - discountsTotal;
-  const netBalance = totalIncome - totalExpenditures;
+  const nightServicesTotal = Number(nightServices.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  const totalIncome = Number((totalCategoryIncome + nightServicesTotal - discountsTotal).toFixed(2));
+  const netBalance = Number((totalIncome - totalExpenditures).toFixed(2));
 
   const derivedBankDepositTotal = React.useMemo(() => {
-    return bankDeposits.reduce((sum, item) => sum + item.amount, 0);
+    return Number(bankDeposits.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
   }, [bankDeposits]);
 
   const depositVal = derivedBankDepositTotal;
@@ -495,27 +495,28 @@ export function ReportForm({
   // `numeric` columns come back as strings via Drizzle), so every reduce
   // over this array must go through `toNum` — raw `item.amount` addition
   // silently degrades into string concatenation the moment a string slips in.
-  const cashReceiptsSum = paymentChannels
+  const cashReceiptsSum = Number(paymentChannels
     .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-    .reduce((sum, item) => sum + toNum(item.amount), 0);
+    .reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
 
-  const bankReceiptsSum = paymentChannels
+  const bankReceiptsSum = Number(paymentChannels
     .filter((item) => item.bank !== "CASH")
-    .reduce((sum, item) => sum + toNum(item.amount), 0);
+    .reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
 
   // Reuses cashReceiptsSum/bankReceiptsSum above instead of re-filtering and
   // re-reducing the same array a second time — one source of truth per total.
   // const paymentChannelsSum = bankReceiptsSum + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal;
-  const paymentChannelsSum = bankReceiptsSum + cashReceiptsSum;
+  const paymentChannelsSum = Number((bankReceiptsSum + cashReceiptsSum).toFixed(2));
 
-  const closingBalance = openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal;
+  const closingBalance = Number((openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal).toFixed(2));
 
   const totalDenominationAmount = React.useMemo(() => {
-    return Object.entries(cashDenominations).reduce((sum, [denom, count]) => {
+    const rawSum = Object.entries(cashDenominations).reduce((sum, [denom, count]) => {
       const d = parseInt(denom, 10) || 0;
       const c = typeof count === "number" ? count : (parseInt(count, 10) || 0);
       return sum + (d * c);
     }, 0) + toNum(soiledNotes);
+    return Number(rawSum.toFixed(2));
   }, [cashDenominations, soiledNotes]);
 
   // ── prior report & cash denominations reference ──────────────
@@ -556,11 +557,11 @@ export function ReportForm({
   };
 
   const toleranceVal = toNum(reconciliationTolerance);
-  const cashTallyDiff = totalDenominationAmount - closingBalance;
+  const cashTallyDiff = Number((totalDenominationAmount - closingBalance).toFixed(2));
   const isCashTallied = Math.abs(cashTallyDiff) <= toleranceVal;
 
   const revenueToReconcile = totalIncome;
-  const isReconciled = Math.abs(paymentChannelsSum - revenueToReconcile) <= toleranceVal;
+  const isReconciled = Math.abs(Number((paymentChannelsSum - revenueToReconcile).toFixed(2))) <= toleranceVal;
 
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
@@ -609,8 +610,7 @@ export function ReportForm({
   };
 
   const handleRateAmtChange = (serviceId: number, field: "rate" | "amount", valueStr: string) => {
-    const val = parseFloat(valueStr);
-    if (isNaN(val) || val < 0) return;
+    const val = parseFloat(valueStr) || 0;
     setServiceQuantities((prev) => {
       const data = prev[serviceId];
       if (!data) return prev;
@@ -725,8 +725,7 @@ export function ReportForm({
   };
 
   const handleNightRateAmtChange = (index: number, field: "rate" | "amount", valueStr: string) => {
-    const val = parseFloat(valueStr);
-    if (isNaN(val) || val < 0) return;
+    const val = parseFloat(valueStr) || 0;
     setNightServices((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
@@ -976,7 +975,8 @@ export function ReportForm({
                     {state.rate > 0 ? (
                       <input
                         type="number" min="0" step="0.01"
-                        value={state.rate}
+                        placeholder="0.00"
+                        value={state.rate || ""}
                         onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
                         disabled={state.quantity === 0}
                         className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
@@ -997,7 +997,8 @@ export function ReportForm({
                 <td className="p-3 text-right">
                   <input
                     type="number" min="0" step="0.01"
-                    value={state.amount}
+                    placeholder="0.00"
+                    value={state.amount || ""}
                     onChange={(e) => handleRateAmtChange(item.id, "amount", e.target.value)}
                     disabled={state.quantity === 0}
                     className="w-28 text-right font-bold text-foreground rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
@@ -1033,7 +1034,7 @@ export function ReportForm({
                   <Label className="text-[10px]">Qty</Label>
                   <Input
                     type="number" placeholder="1"
-                    value={line.quantity}
+                    value={line.quantity || ""}
                     onChange={(e) => handleCustomLineChange(actualIdx, "quantity", e.target.value)}
                     required
                   />
@@ -1042,8 +1043,8 @@ export function ReportForm({
                   <Label className="text-[10px]">Rate</Label>
                   {line.rate > 0 ? (
                     <Input
-                      type="number" placeholder="0"
-                      value={line.rate}
+                      type="number" placeholder="0.00"
+                      value={line.rate || ""}
                       onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
                       required
                     />
@@ -1065,7 +1066,8 @@ export function ReportForm({
                     <Label className="text-[10px]">Total</Label>
                     <Input
                       type="number"
-                      value={line.amount}
+                      placeholder="0.00"
+                      value={line.amount || ""}
                       onChange={(e) => handleCustomLineChange(actualIdx, "amount", e.target.value)}
                       required
                     />
@@ -1150,78 +1152,99 @@ export function ReportForm({
           <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-5">
 
             {/* ── Tab Navigation ──────────────────────────────── */}
-            <div className="sticky top-16 z-20 flex gap-1 p-1 bg-background/90 dark:bg-slate-900/90 backdrop-blur-md rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs overflow-x-auto">
+            <div className="sticky top-16 z-20 flex gap-1.5 p-1.5 bg-background/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-x-auto">
+              {/* 1. Income Tab */}
               <button
                 type="button"
                 onClick={() => setFormTab("income")}
                 className={cn(
-                  "flex-1 min-w-[110px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  "flex-1 min-w-[120px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
                   formTab === "income"
-                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 )}
               >
-                <Receipt size={14} />
-                Income
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <Receipt size={14} />
+                  <span>Income</span>
+                </div>
+                <div className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  {fmt(totalIncome)}
+                </div>
               </button>
+
+              {/* 2. Expenditures Tab */}
               <button
                 type="button"
                 onClick={() => setFormTab("expenses")}
                 className={cn(
-                  "flex-1 min-w-[120px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  "flex-1 min-w-[130px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
                   formTab === "expenses"
-                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 )}
               >
-                <ArrowDownCircle size={14} />
-                Expenditures
-                {totalExpenditures > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 text-[10px] font-black">
-                    {fmt(totalExpenditures)}
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <ArrowDownCircle size={14} />
+                  <span>Expenditures</span>
+                </div>
+                <div className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                  {fmt(totalExpenditures)}
+                </div>
               </button>
+
+              {/* 3. Payment Channels Tab */}
               <button
                 type="button"
                 onClick={() => setFormTab("channels")}
                 className={cn(
-                  "flex-1 min-w-[140px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  "flex-1 min-w-[150px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
                   formTab === "channels"
-                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 )}
               >
-                <CreditCard size={14} />
-                Payment Channels
-                {paymentChannelsSum > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full bg-teal-500/10 text-teal-650 dark:text-teal-400 text-[10px] font-black">
-                    {fmt(paymentChannelsSum)}
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <CreditCard size={14} />
+                  <span>Payment Channels</span>
+                </div>
+                <div className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-650 dark:text-teal-400">
+                  {fmt(paymentChannelsSum)}
+                </div>
               </button>
+
+              {/* 4. Cash Tally Tab */}
               <button
                 type="button"
                 onClick={() => setFormTab("tally")}
                 className={cn(
-                  "flex-1 min-w-[110px] flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap",
+                  "flex-1 min-w-[130px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
                   formTab === "tally"
-                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-sm border border-teal-500/20"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
                 )}
               >
-                <Coins size={14} />
-                Cash Tally
-                {totalDenominationAmount > 0 && (
-                  <span className={cn(
-                    "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black",
-                    isCashTallied
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                  )}>
-                    {isCashTallied ? "Tallied" : "Mismatch"}
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <Coins size={14} />
+                  <span>Cash Tally</span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] font-extrabold">
+                  <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-700 dark:text-slate-300">
+                    {fmt(totalDenominationAmount)}
                   </span>
-                )}
+                  {totalDenominationAmount > 0 && (
+                    <span
+                      className={cn(
+                        "px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase",
+                        isCashTallied
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                      )}
+                    >
+                      {isCashTallied ? "Tallied" : "Mismatch"}
+                    </span>
+                  )}
+                </div>
               </button>
             </div>
 
@@ -1284,6 +1307,7 @@ export function ReportForm({
                     type="number"
                     step="0.01"
                     min="0"
+                    placeholder="0.00"
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     required
@@ -1349,6 +1373,7 @@ export function ReportForm({
                                       <input
                                         type="number"
                                         min="1"
+                                        placeholder="1"
                                         value={item.quantity || ""}
                                         onChange={(e) => handleNightQtyChange(idx, e.target.value)}
                                         className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
@@ -1360,7 +1385,8 @@ export function ReportForm({
                                           type="number"
                                           min="0"
                                           step="0.01"
-                                          value={item.rate}
+                                          placeholder="0.00"
+                                          value={item.rate || ""}
                                           onChange={(e) => handleNightRateAmtChange(idx, "rate", e.target.value)}
                                           className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
                                         />
@@ -1379,7 +1405,8 @@ export function ReportForm({
                                         type="number"
                                         min="0"
                                         step="0.01"
-                                        value={item.amount}
+                                        placeholder="0.00"
+                                        value={item.amount || ""}
                                         onChange={(e) => handleNightRateAmtChange(idx, "amount", e.target.value)}
                                         className="w-28 text-right font-bold text-foreground rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
                                       />
@@ -1595,7 +1622,7 @@ export function ReportForm({
                           type="number"
                           placeholder="0"
                           value={item.amount || ""}
-                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: parseFloat(e.target.value) || 0 } : dr)))}
+                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: e.target.value } : dr)))}
                           required
                         />
                       </div>
@@ -1729,7 +1756,7 @@ export function ReportForm({
                                 !isAutoExpenditure &&
                                 setExpenditures(
                                   expenditures.map((ex, i) =>
-                                    i === idx ? { ...ex, amount: parseFloat(e.target.value) || 0 } : ex
+                                    i === idx ? { ...ex, amount: e.target.value } : ex
                                   )
                                 )
                               }
@@ -1838,7 +1865,7 @@ export function ReportForm({
                           <Input
                             type="number"
                             value={item.amount || ""}
-                            onChange={(e) => setStaffAdvances(staffAdvances.map((sa, i) => (i === idx ? { ...sa, amount: parseFloat(e.target.value) || 0 } : sa)))}
+                            onChange={(e) => setStaffAdvances(staffAdvances.map((sa, i) => (i === idx ? { ...sa, amount: e.target.value } : sa)))}
                             required
                           />
                         </div>
@@ -1896,7 +1923,7 @@ export function ReportForm({
                           type="number"
                           placeholder="0"
                           value={item.amount || ""}
-                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, amount: parseFloat(e.target.value) || 0 } : bd))}
+                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, amount: e.target.value } : bd))}
                           required
                         />
                       </div>
@@ -1973,7 +2000,7 @@ export function ReportForm({
                               type="number"
                               placeholder="0"
                               value={item.amount || ""}
-                              onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: parseFloat(e.target.value) || 0 } : pc)))}
+                              onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: e.target.value } : pc)))}
                               required
                             />
                           </div>
@@ -2343,6 +2370,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Cash Receipt (Sir)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={cashReceiptSir}
                         onChange={(e) => handleCashReceiptChange("SIR", e.target.value)}
@@ -2352,6 +2380,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Cash Receipt (Mam)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={cashReceiptMam}
                         onChange={(e) => handleCashReceiptChange("MAM", e.target.value)}
@@ -2361,6 +2390,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Cash Receipt (Acon)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={cashReceiptAcon}
                         onChange={(e) => handleCashReceiptChange("ACON", e.target.value)}
@@ -2370,6 +2400,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Bank Receipt (Sir)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={bankReceiptSir}
                         onChange={(e) => setBankReceiptSir(e.target.value)}
@@ -2428,6 +2459,7 @@ export function ReportForm({
                       <Label className=" text-rose-300"> Handover (Sir)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className=" font-semibold text-right pr-0 bg-transparent"
                         value={fundHandoverSir}
                         onChange={(e) => setFundHandoverSir(e.target.value)}
@@ -2437,6 +2469,7 @@ export function ReportForm({
                       <Label className=" text-rose-300">Handover (Madam)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className=" font-semibold text-right pr-0 bg-transparent"
                         value={fundHandoverMadam}
                         onChange={(e) => setFundHandoverMadam(e.target.value)}
