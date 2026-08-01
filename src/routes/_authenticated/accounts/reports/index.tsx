@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown, Share2, Copy, CheckCheck, X } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown, Share2, Copy, CheckCheck, X, History, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import * as React from "react";
 import { Calendar } from "../../../../components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../../components/ui/popover";
@@ -165,6 +165,27 @@ function ReportsHistory() {
 
   const reportsData = reportsQuery.data ?? [];
 
+  // Pagination state for Reconciliation Log History
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState(10);
+
+  // Reset to page 1 whenever filters or items per page change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate, sortOrder, pageSize]);
+
+  const totalReports = reportsData.length;
+  const totalPages = Math.max(1, Math.ceil(totalReports / pageSize));
+  const validPage = Math.min(currentPage, totalPages);
+
+  const paginatedReports = React.useMemo(() => {
+    const start = (validPage - 1) * pageSize;
+    return reportsData.slice(start, start + pageSize);
+  }, [reportsData, validPage, pageSize]);
+
+  const startItem = totalReports > 0 ? (validPage - 1) * pageSize + 1 : 0;
+  const endItem = Math.min(validPage * pageSize, totalReports);
+
 
   // Publish mutation — generates signed URL
   const publishMutation = useMutation({
@@ -201,23 +222,62 @@ function ReportsHistory() {
     },
   });
 
-  // Calculate statistics (from last 30 days of data in current view)
-  const totalIncomesSum = reportsData.reduce((sum, r) => sum + parseFloat(r.totalIncome), 0);
-  const totalExpendituresSum = reportsData.reduce((sum, r) => sum + parseFloat(r.totalExpenditure), 0);
-  const avgClosingBalance = reportsData.length > 0
-    ? reportsData.reduce((sum, r) => sum + parseFloat(r.closingBalance), 0) / reportsData.length
+  // Analytics timeframe filter: "current" (default), "all", or "YYYY-MM"
+  const currentYearMonth = React.useMemo(() => format(new Date(), "yyyy-MM"), []);
+  const currentMonthLabel = React.useMemo(() => format(new Date(), "MMMM yyyy"), []);
+  const [analyticsMonthFilter, setAnalyticsMonthFilter] = React.useState<string>("current");
+
+  // Distinct available months in fetched reportsData
+  const availableMonths = React.useMemo(() => {
+    const set = new Set<string>();
+    reportsData.forEach((r) => {
+      if (r.reportDate && r.reportDate.length >= 7) {
+        set.add(r.reportDate.slice(0, 7));
+      }
+    });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [reportsData]);
+
+  // Filter reports specifically for analytics summary & trend chart
+  const analyticsReports = React.useMemo(() => {
+    if (analyticsMonthFilter === "current") {
+      return reportsData.filter((r) => r.reportDate && r.reportDate.startsWith(currentYearMonth));
+    }
+    if (analyticsMonthFilter === "all") {
+      return reportsData;
+    }
+    return reportsData.filter((r) => r.reportDate && r.reportDate.startsWith(analyticsMonthFilter));
+  }, [reportsData, analyticsMonthFilter, currentYearMonth]);
+
+  // Human readable label for current analytics timeframe
+  const getFilterLabel = () => {
+    if (analyticsMonthFilter === "current") return `Current Month (${currentMonthLabel})`;
+    if (analyticsMonthFilter === "all") return "All Previous Months";
+    try {
+      return format(new Date(`${analyticsMonthFilter}-01`), "MMMM yyyy");
+    } catch {
+      return analyticsMonthFilter;
+    }
+  };
+
+  // Calculate statistics for the filtered analytics view
+  const totalIncomesSum = analyticsReports.reduce((sum, r) => sum + parseFloat(r.totalIncome || 0), 0);
+  const totalExpendituresSum = analyticsReports.reduce((sum, r) => sum + parseFloat(r.totalExpenditure || 0), 0);
+  const avgClosingBalance = analyticsReports.length > 0
+    ? analyticsReports.reduce((sum, r) => sum + parseFloat(r.closingBalance || 0), 0) / analyticsReports.length
     : 0;
 
-  // Chart data: sort reports ascending by date
-  const chartData = [...reportsData]
-    .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
-    .slice(-15) // last 15 reports for trend
-    .map((r) => ({
-      date: r.reportDate.slice(5), // YYYY-MM-DD -> MM-DD
-      Income: parseFloat(r.totalIncome),
-      Expense: parseFloat(r.totalExpenditure),
-      Closing: parseFloat(r.closingBalance),
-    }));
+  // Chart data: sort filtered analytics reports ascending by date
+  const chartData = React.useMemo(() => {
+    return [...analyticsReports]
+      .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
+      .map((r) => ({
+        date: r.reportDate.slice(5), // YYYY-MM-DD -> MM-DD
+        Income: parseFloat(r.totalIncome || 0),
+        Expense: parseFloat(r.totalExpenditure || 0),
+        Closing: parseFloat(r.closingBalance || 0),
+      }));
+  }, [analyticsReports]);
 
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
@@ -245,13 +305,86 @@ function ReportsHistory() {
         </div>
       </div>
 
+      {/* Analytics Summary Header & Control */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-2 pb-1 border-t border-border/40">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <h4 className="text-lg font-bold tracking-tight text-foreground">
+              Analytics & Trends
+            </h4>
+            <Badge
+              className={cn(
+                "text-xs font-semibold px-2.5 py-0.5 rounded-full border transition-all",
+                analyticsMonthFilter === "current"
+                  ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30"
+                  : "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
+              )}
+            >
+              {getFilterLabel()}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {analyticsMonthFilter === "current"
+              ? `Summary and trends limited to ${currentMonthLabel}. Use the button to explore previous months.`
+              : "Showing metrics across selected historical records."}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant={analyticsMonthFilter !== "current" ? "default" : "outline"}
+            onClick={() => setAnalyticsMonthFilter(analyticsMonthFilter === "current" ? "all" : "current")}
+            className={cn(
+              "h-8 text-xs font-semibold cursor-pointer transition-all shadow-2xs",
+              analyticsMonthFilter !== "current"
+                ? "bg-teal-650 hover:bg-teal-700 text-white"
+                : "hover:bg-muted text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {analyticsMonthFilter === "current" ? (
+              <>
+                <History size={14} className="mr-1.5" />
+                View Previous Months Data
+              </>
+            ) : (
+              <>
+                <CalendarIcon size={14} className="mr-1.5" />
+                Limit to Current Month
+              </>
+            )}
+          </Button>
+
+          {availableMonths.length > 0 && (
+            <select
+              value={analyticsMonthFilter}
+              onChange={(e) => setAnalyticsMonthFilter(e.target.value)}
+              className="h-8 rounded-lg border border-input bg-card px-2.5 text-xs font-semibold text-foreground shadow-2xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              title="Select specific month for analytics"
+            >
+              <option value="current">Current Month ({currentMonthLabel})</option>
+              <option value="all">All Previous Months</option>
+              {availableMonths.map((ym) => {
+                let monthName = ym;
+                try {
+                  monthName = format(new Date(`${ym}-01`), "MMMM yyyy");
+                } catch {}
+                return (
+                  <option key={ym} value={ym}>
+                    {monthName} {ym === currentYearMonth ? "(Current)" : ""}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+        </div>
+      </div>
 
       {/* Analytics Summary */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
         <Card className="border border-border/60 bg-linear-to-br from-emerald-500/5 to-teal-500/5 shadow-xs hover:shadow-md transition-all duration-300">
           <CardHeader className="pb-2">
             <CardDescription className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-              <Coins size={14} /> Total Revenues (Logged View)
+              <Coins size={14} /> Total Revenues ({analyticsMonthFilter === "current" ? "Current Month" : "Selected View"})
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -286,11 +419,13 @@ function ReportsHistory() {
       </div>
 
       {/* Recharts Area Chart for Trend */}
-      {chartData.length > 0 && (
+      {chartData.length > 0 ? (
         <Card className="border border-border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
           <CardHeader>
             <CardTitle className="text-base font-extrabold">Closing Cash Flow Trends</CardTitle>
-            <CardDescription>Daily comparison of total income, expenditures, and closing cash balances (last 15 records)</CardDescription>
+            <CardDescription>
+              Daily comparison of total income, expenditures, and closing cash balances ({getFilterLabel()})
+            </CardDescription>
           </CardHeader>
           <CardContent className="h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -316,6 +451,23 @@ function ReportsHistory() {
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
+        </Card>
+      ) : (
+        <Card className="border border-border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur p-6 text-center text-muted-foreground">
+          <p className="text-sm font-semibold">No daily closing trend data for {getFilterLabel()}</p>
+          {analyticsMonthFilter === "current" && (
+            <p className="text-xs mt-1">
+              Click{" "}
+              <button
+                type="button"
+                onClick={() => setAnalyticsMonthFilter("all")}
+                className="font-bold text-teal-650 dark:text-teal-400 hover:underline cursor-pointer"
+              >
+                View Previous Months Data
+              </button>{" "}
+              to inspect historical trends.
+            </p>
+          )}
         </Card>
       )}
 
@@ -470,7 +622,7 @@ function ReportsHistory() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {reportsData.map((report) => (
+                  {paginatedReports.map((report) => (
                     <tr key={report.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-4 font-bold text-foreground">
                         <Link
@@ -486,7 +638,7 @@ function ReportsHistory() {
                         </Link>
                       </td>
                       <td className="p-4 font-medium">{fmt(report.openingBalance)}</td>
-                      <td className="p-4 font-bold text-emerald-600 dark:text-emerald-450">
+                      <td className="p-4 font-bold text-emerald-600 dark:text-emerald-455">
                         {fmt(report.totalIncome)}
                       </td>
                       <td className="p-4 font-bold text-rose-600 dark:text-rose-455">
@@ -575,6 +727,80 @@ function ReportsHistory() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {reportsData.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-6 py-3.5 border-t border-border bg-muted/20">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground font-medium">
+                <span>
+                  Showing <strong className="text-foreground font-bold">{startItem}</strong> to{" "}
+                  <strong className="text-foreground font-bold">{endItem}</strong> of{" "}
+                  <strong className="text-foreground font-bold">{totalReports}</strong> entries
+                </span>
+                <div className="flex items-center gap-1.5 border-l border-border pl-3">
+                  <span className="text-xs">Rows per page:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                    className="h-7 rounded-md border border-input bg-card px-2 text-xs font-semibold text-foreground focus:outline-none cursor-pointer"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={validPage === 1}
+                  title="First Page"
+                  className="h-7 w-7 cursor-pointer disabled:opacity-40"
+                >
+                  <ChevronsLeft size={14} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={validPage === 1}
+                  title="Previous Page"
+                  className="h-7 w-7 cursor-pointer disabled:opacity-40"
+                >
+                  <ChevronLeft size={14} />
+                </Button>
+
+                <div className="px-3 text-xs font-bold text-foreground">
+                  Page {validPage} of {totalPages}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={validPage === totalPages}
+                  title="Next Page"
+                  className="h-7 w-7 cursor-pointer disabled:opacity-40"
+                >
+                  <ChevronRight size={14} />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={validPage === totalPages}
+                  title="Last Page"
+                  className="h-7 w-7 cursor-pointer disabled:opacity-40"
+                >
+                  <ChevronsRight size={14} />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
