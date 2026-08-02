@@ -320,7 +320,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     //   Forward Target  → Forwarded leaves where they are the forwardedToStaffId
     //   Resolved        → Approved/Rejected history visible to all staff
     let filteredRows = rows.filter((row) => {
-      if (isAdmin) return true;
+      if (isAdmin || isHrUser) return true;
       if (!currentStaff) return false;
 
       // Requester sees their own leaves
@@ -328,9 +328,6 @@ export const leavesRoutes = new Hono<AuthEnv>()
 
       // Nursing Supers see leaves for staff in clinical departments
       if (isNursingSuper && row.isClinical) return true;
-
-      // HR users see leaves for staff in non-clinical departments
-      if (isHrUser && !row.isClinical) return true;
 
       // Dept head/subhead sees their department's leaves
       const isDeptLeader = currentStaff.staffId === row.headStaffId || currentStaff.staffId === row.subheadStaffId;
@@ -401,8 +398,18 @@ export const leavesRoutes = new Hono<AuthEnv>()
   .get("/hr/leaves/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
 
     const manager = aliasedTable(staff, "manager");
     const director = aliasedTable(staff, "director");
@@ -427,6 +434,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         staffPhone: staff.phone,
         staffRole: staff.role,
         departmentName: departments.name,
+        isClinical: departments.isClinical,
         supervisorLevel1Id: manager.staffId,
         supervisorLevel1Name: manager.name,
         supervisorLevel2Id: director.staffId,
@@ -471,8 +479,17 @@ export const leavesRoutes = new Hono<AuthEnv>()
     } catch (e) {}
 
     const isForwardedTarget = currentStaff && row.forwardedToStaffId !== null && currentStaff.staffId === row.forwardedToStaffId;
+    const isClinicalDept = row.isClinical === true;
 
-    if (!isHrOrAdmin && !isEmployee && !isApprover && !isForwardedTarget) {
+    const canView =
+      isAdmin ||
+      isHrUser ||
+      (isNursingSuper && isClinicalDept) ||
+      isEmployee ||
+      isApprover ||
+      isForwardedTarget;
+
+    if (!canView) {
       return c.json({ error: "You are not authorized to view this leave request" }, 403);
     }
 
@@ -484,8 +501,18 @@ export const leavesRoutes = new Hono<AuthEnv>()
   .get("/hr/leaves/:id/document", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
 
     const leaveRequest = await db
       .select({
@@ -494,8 +521,15 @@ export const leavesRoutes = new Hono<AuthEnv>()
         approverIds: leaveRequests.approverIds,
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
         supportingDocument: leaveRequests.supportingDocument,
+        isClinical: departments.isClinical,
       })
       .from(leaveRequests)
+      .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staff.status} = 'Active'`
+      )
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .where(eq(leaveRequests.id, id))
       .limit(1)
       .then((res: any) => res[0]);
@@ -518,7 +552,17 @@ export const leavesRoutes = new Hono<AuthEnv>()
       leaveRequest.forwardedToStaffId !== null &&
       currentStaff.staffId === leaveRequest.forwardedToStaffId;
 
-    if (!isHrOrAdmin && !isEmployee && !isApprover && !isForwardedTarget) {
+    const isClinicalDept = leaveRequest.isClinical === true;
+
+    const canView =
+      isAdmin ||
+      isHrUser ||
+      (isNursingSuper && isClinicalDept) ||
+      isEmployee ||
+      isApprover ||
+      isForwardedTarget;
+
+    if (!canView) {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
@@ -599,10 +643,14 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const isClinicalDept = empDept?.isClinical === true;
 
     const canAct = (() => {
-      if (isAdmin) return true;
+      if (leaveRequest.status === "Pending Payroll Approval") {
+        return isAdmin || isHrUser;
+      }
+
+      if (isAdmin || isHrUser) return true;
       if (!currentStaff) return false;
+
       if (isNursingSuper && isClinicalDept) return true;
-      if (isHrUser && !isClinicalDept) return true;
 
       if (leaveRequest.status === "Pending") {
         try {
@@ -776,10 +824,14 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const isClinicalDept = empDept?.isClinical === true;
 
     const canAct = (() => {
-      if (isAdmin) return true;
+      if (leaveRequest.status === "Pending Payroll Approval") {
+        return isAdmin || isHrUser;
+      }
+
+      if (isAdmin || isHrUser) return true;
       if (!currentStaff) return false;
+
       if (isNursingSuper && isClinicalDept) return true;
-      if (isHrUser && !isClinicalDept) return true;
 
       if (leaveRequest.status === "Pending") {
         try {
