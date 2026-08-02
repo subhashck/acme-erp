@@ -71,6 +71,44 @@ function Items() {
     () => client["item-types"].$get()
   );
 
+  // Fetch unit types
+  const { data: unitTypes = [] } = useRpcQuery<any[]>(
+    ["unit-types"],
+    () => client["unit-types"].$get()
+  );
+
+  // Fetch unit conversions
+  const { data: unitConversions = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
+  const getConversionFactor = React.useCallback(
+    (fromSymbol: string, toSymbol: string) => {
+      if (!fromSymbol || !toSymbol || fromSymbol === toSymbol) return 1;
+      const fromU = unitTypes.find((u) => u.symbol === fromSymbol || u.name === fromSymbol);
+      const toU = unitTypes.find((u) => u.symbol === toSymbol || u.name === toSymbol);
+      if (!fromU || !toU || !unitConversions || unitConversions.length === 0) return 1;
+
+      const fId = Number(fromU.id);
+      const tId = Number(toU.id);
+
+      const direct = unitConversions.find(
+        (c: any) => Number(c.fromUnitId) === fId && Number(c.toUnitId) === tId
+      );
+      if (direct && Number(direct.multiplier) > 0) return Number(direct.multiplier);
+
+      const inverse = unitConversions.find(
+        (c: any) => Number(c.fromUnitId) === tId && Number(c.toUnitId) === fId
+      );
+      if (inverse && Number(inverse.multiplier) > 0) return 1 / Number(inverse.multiplier);
+
+      return 1;
+    },
+    [unitTypes, unitConversions]
+  );
+
+
   const itemsList = itemsResponse?.data || [];
   const totalItems = itemsResponse?.total || 0;
   const totalPages = itemsResponse?.totalPages || 1;
@@ -170,53 +208,100 @@ function Items() {
                       <tr>
                         <th className="px-6 py-3">Item Name</th>
                         <th className="px-6 py-3">Type / Category</th>
-                        <th className="px-6 py-3">Purchase Unit</th>
-                        <th className="px-6 py-3 text-right">Standard Rate</th>
+                        <th className="px-6 py-3">Default Purchase Unit</th>
+                        <th className="px-6 py-3">Default Sale Unit</th>
                         <th className="px-6 py-3 text-right">GST %</th>
                         <th className="px-6 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {itemsList.map((item: any) => (
-                        <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4 font-semibold text-primary">{item.name}</td>
-                          <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-300">
-                            {item.itemTypeName || "—"}
-                          </td>
-                          <td className="px-6 py-4 text-muted-foreground">{item.unit}</td>
-                          <td className="px-6 py-4 text-right font-bold">
-                            {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(item.rate || 0))}
-                          </td>
-                          <td className="px-6 py-4 text-right font-medium text-slate-600 dark:text-slate-400">
-                            {Number(item.gstPercent || 0)}%
-                          </td>
-                          <td className="px-6 py-4 text-right space-x-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              onClick={() => handleEditClick(item)}
-                              className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                              title="Edit Item"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon"
-                              onClick={() => {
-                                if (window.confirm("Are you sure you want to delete this catalog item?")) {
-                                  deleteMutation.mutate(item.id);
-                                }
-                              }}
-                              className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                              title="Delete Item"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
+                      {itemsList.map((item: any) => {
+                        const costPrice = Number(item.rate || 0);
+                        const salePrice = Number(item.salePrice || 0);
+                        const purchaseUnit = item.purchaseUnit || item.unit || "unit";
+                        const saleUnit = item.saleUnit || item.unit || "unit";
+                        const factor = getConversionFactor(purchaseUnit, saleUnit);
+                        const effectiveCostPerSaleUnit = factor > 0 ? costPrice / factor : costPrice;
+                        const marginPercent = effectiveCostPerSaleUnit > 0 ? (((salePrice - effectiveCostPerSaleUnit) / effectiveCostPerSaleUnit) * 100).toFixed(1) : "0";
+                        const extraUnitPrices = item.unitPrices || [];
+
+                        return (
+                          <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4 font-semibold text-primary">
+                              <div>{item.name}</div>
+                              {extraUnitPrices.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {extraUnitPrices.map((up: any) => (
+                                    <Badge key={up.unit} variant="default" className="text-[10px] px-1 py-0 bg-muted/70 text-muted-foreground border">
+                                      {up.unit}: ₹{up.costPrice}/₹{up.salePrice}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 font-medium text-slate-700 dark:text-slate-300">
+                              {item.itemTypeName || "—"}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-slate-900 dark:text-slate-100">
+                                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(costPrice)}
+                                </span>
+                                <span className="text-xs text-muted-foreground">per {purchaseUnit}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(salePrice)}
+                                  </span>
+                                  {effectiveCostPerSaleUnit > 0 && (
+                                    <Badge className={`text-[10px] px-1 py-0 ${Number(marginPercent) >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-destructive/15 text-destructive"}`}>
+                                      {Number(marginPercent) >= 0 ? "+" : ""}{marginPercent}% Margin
+                                    </Badge>
+                                  )}
+                                </div>
+                                <span className="text-xs text-muted-foreground">per {saleUnit}</span>
+                                {purchaseUnit !== saleUnit && factor !== 1 && (
+                                  <span className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                                    (1 {purchaseUnit} = {factor} {saleUnit} · Cost: ₹{effectiveCostPerSaleUnit.toFixed(2)}/{saleUnit})
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-right font-medium text-slate-600 dark:text-slate-400">
+                              {Number(item.gstPercent || 0)}%
+                            </td>
+                            <td className="px-6 py-4 text-right space-x-2">
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => handleEditClick(item)}
+                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Edit Item"
+                              >
+                                <Edit2 className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => {
+                                  if (window.confirm("Are you sure you want to delete this catalog item?")) {
+                                    deleteMutation.mutate(item.id);
+                                  }
+                                }}
+                                className="h-8 w-8 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                title="Delete Item"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
+
                   </table>
                 </div>
 

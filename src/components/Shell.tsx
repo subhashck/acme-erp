@@ -110,6 +110,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Banks", to: "/masters/banks" });
     } else if (sub === "management-approvers") {
       items.push({ label: "Management Approvers", to: "/masters/management-approvers" });
+    } else if (sub === "nursing-supers") {
+      items.push({ label: "Nursing Supers", to: "/masters/nursing-supers" });
     }
     return items;
   }
@@ -614,13 +616,22 @@ export function Shell() {
                         Banks
                       </Link>
                       {session.data?.user.role === "admin" && (
-                        <Link
-                          to="/masters/management-approvers"
-                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                        >
-                          Management Approvers
-                        </Link>
+                        <>
+                          <Link
+                            to="/masters/management-approvers"
+                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                          >
+                            Management Approvers
+                          </Link>
+                          <Link
+                            to="/masters/nursing-supers"
+                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                          >
+                            Nursing Supers
+                          </Link>
+                        </>
                       )}
                     </div>
                   )}

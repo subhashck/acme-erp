@@ -2,6 +2,7 @@ import { eq, sql, and, or, desc, ilike, inArray, gte, lte } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
+import { alias } from "drizzle-orm/pg-core";
 import {
   vendors,
   purchaseOrders,
@@ -11,6 +12,9 @@ import {
   poPayments,
   itemTypes,
   items,
+  unitTypes,
+  unitConversions,
+  itemUnitPrices,
 } from "../db/schema.ts";
 import { idParam, jsonBody, requireAdmin } from "./shared.ts";
 import { z } from "zod";
@@ -983,6 +987,115 @@ export const purchasesRoutes = app
     if (!row) return c.json({ error: "Not found" }, 404);
     return c.json({ success: true });
   })
+  // ---------------------------------------------------------------------------
+  // Unit Types & Unit Conversions
+  // ---------------------------------------------------------------------------
+  .get("/unit-types", async (c) => {
+    const rows = await db.select().from(unitTypes).orderBy(unitTypes.category, unitTypes.name);
+    return c.json(rows);
+  })
+  .post("/unit-types", async (c) => {
+    const input = await jsonBody(c, z.object({
+      name: z.string().min(1, "Name is required"),
+      symbol: z.string().min(1, "Symbol is required"),
+      category: z.string().min(1).default("Count/Quantity"),
+      isBaseUnit: z.boolean().optional().default(false),
+      description: z.string().optional().nullable(),
+    }));
+    const [row] = await db.insert(unitTypes).values(input).returning();
+    return c.json(row, 201);
+  })
+  .patch("/unit-types/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, z.object({
+      name: z.string().min(1).optional(),
+      symbol: z.string().min(1).optional(),
+      category: z.string().min(1).optional(),
+      isBaseUnit: z.boolean().optional(),
+      description: z.string().optional().nullable(),
+    }));
+    const [row] = await db.update(unitTypes).set(input).where(eq(unitTypes.id, id)).returning();
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json(row);
+  })
+  .delete("/unit-types/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [row] = await db.delete(unitTypes).where(eq(unitTypes.id, id)).returning();
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json({ success: true });
+  })
+  .get("/unit-conversions", async (c) => {
+    const fromUnitAlias = alias(unitTypes, "from_unit");
+    const toUnitAlias = alias(unitTypes, "to_unit");
+
+    const rows = await db
+      .select({
+        id: unitConversions.id,
+        fromUnitId: unitConversions.fromUnitId,
+        fromUnitName: fromUnitAlias.name,
+        fromUnitSymbol: fromUnitAlias.symbol,
+        fromUnitCategory: fromUnitAlias.category,
+        toUnitId: unitConversions.toUnitId,
+        toUnitName: toUnitAlias.name,
+        toUnitSymbol: toUnitAlias.symbol,
+        toUnitCategory: toUnitAlias.category,
+        multiplier: unitConversions.multiplier,
+        notes: unitConversions.notes,
+        createdAt: unitConversions.createdAt,
+        updatedAt: unitConversions.updatedAt,
+      })
+      .from(unitConversions)
+      .leftJoin(fromUnitAlias, eq(unitConversions.fromUnitId, fromUnitAlias.id))
+      .leftJoin(toUnitAlias, eq(unitConversions.toUnitId, toUnitAlias.id))
+      .orderBy(desc(unitConversions.createdAt));
+
+    return c.json(rows);
+  })
+  .post("/unit-conversions", async (c) => {
+    const input = await jsonBody(c, z.object({
+      fromUnitId: z.number().int().positive("From Unit is required"),
+      toUnitId: z.number().int().positive("To Unit is required"),
+      multiplier: z.coerce.number().positive("Multiplier must be greater than 0"),
+      notes: z.string().optional().nullable(),
+    }));
+
+    if (input.fromUnitId === input.toUnitId) {
+      return c.json({ error: "Cannot convert a unit to itself" }, 400);
+    }
+
+    const [row] = await db.insert(unitConversions).values({
+      fromUnitId: input.fromUnitId,
+      toUnitId: input.toUnitId,
+      multiplier: input.multiplier,
+      notes: input.notes,
+    }).returning();
+
+    return c.json(row, 201);
+  })
+  .patch("/unit-conversions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, z.object({
+      fromUnitId: z.number().int().positive().optional(),
+      toUnitId: z.number().int().positive().optional(),
+      multiplier: z.coerce.number().positive().optional(),
+      notes: z.string().optional().nullable(),
+    }));
+
+    if (input.fromUnitId && input.toUnitId && input.fromUnitId === input.toUnitId) {
+      return c.json({ error: "Cannot convert a unit to itself" }, 400);
+    }
+
+    const [row] = await db.update(unitConversions).set(input).where(eq(unitConversions.id, id)).returning();
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json(row);
+  })
+  .delete("/unit-conversions/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [row] = await db.delete(unitConversions).where(eq(unitConversions.id, id)).returning();
+    if (!row) return c.json({ error: "Not found" }, 404);
+    return c.json({ success: true });
+  })
+
   .get("/items", async (c) => {
     const query = c.req.query();
     const page = query.page ? parseInt(query.page, 10) : undefined;
@@ -1015,7 +1128,10 @@ export const purchasesRoutes = app
         itemTypeId: items.itemTypeId,
         itemTypeName: itemTypes.name,
         unit: items.unit,
+        purchaseUnit: items.purchaseUnit,
+        saleUnit: items.saleUnit,
         rate: items.rate,
+        salePrice: items.salePrice,
         gstPercent: items.gstPercent,
         createdAt: items.createdAt,
         updatedAt: items.updatedAt,
@@ -1035,10 +1151,24 @@ export const purchasesRoutes = app
 
     const rows = await finalQuery.execute();
 
+    // Fetch unit prices for returned items
+    const itemIds = rows.map((r: any) => r.id);
+    let allUnitPrices: any[] = [];
+    if (itemIds.length > 0) {
+      allUnitPrices = await db.select().from(itemUnitPrices).where(inArray(itemUnitPrices.itemId, itemIds));
+    }
+
+    const itemsWithPrices = rows.map((item: any) => ({
+      ...item,
+      purchaseUnit: item.purchaseUnit || item.unit,
+      saleUnit: item.saleUnit || item.unit,
+      unitPrices: allUnitPrices.filter((up) => up.itemId === item.id),
+    }));
+
     if (page !== undefined || limit !== undefined) {
       const activeLimit = limit ?? 10;
       return c.json({
-        data: rows,
+        data: itemsWithPrices,
         total,
         page: page ?? 1,
         limit: activeLimit,
@@ -1046,18 +1176,48 @@ export const purchasesRoutes = app
       });
     }
 
-    return c.json(rows);
+    return c.json(itemsWithPrices);
   })
   .post("/items", async (c) => {
     const input = await jsonBody(c, z.object({
       name: z.string().min(2),
       itemTypeId: z.number().int().positive(),
       unit: z.string().min(1),
+      purchaseUnit: z.string().optional(),
+      saleUnit: z.string().optional(),
       rate: z.coerce.number().min(0),
+      salePrice: z.coerce.number().min(0).optional().default(0),
       gstPercent: z.coerce.number().min(0).optional().default(0),
+      unitPrices: z.array(z.object({
+        unit: z.string().min(1),
+        costPrice: z.coerce.number().min(0),
+        salePrice: z.coerce.number().min(0),
+        conversionFactor: z.coerce.number().positive().optional().default(1),
+        isDefault: z.boolean().optional().default(false),
+      })).optional(),
     }));
-    const [row] = await db.insert(items).values(input).returning();
-    return c.json(row, 201);
+
+    const { unitPrices, ...itemValues } = input;
+    if (!itemValues.purchaseUnit) itemValues.purchaseUnit = itemValues.unit;
+    if (!itemValues.saleUnit) itemValues.saleUnit = itemValues.unit;
+
+    const [row] = await db.insert(items).values(itemValues).returning();
+
+    let savedUnitPrices: any[] = [];
+    if (unitPrices && unitPrices.length > 0) {
+      savedUnitPrices = await db.insert(itemUnitPrices).values(
+        unitPrices.map((up) => ({
+          itemId: row.id,
+          unit: up.unit,
+          costPrice: up.costPrice,
+          salePrice: up.salePrice,
+          conversionFactor: up.conversionFactor ?? 1,
+          isDefault: up.isDefault ?? false,
+        }))
+      ).returning();
+    }
+
+    return c.json({ ...row, unitPrices: savedUnitPrices }, 201);
   })
   .patch("/items/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
@@ -1065,12 +1225,52 @@ export const purchasesRoutes = app
       name: z.string().min(2).optional(),
       itemTypeId: z.number().int().positive().optional(),
       unit: z.string().min(1).optional(),
+      purchaseUnit: z.string().optional(),
+      saleUnit: z.string().optional(),
       rate: z.coerce.number().min(0).optional(),
+      salePrice: z.coerce.number().min(0).optional(),
       gstPercent: z.coerce.number().min(0).optional(),
+      unitPrices: z.array(z.object({
+        unit: z.string().min(1),
+        costPrice: z.coerce.number().min(0),
+        salePrice: z.coerce.number().min(0),
+        conversionFactor: z.coerce.number().positive().optional().default(1),
+        isDefault: z.boolean().optional().default(false),
+      })).optional(),
     }));
-    const [row] = await db.update(items).set(input).where(eq(items.id, id)).returning();
+
+    const { unitPrices, ...itemValues } = input;
+    let row: any = null;
+    if (Object.keys(itemValues).length > 0) {
+      const [updated] = await db.update(items).set(itemValues).where(eq(items.id, id)).returning();
+      row = updated;
+    } else {
+      const [existing] = await db.select().from(items).where(eq(items.id, id));
+      row = existing;
+    }
+
     if (!row) return c.json({ error: "Not found" }, 404);
-    return c.json(row);
+
+    let savedUnitPrices: any[] = [];
+    if (unitPrices !== undefined) {
+      await db.delete(itemUnitPrices).where(eq(itemUnitPrices.itemId, id));
+      if (unitPrices.length > 0) {
+        savedUnitPrices = await db.insert(itemUnitPrices).values(
+          unitPrices.map((up) => ({
+            itemId: id,
+            unit: up.unit,
+            costPrice: up.costPrice,
+            salePrice: up.salePrice,
+            conversionFactor: up.conversionFactor ?? 1,
+            isDefault: up.isDefault ?? false,
+          }))
+        ).returning();
+      }
+    } else {
+      savedUnitPrices = await db.select().from(itemUnitPrices).where(eq(itemUnitPrices.itemId, id));
+    }
+
+    return c.json({ ...row, unitPrices: savedUnitPrices });
   })
   .delete("/items/:id", requireAdmin, async (c) => {
     const { id } = idParam.parse(c.req.param());
@@ -1078,5 +1278,7 @@ export const purchasesRoutes = app
     if (!row) return c.json({ error: "Not found" }, 404);
     return c.json({ success: true });
   })
+;
+
 ;
 export type PurchasesRoutes = typeof purchasesRoutes;

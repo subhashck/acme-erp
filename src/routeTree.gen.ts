@@ -25,6 +25,7 @@ import { Route as AuthenticatedPurchasesBillsRouteImport } from './routes/_authe
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
+import { Route as AuthenticatedMastersNursingSupersRouteImport } from './routes/_authenticated/masters/nursing-supers'
 import { Route as AuthenticatedMastersManagementApproversRouteImport } from './routes/_authenticated/masters/management-approvers'
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
@@ -147,6 +148,12 @@ const AuthenticatedMastersRolesRoute =
   AuthenticatedMastersRolesRouteImport.update({
     id: '/masters/roles',
     path: '/masters/roles',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMastersNursingSupersRoute =
+  AuthenticatedMastersNursingSupersRouteImport.update({
+    id: '/masters/nursing-supers',
+    path: '/masters/nursing-supers',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedMastersManagementApproversRoute =
@@ -376,6 +383,7 @@ export interface FileRoutesByFullPath {
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
   '/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
+  '/masters/nursing-supers': typeof AuthenticatedMastersNursingSupersRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
@@ -427,6 +435,7 @@ export interface FileRoutesByTo {
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
   '/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
+  '/masters/nursing-supers': typeof AuthenticatedMastersNursingSupersRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
@@ -479,6 +488,7 @@ export interface FileRoutesById {
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
   '/_authenticated/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
+  '/_authenticated/masters/nursing-supers': typeof AuthenticatedMastersNursingSupersRoute
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
@@ -532,6 +542,7 @@ export interface FileRouteTypes {
     | '/masters/departments'
     | '/masters/leave-types'
     | '/masters/management-approvers'
+    | '/masters/nursing-supers'
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
@@ -583,6 +594,7 @@ export interface FileRouteTypes {
     | '/masters/departments'
     | '/masters/leave-types'
     | '/masters/management-approvers'
+    | '/masters/nursing-supers'
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
@@ -634,6 +646,7 @@ export interface FileRouteTypes {
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
     | '/_authenticated/masters/management-approvers'
+    | '/_authenticated/masters/nursing-supers'
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
@@ -778,6 +791,13 @@ declare module '@tanstack/react-router' {
       path: '/masters/roles'
       fullPath: '/masters/roles'
       preLoaderRoute: typeof AuthenticatedMastersRolesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/masters/nursing-supers': {
+      id: '/_authenticated/masters/nursing-supers'
+      path: '/masters/nursing-supers'
+      fullPath: '/masters/nursing-supers'
+      preLoaderRoute: typeof AuthenticatedMastersNursingSupersRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/masters/management-approvers': {
@@ -1073,6 +1093,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
   AuthenticatedMastersManagementApproversRoute: typeof AuthenticatedMastersManagementApproversRoute
+  AuthenticatedMastersNursingSupersRoute: typeof AuthenticatedMastersNursingSupersRoute
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
   AuthenticatedMastersSalaryTemplatesRoute: typeof AuthenticatedMastersSalaryTemplatesRoute
   AuthenticatedMastersShiftsRoute: typeof AuthenticatedMastersShiftsRoute
@@ -1121,6 +1142,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
   AuthenticatedMastersManagementApproversRoute:
     AuthenticatedMastersManagementApproversRoute,
+  AuthenticatedMastersNursingSupersRoute:
+    AuthenticatedMastersNursingSupersRoute,
   AuthenticatedMastersRolesRoute: AuthenticatedMastersRolesRoute,
   AuthenticatedMastersSalaryTemplatesRoute:
     AuthenticatedMastersSalaryTemplatesRoute,

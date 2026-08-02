@@ -417,6 +417,7 @@ export const departmentInput = z.object({
   headStaffId: z.number().int().positive().nullable().optional(),
   subheadStaffId: z.number().int().positive().nullable().optional(),
   active: z.boolean().default(true),
+  isClinical: z.boolean().default(false),
 });
 
 export const shiftInput = z.object({

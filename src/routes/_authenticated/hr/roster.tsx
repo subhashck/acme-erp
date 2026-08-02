@@ -224,19 +224,34 @@ function Roster() {
     }
   };
 
+  const nursingSupersQuery = useQuery<any[]>({
+    queryKey: ["masters-nursing-supers"],
+    queryFn: async () => {
+      const res = await fetch("/api/masters/nursing-supers");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const allDepartments = deptsQuery.data ?? [];
   const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user.email);
   const isAdmin = session.data?.user.role === "admin";
-  const isHrOrAdmin = isAdmin || session.data?.user.role === "hr";
+  const isHr = session.data?.user.role === "hr" || currentStaff?.role === "hr";
+  const isHrOrAdmin = isAdmin || isHr;
 
-  const departments = isHrOrAdmin
+  const isNursingSuper = (nursingSupersQuery.data ?? []).some(
+    (ns: any) => currentStaff?.staffId && ns.staffId === currentStaff.staffId && ns.active
+  );
+
+  const departments = (isAdmin || isHr || isNursingSuper)
     ? allDepartments
-    : allDepartments.filter((d) => currentStaff?.departmentId && d.id === currentStaff.departmentId);
+    : allDepartments.filter((d: any) => currentStaff?.departmentId && d.id === currentStaff.departmentId);
 
-  const selectedDept = departments.find((d) => d.id === departmentId);
+  const selectedDept = departments.find((d: any) => d.id === departmentId);
   const isDeptHead = currentStaff && selectedDept && selectedDept.headStaffId === currentStaff.staffId;
   const isSubHead = currentStaff && selectedDept && selectedDept.subheadStaffId === currentStaff.staffId;
-  const canAssign = isAdmin || isDeptHead || isSubHead;
+  const isClinicalDept = (selectedDept as any)?.isClinical === true;
+  const canAssign = isAdmin || isDeptHead || isSubHead || (isClinicalDept && isNursingSuper) || (!isClinicalDept && isHr);
 
   const rosters = rostersQuery.data ?? [];
   const shifts = shiftsQuery.data ?? [];

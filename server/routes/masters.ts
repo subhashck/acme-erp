@@ -1,4 +1,4 @@
-import { aliasedTable, eq, sql, and } from "drizzle-orm";
+import { aliasedTable, eq, sql, and, ilike } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -9,6 +9,7 @@ import {
   designations,
   leaveTypes,
   managementApprovers,
+  nursingSupers,
   shifts,
   staff,
 } from "../db/schema.ts";
@@ -97,14 +98,87 @@ export const mastersRoutes = new Hono<AuthEnv>()
   // Departments
   // -------------------------------------------------------------------------
   .get("/masters/departments", async (c) => {
+    const pageStr = c.req.query("page");
+    const limitStr = c.req.query("limit");
+    const name = c.req.query("name");
+    const floor = c.req.query("floor");
+    const isClinical = c.req.query("isClinical");
+    const active = c.req.query("active");
+
+    const conditions: any[] = [];
+    if (name) {
+      conditions.push(ilike(departments.name, `%${name}%`));
+    }
+    if (floor) {
+      conditions.push(ilike(departments.floor, `%${floor}%`));
+    }
+    if (isClinical !== undefined && isClinical !== "" && isClinical !== "all") {
+      conditions.push(eq(departments.isClinical, isClinical === "true"));
+    }
+    if (active !== undefined && active !== "" && active !== "all") {
+      conditions.push(eq(departments.active, active === "true"));
+    }
+
     const headStaff = aliasedTable(staff, "head_staff");
     const subheadStaff = aliasedTable(staff, "subhead_staff");
-    const rows = await db
+
+    if (pageStr !== undefined || limitStr !== undefined) {
+      let countQuery = db
+        .select({ count: sql<number>`count(*)` })
+        .from(departments)
+        .$dynamic();
+
+      if (conditions.length > 0) {
+        countQuery = countQuery.where(and(...conditions)) as any;
+      }
+      const [countResult] = await countQuery.execute();
+      const total = Number(countResult?.count || 0);
+
+      const page = Math.max(1, parseInt(pageStr ?? "1", 10));
+      const limit = Math.max(1, parseInt(limitStr ?? "10", 10));
+      const offset = (page - 1) * limit;
+
+      let baseQuery = db
+        .select({
+          id: departments.id,
+          name: departments.name,
+          floor: departments.floor,
+          active: departments.active,
+          isClinical: departments.isClinical,
+          head: departments.head,
+          headStaffId: departmentLeaders.headStaffId,
+          headName: headStaff.name,
+          subheadStaffId: departmentLeaders.subheadStaffId,
+          subheadName: subheadStaff.name,
+        })
+        .from(departments)
+        .leftJoin(departmentLeaders, eq(departments.id, departmentLeaders.departmentId))
+        .leftJoin(headStaff, and(eq(departmentLeaders.headStaffId, headStaff.staffId), eq(headStaff.active, true)))
+        .leftJoin(subheadStaff, and(eq(departmentLeaders.subheadStaffId, subheadStaff.staffId), eq(subheadStaff.active, true)))
+        .$dynamic();
+
+      if (conditions.length > 0) {
+        baseQuery = baseQuery.where(and(...conditions)) as any;
+      }
+
+      const rows = await baseQuery.orderBy(departments.name).limit(limit).offset(offset).execute();
+
+      return c.json({
+        data: rows,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      });
+    }
+
+    let query = db
       .select({
         id: departments.id,
         name: departments.name,
         floor: departments.floor,
         active: departments.active,
+        isClinical: departments.isClinical,
         head: departments.head,
         headStaffId: departmentLeaders.headStaffId,
         headName: headStaff.name,
@@ -115,8 +189,13 @@ export const mastersRoutes = new Hono<AuthEnv>()
       .leftJoin(departmentLeaders, eq(departments.id, departmentLeaders.departmentId))
       .leftJoin(headStaff, and(eq(departmentLeaders.headStaffId, headStaff.staffId), eq(headStaff.active, true)))
       .leftJoin(subheadStaff, and(eq(departmentLeaders.subheadStaffId, subheadStaff.staffId), eq(subheadStaff.active, true)))
-      .orderBy(departments.name)
-      .execute();
+      .$dynamic();
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    const rows = await query.orderBy(departments.name).execute();
     return c.json(rows);
   })
   .post("/masters/departments", requireAdmin, async (c) => {
@@ -331,6 +410,86 @@ export const mastersRoutes = new Hono<AuthEnv>()
     await db
       .delete(managementApprovers)
       .where(eq(managementApprovers.id, id))
+      .execute();
+
+    return c.json({ ok: true });
+  })
+
+  // -------------------------------------------------------------------------
+  // Nursing Supers (Staff who oversee clinical departments)
+  // -------------------------------------------------------------------------
+  .get("/masters/nursing-supers", async (c) => {
+    const rows = await db
+      .select({
+        id: nursingSupers.id,
+        staffId: nursingSupers.staffId,
+        active: nursingSupers.active,
+        createdAt: nursingSupers.createdAt,
+        name: staff.name,
+        employeeCode: staff.employeeCode,
+        role: staff.role,
+      })
+      .from(nursingSupers)
+      .innerJoin(
+        staff,
+        sql`${nursingSupers.staffId} = ${staff.staffId} AND ${staff.active} = true`
+      )
+      .orderBy(staff.name)
+      .execute();
+
+    return c.json(rows);
+  })
+  .post("/masters/nursing-supers", requireAdmin, async (c) => {
+    const input = z.object({ staffId: z.number().int().positive() }).parse(await c.req.json());
+
+    // Check if entry already exists for staffId
+    const existing = await db
+      .select()
+      .from(nursingSupers)
+      .where(eq(nursingSupers.staffId, input.staffId))
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    if (existing) {
+      if (!existing.active) {
+        const [updated] = await db
+          .update(nursingSupers)
+          .set({ active: true })
+          .where(eq(nursingSupers.id, existing.id))
+          .returning()
+          .execute();
+        return c.json(updated);
+      }
+      return c.json(existing);
+    }
+
+    const [row] = await db
+      .insert(nursingSupers)
+      .values({ staffId: input.staffId, active: true })
+      .returning()
+      .execute();
+
+    return c.json(row, 201);
+  })
+  .put("/masters/nursing-supers/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = z.object({ active: z.boolean() }).parse(await c.req.json());
+
+    const [row] = await db
+      .update(nursingSupers)
+      .set({ active: input.active })
+      .where(eq(nursingSupers.id, id))
+      .returning()
+      .execute();
+
+    return c.json(row);
+  })
+  .delete("/masters/nursing-supers/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    await db
+      .delete(nursingSupers)
+      .where(eq(nursingSupers.id, id))
       .execute();
 
     return c.json({ ok: true });
