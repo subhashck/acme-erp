@@ -204,6 +204,24 @@ function OffDayRequests() {
     },
   });
 
+  const nursingSupersQuery = useQuery<any[]>({
+    queryKey: ["masters-nursing-supers"],
+    queryFn: async () => {
+      const res = await fetch("/api/masters/nursing-supers");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const deptsQuery = useQuery<any[]>({
+    queryKey: ["masters-departments"],
+    queryFn: async () => {
+      const res = await fetch("/api/masters/departments");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
   const staffQuery = useQuery<StaffRow[], Error>({
     queryKey: ["staff"],
     queryFn: async () => {
@@ -211,8 +229,15 @@ function OffDayRequests() {
       if (!res.ok) throw new Error("Failed to fetch staff");
       return res.json();
     },
-    enabled: isAdminOrHr,
   });
+
+  const currentStaff = (staffQuery.data ?? []).find(
+    (s) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
+  );
+
+  const isNursingSuper = (nursingSupersQuery.data ?? []).some(
+    (ns: any) => currentStaff?.staffId && ns.staffId === currentStaff.staffId && ns.active
+  );
 
   const requests = React.useMemo(() => {
     let data = requestsQuery.data ?? [];
@@ -366,7 +391,7 @@ function OffDayRequests() {
   // ── Columns for Off-Day Requests ──
   const requestColumns: ColumnDef<Record<string, unknown>>[] = React.useMemo(() => {
     const cols: ColumnDef<Record<string, unknown>>[] = [];
-    if (isAdminOrHr) {
+    if (isAdminOrHr || isNursingSuper) {
       cols.push({
         id: "employee", label: "Employee",
         render: (row: any) => (
@@ -388,14 +413,21 @@ function OffDayRequests() {
         id: "actions", label: "Actions",
         render: (row: any) => {
           const req = row as OffDayRequest;
+          const reqStaff = staffList.find((s) => s.staffId === req.staffId);
+          const reqDept = (deptsQuery.data ?? []).find((d) => d.name === reqStaff?.departmentName);
+          const isClinical = reqDept?.isClinical === true;
+          const isHrUser = session.data?.user?.role === "hr" || currentStaff?.role === "hr";
+          const isAdmin = session.data?.user?.role === "admin";
+          const canReviewReq = isAdmin || (isNursingSuper && isClinical) || (isHrUser && !isClinical);
+
           return (
             <div className="flex gap-2">
-              {isAdminOrHr && req.status === "Pending" && (
+              {canReviewReq && req.status === "Pending" && (
                 <Button variant="outline" className="h-7 px-2 text-xs" onClick={() => { setReviewTarget(req); reviewForm.reset({ status: "Approved", reviewerNote: "" }); }}>
                   <Check size={12} className="mr-1" /> Review
                 </Button>
               )}
-              {!isAdminOrHr && req.status === "Pending" && (
+              {!canReviewReq && req.status === "Pending" && currentStaff?.staffId === req.staffId && (
                 <Button variant="outline" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => handleCancel(req.id)}>
                   <Ban size={12} className="mr-1" /> Cancel
                 </Button>
@@ -411,7 +443,7 @@ function OffDayRequests() {
       }
     );
     return cols;
-  }, [isAdminOrHr]);
+  }, [isAdminOrHr, isNursingSuper, staffList, deptsQuery.data, currentStaff]);
 
   // ── Columns for Weekly Off-Day Rules ──
   const ruleColumns: ColumnDef<Record<string, unknown>>[] = React.useMemo(() => {

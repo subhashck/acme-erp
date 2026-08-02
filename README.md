@@ -36,7 +36,7 @@ Leave without pay: Only with management permission (mostly for medical reasons)
 
 docker compose down
 
-docker compose up --build
+docker compose up --build -d
 
 git pull origin docker-version
 

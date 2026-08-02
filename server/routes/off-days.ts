@@ -2,7 +2,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
-import { staff, staffDepartments, staffOffDayRequests, staffWeeklyOffDays, user } from "../db/schema.ts";
+import { departments, nursingSupers, staff, staffDepartments, staffOffDayRequests, staffWeeklyOffDays, user } from "../db/schema.ts";
 import { sendNotification } from "../utils/notifier.ts";
 import {
   getCurrentStaff,
@@ -339,8 +339,32 @@ export const offDaysRoutes = new Hono<AuthEnv>()
       return c.json(updated);
     }
 
-    // HR/admin approving or rejecting
-    if (!isAdminOrHr) return c.json({ error: "Forbidden" }, 403);
+    // HR/admin or Nursing Super approving or rejecting
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = session?.user?.role === "admin";
+    const isHrUser = session?.user?.role === "hr" || currentStaff?.role === "hr";
+
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
+
+    const empDept = await db
+      .select({ isClinical: departments.isClinical })
+      .from(staffDepartments)
+      .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(sql`${staffDepartments.staffId} = ${existing.staffId} AND ${staffDepartments.status} = 'Active'`)
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    const isClinicalDept = empDept?.isClinical === true;
+    const canReview = isAdmin || (isNursingSuper && isClinicalDept) || (isHrUser && !isClinicalDept);
+
+    if (!canReview) return c.json({ error: "Forbidden" }, 403);
     if (existing.status !== "Pending") {
       return c.json({ error: "Only pending requests can be reviewed" }, 400);
     }

@@ -288,7 +288,8 @@ function ReviewLeave() {
     );
   }
 
-  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+  const isAdmin = session.data?.user?.role === "admin";
+  const isHrUser = session.data?.user?.role === "hr" || currentStaff?.role === "hr";
 
   const isApprover = (() => {
     if (!currentStaff || !leave.approverIds) return false;
@@ -302,10 +303,30 @@ function ReviewLeave() {
 
   const isForwardedTarget = currentStaff != null && leave.forwardedToStaffId != null && currentStaff.staffId === leave.forwardedToStaffId;
 
+  const nursingSupersQuery = useRpcQuery<any[]>(
+    ["masters-nursing-supers"],
+    () => client.masters["nursing-supers"].$get()
+  );
+
+  const deptsQuery = useRpcQuery<any[]>(
+    ["masters-departments"],
+    () => client.masters.departments.$get()
+  );
+
+  const isNursingSuper = (nursingSupersQuery.data ?? []).some(
+    (ns: any) => currentStaff?.staffId && ns.staffId === currentStaff.staffId && ns.active
+  );
+
+  const leaveRequesterStaff = (staffQuery.data ?? []).find(s => s.staffId === leave?.staffId);
+  const leaveRequesterDept = (deptsQuery.data ?? []).find(d => d.name === leaveRequesterStaff?.departmentName);
+  const isClinicalDept = leaveRequesterDept?.isClinical === true;
+
   // Decision panel visibility — mirrors the backend canAct logic
   const canAction = (() => {
     if (["Approved", "Rejected", "Cancelled"].includes(leave.status)) return false;
-    if (isAdminOrHr) return true;
+    if (isAdmin) return true;
+    if (isNursingSuper && isClinicalDept) return true;
+    if (isHrUser && !isClinicalDept) return true;
     if (leave.status === "Pending Payroll Approval") return false;
 
     if (leave.status === "Pending") return isApprover;

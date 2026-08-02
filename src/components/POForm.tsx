@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
@@ -166,17 +166,30 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
     }
   });
 
-  // Watch fields for calculations
-  const watchedItems = form.watch("items");
+  // Real-time watch fields for calculations
+  const watchedItems = useWatch({ control: form.control, name: "items" }) || [];
 
-  const computedTotal = React.useMemo(() => {
-    return watchedItems.reduce((sum, item) => {
-      const qty = toNum(item.orderedQty);
-      const rate = toNum(item.unitRate);
-      const gst = toNum(item.gstPercent);
-      const lineValue = qty * rate * (1 + gst / 100);
-      return sum + lineValue;
-    }, 0);
+  const { subtotal, totalGst, computedTotal } = React.useMemo(() => {
+    let sub = 0;
+    let gstSum = 0;
+
+    for (const item of watchedItems) {
+      const qty = toNum(item?.orderedQty);
+      const rate = toNum(item?.unitRate);
+      const gst = toNum(item?.gstPercent);
+
+      const lineBase = qty * rate;
+      const lineGst = lineBase * (gst / 100);
+
+      sub += lineBase;
+      gstSum += lineGst;
+    }
+
+    return {
+      subtotal: sub,
+      totalGst: gstSum,
+      computedTotal: sub + gstSum,
+    };
   }, [watchedItems]);
 
   const mutation = useMutation({
@@ -405,7 +418,8 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                             field.onChange(val);
                             const selectedItem = itemsCatalog.find((it: any) => it.name === val);
                             if (selectedItem) {
-                              form.setValue(`items.${index}.unit` as const, selectedItem.unit || "");
+                              const purUnit = selectedItem.purchaseUnit || selectedItem.unit || "";
+                              form.setValue(`items.${index}.unit` as const, purUnit);
                               form.setValue(`items.${index}.unitRate` as const, Number(selectedItem.rate || 0));
                               form.setValue(`items.${index}.category` as const, selectedItem.itemTypeName || "");
                               form.setValue(`items.${index}.gstPercent` as const, Number(selectedItem.gstPercent || 0));
@@ -431,11 +445,41 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                   {/* Unit */}
                   <div className="col-span-6 sm:col-span-3 lg:col-span-1">
                     <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Unit</label>
-                    <Field
-                      placeholder="Unit"
-                      {...form.register(`items.${index}.unit` as const)}
-                      className="w-full"
-                    />
+                    <select
+                      className="flex h-10 w-full rounded-md border bg-background px-2 py-1 text-xs outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+                      value={watchedItems[index]?.unit || ""}
+                      onChange={(e) => {
+                        const newUnit = e.target.value;
+                        form.setValue(`items.${index}.unit` as const, newUnit);
+                        const itemName = watchedItems[index]?.itemName;
+                        const selectedItem = itemsCatalog.find((it: any) => it.name === itemName);
+                        if (selectedItem) {
+                          if (newUnit === selectedItem.unit) {
+                            form.setValue(`items.${index}.unitRate` as const, Number(selectedItem.rate || 0));
+                          } else if (selectedItem.unitPrices && Array.isArray(selectedItem.unitPrices)) {
+                            const tier = selectedItem.unitPrices.find((up: any) => up.unit === newUnit);
+                            if (tier) {
+                              form.setValue(`items.${index}.unitRate` as const, Number(tier.costPrice || 0));
+                            }
+                          }
+                        }
+                      }}
+                    >
+                      {(() => {
+                        const itemName = watchedItems[index]?.itemName;
+                        const item = itemsCatalog.find((it: any) => it.name === itemName);
+                        const currentUnit = watchedItems[index]?.unit;
+                        const unitsSet = new Set<string>();
+                        if (currentUnit) unitsSet.add(currentUnit);
+                        if (item?.unit) unitsSet.add(item.unit);
+                        if (item?.unitPrices && Array.isArray(item.unitPrices)) {
+                          item.unitPrices.forEach((up: any) => { if (up.unit) unitsSet.add(up.unit); });
+                        }
+                        const opts = Array.from(unitsSet);
+                        if (opts.length === 0) return <option value="">Unit</option>;
+                        return opts.map((u) => <option key={u} value={u}>{u}</option>);
+                      })()}
+                    </select>
                   </div>
 
                   {/* Qty */}
@@ -451,9 +495,9 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                     />
                   </div>
 
-                  {/* Rate */}
+                  {/* Cost Rate */}
                   <div className="col-span-4 sm:col-span-2 lg:col-span-2">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Rate (₹) *</label>
+                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Cost Rate (₹) *</label>
                     <Field
                       type="number"
                       step="0.01"
@@ -462,6 +506,23 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                       error={form.formState.errors.items?.[index]?.unitRate?.message}
                       className="w-full text-right"
                     />
+                    {(() => {
+                      const itemName = watchedItems[index]?.itemName;
+                      const currentUnit = watchedItems[index]?.unit;
+                      const item = itemsCatalog.find((it: any) => it.name === itemName);
+                      if (!item) return null;
+                      let estSale = Number(item.salePrice || 0);
+                      if (currentUnit && currentUnit !== item.unit && item.unitPrices) {
+                        const tier = item.unitPrices.find((up: any) => up.unit === currentUnit);
+                        if (tier) estSale = Number(tier.salePrice || 0);
+                      }
+                      if (estSale <= 0) return null;
+                      return (
+                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold text-right mt-0.5">
+                          Est. Sale: ₹{estSale}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* GST % */}
@@ -476,6 +537,7 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                       className="w-full text-right"
                     />
                   </div>
+
 
                   {/* Line Value & Delete Action */}
                   <div className="col-span-12 lg:col-span-2 flex items-center justify-between lg:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/50">
@@ -524,11 +586,25 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
               </Button> */}
             </div>
 
-            <div className="flex items-baseline gap-3 self-end sm:self-auto">
-              <span className="font-bold uppercase text-xs text-muted-foreground">Total Order Value:</span>
-              <span className="font-bold text-xl text-primary">
-                {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(computedTotal)}
-              </span>
+            <div className="flex flex-col items-end gap-1 self-end sm:self-auto text-right">
+              <div className="flex items-center justify-between gap-6 text-xs text-muted-foreground">
+                <span>Subtotal (Excl. GST):</span>
+                <span className="font-semibold text-foreground">
+                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(subtotal)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-6 text-xs text-muted-foreground">
+                <span>Total GST:</span>
+                <span className="font-semibold text-foreground">
+                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalGst)}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-3 pt-1 border-t mt-1">
+                <span className="font-bold uppercase text-xs text-muted-foreground">Total Order Value:</span>
+                <span className="font-bold text-xl text-primary">
+                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(computedTotal)}
+                </span>
+              </div>
             </div>
           </div>
           {form.formState.errors.items?.root && (

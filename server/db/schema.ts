@@ -81,6 +81,7 @@ export const departments = sqliteTable("departments", {
   floor: text("floor").notNull(),
   head: text("head").notNull(),
   active: boolean("active").notNull().default(true),
+  isClinical: boolean("is_clinical").notNull().default(false),
   ...timestamps
 });
 
@@ -92,6 +93,13 @@ export const banks = sqliteTable("banks", {
 });
 
 export const managementApprovers = sqliteTable("management_approvers", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingSupers = sqliteTable("nursing_supers", {
   id: serial("id").primaryKey(),
   staffId: integer("staff_id").notNull(),
   active: boolean("active").notNull().default(true),
@@ -884,13 +892,50 @@ export const itemTypes = sqliteTable("item_types", {
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
 });
 
+export const unitTypes = sqliteTable("unit_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  symbol: text("symbol").notNull(),
+  category: text("category").notNull().default("Count/Quantity"),
+  isBaseUnit: boolean("is_base_unit").notNull().default(false),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const unitConversions = sqliteTable("unit_conversions", {
+  id: serial("id").primaryKey(),
+  fromUnitId: integer("from_unit_id").notNull().references(() => unitTypes.id, { onDelete: "cascade" }),
+  toUnitId: integer("to_unit_id").notNull().references(() => unitTypes.id, { onDelete: "cascade" }),
+  multiplier: numeric("multiplier", { precision: 12, scale: 6, mode: "number" }).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+
 export const items = sqliteTable("items", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   itemTypeId: integer("item_type_id").notNull().references(() => itemTypes.id),
   unit: text("unit").notNull(),
+  purchaseUnit: text("purchase_unit"),
+  saleUnit: text("sale_unit"),
   rate: numeric("rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const itemUnitPrices = sqliteTable("item_unit_prices", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  unit: text("unit").notNull(),
+  costPrice: numeric("cost_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  conversionFactor: numeric("conversion_factor", { precision: 12, scale: 6, mode: "number" }).notNull().default(1),
+  isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
 });
@@ -899,9 +944,26 @@ export const itemTypesRelations = relations(itemTypes, ({ many }) => ({
   items: many(items),
 }));
 
-export const itemsRelations = relations(items, ({ one }) => ({
+export const itemsRelations = relations(items, ({ one, many }) => ({
   itemType: one(itemTypes, { fields: [items.itemTypeId], references: [itemTypes.id] }),
+  unitPrices: many(itemUnitPrices),
 }));
+
+export const itemUnitPricesRelations = relations(itemUnitPrices, ({ one }) => ({
+  item: one(items, { fields: [itemUnitPrices.itemId], references: [items.id] }),
+}));
+
+
+export const unitTypesRelations = relations(unitTypes, ({ many }) => ({
+  conversionsFrom: many(unitConversions, { relationName: "fromUnit" }),
+  conversionsTo: many(unitConversions, { relationName: "toUnit" }),
+}));
+
+export const unitConversionsRelations = relations(unitConversions, ({ one }) => ({
+  fromUnit: one(unitTypes, { fields: [unitConversions.fromUnitId], references: [unitTypes.id], relationName: "fromUnit" }),
+  toUnit: one(unitTypes, { fields: [unitConversions.toUnitId], references: [unitTypes.id], relationName: "toUnit" }),
+}));
+
 
 export const vendors = sqliteTable("vendors", {
   id: serial("id").primaryKey(),
