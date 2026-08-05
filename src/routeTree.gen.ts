@@ -46,6 +46,7 @@ import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authent
 import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_authenticated/admin/localization'
 import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authenticated/admin/hospital'
 import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
+import { Route as AuthenticatedAccountsMonthlyReportRouteImport } from './routes/_authenticated/accounts/monthly-report'
 import { Route as AuthenticatedAccountsConsultantChargesRouteImport } from './routes/_authenticated/accounts/consultant-charges'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIndexRouteImport } from './routes/_authenticated/purchases/purchase-orders/index'
 import { Route as AuthenticatedPurchasesGrnsIndexRouteImport } from './routes/_authenticated/purchases/grns/index'
@@ -271,6 +272,12 @@ const AuthenticatedAccountsServiceChargesRoute =
     path: '/accounts/service-charges',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAccountsMonthlyReportRoute =
+  AuthenticatedAccountsMonthlyReportRouteImport.update({
+    id: '/accounts/monthly-report',
+    path: '/accounts/monthly-report',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountsConsultantChargesRoute =
   AuthenticatedAccountsConsultantChargesRouteImport.update({
     id: '/accounts/consultant-charges',
@@ -363,6 +370,7 @@ export interface FileRoutesByFullPath {
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
@@ -415,6 +423,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
   '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
@@ -468,6 +477,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/_authenticated/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/_authenticated/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/_authenticated/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/_authenticated/admin/localization': typeof AuthenticatedAdminLocalizationRoute
@@ -522,6 +532,7 @@ export interface FileRouteTypes {
     | '/communication'
     | '/settings'
     | '/accounts/consultant-charges'
+    | '/accounts/monthly-report'
     | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
@@ -574,6 +585,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/'
     | '/accounts/consultant-charges'
+    | '/accounts/monthly-report'
     | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
@@ -626,6 +638,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/'
     | '/_authenticated/accounts/consultant-charges'
+    | '/_authenticated/accounts/monthly-report'
     | '/_authenticated/accounts/service-charges'
     | '/_authenticated/admin/hospital'
     | '/_authenticated/admin/localization'
@@ -940,6 +953,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsServiceChargesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/accounts/monthly-report': {
+      id: '/_authenticated/accounts/monthly-report'
+      path: '/accounts/monthly-report'
+      fullPath: '/accounts/monthly-report'
+      preLoaderRoute: typeof AuthenticatedAccountsMonthlyReportRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/accounts/consultant-charges': {
       id: '/_authenticated/accounts/consultant-charges'
       path: '/accounts/consultant-charges'
@@ -1073,6 +1093,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAccountsConsultantChargesRoute: typeof AuthenticatedAccountsConsultantChargesRoute
+  AuthenticatedAccountsMonthlyReportRoute: typeof AuthenticatedAccountsMonthlyReportRoute
   AuthenticatedAccountsServiceChargesRoute: typeof AuthenticatedAccountsServiceChargesRoute
   AuthenticatedAdminHospitalRoute: typeof AuthenticatedAdminHospitalRoute
   AuthenticatedAdminLocalizationRoute: typeof AuthenticatedAdminLocalizationRoute
@@ -1119,6 +1140,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAccountsConsultantChargesRoute:
     AuthenticatedAccountsConsultantChargesRoute,
+  AuthenticatedAccountsMonthlyReportRoute:
+    AuthenticatedAccountsMonthlyReportRoute,
   AuthenticatedAccountsServiceChargesRoute:
     AuthenticatedAccountsServiceChargesRoute,
   AuthenticatedAdminHospitalRoute: AuthenticatedAdminHospitalRoute,

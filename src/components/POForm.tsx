@@ -91,6 +91,43 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
   // Fetch items catalog
   const { data: itemsCatalog = [] } = useRpcQuery<any[]>(["items"], () => client.items.$get());
 
+  // Fetch registered master unit types
+  const { data: unitTypes = [] } = useRpcQuery<any[]>(
+    ["unit-types"],
+    () => client["unit-types"].$get()
+  );
+
+  // Fetch registered master unit conversions
+  const { data: unitConversions = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
+  const getConversionFactor = React.useCallback(
+    (fromSymbol: string, toSymbol: string) => {
+      if (!fromSymbol || !toSymbol || fromSymbol === toSymbol) return 1;
+      const fromU = (unitTypes as any[]).find((u) => u.symbol === fromSymbol || u.name === fromSymbol);
+      const toU = (unitTypes as any[]).find((u) => u.symbol === toSymbol || u.name === toSymbol);
+      if (!fromU || !toU || !(unitConversions as any[]) || (unitConversions as any[]).length === 0) return 1;
+
+      const fId = Number(fromU.id);
+      const tId = Number(toU.id);
+
+      const direct = (unitConversions as any[]).find(
+        (c: any) => Number(c.fromUnitId) === fId && Number(c.toUnitId) === tId
+      );
+      if (direct && Number(direct.multiplier) > 0) return Number(direct.multiplier);
+
+      const inverse = (unitConversions as any[]).find(
+        (c: any) => Number(c.fromUnitId) === tId && Number(c.toUnitId) === fId
+      );
+      if (inverse && Number(inverse.multiplier) > 0) return 1 / Number(inverse.multiplier);
+
+      return 1;
+    },
+    [unitTypes, unitConversions]
+  );
+
   const itemOptions = React.useMemo(() => {
     return (itemsCatalog as any[]).map((it: any) => [it.name, it.name] as [string, string]);
   }, [itemsCatalog]);
@@ -240,12 +277,68 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
     mutation.mutate(data);
   };
 
-  const onVendorSubmit = (data: VendorFormValues) => {
-    vendorMutation.mutate(data);
+  const onFormError = (errors: any) => {
+    console.error("PO Form validation errors:", errors);
+    const messages: string[] = [];
+
+    if (errors.poDate?.message) messages.push(`PO Date: ${errors.poDate.message}`);
+    if (errors.vendorId?.message) messages.push(`Vendor: ${errors.vendorId.message}`);
+    if ((errors as any).paymentTerms?.message) messages.push(`Payment Terms: ${(errors as any).paymentTerms.message}`);
+    if (errors.items?.message || errors.items?.root?.message) {
+      messages.push(`Items: ${errors.items?.message || errors.items?.root?.message}`);
+    }
+
+    if (Array.isArray(errors.items)) {
+      errors.items.forEach((itemErr: any, idx: number) => {
+        if (!itemErr) return;
+        Object.keys(itemErr).forEach((key) => {
+          if (itemErr[key]?.message) {
+            messages.push(`Item #${idx + 1} (${key}): ${itemErr[key].message}`);
+          }
+        });
+      });
+    }
+
+    if (messages.length > 0) {
+      toast.error(
+        <div>
+          <div className="font-semibold mb-1">Please fix validation errors:</div>
+          <ul className="list-disc pl-4 text-xs space-y-0.5">
+            {messages.slice(0, 5).map((msg, i) => (
+              <li key={i}>{msg}</li>
+            ))}
+          </ul>
+        </div>,
+        { duration: 5000 }
+      );
+    } else {
+      toast.error("Form contains validation errors. Please check highlighted fields.");
+    }
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit as any)} className="space-y-6">
+    <form onSubmit={form.handleSubmit(onSubmit as any, onFormError)} className="space-y-6">
+      {/* Validation Error Banner */}
+      {Object.keys(form.formState.errors).length > 0 && (
+        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs space-y-1">
+          <div className="font-semibold text-sm mb-1">Form Validation Errors</div>
+          <ul className="list-disc pl-5 space-y-0.5">
+            {form.formState.errors.vendorId && <li>Vendor: {String(form.formState.errors.vendorId.message)}</li>}
+            {form.formState.errors.poDate && <li>PO Date: {String(form.formState.errors.poDate.message)}</li>}
+            {(form.formState.errors as any).paymentTerms && <li>Payment Terms: {String((form.formState.errors as any).paymentTerms.message)}</li>}
+            {form.formState.errors.items?.message && <li>Items: {String(form.formState.errors.items.message)}</li>}
+            {Array.isArray(form.formState.errors.items) &&
+              form.formState.errors.items.map((itemErr: any, idx: number) => {
+                if (!itemErr) return null;
+                return Object.keys(itemErr).map((key) => (
+                  <li key={`${idx}-${key}`}>
+                    Item #{idx + 1} ({key}): {String(itemErr[key]?.message)}
+                  </li>
+                ));
+              })}
+          </ul>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>{mode === "new" ? "Create Purchase Order" : "Edit Purchase Order"}</CardTitle>
@@ -338,7 +431,7 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button variant="outline" type="button" onClick={() => setVendorDialogOpen(false)}>Cancel</Button>
-                    <Button type="button" onClick={vendorForm.handleSubmit(onVendorSubmit)} disabled={vendorMutation.isPending}>
+                    <Button type="button" onClick={vendorForm.handleSubmit((values) => vendorMutation.mutate(values))} disabled={vendorMutation.isPending}>
                       Save Vendor
                     </Button>
                   </div>
@@ -362,7 +455,7 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <div>
-            <CardTitle>Line Items</CardTitle>
+            <CardTitle>Item Details </CardTitle>
             <CardDescription>Add items to be ordered.</CardDescription>
           </div>
           <AddItemDialog
@@ -379,7 +472,7 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Grid Header (visible on lg screens) */}
-          <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground uppercase rounded-md items-center">
+          <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground uppercase rounded-md items-baseline">
             <div className="col-span-3">Item Name *</div>
             <div className="col-span-2">Category</div>
             <div className="col-span-1">Unit</div>
@@ -400,7 +493,7 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
               return (
                 <div
                   key={field.id}
-                  className="grid grid-cols-12 gap-3 items-center p-3.5 rounded-lg border bg-card hover:bg-muted/5 transition-colors shadow-xs"
+                  className="grid grid-cols-12 gap-3 items-baseline p-3.5 rounded-lg border bg-card hover:bg-muted/5 transition-colors shadow-xs"
                 >
                   {/* Item Name */}
                   <div className="col-span-12 lg:col-span-3">
@@ -437,8 +530,9 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                     <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Category</label>
                     <Field
                       placeholder="Category"
+                      readOnly
                       {...form.register(`items.${index}.category` as const)}
-                      className="w-full"
+                      className="w-full text-sm"
                     />
                   </div>
 
@@ -454,12 +548,16 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                         const itemName = watchedItems[index]?.itemName;
                         const selectedItem = itemsCatalog.find((it: any) => it.name === itemName);
                         if (selectedItem) {
-                          if (newUnit === selectedItem.unit) {
+                          const baseUnit = selectedItem.purchaseUnit || selectedItem.unit || "unit";
+                          const tier = selectedItem.unitPrices?.find((up: any) => up.unit === newUnit);
+                          if (tier && Number(tier.costPrice) > 0) {
+                            form.setValue(`items.${index}.unitRate` as const, Number(tier.costPrice));
+                          } else if (newUnit === baseUnit) {
                             form.setValue(`items.${index}.unitRate` as const, Number(selectedItem.rate || 0));
-                          } else if (selectedItem.unitPrices && Array.isArray(selectedItem.unitPrices)) {
-                            const tier = selectedItem.unitPrices.find((up: any) => up.unit === newUnit);
-                            if (tier) {
-                              form.setValue(`items.${index}.unitRate` as const, Number(tier.costPrice || 0));
+                          } else {
+                            const factor = getConversionFactor(newUnit, baseUnit);
+                            if (factor > 0 && selectedItem.rate) {
+                              form.setValue(`items.${index}.unitRate` as const, Number((Number(selectedItem.rate) * factor).toFixed(2)));
                             }
                           }
                         }
@@ -472,9 +570,15 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                         const unitsSet = new Set<string>();
                         if (currentUnit) unitsSet.add(currentUnit);
                         if (item?.unit) unitsSet.add(item.unit);
+                        if (item?.purchaseUnit) unitsSet.add(item.purchaseUnit);
+                        if (item?.saleUnit) unitsSet.add(item.saleUnit);
                         if (item?.unitPrices && Array.isArray(item.unitPrices)) {
                           item.unitPrices.forEach((up: any) => { if (up.unit) unitsSet.add(up.unit); });
                         }
+                        (unitTypes as any[]).forEach((ut: any) => {
+                          const u = ut.symbol || ut.name;
+                          if (u) unitsSet.add(u);
+                        });
                         const opts = Array.from(unitsSet);
                         if (opts.length === 0) return <option value="">Unit</option>;
                         return opts.map((u) => <option key={u} value={u}>{u}</option>);
@@ -511,15 +615,41 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                       const currentUnit = watchedItems[index]?.unit;
                       const item = itemsCatalog.find((it: any) => it.name === itemName);
                       if (!item) return null;
-                      let estSale = Number(item.salePrice || 0);
-                      if (currentUnit && currentUnit !== item.unit && item.unitPrices) {
+
+                      let estSale = 0;
+
+                      // 1. Check item unitPrices tiers first for matching unit
+                      if (currentUnit && item.unitPrices && Array.isArray(item.unitPrices)) {
                         const tier = item.unitPrices.find((up: any) => up.unit === currentUnit);
-                        if (tier) estSale = Number(tier.salePrice || 0);
+                        if (tier) {
+                          if (Number(tier.salePrice) > 0) {
+                            estSale = Number(tier.salePrice);
+                          } else if (Number(tier.conversionFactor) > 0 && Number(item.salePrice) > 0) {
+                            estSale = Number((Number(item.salePrice) * Number(tier.conversionFactor)).toFixed(2));
+                          }
+                        }
                       }
+
+                      // 2. Fallback to base sale price with unit conversion factor
+                      if (estSale <= 0) {
+                        const baseSalePrice = Number(item.salePrice || 0);
+                        const baseUnit = item.saleUnit || item.unit || "unit";
+                        if (baseSalePrice > 0) {
+                          if (!currentUnit || currentUnit === baseUnit) {
+                            estSale = baseSalePrice;
+                          } else {
+                            const factor = getConversionFactor(currentUnit, baseUnit);
+                            estSale = Number((baseSalePrice * factor).toFixed(2));
+                          }
+                        }
+                      }
+
                       if (estSale <= 0) return null;
+                      const displayUnit = currentUnit || item.saleUnit || item.unit || "unit";
+
                       return (
                         <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold text-right mt-0.5">
-                          Est. Sale: ₹{estSale}
+                          Est. Sale: ₹{estSale}/{displayUnit}
                         </div>
                       );
                     })()}

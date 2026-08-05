@@ -5,7 +5,7 @@ import { useRpcQuery, queryClient } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { EditGRNForm as DirectGRNForm } from "./$grnId";
 import { useMutation } from "@tanstack/react-query";
-import { useForm, useFieldArray, Controller } from "react-hook-form";
+import { useForm, useFieldArray, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { 
@@ -28,8 +28,10 @@ import { toNum } from "../../../../utils/math";
 
 // Schema for GRN creation validation in frontend
 const grnItemFormSchema = z.object({
-  poItemId: z.number().int().positive(),
+  poItemId: z.number().int().positive().optional().nullable(),
+  itemId: z.number().int().positive().optional().nullable(),
   itemName: z.string(),
+  unit: z.string().optional().nullable(),
   orderedQty: z.number(),
   alreadyReceivedQty: z.number(),
   receivedQty: z.coerce.number().min(0, "Must be >= 0"),
@@ -37,6 +39,23 @@ const grnItemFormSchema = z.object({
   batch: z.string().optional().nullable(),
   expiryDate: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.receivedQty > 0) {
+    if (!data.batch || data.batch.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Batch No is required",
+        path: ["batch"],
+      });
+    }
+    if (!data.expiryDate || data.expiryDate.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Expiry Date is required",
+        path: ["expiryDate"],
+      });
+    }
+  }
 });
 
 const grnFormSchema = z.object({
@@ -159,7 +178,9 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
         
         return {
           poItemId: item.poItemId,
-          itemName: poItem?.itemName || "Unknown",
+          itemId: item.itemId,
+          itemName: item.itemName || "Unknown",
+          unit: item.unit || poItem?.unit || "",
           orderedQty: ordered,
           alreadyReceivedQty: alreadyReceived,
           receivedQty: toNum(item.receivedQty),
@@ -176,6 +197,8 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
     control: form.control,
     name: "items",
   });
+
+  const watchedItems = useWatch({ control: form.control, name: "items" }) || [];
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
@@ -248,9 +271,12 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
       remarks: values.remarks || null,
       status: targetStatus,
       items: values.items.map(item => ({
-        poItemId: item.poItemId,
-        receivedQty: item.receivedQty,
-        freeQty: item.freeQty,
+        poItemId: item.poItemId || null,
+        itemId: item.itemId || null,
+        itemName: item.itemName,
+        unit: item.unit || null,
+        receivedQty: toNum(item.receivedQty),
+        freeQty: toNum(item.freeQty),
         batch: item.batch || null,
         expiryDate: item.expiryDate || null,
         notes: item.notes || null,
@@ -260,8 +286,65 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
     mutation.mutate(payload);
   };
 
+  const onFormError = (errors: any) => {
+    console.error("GRN edit validation errors:", errors);
+    const messages: string[] = [];
+
+    if (errors.grnDate?.message) messages.push(`GRN Date: ${errors.grnDate.message}`);
+    if (errors.remarks?.message) messages.push(`Remarks: ${errors.remarks.message}`);
+    if (errors.items?.message || errors.items?.root?.message) {
+      messages.push(`Items: ${errors.items?.message || errors.items?.root?.message}`);
+    }
+
+    if (Array.isArray(errors.items)) {
+      errors.items.forEach((itemErr: any, idx: number) => {
+        if (!itemErr) return;
+        Object.keys(itemErr).forEach((key) => {
+          if (itemErr[key]?.message) {
+            messages.push(`Item #${idx + 1} (${key}): ${itemErr[key].message}`);
+          }
+        });
+      });
+    }
+
+    if (messages.length > 0) {
+      toast.error(
+        <div>
+          <div className="font-semibold mb-1">Please fix validation errors:</div>
+          <ul className="list-disc pl-4 text-xs space-y-0.5">
+            {messages.slice(0, 5).map((msg, i) => (
+              <li key={i}>{msg}</li>
+            ))}
+          </ul>
+        </div>,
+        { duration: 5000 }
+      );
+    } else {
+      toast.error("Form contains validation errors. Please check highlighted fields.");
+    }
+  };
+
   return (
     <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
+      {/* Validation Error Banner */}
+      {Object.keys(form.formState.errors).length > 0 && (
+        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs space-y-1">
+          <div className="font-semibold text-sm mb-1">Form Validation Errors</div>
+          <ul className="list-disc pl-5 space-y-0.5">
+            {form.formState.errors.grnDate && <li>GRN Date: {String(form.formState.errors.grnDate.message)}</li>}
+            {form.formState.errors.items?.message && <li>Items: {String(form.formState.errors.items.message)}</li>}
+            {Array.isArray(form.formState.errors.items) &&
+              form.formState.errors.items.map((itemErr: any, idx: number) => {
+                if (!itemErr) return null;
+                return Object.keys(itemErr).map((key) => (
+                  <li key={`${idx}-${key}`}>
+                    Item #{idx + 1} ({key}): {String(itemErr[key]?.message)}
+                  </li>
+                ));
+              })}
+          </ul>
+        </div>
+      )}
       <fieldset disabled={!isDraft} className="space-y-6">
         {/* Header Fields */}
         <Card>
@@ -384,10 +467,11 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
                 <tr>
                   <th className="px-4 py-3 min-w-[200px]">Item Name</th>
                   <th className="px-4 py-3 text-right">Pending Qty</th>
+                  <th className="px-4 py-3 min-w-[100px]">Unit</th>
                   <th className="px-4 py-3 min-w-[120px] text-right">Receiving *</th>
                   <th className="px-4 py-3 min-w-[100px] text-right">Free Qty</th>
-                  <th className="px-4 py-3 min-w-[120px]">Batch No</th>
-                  <th className="px-4 py-3 min-w-[150px]">Expiry Date</th>
+                  <th className="px-4 py-3 min-w-[120px]">Batch No *</th>
+                  <th className="px-4 py-3 min-w-[150px]">Expiry Date *</th>
                   <th className="px-4 py-3 min-w-[150px]">Notes</th>
                 </tr>
               </thead>
@@ -395,7 +479,15 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
                 {fields.map((field, index) => {
                   const ordered = toNum(field.orderedQty);
                   const alreadyReceived = toNum(field.alreadyReceivedQty);
-                  const pending = Math.max(0, ordered - alreadyReceived);
+                  const initialPending = Math.max(0, ordered - alreadyReceived);
+                  const poItemId = watchedItems[index]?.poItemId || field.poItemId;
+                  const currentReceivingForThisPoItem = poItemId
+                    ? watchedItems
+                        .filter((it: any) => it?.poItemId === poItemId)
+                        .reduce((sum: number, it: any) => sum + toNum(it?.receivedQty) + toNum(it?.freeQty), 0)
+                    : toNum(watchedItems[index]?.receivedQty) + toNum(watchedItems[index]?.freeQty);
+
+                  const remainingPending = Math.max(0, initialPending - currentReceivingForThisPoItem);
 
                   return (
                     <tr key={field.id} className="border-b last:border-0 hover:bg-muted/10">
@@ -409,7 +501,17 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
 
                       {/* Pending */}
                       <td className="px-4 py-3 text-right text-amber-650 font-semibold">
-                        {pending}
+                        {remainingPending}
+                      </td>
+
+                      {/* Unit */}
+                      <td className="px-4 py-3">
+                        <Field
+                          type="text"
+                          readOnly
+                          className="w-full text-xs bg-muted/30"
+                          {...form.register(`items.${index}.unit` as const)}
+                        />
                       </td>
 
                       {/* Receiving Now */}
@@ -514,14 +616,20 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
               type="button" 
               variant="outline"
               disabled={mutation.isPending}
-              onClick={form.handleSubmit((values) => onSubmit(values as unknown as GRNFormValues, "draft"))}
+              onClick={form.handleSubmit(
+                (values) => onSubmit(values as unknown as GRNFormValues, "draft"),
+                onFormError
+              )}
             >
               <Save className="h-4 w-4 mr-2" /> Save Draft
             </Button>
             <Button 
               type="button" 
               disabled={mutation.isPending}
-              onClick={form.handleSubmit((values) => onSubmit(values as unknown as GRNFormValues, "posted"))}
+              onClick={form.handleSubmit(
+                (values) => onSubmit(values as unknown as GRNFormValues, "posted"),
+                onFormError
+              )}
             >
               <Send className="h-4 w-4 mr-2" /> Post GRN
             </Button>

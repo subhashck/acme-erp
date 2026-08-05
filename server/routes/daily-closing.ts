@@ -349,7 +349,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       { department: "OPD_GYNAE", serviceName: "Blood Draw / Phlebotomy Charges", defaultRate: 100, sortOrder: 13 },
       { department: "OPD_GYNAE", serviceName: "Liquid Based Pap Smear", defaultRate: 800, sortOrder: 14 },
       { department: "OPD_GYNAE", serviceName: "Hysteroscopy Diagnostic", defaultRate: 15000, sortOrder: 15 },
-      
+
       // Dental Services
       { department: "DENTAL", serviceName: "Dental Consultation - New Case", defaultRate: 300, sortOrder: 101 },
       { department: "DENTAL", serviceName: "Dental Consultation - Old Case", defaultRate: 200, sortOrder: 102 },
@@ -661,7 +661,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     // Calculations
     const opdTotal = payload.serviceLines.reduce((sum, line) => sum + line.amount, 0);
-    
+
     // Pharmacy calculation (legacy field — now optional, service lines capture pharmacy/general)
     const pharmacyIncome = payload.pharmacyIncome;
     const miscIncomeParsed = pharmacyIncome ? JSON.parse(pharmacyIncome.miscIncome) : [];
@@ -671,19 +671,19 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     const pharmacyTotal = pharmacyIncome
       ? pharmacyIncome.otWardTotal + pharmacyIncome.acmeNewTotal + pharmacyIncome.parking +
-        pharmacyIncome.coffeeShop + pharmacyIncome.canteenIncome + pharmacyIncome.creditCardChargesNight +
-        pharmacyIncome.trainingFee + pharmacyIncome.humankindSales + miscTotal
+      pharmacyIncome.coffeeShop + pharmacyIncome.canteenIncome + pharmacyIncome.creditCardChargesNight +
+      pharmacyIncome.trainingFee + pharmacyIncome.humankindSales + miscTotal
       : 0;
 
     const ipdAdmissionsTotal = payload.ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
     const ipdDischargesTotal = payload.ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
     const additionalTotal = payload.additionalIncome.reduce((sum, item) => sum + item.amount, 0);
     const discountsTotal = payload.discountsReturns.reduce((sum, item) => sum + item.amount, 0);
-    const totalIncome = 
-      opdTotal + 
-      pharmacyTotal + 
-      ipdAdmissionsTotal + 
-      ipdDischargesTotal + 
+    const totalIncome =
+      opdTotal +
+      pharmacyTotal +
+      ipdAdmissionsTotal +
+      ipdDischargesTotal +
       additionalTotal -
       discountsTotal;
 
@@ -993,7 +993,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     // Calculations
     const opdTotal = payload.serviceLines.reduce((sum, line) => sum + line.amount, 0);
-    
+
     // Pharmacy calculation (legacy field — now optional)
     const pharmacyIncomePut = payload.pharmacyIncome;
     const miscIncomeParsedPut = pharmacyIncomePut ? JSON.parse(pharmacyIncomePut.miscIncome) : [];
@@ -1003,8 +1003,8 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     const pharmacyTotalPut = pharmacyIncomePut
       ? pharmacyIncomePut.otWardTotal + pharmacyIncomePut.acmeNewTotal + pharmacyIncomePut.parking +
-        pharmacyIncomePut.coffeeShop + pharmacyIncomePut.canteenIncome + pharmacyIncomePut.creditCardChargesNight +
-        pharmacyIncomePut.trainingFee + pharmacyIncomePut.humankindSales + miscTotalPut
+      pharmacyIncomePut.coffeeShop + pharmacyIncomePut.canteenIncome + pharmacyIncomePut.creditCardChargesNight +
+      pharmacyIncomePut.trainingFee + pharmacyIncomePut.humankindSales + miscTotalPut
       : 0;
 
     const ipdAdmissionsTotal = payload.ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);

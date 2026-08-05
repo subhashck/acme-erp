@@ -655,7 +655,7 @@ function PurchaseOrders() {
                               </td>
 
                               {/* PO No */}
-                              <td className="px-4 py-3 font-semibold text-primary">
+                              <td className="px-4 py-3 font-semibold ">
                                 <Link to="/purchases/purchase-orders/$id" params={{ id: String(po.id) }} className="hover:underline">
                                   {po.poNo}
                                 </Link>

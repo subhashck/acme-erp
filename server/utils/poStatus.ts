@@ -50,7 +50,7 @@ export async function recalculatePoStatus(db: any, poId: number): Promise<void> 
   // 3. Fetch each PO item along with the sum of received quantities from non-draft GRNs
   const itemsWithReceived = await db.select({
     ordered_qty: poItems.orderedQty,
-    receivedQty: sql<string>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} else 0 end), 0)`
+    receivedQty: sql<string>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} + ${grnItems.freeQty} else 0 end), 0)`
   })
   .from(poItems)
   .leftJoin(grnItems, eq(grnItems.poItemId, poItems.id))

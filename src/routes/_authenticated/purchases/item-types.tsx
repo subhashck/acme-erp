@@ -167,7 +167,7 @@ function ItemTypes() {
                   <tbody>
                     {itemTypes.map((type: any) => (
                       <tr key={type.id} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-primary">{type.name}</td>
+                        <td className="px-6 py-4 font-semibold">{type.name}</td>
                         <td className="px-6 py-4 text-muted-foreground">{type.description || "—"}</td>
                         <td className="px-6 py-4 text-right space-x-2">
                           <Button 
