@@ -61,13 +61,32 @@ const grnItemInput = z.object({
   poItemId: z.number().int().positive().optional().nullable(),
   itemId: z.number().int().positive().optional().nullable(),
   itemName: z.string().optional().nullable(),
+  unit: z.string().optional().nullable(),
   receivedQty: z.coerce.number().min(0),
   freeQty: z.coerce.number().min(0).default(0),
   unitRate: z.coerce.number().min(0).optional(),
+  salePrice: z.coerce.number().min(0).optional(),
   gstPercent: z.coerce.number().min(0).optional(),
   batch: z.string().optional().nullable(),
-  expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  expiryDate: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.receivedQty > 0) {
+    if (!data.batch || data.batch.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Batch number is required",
+        path: ["batch"],
+      });
+    }
+    if (!data.expiryDate || data.expiryDate.trim() === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Expiry date is required",
+        path: ["expiryDate"],
+      });
+    }
+  }
 });
 
 const grnInput = z.object({
@@ -307,7 +326,7 @@ export const purchasesRoutes = app
     totalOrderedQty = toNum(orderedRes?.sum || 0);
 
     const [receivedRes] = await db
-      .select({ sum: sql<number>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} else 0 end), 0)` })
+      .select({ sum: sql<number>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} + ${grnItems.freeQty} else 0 end), 0)` })
       .from(grnItems)
       .innerJoin(poItems, eq(grnItems.poItemId, poItems.id))
       .innerJoin(grns, eq(grns.id, grnItems.grnId))
@@ -363,7 +382,7 @@ export const purchasesRoutes = app
     gstPercent: poItems.gstPercent,
     lineValue: poItems.lineValue,
     createdAt: poItems.createdAt,
-    receivedQty: sql<number>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} else 0 end), 0)`
+    receivedQty: sql<number>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} + ${grnItems.freeQty} else 0 end), 0)`
   })
   .from(poItems)
   .leftJoin(grnItems, eq(grnItems.poItemId, poItems.id))
@@ -586,9 +605,11 @@ export const purchasesRoutes = app
       const [po] = await tx.select().from(purchaseOrders).where(eq(purchaseOrders.id, poId));
       if (!po) throw new Error("Purchase Order not found");
 
+      const selectedVendorId = input.vendorId || po.vendorId;
+
       const [grn] = await tx.insert(grns).values({
         poId,
-        vendorId: po.vendorId,
+        vendorId: selectedVendorId,
         grnNo,
         grnDate: input.grnDate,
         dateOfDelivery: input.dateOfDelivery,
@@ -604,9 +625,11 @@ export const purchasesRoutes = app
             poItemId: item.poItemId ?? null,
             itemId: item.itemId ?? null,
             itemName: item.itemName ?? null,
+            unit: item.unit ?? null,
             receivedQty: item.receivedQty,
             freeQty: item.freeQty,
             unitRate: item.unitRate ?? 0,
+            salePrice: item.salePrice ?? 0,
             gstPercent: item.gstPercent ?? 0,
             lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
             batch: item.batch,
@@ -665,9 +688,11 @@ export const purchasesRoutes = app
             poItemId: item.poItemId ?? null,
             itemId: item.itemId ?? null,
             itemName: item.itemName ?? null,
+            unit: item.unit ?? null,
             receivedQty: item.receivedQty,
             freeQty: item.freeQty,
             unitRate: item.unitRate ?? 0,
+            salePrice: item.salePrice ?? 0,
             gstPercent: item.gstPercent ?? 0,
             lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
             batch: item.batch,
@@ -811,9 +836,11 @@ export const purchasesRoutes = app
             poItemId: item.poItemId ?? null,
             itemId: item.itemId ?? null,
             itemName: item.itemName ?? null,
+            unit: item.unit ?? null,
             receivedQty: item.receivedQty,
             freeQty: item.freeQty,
             unitRate: item.unitRate ?? 0,
+            salePrice: item.salePrice ?? 0,
             gstPercent: item.gstPercent ?? 0,
             lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
             batch: item.batch,
@@ -892,9 +919,11 @@ export const purchasesRoutes = app
             poItemId: item.poItemId ?? null,
             itemId: item.itemId ?? null,
             itemName: item.itemName ?? null,
+            unit: item.unit ?? null,
             receivedQty: item.receivedQty,
             freeQty: item.freeQty,
             unitRate: item.unitRate ?? 0,
+            salePrice: item.salePrice ?? 0,
             gstPercent: item.gstPercent ?? 0,
             lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
             batch: item.batch,

@@ -155,7 +155,7 @@ function Vendors() {
     {
       id: "name",
       label: "Vendor Name",
-      render: (row) => <span className="font-semibold text-primary">{row.name}</span>,
+      render: (row) => <span className="font-semibold">{row.name}</span>,
       sortKey: "name"
     },
     {

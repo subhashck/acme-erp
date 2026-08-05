@@ -35,7 +35,8 @@ import {
   Package,
   Layers,
   Scale,
-  CalendarOff
+  CalendarOff,
+  FileBarChart
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -112,6 +113,19 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Management Approvers", to: "/masters/management-approvers" });
     } else if (sub === "nursing-supers") {
       items.push({ label: "Nursing Supers", to: "/masters/nursing-supers" });
+    }
+    return items;
+  }
+
+  if (pathname.startsWith("/accounts/")) {
+    items.push({ label: "Accounts", to: "/accounts/service-charges" });
+    const sub = pathname.replace("/accounts/", "");
+    if (sub === "service-charges") {
+      items.push({ label: "Service Charges", to: "/accounts/service-charges" });
+    } else if (sub === "reports" || sub.startsWith("reports/")) {
+      items.push({ label: "Daily Closing Reports", to: "/accounts/reports" });
+    } else if (sub === "monthly-report") {
+      items.push({ label: "Monthly Report", to: "/accounts/monthly-report" });
     }
     return items;
   }
@@ -461,6 +475,13 @@ export function Shell() {
                       >
                         Daily Closing Reports
                       </Link>
+                      <Link
+                        to="/accounts/monthly-report"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Monthly Report
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -616,22 +637,13 @@ export function Shell() {
                         Banks
                       </Link>
                       {session.data?.user.role === "admin" && (
-                        <>
-                          <Link
-                            to="/masters/management-approvers"
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                          >
-                            Management Approvers
-                          </Link>
-                          <Link
-                            to="/masters/nursing-supers"
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                          >
-                            Nursing Supers
-                          </Link>
-                        </>
+                        <Link
+                          to="/masters/nursing-supers"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Nursing Supers
+                        </Link>
                       )}
                     </div>
                   )}
@@ -663,6 +675,13 @@ export function Shell() {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         User Management
+                      </Link>
+                      <Link
+                        to="/masters/management-approvers"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Management Approvers
                       </Link>
                       <Link
                         to="/admin/hospital"
@@ -811,6 +830,15 @@ export function Shell() {
                     title="Daily Closing Reports"
                   >
                     <CalendarClock size={20} />
+                  </Link>
+
+                  <Link
+                    to="/accounts/monthly-report"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Monthly Report"
+                  >
+                    <FileBarChart size={20} />
                   </Link>
                 </>
               )}

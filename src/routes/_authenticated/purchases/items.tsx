@@ -227,7 +227,7 @@ function Items() {
 
                         return (
                           <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-4 font-semibold text-primary">
+                            <td className="px-6 py-4 font-semibold ">
                               <div>{item.name}</div>
                               {extraUnitPrices.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1">

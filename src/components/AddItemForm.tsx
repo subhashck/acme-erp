@@ -383,7 +383,7 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
         <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 dark:text-blue-300">
           <ShoppingCart className="h-4 w-4 text-blue-600" /> Default Purchase Unit & Procurement Cost
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 items-end-safe">
           <Select
             label="Default Purchase Unit *"
             options={
@@ -408,7 +408,7 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
 
       {/* Default Sale Unit & Selling Price Section */}
       <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3 rounded-lg border border-emerald-200/60 dark:border-emerald-900/50 space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-baseline justify-between ">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900 dark:text-emerald-300">
             <DollarSign className="h-4 w-4 text-emerald-600" /> Default Sale Unit & Selling Price
           </div>
