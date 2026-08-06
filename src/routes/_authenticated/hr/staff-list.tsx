@@ -10,15 +10,16 @@ import { Button } from "../../../ui/button";
 import { Card, CardContent } from "../../../ui/card";
 import { cn } from "@/utils/cn";
 import { Badge } from "@/ui/badge";
-import { authClient } from "../../../services/auth";
+import { useUserPermissions } from "../../../lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/hr/staff-list")({
   component: StaffList
 });
 
 function StaffList() {
-  const session = authClient.useSession();
-  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+  const { currentStaff, isAdmin, isHr, isManagementApprover } = useUserPermissions();
+  const isAdminOrHr = isAdmin || isHr;
+  const canViewAll = isAdminOrHr || isManagementApprover;
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const deptsQuery = useRpcQuery<any[]>(["masters-departments"], () => client.masters.departments.$get());
@@ -26,15 +27,14 @@ function StaffList() {
   const staffData = staffQuery.data ?? [];
   const deptsData = deptsQuery.data ?? [];
 
-  const currentStaff = staffData.find(s => s.email === session.data?.user?.email || s.userId === session.data?.user?.id);
   const headOfDeptIds = deptsData
     .filter(d => currentStaff && (d.headStaffId === currentStaff.staffId || d.subheadStaffId === currentStaff.staffId))
     .map(d => d.id);
 
-  const filteredStaff = isAdminOrHr 
+  const filteredStaff = canViewAll 
     ? staffData 
     : staffData.filter(s => {
-        if (s.email === session.data?.user?.email || s.userId === session.data?.user?.id) return true;
+        if (currentStaff && (s.staffId === currentStaff.staffId)) return true;
         if (s.departmentId && headOfDeptIds.includes(s.departmentId)) return true;
         return false;
       });

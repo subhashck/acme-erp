@@ -1,11 +1,10 @@
-import { sql } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { db } from "../db/client.ts";
 import { auth, type AuthEnv } from "../auth.ts";
-import { staff, patients } from "../db/schema.ts";
+import { staff, patients, managementApprovers, departments, staffDepartments } from "../db/schema.ts";
 
 // ---------------------------------------------------------------------------
 // Simple helpers
@@ -55,6 +54,51 @@ export const getCurrentStaff = async (c: Context<AuthEnv>) => {
     .limit(1)
     .then((res: any) => res[0]);
   return staffRecord;
+};
+
+export const isManagementApprover = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const row = await db
+    .select()
+    .from(managementApprovers)
+    .where(
+      and(
+        eq(managementApprovers.staffId, currentStaff.staffId),
+        eq(managementApprovers.active, true)
+      )
+    )
+    .limit(1)
+    .then((res: any) => res[0]);
+
+  return !!row;
+};
+
+export const hasHrOrAccountsViewAccess = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const session = c.get("session");
+  const userRole = session?.user?.role?.toLowerCase();
+  if (userRole === "admin" || userRole === "hr" || userRole === "management" || userRole === "mgt" || userRole === "management_approver") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const isAccounts = await db
+    .select({ name: departments.name })
+    .from(staffDepartments)
+    .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+    .where(
+      and(
+        eq(staffDepartments.staffId, currentStaff.staffId),
+        eq(departments.name, "Accounts")
+      )
+    )
+    .limit(1)
+    .then((res: any) => res.length > 0);
+
+  if (isAccounts) return true;
+
+  return await isManagementApprover(c);
 };
 
 export const isSupervisorOf = (
@@ -190,6 +234,7 @@ export const staffInput = z.object({
   tds: z.coerce.number().min(0).optional().default(0),
   securityDepositTotal: z.coerce.number().min(0).optional().default(0),
   securityDeposit: z.coerce.number().min(0).optional().default(0),
+  securityDepositStartMonth: z.string().optional().nullable(),
   otherDeductions: z.coerce.number().min(0).default(0),
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),

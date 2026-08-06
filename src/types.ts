@@ -28,6 +28,7 @@ export type StaffRow = {
   tds?: number | null;
   securityDepositTotal?: number | null;
   securityDeposit?: number | null;
+  securityDepositStartMonth?: string | null;
   otherDeductions?: number | null;
   lateAttendance?: number | null;
   salary?: number | null;

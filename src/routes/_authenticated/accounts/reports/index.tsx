@@ -9,8 +9,6 @@ import { useRpcQuery } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { Button } from "../../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../../ui/card";
-import { Input } from "../../../../ui/input";
-import { Badge } from "../../../../ui/badge";
 import { cn } from "../../../../utils/cn";
 import {
   ResponsiveContainer,
@@ -22,6 +20,8 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { Badge } from "@/ui/badge";
+import { useUserPermissions } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/accounts/reports/")({
   component: ReportsHistory,
@@ -70,7 +70,7 @@ function PublishDialog({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-sm">
+            <div className="h-8 w-8 rounded-lg bg-linear-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-sm">
               <Share2 size={15} className="text-white" />
             </div>
             <div>
@@ -145,6 +145,7 @@ function PublishDialog({
 // Main Page
 // ---------------------------------------------------------------------------
 function ReportsHistory() {
+  const { isManagementApprover } = useUserPermissions();
   const queryClient = useQueryClient();
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
@@ -296,12 +297,13 @@ function ReportsHistory() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-
-          <Button asChild className="dark:bg-teal-650 hover:bg-teal-700  font-semibold cursor-pointer">
-            <Link to="/accounts/reports/new">
-              <Plus size={16} className="mr-1.5" /> New Closing Report
-            </Link>
-          </Button>
+          {!isManagementApprover && (
+            <Button asChild className="dark:bg-teal-650 hover:bg-teal-700  font-semibold cursor-pointer">
+              <Link to="/accounts/reports/new">
+                <Plus size={16} className="mr-1.5" /> New Closing Report
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
 
@@ -686,7 +688,7 @@ function ReportsHistory() {
                             </button>
                           )}
 
-                          {report.status === "draft" && (
+                          {report.status === "draft" && !isManagementApprover && (
                             <>
                               <Button variant="ghost" size="icon" asChild title="Edit Report" className="cursor-pointer">
                                 <Link to="/accounts/reports/edit/$id" params={{ id: String(report.id) }}>

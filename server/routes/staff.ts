@@ -47,6 +47,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         tds: staffSalaries.tds,
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -111,6 +112,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       tds,
       securityDepositTotal,
       securityDeposit,
+      securityDepositStartMonth,
       otherDeductions,
       bankName,
       accountNumber,
@@ -156,6 +158,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         tds: String(tds || 0),
         securityDepositTotal: String(securityDepositTotal || 0),
         securityDeposit: String(securityDeposit || 0),
+        securityDepositStartMonth: securityDepositStartMonth || null,
         otherDeductions: String(otherDeductions),
         bankName,
         accountNumber,
@@ -229,6 +232,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       tds,
       securityDepositTotal,
       securityDeposit,
+      securityDepositStartMonth,
       otherDeductions,
       bankName,
       accountNumber,
@@ -269,6 +273,7 @@ export const staffRoutes = new Hono<AuthEnv>()
     const finalTds = "tds" in rawBody ? Number(tds) : Number(currentSalary?.tds ?? 0);
     const finalSecTotal = "securityDepositTotal" in rawBody ? Number(securityDepositTotal) : Number(currentSalary?.securityDepositTotal ?? 0);
     const finalSecMonthly = "securityDeposit" in rawBody ? Number(securityDeposit) : Number(currentSalary?.securityDeposit ?? 0);
+    const finalSecStartMonth = "securityDepositStartMonth" in rawBody ? (securityDepositStartMonth || null) : (currentSalary?.securityDepositStartMonth ?? null);
     const finalOther = "otherDeductions" in rawBody ? Number(otherDeductions) : Number(currentSalary?.otherDeductions ?? 0);
     const finalBankName = "bankName" in rawBody ? bankName : (currentSalary?.bankName ?? null);
     const finalAccountNumber = "accountNumber" in rawBody ? accountNumber : (currentSalary?.accountNumber ?? null);
@@ -288,6 +293,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       Number(currentSalary.tds) !== finalTds ||
       Number(currentSalary.securityDepositTotal) !== finalSecTotal ||
       Number(currentSalary.securityDeposit) !== finalSecMonthly ||
+      (currentSalary.securityDepositStartMonth ?? null) !== finalSecStartMonth ||
       Number(currentSalary.otherDeductions) !== finalOther ||
       currentSalary.bankName !== finalBankName ||
       currentSalary.accountNumber !== finalAccountNumber ||
@@ -348,6 +354,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         tds: String(finalTds),
         securityDepositTotal: String(finalSecTotal),
         securityDeposit: String(finalSecMonthly),
+        securityDepositStartMonth: finalSecStartMonth,
         otherDeductions: String(finalOther),
         bankName: finalBankName,
         accountNumber: finalAccountNumber,
@@ -592,6 +599,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         tds: staffSalaries.tds,
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -666,6 +674,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         tds: staffSalaries.tds,
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -751,6 +760,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         tds: staffSalaries.tds,
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,

@@ -11,6 +11,7 @@ import { DataTable, type ColumnDef } from "../../../components/DataTable";
 import { queryClient } from "../../../lib/query";
 import { useQuery } from "@tanstack/react-query";
 import { authClient } from "../../../services/auth";
+import { useUserPermissions } from "../../../lib/permissions";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
 import { Label } from "../../../ui/label";
@@ -145,8 +146,9 @@ function DatePickerField({
 }
 
 function OffDayRequests() {
-  const session = authClient.useSession();
-  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+  const { currentStaff, isAdmin, isHr, isManagementApprover } = useUserPermissions();
+  const isAdminOrHr = isAdmin || isHr;
+  const canViewAll = isAdminOrHr || isManagementApprover;
 
   const [activeTab, setActiveTab] = React.useState<"requests" | "weekly">("requests");
 
@@ -174,7 +176,7 @@ function OffDayRequests() {
   // ── Queries ──
   const params = new URLSearchParams();
   if (statusFilter) params.set("status", statusFilter);
-  if (isAdminOrHr && staffFilter) params.set("staffId", staffFilter);
+  if (canViewAll && staffFilter) params.set("staffId", staffFilter);
 
   const requestsQuery = useQuery<OffDayRequest[], Error>({
     queryKey: ["off-day-requests", statusFilter, staffFilter],
@@ -231,9 +233,7 @@ function OffDayRequests() {
     },
   });
 
-  const currentStaff = (staffQuery.data ?? []).find(
-    (s) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
-  );
+
 
   const isNursingSuper = (nursingSupersQuery.data ?? []).some(
     (ns: any) => currentStaff?.staffId && ns.staffId === currentStaff.staffId && ns.active
@@ -268,7 +268,7 @@ function OffDayRequests() {
 
       let rulesToUse: WeeklyOffDayRule[];
 
-      if (isAdminOrHr) {
+      if (canViewAll) {
         if (formStaffId) {
           rulesToUse = weeklyRules.filter((r) => r.staffId === formStaffId);
         } else {
@@ -287,7 +287,7 @@ function OffDayRequests() {
       if (activeRules.length === 0) return false;
       return activeRules.some((rule) => Array.isArray(rule.daysOfWeek) && rule.daysOfWeek.includes(dayOfWeek));
     },
-    [myWeeklyRules, weeklyRules, isAdminOrHr, formStaffId]
+    [myWeeklyRules, weeklyRules, canViewAll, formStaffId]
   );
 
   // Submit request
@@ -391,7 +391,7 @@ function OffDayRequests() {
   // ── Columns for Off-Day Requests ──
   const requestColumns: ColumnDef<Record<string, unknown>>[] = React.useMemo(() => {
     const cols: ColumnDef<Record<string, unknown>>[] = [];
-    if (isAdminOrHr || isNursingSuper) {
+    if (canViewAll || isNursingSuper) {
       cols.push({
         id: "employee", label: "Employee",
         render: (row: any) => (
@@ -416,8 +416,7 @@ function OffDayRequests() {
           const reqStaff = staffList.find((s) => s.staffId === req.staffId);
           const reqDept = (deptsQuery.data ?? []).find((d) => d.name === reqStaff?.departmentName);
           const isClinical = reqDept?.isClinical === true;
-          const isHrUser = session.data?.user?.role === "hr" || currentStaff?.role === "hr";
-          const isAdmin = session.data?.user?.role === "admin";
+          const isHrUser = isHr;
           const canReviewReq = isAdmin || (isNursingSuper && isClinical) || (isHrUser && !isClinical);
 
           return (
@@ -443,7 +442,7 @@ function OffDayRequests() {
       }
     );
     return cols;
-  }, [isAdminOrHr, isNursingSuper, staffList, deptsQuery.data, currentStaff]);
+  }, [canViewAll, isNursingSuper, staffList, deptsQuery.data, currentStaff]);
 
   // ── Columns for Weekly Off-Day Rules ──
   const ruleColumns: ColumnDef<Record<string, unknown>>[] = React.useMemo(() => {

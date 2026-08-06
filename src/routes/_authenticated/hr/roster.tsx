@@ -12,6 +12,7 @@ import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
 import { authClient } from "../../../services/auth";
+import { useUserPermissions } from "../../../lib/permissions";
 import { exportRosterToExcel } from "../../../lib/roster-export";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -234,16 +235,14 @@ function Roster() {
   });
 
   const allDepartments = deptsQuery.data ?? [];
-  const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user.email);
-  const isAdmin = session.data?.user.role === "admin";
-  const isHr = session.data?.user.role === "hr" || currentStaff?.role === "hr";
+  const { currentStaff, isAdmin, isHr, isManagementApprover } = useUserPermissions();
   const isHrOrAdmin = isAdmin || isHr;
 
   const isNursingSuper = (nursingSupersQuery.data ?? []).some(
     (ns: any) => currentStaff?.staffId && ns.staffId === currentStaff.staffId && ns.active
   );
 
-  const departments = (isAdmin || isHr || isNursingSuper)
+  const departments = (isAdmin || isHr || isNursingSuper || isManagementApprover)
     ? allDepartments
     : allDepartments.filter((d: any) => currentStaff?.departmentId && d.id === currentStaff.departmentId);
 

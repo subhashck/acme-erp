@@ -49,6 +49,7 @@ import { notificationsStore, notificationsActions } from "../lib/notifications-s
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { chatStore, chatActions } from "../lib/chat-store";
+import { useUserPermissions } from "../lib/permissions";
 
 const getBreadcrumbs = (pathname: string) => {
   const items = [{ label: "Dashboard", to: "/" }];
@@ -194,13 +195,16 @@ export function Shell() {
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   
-  const staffQuery = useRpcQuery<any[]>(["staff"], () => client.hr.staff.$get());
-  const currentStaff = staffQuery.data?.find(
-    (s: any) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
-  );
-  
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible } = useUserPermissions();
   const displayName = currentStaff?.name || session.data?.user?.name;
-  const isAccountsVisible = session.data?.user?.role === "admin" || currentStaff?.departmentName === "Accounts";
+
+  React.useEffect(() => {
+    if (location.pathname.startsWith("/hr/")) setHrOpen(true);
+    if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
+    if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
+    if (location.pathname.startsWith("/masters/")) setMastersOpen(true);
+    if (location.pathname.startsWith("/admin/")) setAdminOpen(true);
+  }, [location.pathname]);
   
   // Notification system state and hooks
   const { notifications } = useStore(notificationsStore);
@@ -461,13 +465,15 @@ export function Shell() {
                       >
                         Consultant Charges
                       </Link> */}
-                      <Link
-                        to="/accounts/service-charges"
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                      >
-                        Service Charges
-                      </Link>
+                      {!isManagementApprover && (
+                        <Link
+                          to="/accounts/service-charges"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Service Charges
+                        </Link>
+                      )}
                       <Link
                         to="/accounts/reports"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -814,14 +820,16 @@ export function Shell() {
                     <Landmark size={20} />
                   </Link> */}
 
-                  <Link
-                    to="/accounts/service-charges"
-                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                    title="Service Charges"
-                  >
-                    <Coins size={20} />
-                  </Link>
+                  {!isManagementApprover && (
+                    <Link
+                      to="/accounts/service-charges"
+                      className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                      title="Service Charges"
+                    >
+                      <Coins size={20} />
+                    </Link>
+                  )}
 
                   <Link
                     to="/accounts/reports"

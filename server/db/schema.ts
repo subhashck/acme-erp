@@ -192,6 +192,7 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   tds: numeric("tds", { precision: 12, scale: 2 }).notNull().default("0"),
   securityDepositTotal: numeric("security_deposit_total", { precision: 12, scale: 2 }).notNull().default("0"),
   securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDepositStartMonth: text("security_deposit_start_month"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   bankName: text("bank_name"),

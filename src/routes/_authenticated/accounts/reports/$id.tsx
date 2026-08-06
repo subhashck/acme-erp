@@ -8,6 +8,7 @@ import { Button } from "../../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../../ui/card";
 import { Badge } from "../../../../ui/badge";
 import { cn } from "../../../../utils/cn";
+import { useUserPermissions } from "@/lib/permissions";
 
 
 const Panel = ({ title, amount, children, defaultExpanded = false, titleClass = "", id }: any) => {
@@ -67,6 +68,7 @@ export const Route = createFileRoute("/_authenticated/accounts/reports/$id")({
 });
 
 function ReportDetail() {
+  const { isManagementApprover } = useUserPermissions();
   const { id } = Route.useParams();
   const router = useRouter();
 
@@ -294,7 +296,7 @@ function ReportDetail() {
         </div>
 
         <div className="flex items-center gap-2">
-          {report.status === "draft" && (
+          {report.status === "draft" && !isManagementApprover && (
             <Button asChild variant="outline" className="font-semibold cursor-pointer">
               <Link to="/accounts/reports/edit/$id" params={{ id: String(report.id) }}>
                 <Edit2 size={15} className="mr-1.5" /> Edit Draft
