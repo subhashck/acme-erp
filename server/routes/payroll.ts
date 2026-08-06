@@ -19,7 +19,7 @@ import {
   managementApprovers,
   securityDepositRefunds,
 } from "../db/schema.ts";
-import { idParam, getCurrentStaff } from "./shared.ts";
+import { idParam, getCurrentStaff, isManagementApprover } from "./shared.ts";
 
 function formatPayslipWithBankDetails(row: any) {
   if (!row) return row;
@@ -48,7 +48,8 @@ function formatPayslipWithBankDetails(row: any) {
 export const payrollRoutes = new Hono<AuthEnv>()
   .get("/hr/payroll/payslips", async (c) => {
     const session = c.get("session");
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr" || isMgtApprover;
     const currentStaff = await getCurrentStaff(c);
 
     let whereClause = undefined;
@@ -195,7 +196,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
     const formattedRow = formatPayslipWithBankDetails(row);
 
     const session = c.get("session");
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
+    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr" || isMgtApprover;
     const currentStaff = await getCurrentStaff(c);
 
     if (!isHrOrAdmin) {
@@ -1090,21 +1092,40 @@ export const payrollRoutes = new Hono<AuthEnv>()
         // Security Deposit calculation
         const secTotal = Number(structure.securityDepositTotal || 0);
         const secMonthly = Number(structure.securityDeposit || 0);
+        const startMonth = structure.securityDepositStartMonth;
+
         if (secTotal > 0 && secMonthly > 0) {
-          const pastPayslips = await db
-            .select({ secDep: payslips.securityDeposit })
-            .from(payslips)
-            .where(
-              and(
-                eq(payslips.staffId, employee.staffId),
-                sql`${payslips.status} != 'Superseded'`,
-                sql`${payslips.month} != ${month}`
+          if (startMonth && month < startMonth) {
+            securityDeposit = 0;
+          } else {
+            let precedingPaid = 0;
+            if (startMonth) {
+              const joinDateStr = employee.employmentStartDate || employee.createdAt;
+              const joinMonth = joinDateStr ? getLocalDateStr(new Date(joinDateStr)).slice(0, 7) : startMonth;
+              if (joinMonth < startMonth) {
+                const [jY, jM] = joinMonth.split("-").map(Number);
+                const [sY, sM] = startMonth.split("-").map(Number);
+                const precedingMonthsCount = Math.max(0, (sY - jY) * 12 + (sM - jM));
+                precedingPaid = Math.min(secTotal, precedingMonthsCount * secMonthly);
+              }
+            }
+
+            const pastPayslips = await db
+              .select({ secDep: payslips.securityDeposit })
+              .from(payslips)
+              .where(
+                and(
+                  eq(payslips.staffId, employee.staffId),
+                  sql`${payslips.status} != 'Superseded'`,
+                  sql`${payslips.month} != ${month}`
+                )
               )
-            )
-            .execute();
-          const alreadyDeducted = pastPayslips.reduce((s, p) => s + Number(p.secDep || 0), 0);
-          const remainingSec = Math.max(0, secTotal - alreadyDeducted);
-          securityDeposit = Math.min(secMonthly, remainingSec);
+              .execute();
+            const actualDeducted = pastPayslips.reduce((s, p) => s + Number(p.secDep || 0), 0);
+            const alreadyCollected = Math.min(secTotal, precedingPaid + actualDeducted);
+            const remainingSec = Math.max(0, secTotal - alreadyCollected);
+            securityDeposit = Math.min(secMonthly, remainingSec);
+          }
         }
       } else {
         const total = Number(employee.salary || 0);
@@ -1240,7 +1261,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
    */
   .get("/hr/security-deposits", async (c) => {
     const session = c.get("session");
-    if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
+    const isMgtApprover = await isManagementApprover(c);
+    if (!session || (session.user.role !== "admin" && session.user.role !== "hr" && !isMgtApprover)) {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
@@ -1252,9 +1274,12 @@ export const payrollRoutes = new Hono<AuthEnv>()
         name: staff.name,
         role: staff.role,
         status: staff.status,
+        employmentStartDate: staff.employmentStartDate,
+        createdAt: staff.createdAt,
         departmentName: departments.name,
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
       })
       .from(staff)
       .leftJoin(
@@ -1305,7 +1330,22 @@ export const payrollRoutes = new Hono<AuthEnv>()
     const list = activeStaff.map((s) => {
       const target = Number(s.securityDepositTotal || 0);
       const monthlyDeduction = Number(s.securityDeposit || 0);
-      const totalDeducted = deductionsByStaff[s.staffId] || 0;
+      const startMonth = s.securityDepositStartMonth;
+
+      let precedingPaid = 0;
+      if (target > 0 && monthlyDeduction > 0 && startMonth) {
+        const joinDateStr = s.employmentStartDate || s.createdAt;
+        const joinMonth = joinDateStr ? String(joinDateStr).slice(0, 7) : startMonth;
+        if (joinMonth < startMonth) {
+          const [jY, jM] = joinMonth.split("-").map(Number);
+          const [sY, sM] = startMonth.split("-").map(Number);
+          const precedingMonthsCount = Math.max(0, (sY - jY) * 12 + (sM - jM));
+          precedingPaid = Math.min(target, precedingMonthsCount * monthlyDeduction);
+        }
+      }
+
+      const actualDeducted = deductionsByStaff[s.staffId] || 0;
+      const totalDeducted = Math.min(target, precedingPaid + actualDeducted);
       const totalRefunded = refundsByStaff[s.staffId] || 0;
       const netHeld = Math.max(0, totalDeducted - totalRefunded);
 
@@ -1329,6 +1369,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         departmentName: s.departmentName,
         targetAmount: target,
         monthlyDeduction,
+        securityDepositStartMonth: startMonth,
         totalDeducted,
         totalRefunded,
         netHeld,
@@ -1356,10 +1397,11 @@ export const payrollRoutes = new Hono<AuthEnv>()
       return c.json({ error: "Unauthorized" }, 403);
     }
     const staffId = parseInt(c.req.param("staffId"), 10);
-    const { securityDepositTotal, securityDeposit } = z
+    const { securityDepositTotal, securityDeposit, securityDepositStartMonth } = z
       .object({
         securityDepositTotal: z.coerce.number().min(0),
         securityDeposit: z.coerce.number().min(0),
+        securityDepositStartMonth: z.string().optional().nullable(),
       })
       .parse(await c.req.json());
 
@@ -1387,6 +1429,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .set({
           securityDepositTotal: String(securityDepositTotal),
           securityDeposit: String(securityDeposit),
+          securityDepositStartMonth: securityDepositStartMonth || null,
         })
         .where(eq(staffSalaries.id, currentSalary.id))
         .execute();
@@ -1398,6 +1441,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
           staffVersion: activeStaff.version,
           securityDepositTotal: String(securityDepositTotal),
           securityDeposit: String(securityDeposit),
+          securityDepositStartMonth: securityDepositStartMonth || null,
         })
         .execute();
     }

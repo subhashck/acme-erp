@@ -24,6 +24,7 @@ import {
   code,
   getCurrentStaff,
   idParam,
+  isManagementApprover,
   leaveDecisionInput,
   leaveRequestInput,
 } from "./shared.ts";
@@ -252,6 +253,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
     const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
 
     const page = Math.max(1, parseInt(c.req.query("page") ?? "1", 10));
     const limit = Math.max(1, parseInt(c.req.query("limit") ?? "10", 10));
@@ -320,7 +322,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     //   Forward Target  → Forwarded leaves where they are the forwardedToStaffId
     //   Resolved        → Approved/Rejected history visible to all staff
     let filteredRows = rows.filter((row) => {
-      if (isAdmin || isHrUser) return true;
+      if (isAdmin || isHrUser || isMgtApprover) return true;
       if (!currentStaff) return false;
 
       // Requester sees their own leaves
@@ -401,6 +403,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
     const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
 
     const isNursingSuper = currentStaff
       ? await db
@@ -484,6 +487,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const canView =
       isAdmin ||
       isHrUser ||
+      isMgtApprover ||
       (isNursingSuper && isClinicalDept) ||
       isEmployee ||
       isApprover ||
@@ -504,6 +508,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
     const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
 
     const isNursingSuper = currentStaff
       ? await db
@@ -557,6 +562,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const canView =
       isAdmin ||
       isHrUser ||
+      isMgtApprover ||
       (isNursingSuper && isClinicalDept) ||
       isEmployee ||
       isApprover ||

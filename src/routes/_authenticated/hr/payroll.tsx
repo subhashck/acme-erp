@@ -14,6 +14,7 @@ import { Field } from "../../../components/Field";
 import { exportPayrollToExcel } from "../../../lib/payroll-export";
 import type { StaffRow } from "../../../types";
 import { authClient } from "../../../services/auth";
+import { useUserPermissions } from "../../../lib/permissions";
 import { Autocomplete } from "../../../ui/autocomplete";
 import { cn } from "@/utils/cn";
 import { PayrollWorkflowApprovals } from "../../../components/hr/PayrollWorkflowApprovals";
@@ -65,6 +66,7 @@ interface SecurityDepositStaffItem {
   departmentName: string | null;
   targetAmount: number;
   monthlyDeduction: number;
+  securityDepositStartMonth?: string | null;
   totalDeducted: number;
   totalRefunded: number;
   netHeld: number;
@@ -80,21 +82,15 @@ interface SecurityDepositStaffItem {
 
 function PayrollPage() {
   const navigate = useNavigate();
-  const session = authClient.useSession();
-  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+  const { currentStaff, isAdmin, isHr, isManagementApprover } = useUserPermissions();
+  const isAdminOrHr = isAdmin || isHr;
+  const canViewAll = isAdminOrHr || isManagementApprover;
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () =>
     client.hr.staff.$get()
   );
 
-  const currentStaff = React.useMemo(() => {
-    const list = staffQuery.data ?? [];
-    return list.find(
-      (s) =>
-        s.email?.toLowerCase() === session.data?.user?.email?.toLowerCase() ||
-        (s.userId && s.userId === session.data?.user?.id)
-    );
-  }, [staffQuery.data, session.data?.user]);
+
 
   const isAccounts = currentStaff?.departmentName === "Accounts";
 
@@ -131,6 +127,7 @@ function PayrollPage() {
   const [tds, setTds] = React.useState(0);
   const [securityDepositTotal, setSecurityDepositTotal] = React.useState(0);
   const [securityDeposit, setSecurityDeposit] = React.useState(0);
+  const [securityDepositStartMonth, setSecurityDepositStartMonth] = React.useState("");
   const [other, setOther] = React.useState(0);
   const [lateAttendance, setLateAttendance] = React.useState(0);
 
@@ -141,6 +138,7 @@ function PayrollPage() {
   const [secDepRefundStaff, setSecDepRefundStaff] = React.useState<SecurityDepositStaffItem | null>(null);
   const [secTargetInput, setSecTargetInput] = React.useState(0);
   const [secMonthlyInput, setSecMonthlyInput] = React.useState(0);
+  const [secStartMonthInput, setSecStartMonthInput] = React.useState("");
   const [refundAmount, setRefundAmount] = React.useState(0);
   const [refundDate, setRefundDate] = React.useState(() => new Date().toISOString().split("T")[0]);
   const [refundNotes, setRefundNotes] = React.useState("");
@@ -226,6 +224,7 @@ function PayrollPage() {
       setTds(Number(editingSalaryStaff.tds ?? 0));
       setSecurityDepositTotal(Number(editingSalaryStaff.securityDepositTotal ?? 0));
       setSecurityDeposit(Number(editingSalaryStaff.securityDeposit ?? 0));
+      setSecurityDepositStartMonth(editingSalaryStaff.securityDepositStartMonth ?? "");
       setOther(Number(editingSalaryStaff.otherDeductions ?? 0));
       setLateAttendance(Number(editingSalaryStaff.lateAttendance ?? 0));
 
@@ -246,6 +245,7 @@ function PayrollPage() {
       setTds(0);
       setSecurityDepositTotal(0);
       setSecurityDeposit(0);
+      setSecurityDepositStartMonth("");
       setOther(0);
       setLateAttendance(0);
       setTargetGross(0);
@@ -312,6 +312,7 @@ function PayrollPage() {
         tds: deductTds ? Number(tds) : 0,
         securityDepositTotal: Number(securityDepositTotal),
         securityDeposit: Number(securityDeposit),
+        securityDepositStartMonth: securityDepositStartMonth || null,
         otherDeductions: Number(other),
         lateAttendance: Number(lateAttendance),
         salary: Math.max(1, Number(gross))
@@ -346,6 +347,7 @@ function PayrollPage() {
         body: JSON.stringify({
           securityDepositTotal: Number(secTargetInput),
           securityDeposit: Number(secMonthlyInput),
+          securityDepositStartMonth: secStartMonthInput || null,
         }),
       });
       if (res.ok) {
@@ -599,6 +601,7 @@ function PayrollPage() {
       id: "actions",
       label: "Actions",
       render: (row: StaffRow) => {
+        if (!isAdminOrHr) return null;
         const b = Number(row.basicSalary ?? 0);
         const h = Number(row.hra ?? 0);
         const c = Number(row.conveyance ?? 0);
@@ -664,7 +667,7 @@ function PayrollPage() {
           >
             Workflow Approvals
           </button>
-          {isAdminOrHr && (
+          {canViewAll && (
             <button
               onClick={() => setActiveTab("salaries")}
               className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer whitespace-nowrap ${
@@ -676,7 +679,7 @@ function PayrollPage() {
               Salary Structures
             </button>
           )}
-          {isAdminOrHr && (
+          {canViewAll && (
             <button
               onClick={() => setActiveTab("security-deposit")}
               className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer whitespace-nowrap ${
@@ -822,7 +825,7 @@ function PayrollPage() {
         )}
 
         {/* Salary Structures Tab */}
-        {activeTab === "salaries" && isAdminOrHr && (
+        {activeTab === "salaries" && canViewAll && (
           <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
             <CardHeader className="border-b pb-4 px-0 md:px-6">
               <CardTitle className="text-base">Employee Salary Structures</CardTitle>
@@ -902,17 +905,19 @@ function PayrollPage() {
                         </div>
 
                         {/* Actions buttons */}
-                        <div className="pt-3 border-t border-border/60">
-                          <Button 
-                            onClick={() => setEditingSalaryStaff(row)} 
-                            variant={gross > 0 ? "outline" : "default"} 
-                            size="default" 
-                            className="w-full font-semibold h-9 gap-1.5"
-                          >
-                            {gross > 0 ? <Edit2 size={14} /> : <Plus size={14} />}
-                            {gross > 0 ? "Manage Salary Structure" : "Setup Salary Structure"}
-                          </Button>
-                        </div>
+                        {isAdminOrHr && (
+                          <div className="pt-3 border-t border-border/60">
+                            <Button 
+                              onClick={() => setEditingSalaryStaff(row)} 
+                              variant={gross > 0 ? "outline" : "default"} 
+                              size="default" 
+                              className="w-full font-semibold h-9 gap-1.5"
+                            >
+                              {gross > 0 ? <Edit2 size={14} /> : <Plus size={14} />}
+                              {gross > 0 ? "Manage Salary Structure" : "Setup Salary Structure"}
+                            </Button>
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );
@@ -923,7 +928,7 @@ function PayrollPage() {
         )}
 
         {/* HR Security Deposit Dashboard Tab */}
-        {activeTab === "security-deposit" && isAdminOrHr && (
+        {activeTab === "security-deposit" && canViewAll && (
           <div className="space-y-6">
             {/* Metric Summary Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1033,7 +1038,12 @@ function PayrollPage() {
                               </td>
                               <td className="p-3 text-muted-foreground">{item.departmentName || "General"}</td>
                               <td className="p-3 text-right font-semibold">{currencySymbol}{item.targetAmount.toLocaleString("en-IN")}</td>
-                              <td className="p-3 text-right text-muted-foreground">{currencySymbol}{item.monthlyDeduction.toLocaleString("en-IN")}/mo</td>
+                              <td className="p-3 text-right">
+                                <div className="text-muted-foreground">{currencySymbol}{item.monthlyDeduction.toLocaleString("en-IN")}/mo</div>
+                                {item.securityDepositStartMonth && (
+                                  <div className="text-[10px] text-primary font-medium">Start: {item.securityDepositStartMonth}</div>
+                                )}
+                              </td>
                               <td className="p-3 text-right">
                                 <span className="font-semibold text-emerald-600">{currencySymbol}{item.totalDeducted.toLocaleString("en-IN")}</span>
                                 {item.targetAmount > 0 && (
@@ -1056,35 +1066,40 @@ function PayrollPage() {
                                 </span>
                               </td>
                               <td className="p-3 text-right">
-                                <div className="flex items-center justify-end gap-1">
-                                  <Button
-                                    variant="outline"
-                                    size="default"
-                                    className="h-7 text-xs px-2 gap-1 cursor-pointer"
-                                    onClick={() => {
-                                      setSecDepTargetStaff(item);
-                                      setSecTargetInput(item.targetAmount);
-                                      setSecMonthlyInput(item.monthlyDeduction);
-                                    }}
-                                  >
-                                    <Edit2 size={12} /> Set Target
-                                  </Button>
+                                {isAdminOrHr ? (
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button
+                                      variant="outline"
+                                      size="default"
+                                      className="h-7 text-xs px-2 gap-1 cursor-pointer"
+                                      onClick={() => {
+                                        setSecDepTargetStaff(item);
+                                        setSecTargetInput(item.targetAmount);
+                                        setSecMonthlyInput(item.monthlyDeduction);
+                                        setSecStartMonthInput(item.securityDepositStartMonth ?? "");
+                                      }}
+                                    >
+                                      <Edit2 size={12} /> Set Target
+                                    </Button>
 
-                                  <Button
-                                    variant="outline"
-                                    size="default"
-                                    className="h-7 text-xs px-2 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
-                                    disabled={item.netHeld <= 0}
-                                    onClick={() => {
-                                      setSecDepRefundStaff(item);
-                                      setRefundAmount(item.netHeld);
-                                      setRefundDate(new Date().toISOString().split("T")[0]);
-                                      setRefundNotes("");
-                                    }}
-                                  >
-                                    <ArrowRightLeft size={12} /> Refund
-                                  </Button>
-                                </div>
+                                    <Button
+                                      variant="outline"
+                                      size="default"
+                                      className="h-7 text-xs px-2 gap-1 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                                      disabled={item.netHeld <= 0}
+                                      onClick={() => {
+                                        setSecDepRefundStaff(item);
+                                        setRefundAmount(item.netHeld);
+                                        setRefundDate(new Date().toISOString().split("T")[0]);
+                                        setRefundNotes("");
+                                      }}
+                                    >
+                                      <ArrowRightLeft size={12} /> Refund
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1311,7 +1326,7 @@ function PayrollPage() {
                     {/* Security Deposit Setup */}
                     <div className="border border-border/80 p-3 rounded-lg bg-muted/20 space-y-2">
                       <p className="text-xs font-semibold text-foreground">Security Deposit Setup</p>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <Field
                           label="Target Total (₹)"
                           type="number"
@@ -1325,6 +1340,12 @@ function PayrollPage() {
                           value={securityDeposit}
                           onChange={(e) => setSecurityDeposit(Number(e.target.value))}
                           placeholder="e.g. 2000"
+                        />
+                        <Field
+                          label="Start Month"
+                          type="month"
+                          value={securityDepositStartMonth}
+                          onChange={(e) => setSecurityDepositStartMonth(e.target.value)}
                         />
                       </div>
                     </div>
@@ -1399,6 +1420,12 @@ function PayrollPage() {
                 onChange={(e) => setSecMonthlyInput(Number(e.target.value))}
                 placeholder="e.g. 2000"
                 required
+              />
+              <Field
+                label="Starting Month (YYYY-MM)"
+                type="month"
+                value={secStartMonthInput}
+                onChange={(e) => setSecStartMonthInput(e.target.value)}
               />
               <p className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-lg">
                 Monthly deductions will automatically stop once the accumulated collected deposit reaches the target total of {currencySymbol}{secTargetInput.toLocaleString("en-IN")}.

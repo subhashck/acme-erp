@@ -16,9 +16,13 @@ import {
   dailyAdditionalIncome,
   dailyDiscountsReturns,
 } from "../db/schema.ts";
+import { hasHrOrAccountsViewAccess } from "./shared.ts";
 
 export const monthlyReportRoutes = new Hono<AuthEnv>()
   .get("/daily-closing/monthly-report", async (c) => {
+    if (!(await hasHrOrAccountsViewAccess(c))) {
+      return c.json({ error: "Forbidden: HR/Accounts or Management Approver view access required" }, 403);
+    }
     const startDate = c.req.query("startDate");
     const endDate = c.req.query("endDate");
 
