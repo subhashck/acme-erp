@@ -16,9 +16,15 @@ import {
   Pill,
   Loader2,
   Search,
+  Filter,
+  Check,
+  RotateCcw,
+  Save,
+  X,
 } from "lucide-react";
 import * as React from "react";
 import { format, startOfMonth, subMonths, endOfMonth, addMonths } from "date-fns";
+import { z } from "zod";
 import { Calendar } from "../../../components/ui/calendar";
 import {
   Popover,
@@ -55,8 +61,15 @@ import {
   Cell,
 } from "recharts";
 
+const reportSearchSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  exclude: z.string().optional(),
+});
+
 export const Route = createFileRoute("/_authenticated/accounts/monthly-report")(
   {
+    validateSearch: (search) => reportSearchSchema.parse(search),
     component: MonthlyReport,
   }
 );
@@ -102,6 +115,17 @@ const fmtCompact = (num: number) => {
   return `₹${num.toFixed(0)}`;
 };
 
+const formatDateMobile = (dateStr: string) => {
+  if (!dateStr) return "";
+  if (dateStr.length >= 10 && dateStr.includes("-")) {
+    const parts = dateStr.split("T")[0].split("-");
+    if (parts.length === 3) {
+      return `${parts[1]}-${parts[2]}`;
+    }
+  }
+  return dateStr;
+};
+
 // ---------------------------------------------------------------------------
 // Custom chart tooltip
 // ---------------------------------------------------------------------------
@@ -124,6 +148,52 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
+const renderPieLabel = ({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
+  percent,
+  name,
+}: any) => {
+  if (!percent || percent < 0.02) return null;
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius + 8;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+  return (
+    <text
+      x={x}
+      y={y}
+      textAnchor={x > cx ? "start" : "end"}
+      dominantBaseline="central"
+      className="text-[9px] sm:text-xs fill-foreground font-semibold select-none"
+    >
+      {`${name} (${(percent * 100).toFixed(0)}%)`}
+    </text>
+  );
+};
+
+const renderYAxisTick = ({ x, y, payload }: any) => {
+  const label = payload?.value || "";
+  const displayLabel = label.length > 15 ? `${label.slice(0, 14)}…` : label;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={-4}
+        y={0}
+        dy={3}
+        textAnchor="end"
+        className="text-[9px] sm:text-[8px] fill-muted-foreground font-medium select-none"
+      >
+        {displayLabel}
+      </text>
+    </g>
+  );
+};
+
 // ---------------------------------------------------------------------------
 // Breakdown table row
 // ---------------------------------------------------------------------------
@@ -145,36 +215,36 @@ function HeadRow({
     <div
       onClick={onClick}
       className={cn(
-        "flex items-center gap-3 py-2.5 px-3 rounded-lg transition-all group",
+        "flex items-center gap-1.5 sm:gap-3 py-1.5 sm:py-2.5 px-1.5 sm:px-3 rounded-lg transition-all group",
         onClick
           ? "cursor-pointer hover:bg-violet-500/10 dark:hover:bg-violet-500/15"
           : "hover:bg-muted/40"
       )}
     >
       <div
-        className="shrink-0 h-3 w-3 rounded-sm"
+        className="shrink-0 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-sm"
         style={{ backgroundColor: color }}
       />
-      <span className="flex-1 text-sm font-semibold text-foreground truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
+      <span className="flex-1 text-xs sm:text-sm font-semibold text-foreground truncate group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-colors">
         {label}
       </span>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         <div className="w-28 h-2 rounded-full bg-muted/60 overflow-hidden hidden sm:block">
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }}
           />
         </div>
-        <span className="text-xs text-muted-foreground font-semibold w-12 text-right">
+        <span className="text-[10px] sm:text-xs text-muted-foreground font-semibold w-8 sm:w-12 text-right">
           {pct.toFixed(1)}%
         </span>
-        <span className="text-sm font-bold text-foreground w-28 text-right">
+        <span className="text-xs sm:text-sm font-bold text-foreground min-w-[3.5rem] sm:w-28 text-right">
           {fmt(total)}
         </span>
         {onClick && (
           <ChevronRight
-            size={14}
-            className="text-muted-foreground/60 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-transform group-hover:translate-x-0.5"
+            size={13}
+            className="text-muted-foreground/60 group-hover:text-violet-600 dark:group-hover:text-violet-400 transition-transform group-hover:translate-x-0.5 shrink-0"
           />
         )}
       </div>
@@ -226,7 +296,7 @@ function HeadEntriesDialog({
 
   return (
     <Dialog open={Boolean(selectedHead)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl border-border/80">
+      <DialogContent className="max-w-5xl sm:max-w-5xl max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden shadow-2xl border-border/80">
         <DialogHeader className="p-5 border-b border-border/60 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -271,7 +341,7 @@ function HeadEntriesDialog({
 
         {/* Filter bar */}
         <div className="p-4 border-b border-border/40 bg-background/50 flex items-center justify-between gap-3">
-          <div className="relative flex-1 max-w-sm">
+          <div className="relative flex-1 w-full">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={filterText}
@@ -286,7 +356,7 @@ function HeadEntriesDialog({
         </div>
 
         {/* Entries Table */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-2 overflow-x-auto">
           {filtered.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground font-medium">
               No entries found for this head in the selected period.
@@ -296,7 +366,7 @@ function HeadEntriesDialog({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-border/60 bg-muted/40 text-muted-foreground font-bold uppercase text-[10px] tracking-wider">
-                    <th className="py-2.5 px-3 w-28">Date</th>
+                    <th className="py-2.5 px-3 w-16 sm:w-28">Date</th>
                     <th className="py-2.5 px-3">Description / Details</th>
                     <th className="py-2.5 px-3 text-right w-24">Qty / Rate</th>
                     <th className="py-2.5 px-3 text-right w-32">Amount</th>
@@ -309,25 +379,38 @@ function HeadEntriesDialog({
                       className="hover:bg-muted/30 transition-colors"
                     >
                       <td className="py-2.5 px-3 font-semibold text-foreground whitespace-nowrap">
-                        {entry.reportDate}
+                        <span className="sm:hidden">{formatDateMobile((entry as any).reportDate || (entry as any).paymentDate || (entry as any).month || "—")}</span>
+                        <span className="hidden sm:inline">{(entry as any).reportDate || (entry as any).paymentDate || (entry as any).month || "—"}</span>
                       </td>
                       <td className="py-2.5 px-3">
-                        <div className="font-bold text-foreground">
-                          {entry.description}
+                        <div className="font-bold text-foreground flex items-center gap-1.5 flex-wrap">
+                          {entry.description || (entry as any).label}
+                          {(entry as any).vendorName && (
+                            <Badge variant="default" className="text-[9px] px-1 py-0 bg-blue-500/10 text-blue-600 border-blue-500/30">
+                              {(entry as any).vendorName}
+                            </Badge>
+                          )}
                           {entry.isNightEntry && (
-                            <span className="ml-1.5 inline-block text-[9px] px-1.5 py-0.2 font-extrabold rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                            <span className="inline-block text-[9px] px-1.5 py-0.2 font-extrabold rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                               Night
                             </span>
                           )}
                         </div>
-                        {entry.narration && (
-                          <div className="text-[11px] text-muted-foreground mt-0.5 italic">
-                            {entry.narration}
+                        {((entry as any).narration || (entry as any).referenceNo || (entry as any).bankName || (entry as any).chequeIssueDate) && (
+                          <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap italic">
+                            {(entry as any).narration && <span>{(entry as any).narration}</span>}
+                            {(entry as any).chequeIssueDate && <span className="font-mono text-[10px] not-italic bg-amber-500/10 text-amber-700 dark:text-amber-300 px-1 rounded border border-amber-500/30">Issued: {(entry as any).chequeIssueDate}</span>}
+                            {(entry as any).referenceNo && <span className="font-mono text-[10px] not-italic bg-muted px-1 rounded">Ref: {(entry as any).referenceNo}</span>}
+                            {(entry as any).bankName && <span className="not-italic">{(entry as any).bankName}</span>}
                           </div>
                         )}
                       </td>
                       <td className="py-2.5 px-3 text-right text-muted-foreground whitespace-nowrap">
-                        {entry.quantity && entry.quantity > 1
+                        {(entry as any).paymentMode ? (
+                          <Badge variant="default" className="text-[9px] px-1 py-0">
+                            {(entry as any).paymentMode}
+                          </Badge>
+                        ) : entry.quantity && entry.quantity > 1
                           ? `${entry.quantity} × ${fmt(entry.rate || 0)}`
                           : entry.rate
                           ? fmt(entry.rate)
@@ -376,11 +459,223 @@ function HeadEntriesDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Category Exclusion Filter Popover
+// ---------------------------------------------------------------------------
+function CategoryFilterPopover({
+  availableCategories,
+  activeExclusions,
+  savedExclusions,
+  onUpdateExclusions,
+  onSaveDefault,
+  isSaving,
+}: {
+  availableCategories: Array<{ code: string; label: string }>;
+  activeExclusions: string[];
+  savedExclusions: string[];
+  onUpdateExclusions: (newExclusions: string[]) => void;
+  onSaveDefault: (newExclusions: string[]) => void;
+  isSaving: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = React.useState("");
+
+  const activeSet = new Set(activeExclusions);
+  const savedSet = new Set(savedExclusions);
+
+  const isDifferentFromSaved =
+    activeExclusions.length !== savedExclusions.length ||
+    activeExclusions.some((code) => !savedSet.has(code));
+
+  const filteredCategories = availableCategories.filter(
+    (cat) =>
+      cat.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      cat.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const toggleCategory = (code: string) => {
+    const next = new Set(activeExclusions);
+    if (next.has(code)) {
+      next.delete(code);
+    } else {
+      next.add(code);
+    }
+    onUpdateExclusions(Array.from(next));
+  };
+
+  const handleSelectAll = () => {
+    onUpdateExclusions([]);
+  };
+
+  const handleExcludeAll = () => {
+    onUpdateExclusions(availableCategories.map((c) => c.code));
+  };
+
+  const handleResetToSaved = () => {
+    onUpdateExclusions(savedExclusions);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            "h-9 px-3 text-xs font-semibold gap-2 cursor-pointer shadow-xs transition-colors",
+            activeExclusions.length > 0
+              ? "border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15"
+              : "hover:bg-muted"
+          )}
+        >
+          <Filter size={14} className={activeExclusions.length > 0 ? "text-amber-500" : "text-muted-foreground"} />
+          <span>Category Exclusions</span>
+          {activeExclusions.length > 0 ? (
+            <Badge className="h-5 px-1.5 text-[10px] font-extrabold bg-amber-500 text-white dark:bg-amber-600 rounded-full border-none">
+              {activeExclusions.length} Excluded
+            </Badge>
+          ) : (
+            <span className="text-[10px] text-muted-foreground font-normal">(All Included)</span>
+          )}
+          <ChevronDown size={13} className="text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-80 p-0 shadow-2xl border-border/80" align="end">
+        <div className="p-3 border-b border-border/60 bg-muted/20 flex items-center justify-between">
+          <div>
+            <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+              <Filter size={13} className="text-violet-500" />
+              Exclude Expense Categories
+            </h4>
+            <p className="text-[10px] text-muted-foreground">
+              Deselected categories will be omitted from report totals & charts.
+            </p>
+          </div>
+        </div>
+
+        {/* Search */}
+        <div className="p-2 border-b border-border/40 bg-background/50">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filter category list..."
+              className="pl-8 h-7 text-xs bg-background"
+            />
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="px-3 py-1.5 bg-muted/10 border-b border-border/40 flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="text-violet-600 dark:text-violet-400 font-semibold hover:underline cursor-pointer"
+            >
+              Include All
+            </button>
+            <span className="text-muted-foreground/40">•</span>
+            <button
+              onClick={handleExcludeAll}
+              className="text-amber-600 dark:text-amber-400 font-semibold hover:underline cursor-pointer"
+            >
+              Exclude All
+            </button>
+          </div>
+
+          {isDifferentFromSaved && (
+            <button
+              onClick={handleResetToSaved}
+              className="text-muted-foreground hover:text-foreground font-medium flex items-center gap-1 cursor-pointer"
+              title="Reset to saved default exclusions"
+            >
+              <RotateCcw size={10} /> Reset
+            </button>
+          )}
+        </div>
+
+        {/* Checklist */}
+        <div className="max-h-60 overflow-y-auto p-2 space-y-0.5">
+          {filteredCategories.length === 0 ? (
+            <div className="p-4 text-center text-xs text-muted-foreground">No categories found</div>
+          ) : (
+            filteredCategories.map((cat) => {
+              const isExcluded = activeSet.has(cat.code);
+              return (
+                <div
+                  key={cat.code}
+                  onClick={() => toggleCategory(cat.code)}
+                  className={cn(
+                    "flex items-center justify-between py-1.5 px-2 rounded-md text-xs cursor-pointer transition-colors select-none",
+                    isExcluded
+                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium"
+                      : "hover:bg-muted/50 font-medium text-foreground"
+                  )}
+                >
+                  <div className="flex items-center gap-2 truncate pr-2">
+                    <div
+                      className={cn(
+                        "size-3.5 rounded border flex items-center justify-center shrink-0 transition-colors",
+                        isExcluded
+                          ? "border-amber-500 bg-amber-500 text-white"
+                          : "border-muted-foreground/40 bg-background"
+                      )}
+                    >
+                      {isExcluded && <Check size={10} strokeWidth={3} />}
+                    </div>
+                    <span className={cn("truncate", isExcluded && "line-through opacity-80")}>
+                      {cat.label}
+                    </span>
+                  </div>
+                  {isExcluded ? (
+                    <Badge className="text-[9px] px-1 py-0 bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                      Excluded
+                    </Badge>
+                  ) : (
+                    <Badge className="text-[9px] px-1 py-0 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+                      Included
+                    </Badge>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-2.5 border-t border-border/60 bg-muted/20 flex items-center justify-between gap-2">
+          <div className="text-[10px] text-muted-foreground font-medium">
+            {activeExclusions.length} of {availableCategories.length} excluded
+          </div>
+          <Button
+            variant="outline"
+            disabled={isSaving}
+            onClick={() => onSaveDefault(activeExclusions)}
+            className="h-7 text-xs font-semibold gap-1.5 cursor-pointer bg-background hover:bg-muted shadow-2xs"
+          >
+            {isSaving ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Save size={12} className="text-violet-500" />
+            )}
+            Save as Default
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 function MonthlyReport() {
   const today = new Date();
   const monthStart = startOfMonth(today);
+
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const excludeStr = search.exclude;
 
   const [startDate, setStartDate] = React.useState<Date>(monthStart);
   const [endDate, setEndDate] = React.useState<Date>(today);
@@ -417,15 +712,49 @@ function MonthlyReport() {
   const endStr = format(endDate, "yyyy-MM-dd");
 
   const reportQuery = useRpcQuery<any>(
-    ["monthly-report", startStr, endStr],
+    ["monthly-report", startStr, endStr, excludeStr ?? "default"],
     () =>
       (client["daily-closing"] as any)["monthly-report"].$get({
-        query: { startDate: startStr, endDate: endStr },
+        query: {
+          startDate: startStr,
+          endDate: endStr,
+          ...(excludeStr !== undefined ? { excludedCategories: excludeStr } : {}),
+        },
       })
   );
 
   const data = reportQuery.data;
   const isLoading = reportQuery.isLoading;
+
+  const activeExclusions: string[] = data?.activeExclusions || (excludeStr ? excludeStr.split(",").filter(Boolean) : []);
+  const savedExclusions: string[] = data?.savedExclusions || [];
+  const availableCategories: Array<{ code: string; label: string }> = data?.availableCategories || [];
+
+  const handleUpdateExclusions = (newExclusions: string[]) => {
+    const newExcludeStr = newExclusions.length > 0 ? newExclusions.join(",") : "";
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        exclude: newExcludeStr || undefined,
+      }),
+      replace: true,
+    });
+  };
+
+  const [isSavingExclusions, setIsSavingExclusions] = React.useState(false);
+  const handleSaveDefaultExclusions = async (newExclusions: string[]) => {
+    try {
+      setIsSavingExclusions(true);
+      await (client["daily-closing"] as any)["monthly-report"].exclusions.$post({
+        json: { excludedCategories: newExclusions },
+      });
+      await reportQuery.refetch();
+    } catch (err) {
+      console.error("Failed to save exclusion defaults:", err);
+    } finally {
+      setIsSavingExclusions(false);
+    }
+  };
 
   // Pharmacy total
   const pharmacyTotal = data
@@ -448,10 +777,10 @@ function MonthlyReport() {
     : 0;
 
   const grandExpenditure = data
-    ? (data.expenditureByHead || []).reduce(
-      (s: number, h: any) => s + h.total,
-      0
-    ) + (data.staffAdvancesTotal || 0)
+    ? (data.expenditureByHead || [])
+      .filter((h: any) => !h.isExcluded)
+      .reduce((s: number, h: any) => s + h.total, 0) +
+    (data.staffAdvancesExcluded ? 0 : data.staffAdvancesTotal || 0)
     : 0;
 
   // Chart data
@@ -510,11 +839,18 @@ function MonthlyReport() {
   const expensePieData = React.useMemo(() => {
     if (!data) return [];
     const items: { name: string; value: number }[] = [];
-    (data.expenditureByHead || []).forEach((h: any) =>
-      items.push({ name: h.label, value: h.total })
-    );
-    if (data.staffAdvancesTotal > 0)
+    (data.expenditureByHead || [])
+      .filter((h: any) => !h.isExcluded)
+      .forEach((h: any) =>
+        items.push({ name: h.label, value: h.total })
+      );
+    if (!data.staffAdvancesExcluded && data.staffAdvancesTotal > 0)
       items.push({ name: "Staff Advances", value: data.staffAdvancesTotal });
+    (data.bankExpenditures?.byCategory || [])
+      .filter((c: any) => !c.isExcluded)
+      .forEach((c: any) =>
+        items.push({ name: `🏦 ${c.label}`, value: c.total })
+      );
     return groupPieItemsUnderFivePercent(items);
   }, [data]);
 
@@ -579,7 +915,8 @@ function MonthlyReport() {
                 className="h-9 px-3 text-xs font-semibold gap-2 cursor-pointer shadow-xs"
               >
                 <CalendarIcon size={14} />
-                {format(startDate, "dd MMM yyyy")}
+                <span className="sm:hidden">{format(startDate, "MM-dd")}</span>
+                <span className="hidden sm:inline">{format(startDate, "dd MMM yyyy")}</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
@@ -608,7 +945,8 @@ function MonthlyReport() {
                 className="h-9 px-3 text-xs font-semibold gap-2 cursor-pointer shadow-xs"
               >
                 <CalendarIcon size={14} />
-                {format(endDate, "dd MMM yyyy")}
+                <span className="sm:hidden">{format(endDate, "MM-dd")}</span>
+                <span className="hidden sm:inline">{format(endDate, "dd MMM yyyy")}</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
@@ -626,17 +964,32 @@ function MonthlyReport() {
               />
             </PopoverContent>
           </Popover>
+          {/* Category Exclusion Selector */}
+          <CategoryFilterPopover
+            availableCategories={availableCategories}
+            activeExclusions={activeExclusions}
+            savedExclusions={savedExclusions}
+            onUpdateExclusions={handleUpdateExclusions}
+            onSaveDefault={handleSaveDefaultExclusions}
+            isSaving={isSavingExclusions}
+          />
         </div>
       </div>
 
-      {/* Period Badge */}
-      <div className="flex items-center gap-2">
+      {/* Period & Exclusion Badges */}
+      <div className="flex flex-wrap items-center gap-2">
         <Badge className="text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30">
           {periodLabel}
         </Badge>
         {data && (
           <Badge className="text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30">
             {data.reportCount} report{data.reportCount !== 1 ? "s" : ""}
+          </Badge>
+        )}
+        {activeExclusions.length > 0 && (
+          <Badge className="text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 flex items-center gap-1">
+            <Filter size={11} className="text-amber-500" />
+            {activeExclusions.length} Category Exclusion{activeExclusions.length !== 1 ? "s" : ""} Active
           </Badge>
         )}
       </div>
@@ -665,7 +1018,7 @@ function MonthlyReport() {
       {!isLoading && data && data.reportCount > 0 && (
         <>
           {/* ============= SUMMARY CARDS ============= */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {/* Total Income */}
             <Card className="border border-border/60 bg-linear-to-br from-emerald-500/5 to-teal-500/5 shadow-xs hover:shadow-md transition-all duration-300">
               <CardHeader className="pb-1.5">
@@ -684,20 +1037,47 @@ function MonthlyReport() {
               </CardContent>
             </Card>
 
-            {/* Total Expenditure */}
+            {/* Total Expenditure (Combined Cash + Bank) */}
             <Card className="border border-border/60 bg-linear-to-br from-rose-500/5 to-red-500/5 shadow-xs hover:shadow-md transition-all duration-300">
               <CardHeader className="pb-1.5">
-                <CardDescription className="font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 text-[10px] uppercase tracking-wider">
-                  <TrendingDown size={13} /> Total Expenditure
+                <CardDescription className="font-bold text-rose-600 dark:text-rose-400 flex items-center justify-between text-[10px] uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5"><TrendingDown size={13} /> Combined Expenditure</span>
+                  {activeExclusions.length > 0 && (
+                    <Badge className="text-[9px] px-1 py-0 bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                      Filtered ({activeExclusions.length})
+                    </Badge>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-extrabold tracking-tight text-rose-700 dark:text-rose-350">
                   {fmt(data.summary.totalExpenditure)}
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1">
-                  <ArrowDownRight size={10} className="text-rose-500" />
-                  Avg {fmt(data.summary.avgDailyExpenditure)}/day
+                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1 truncate">
+                  Cash: {fmt(data.summary.totalCashExpenditure || 0)} · Bank: {fmt(data.summary.totalBankExpenditure || 0)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Bank Expenditure */}
+            <Card className="border border-border/60 bg-linear-to-br from-blue-500/5 to-indigo-500/5 shadow-xs hover:shadow-md transition-all duration-300">
+              <CardHeader className="pb-1.5">
+                <CardDescription className="font-bold text-blue-600 dark:text-blue-400 flex items-center justify-between text-[10px] uppercase tracking-wider">
+                  <span className="flex items-center gap-1.5"><Coins size={13} /> Bank Expenditure</span>
+                  <a
+                    href={`/accounts/bank-expenses?month=${startStr.slice(0, 7)}`}
+                    className="text-[9px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Manage →
+                  </a>
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-extrabold tracking-tight text-blue-700 dark:text-blue-350">
+                  {fmt(data.summary.totalBankExpenditure || 0)}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Fixed monthly & bank payables
                 </p>
               </CardContent>
             </Card>
@@ -706,7 +1086,7 @@ function MonthlyReport() {
             <Card className="border border-border/60 bg-linear-to-br from-violet-500/5 to-purple-500/5 shadow-xs hover:shadow-md transition-all duration-300">
               <CardHeader className="pb-1.5">
                 <CardDescription className="font-bold text-violet-600 dark:text-violet-400 flex items-center gap-1.5 text-[10px] uppercase tracking-wider">
-                  <Activity size={13} /> Net Balance
+                  <Activity size={13} /> Combined Net
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -721,7 +1101,7 @@ function MonthlyReport() {
                   {fmt(data.summary.netBalance)}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Income − Expenditure
+                  Income − Combined Expenditure
                 </p>
               </CardContent>
             </Card>
@@ -884,14 +1264,12 @@ function MonthlyReport() {
                         data={incomePieData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={110}
+                        innerRadius={45}
+                        outerRadius={90}
                         paddingAngle={2}
                         dataKey="value"
                         nameKey="name"
-                        label={({ name, percent }: any) =>
-                          `${name} (${(percent * 100).toFixed(0)}%)`
-                        }
+                        label={renderPieLabel}
                         labelLine={false}
                       >
                         {incomePieData.map((_, idx) => (
@@ -908,6 +1286,14 @@ function MonthlyReport() {
                           fontSize: 12,
                           fontWeight: 600,
                         }}
+                      />
+                      <Legend
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }}
+                        formatter={(value) => (
+                          <span className="text-[9px] sm:text-xs text-muted-foreground font-medium ml-0.5">
+                            {value}
+                          </span>
+                        )}
                       />
                     </PieChart>
                   </ResponsiveContainer>
@@ -935,14 +1321,12 @@ function MonthlyReport() {
                         data={expensePieData}
                         cx="50%"
                         cy="50%"
-                        innerRadius={60}
-                        outerRadius={110}
+                        innerRadius={45}
+                        outerRadius={90}
                         paddingAngle={2}
                         dataKey="value"
                         nameKey="name"
-                        label={({ name, percent }: any) =>
-                          `${name} (${(percent * 100).toFixed(0)}%)`
-                        }
+                        label={renderPieLabel}
                         labelLine={false}
                       >
                         {expensePieData.map((_, idx) => (
@@ -960,6 +1344,14 @@ function MonthlyReport() {
                           fontWeight: 600,
                         }}
                       />
+                      <Legend
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }}
+                        formatter={(value) => (
+                          <span className="text-[9px] sm:text-xs text-muted-foreground font-medium ml-0.5">
+                            {value}
+                          </span>
+                        )}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
@@ -973,8 +1365,8 @@ function MonthlyReport() {
 
           {/* ============= INCOME BY HEAD BREAKDOWN ============= */}
           <Card className="border border-border/60 shadow-xs">
-            <CardHeader>
-              <CardTitle className="text-base font-extrabold flex items-center gap-2">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-sm sm:text-base font-extrabold flex items-center gap-2">
                 <Coins size={16} className="text-emerald-500" />
                 Income by Head
               </CardTitle>
@@ -982,7 +1374,7 @@ function MonthlyReport() {
                 Cumulative income per service category
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-0.5">
+            <CardContent className="p-3 sm:p-6 space-y-0.5">
               {(data.incomeByHead || []).map((h: any, idx: number) => (
                 <HeadRow
                   key={h.code}
@@ -1003,40 +1395,40 @@ function MonthlyReport() {
 
               {/* Pharmacy Income — broken out individually */}
               {pharmacyTotal > 0 && (
-                <div className="mt-2">
+                <div className="mt-1 sm:mt-2">
                   <button
                     onClick={() => setPharmacyExpanded(!pharmacyExpanded)}
-                    className="flex items-center gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/40 transition-colors w-full cursor-pointer"
+                    className="flex items-center gap-1.5 sm:gap-3 py-1.5 sm:py-2.5 px-1.5 sm:px-3 rounded-lg hover:bg-muted/40 transition-colors w-full cursor-pointer"
                   >
                     <Pill
                       size={13}
                       className="shrink-0 text-cyan-500"
                     />
-                    <span className="flex-1 text-sm font-semibold text-foreground text-left">
+                    <span className="flex-1 text-xs sm:text-sm font-semibold text-foreground text-left truncate">
                       Pharmacy & Other Income
                     </span>
-                    <span className="text-sm font-bold text-foreground mr-2">
+                    <span className="text-xs sm:text-sm font-bold text-foreground mr-1 sm:mr-2 shrink-0">
                       {fmt(pharmacyTotal)}
                     </span>
                     {pharmacyExpanded ? (
-                      <ChevronUp size={14} className="text-muted-foreground" />
+                      <ChevronUp size={13} className="text-muted-foreground shrink-0" />
                     ) : (
-                      <ChevronDown size={14} className="text-muted-foreground" />
+                      <ChevronDown size={13} className="text-muted-foreground shrink-0" />
                     )}
                   </button>
                   {pharmacyExpanded && (
-                    <div className="ml-6 pl-4 border-l border-border/50 space-y-0.5">
+                    <div className="ml-3 sm:ml-6 pl-2 sm:pl-4 border-l border-border/50 space-y-0.5">
                       {Object.entries(data.pharmacyIncome || {})
                         .filter(([, v]) => (v as number) > 0)
                         .map(([key, value]) => (
                           <div
                             key={key}
-                            className="flex items-center justify-between py-1.5 px-3 text-xs"
+                            className="flex items-center justify-between py-1 sm:py-1.5 px-1.5 sm:px-3 text-[11px] sm:text-xs"
                           >
-                            <span className="text-muted-foreground font-semibold">
+                            <span className="text-muted-foreground font-semibold truncate mr-2">
                               {PHARMACY_LABELS[key] || key}
                             </span>
-                            <span className="font-bold text-foreground">
+                            <span className="font-bold text-foreground shrink-0">
                               {fmt(value as number)}
                             </span>
                           </div>
@@ -1102,23 +1494,23 @@ function MonthlyReport() {
 
               {/* Discounts deduction */}
               {data.discountsReturnsTotal > 0 && (
-                <div className="flex items-center gap-3 py-2.5 px-3 rounded-lg bg-rose-500/5 mt-1">
-                  <div className="shrink-0 h-3 w-3 rounded-sm bg-rose-500" />
-                  <span className="flex-1 text-sm font-semibold text-rose-600 dark:text-rose-400">
+                <div className="flex items-center gap-1.5 sm:gap-3 py-1.5 sm:py-2.5 px-1.5 sm:px-3 rounded-lg bg-rose-500/5 mt-1">
+                  <div className="shrink-0 h-2.5 w-2.5 sm:h-3 sm:w-3 rounded-sm bg-rose-500" />
+                  <span className="flex-1 text-xs sm:text-sm font-semibold text-rose-600 dark:text-rose-400 truncate">
                     Less: Discounts / Returns
                   </span>
-                  <span className="text-sm font-bold text-rose-600 dark:text-rose-400">
+                  <span className="text-xs sm:text-sm font-bold text-rose-600 dark:text-rose-400 shrink-0">
                     −{fmt(data.discountsReturnsTotal)}
                   </span>
                 </div>
               )}
 
               {/* Total */}
-              <div className="flex items-center justify-between py-3 px-3 mt-2 border-t-2 border-emerald-500/30">
-                <span className="text-sm font-extrabold text-emerald-700 dark:text-emerald-400">
+              <div className="flex items-center justify-between py-2 sm:py-3 px-1.5 sm:px-3 mt-2 border-t-2 border-emerald-500/30">
+                <span className="text-xs sm:text-sm font-extrabold text-emerald-700 dark:text-emerald-400">
                   TOTAL INCOME
                 </span>
-                <span className="text-lg font-extrabold text-emerald-700 dark:text-emerald-400">
+                <span className="text-base sm:text-lg font-extrabold text-emerald-700 dark:text-emerald-400">
                   {fmt(data.summary.totalIncome)}
                 </span>
               </div>
@@ -1127,36 +1519,48 @@ function MonthlyReport() {
 
           {/* ============= EXPENDITURE BY HEAD BREAKDOWN ============= */}
           <Card className="border border-border/60 shadow-xs">
-            <CardHeader>
-              <CardTitle className="text-base font-extrabold flex items-center gap-2">
-                <FileText size={16} className="text-rose-500" />
-                Expenditure by Head
-              </CardTitle>
-              <CardDescription className="text-xs">
-                Cumulative expenditure per expense category
-              </CardDescription>
+            <CardHeader className="p-4 sm:p-6 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-sm sm:text-base font-extrabold flex items-center gap-2">
+                  <FileText size={16} className="text-rose-500" />
+                  Expenditure by Head
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Cumulative expenditure per expense category (Cash & Bank)
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate({ to: "/accounts/bank-expenses", search: { month: startStr.slice(0, 7) } })}
+                className="h-7 px-2.5 text-xs font-semibold text-blue-600 border-blue-500/30 hover:bg-blue-500/10 cursor-pointer"
+              >
+                Manage Bank Expenses →
+              </Button>
             </CardHeader>
-            <CardContent className="space-y-0.5">
-              {(data.expenditureByHead || []).map((h: any, idx: number) => (
-                <HeadRow
-                  key={h.code}
-                  label={h.label}
-                  total={h.total}
-                  grandTotal={grandExpenditure}
-                  color={EXPENSE_COLORS[idx % EXPENSE_COLORS.length]}
-                  onClick={() =>
-                    setSelectedHead({
-                      title: h.label,
-                      type: "expenditure",
-                      total: h.total,
-                      entries: h.entries || [],
-                    })
-                  }
-                />
-              ))}
+            <CardContent className="p-3 sm:p-6 space-y-0.5">
+              {(data.expenditureByHead || [])
+                .filter((h: any) => !h.isExcluded)
+                .map((h: any, idx: number) => (
+                  <HeadRow
+                    key={h.code}
+                    label={h.label}
+                    total={h.total}
+                    grandTotal={grandExpenditure}
+                    color={EXPENSE_COLORS[idx % EXPENSE_COLORS.length]}
+                    onClick={() =>
+                      setSelectedHead({
+                        title: h.label,
+                        type: "expenditure",
+                        total: h.total,
+                        entries: h.entries || [],
+                      })
+                    }
+                  />
+                ))}
 
               {/* Staff Advances */}
-              {data.staffAdvancesTotal > 0 && (
+              {!data.staffAdvancesExcluded && data.staffAdvancesTotal > 0 && (
                 <HeadRow
                   label="Staff Advances"
                   total={data.staffAdvancesTotal}
@@ -1173,12 +1577,82 @@ function MonthlyReport() {
                 />
               )}
 
-              {/* Total */}
-              <div className="flex items-center justify-between py-3 px-3 mt-2 border-t-2 border-rose-500/30">
-                <span className="text-sm font-extrabold text-rose-700 dark:text-rose-400">
+              {/* Excluded Categories Breakdown Box */}
+              {((data.expenditureByHead || []).some((h: any) => h.isExcluded) || data.staffAdvancesExcluded) && (
+                <div className="mt-4 pt-3 border-t border-border/60 bg-amber-500/5 -mx-1 sm:-mx-3 px-2 sm:px-3 py-2.5 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-700 dark:text-amber-350">
+                    <span className="flex items-center gap-1.5">
+                      <Filter size={13} className="text-amber-500" /> Excluded Expense Heads ({(data.expenditureByHead || []).filter((h: any) => h.isExcluded).length + (data.staffAdvancesExcluded ? 1 : 0)})
+                    </span>
+                    <button
+                      onClick={() => handleUpdateExclusions([])}
+                      className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:underline cursor-pointer"
+                    >
+                      Restore All
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {(data.expenditureByHead || [])
+                      .filter((h: any) => h.isExcluded)
+                      .map((h: any) => (
+                        <div
+                          key={h.code}
+                          className="flex items-center justify-between py-1.5 px-2.5 text-xs bg-background/80 rounded border border-amber-500/20"
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="line-through text-muted-foreground font-semibold truncate">{h.label}</span>
+                            <Badge className="text-[9px] px-1 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                              Excluded
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className="text-muted-foreground font-bold">{fmt(h.total)}</span>
+                            <Button
+                              variant="ghost"
+                              onClick={() => {
+                                const next = activeExclusions.filter((c) => c !== h.code);
+                                handleUpdateExclusions(next);
+                              }}
+                              className="h-6 px-2 text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                            >
+                              Restore
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    {data.staffAdvancesExcluded && data.staffAdvancesTotal > 0 && (
+                      <div className="flex items-center justify-between py-1.5 px-2.5 text-xs bg-background/80 rounded border border-amber-500/20">
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="line-through text-muted-foreground font-semibold truncate">Staff Advances</span>
+                          <Badge className="text-[9px] px-1 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                            Excluded
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-muted-foreground font-bold">{fmt(data.staffAdvancesTotal)}</span>
+                          <Button
+                            variant="ghost"
+                            onClick={() => {
+                              const next = activeExclusions.filter((c) => c !== "STAFF_ADVANCES");
+                              handleUpdateExclusions(next);
+                            }}
+                            className="h-6 px-2 text-[10px] font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 cursor-pointer"
+                          >
+                            Restore
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Total Expenditure */}
+              <div className="flex items-center justify-between py-2 sm:py-3 px-1.5 sm:px-3 mt-2 border-t-2 border-rose-500/30">
+                <span className="text-xs sm:text-sm font-extrabold text-rose-700 dark:text-rose-400">
                   TOTAL EXPENDITURE
                 </span>
-                <span className="text-lg font-extrabold text-rose-700 dark:text-rose-400">
+                <span className="text-base sm:text-lg font-extrabold text-rose-700 dark:text-rose-400">
                   {fmt(data.summary.totalExpenditure)}
                 </span>
               </div>
@@ -1187,8 +1661,8 @@ function MonthlyReport() {
 
           {/* ============= INCOME BAR CHART COMPARISON ============= */}
           <Card className="border border-border/60 shadow-xs">
-            <CardHeader>
-              <CardTitle className="text-base font-extrabold flex items-center gap-2">
+            <CardHeader className="p-4 sm:p-6">
+              <CardTitle className="text-sm sm:text-base font-extrabold flex items-center gap-2">
                 <BarChart3 size={16} className="text-violet-500" />
                 Income vs Expenditure by Head
               </CardTitle>
@@ -1196,7 +1670,7 @@ function MonthlyReport() {
                 Horizontal comparison of top earning and spending categories
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-6">
               {(() => {
                 const barData = [
                   ...(data.incomeByHead || []).slice(0, 6).map((h: any) => ({
@@ -1204,11 +1678,14 @@ function MonthlyReport() {
                     Income: h.total,
                     Expenditure: 0,
                   })),
-                  ...(data.expenditureByHead || []).slice(0, 6).map((h: any) => ({
-                    name: h.label,
-                    Income: 0,
-                    Expenditure: h.total,
-                  })),
+                  ...(data.expenditureByHead || [])
+                    .filter((h: any) => !h.isExcluded)
+                    .slice(0, 6)
+                    .map((h: any) => ({
+                      name: h.label,
+                      Income: 0,
+                      Expenditure: h.total,
+                    })),
                 ];
                 if (barData.length === 0)
                   return (
@@ -1221,7 +1698,7 @@ function MonthlyReport() {
                     <BarChart
                       data={barData}
                       layout="vertical"
-                      margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
+                      margin={{ top: 5, right: 15, left: 5, bottom: 5 }}
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
@@ -1231,7 +1708,7 @@ function MonthlyReport() {
                       <XAxis
                         type="number"
                         tick={{
-                          fontSize: 10,
+                          fontSize: 9,
                           fill: "#94a3b8",
                         }}
                         tickFormatter={fmtCompact}
@@ -1241,19 +1718,22 @@ function MonthlyReport() {
                       <YAxis
                         type="category"
                         dataKey="name"
-                        tick={{
-                          fontSize: 10,
-                          fill: "#94a3b8",
-                        }}
+                        tick={renderYAxisTick}
                         tickLine={false}
                         axisLine={false}
-                        width={75}
+                        width={90}
                       />
-                      <Tooltip content={<ChartTooltip />} />
+                      <Tooltip
+                        cursor={{
+                          fill: "rgba(139, 92, 246, 0.09)",
+                          rx: 6,
+                        }}
+                        content={<ChartTooltip />}
+                      />
                       <Legend
-                        wrapperStyle={{ fontSize: 11, fontWeight: 500, paddingTop: "8px" }}
+                        wrapperStyle={{ fontSize: "10px", paddingTop: "8px" }}
                         formatter={(value) => (
-                          <span style={{ color: "#94a3b8", fontSize: "11px", fontWeight: 500, marginLeft: "4px" }}>
+                          <span className="text-[9px] sm:text-xs text-muted-foreground font-medium ml-0.5 sm:ml-1">
                             {value}
                           </span>
                         )}

@@ -127,6 +127,10 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Daily Closing Reports", to: "/accounts/reports" });
     } else if (sub === "monthly-report") {
       items.push({ label: "Monthly Report", to: "/accounts/monthly-report" });
+    } else if (sub === "bank-expenses") {
+      items.push({ label: "Bank Expenses", to: "/accounts/bank-expenses" });
+    } else if (sub === "bank-accounts") {
+      items.push({ label: "Bank Accounts", to: "/accounts/bank-accounts" });
     }
     return items;
   }
@@ -487,6 +491,27 @@ export function Shell() {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Monthly Report
+                      </Link>
+                      <Link
+                        to="/accounts/bank-expenses"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Bank Expenses
+                      </Link>
+                      <Link
+                        to="/accounts/bank-accounts"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Bank Accounts
+                      </Link>
+                      <Link
+                        to="/purchases/vendors"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Suppliers & Vendors
                       </Link>
                     </div>
                   )}

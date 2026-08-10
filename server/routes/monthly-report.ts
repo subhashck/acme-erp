@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, lte, inArray } from "drizzle-orm";
 import { Hono } from "hono";
-import type { AuthEnv } from "../auth.ts";
+import { auth, type AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
 import {
   dailyClosingReports,
@@ -15,6 +15,9 @@ import {
   dailyIpdDischarges,
   dailyAdditionalIncome,
   dailyDiscountsReturns,
+  reportCategoryExclusions,
+  monthlyBankExpenses,
+  vendors,
 } from "../db/schema.ts";
 import { hasHrOrAccountsViewAccess } from "./shared.ts";
 
@@ -30,14 +33,63 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       return c.json({ error: "startDate and endDate are required (YYYY-MM-DD)" }, 400);
     }
 
+    // Auth session check for user preference defaults
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    const userId = session?.user?.id;
+
+    // Fetch user's saved DB exclusions if present
+    let savedExclusions: string[] = [];
+    if (userId) {
+      const saved = await db
+        .select()
+        .from(reportCategoryExclusions)
+        .where(
+          and(
+            eq(reportCategoryExclusions.userId, userId),
+            eq(reportCategoryExclusions.reportType, "monthly-report")
+          )
+        )
+        .limit(1)
+        .execute();
+      if (saved.length > 0 && Array.isArray(saved[0].excludedCategories)) {
+        savedExclusions = saved[0].excludedCategories as string[];
+      }
+    }
+
+    // Determine active excluded categories
+    const reqExclude = c.req.query("excludedCategories");
+    let activeExclusions: string[] = [];
+    if (reqExclude !== undefined) {
+      activeExclusions = reqExclude ? reqExclude.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    } else {
+      activeExclusions = [...savedExclusions];
+    }
+    const activeExcludedSet = new Set(activeExclusions);
+
+    // Fetch all active expense categories for UI selection options
+    const allExpCategories = await db
+      .select()
+      .from(expenseCategories)
+      .orderBy(expenseCategories.sortOrder)
+      .execute();
+
+    const expCategoryLabelMap = new Map(allExpCategories.map((cat) => [cat.code, cat.label]));
+
+    const availableCategories = [
+      ...allExpCategories.map((cat) => ({ code: cat.code, label: cat.label })),
+      { code: "STAFF_ADVANCES", label: "Staff Advances" },
+    ];
+
     // Fetch all reports in the date range
     const reports = await db
       .select()
       .from(dailyClosingReports)
-      .where(and(
-        gte(dailyClosingReports.reportDate, startDate),
-        lte(dailyClosingReports.reportDate, endDate)
-      ))
+      .where(
+        and(
+          gte(dailyClosingReports.reportDate, startDate),
+          lte(dailyClosingReports.reportDate, endDate)
+        )
+      )
       .orderBy(asc(dailyClosingReports.reportDate))
       .execute();
 
@@ -45,12 +97,13 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       return c.json({
         period: { startDate, endDate },
         reportCount: 0,
-        summary: { totalIncome: 0, totalExpenditure: 0, netBalance: 0, avgDailyIncome: 0, avgDailyExpenditure: 0 },
+        summary: { totalIncome: 0, totalCashExpenditure: 0, totalBankExpenditure: 0, totalExpenditure: 0, netBalance: 0, avgDailyIncome: 0, avgDailyExpenditure: 0 },
         incomeByHead: [],
         pharmacyIncome: { otWardTotal: 0, acmeNewTotal: 0, parking: 0, coffeeShop: 0, canteenIncome: 0, creditCardChargesNight: 0, trainingFee: 0, humankindSales: 0, miscTotal: 0 },
         expenditureByHead: [],
         staffAdvancesTotal: 0,
         staffAdvancesEntries: [],
+        staffAdvancesExcluded: activeExcludedSet.has("STAFF_ADVANCES"),
         ipdAdmissionsTotal: 0,
         ipdAdmissionsEntries: [],
         ipdDischargesTotal: 0,
@@ -58,13 +111,17 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
         additionalIncomeTotal: 0,
         additionalIncomeEntries: [],
         discountsReturnsTotal: 0,
+        bankExpenditures: { total: 0, byCategory: [] },
         dailyTrends: [],
+        availableCategories,
+        savedExclusions,
+        activeExclusions,
       });
     }
 
     const reportIds = reports.map((r) => r.id);
 
-    // Fetch all service lines for these reports, joined with report & catalog
+    // Fetch service lines
     const allServiceLines = await db
       .select({
         id: dailyServiceLines.id,
@@ -84,7 +141,6 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       .where(inArray(dailyServiceLines.reportId, reportIds))
       .execute();
 
-    // Fetch all categories for labelling
     const allCategories = await db
       .select()
       .from(serviceCategories)
@@ -93,7 +149,6 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
 
     const categoryLabelMap = new Map(allCategories.map((c) => [c.code, c.label]));
 
-    // Group service lines by department
     const incomeEntriesMap = new Map<string, any[]>();
     const incomeByHeadMap = new Map<string, number>();
 
@@ -159,7 +214,7 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       } catch {}
     }
 
-    // Fetch all expenditures joined with daily closing reports
+    // Fetch expenditures joined with report date
     const allExpenditures = await db
       .select({
         id: dailyExpenditures.id,
@@ -175,22 +230,20 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       .where(inArray(dailyExpenditures.reportId, reportIds))
       .execute();
 
-    // Fetch expense categories for labelling
-    const allExpCategories = await db
-      .select()
-      .from(expenseCategories)
-      .orderBy(expenseCategories.sortOrder)
-      .execute();
-
-    const expCategoryLabelMap = new Map(allExpCategories.map((c) => [c.code, c.label]));
-
     const expenditureEntriesMap = new Map<string, any[]>();
     const expenditureByHeadMap = new Map<string, number>();
+    const dailyExpenditureMap = new Map<string, number>(); // reportDate -> sum of non-excluded expenditure
 
     for (const exp of allExpenditures) {
       const cat = exp.category || "MISC";
       const amt = parseFloat(exp.amount || "0");
+      const isExcluded = activeExcludedSet.has(cat);
+
       expenditureByHeadMap.set(cat, (expenditureByHeadMap.get(cat) || 0) + amt);
+
+      if (!isExcluded) {
+        dailyExpenditureMap.set(exp.reportDate, (dailyExpenditureMap.get(exp.reportDate) || 0) + amt);
+      }
 
       if (!expenditureEntriesMap.has(cat)) expenditureEntriesMap.set(cat, []);
       expenditureEntriesMap.get(cat)!.push({
@@ -199,6 +252,7 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
         description: exp.details || "Expenditure Item",
         amount: amt,
         narration: exp.narration || null,
+        isExcluded,
       });
     }
 
@@ -207,6 +261,7 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
         code,
         label: expCategoryLabelMap.get(code) || code,
         total: Math.round(total * 100) / 100,
+        isExcluded: activeExcludedSet.has(code),
         entries: (expenditureEntriesMap.get(code) || []).sort((a, b) => (a.reportDate > b.reportDate ? -1 : 1)),
       }))
       .sort((a, b) => b.total - a.total);
@@ -225,13 +280,25 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       .where(inArray(dailyStaffAdvances.reportId, reportIds))
       .execute();
 
-    const staffAdvancesTotal = allAdvances.reduce((s, a) => s + parseFloat(a.amount || "0"), 0);
+    const isStaffAdvancesExcluded = activeExcludedSet.has("STAFF_ADVANCES");
+    const dailyStaffAdvancesMap = new Map<string, number>();
+
+    let staffAdvancesTotal = 0;
+    for (const a of allAdvances) {
+      const amt = parseFloat(a.amount || "0");
+      staffAdvancesTotal += amt;
+      if (!isStaffAdvancesExcluded) {
+        dailyStaffAdvancesMap.set(a.reportDate, (dailyStaffAdvancesMap.get(a.reportDate) || 0) + amt);
+      }
+    }
+
     const staffAdvancesEntries = allAdvances
       .map((a) => ({
         id: a.id,
         reportDate: a.reportDate,
         description: a.staffName ? `Staff Advance: ${a.staffName}` : "Staff Advance",
         amount: parseFloat(a.amount || "0"),
+        isExcluded: isStaffAdvancesExcluded,
       }))
       .sort((a, b) => (a.reportDate > b.reportDate ? -1 : 1));
 
@@ -316,25 +383,138 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       .execute();
     const discountsReturnsTotal = allDiscounts.reduce((s, a) => s + parseFloat(a.amount || "0"), 0);
 
-    // Compute totals
+    // =========================================================================
+    // Bank Expenses — fetch for months overlapping the date range
+    // =========================================================================
+    const startMonth = startDate.slice(0, 7); // "YYYY-MM"
+    const endMonth = endDate.slice(0, 7);
+    const monthsInRange: string[] = [];
+    {
+      const [sy, sm] = startMonth.split("-").map(Number);
+      const [ey, em] = endMonth.split("-").map(Number);
+      let cy = sy, cm = sm;
+      while (cy < ey || (cy === ey && cm <= em)) {
+        monthsInRange.push(`${cy}-${String(cm).padStart(2, "0")}`);
+        cm++;
+        if (cm > 12) { cm = 1; cy++; }
+      }
+    }
+
+    const allBankExpenses = monthsInRange.length > 0
+      ? await db
+          .select({
+            id: monthlyBankExpenses.id,
+            month: monthlyBankExpenses.month,
+            category: monthlyBankExpenses.category,
+            label: monthlyBankExpenses.label,
+            vendorId: monthlyBankExpenses.vendorId,
+            vendorName: vendors.name,
+            amount: monthlyBankExpenses.amount,
+            paymentMode: monthlyBankExpenses.paymentMode,
+            paymentDate: monthlyBankExpenses.paymentDate,
+            chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
+            referenceNo: monthlyBankExpenses.referenceNo,
+            bankName: monthlyBankExpenses.bankName,
+            narration: monthlyBankExpenses.narration,
+            isRecurring: monthlyBankExpenses.isRecurring,
+            isSalaryAuto: monthlyBankExpenses.isSalaryAuto,
+          })
+          .from(monthlyBankExpenses)
+          .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
+          .where(inArray(monthlyBankExpenses.month, monthsInRange))
+          .orderBy(asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
+          .execute()
+      : [];
+
+    // Group bank expenses by category
+    const bankByCategoryMap = new Map<string, { code: string; label: string; total: number; isExcluded: boolean; entries: any[] }>();
+    for (const exp of allBankExpenses) {
+      const cat = exp.category;
+      const exclusionCode = `BANK_${cat}`;
+      const isExcluded = activeExcludedSet.has(exclusionCode);
+      const amt = parseFloat(exp.amount || "0");
+
+      if (!bankByCategoryMap.has(cat)) {
+        bankByCategoryMap.set(cat, {
+          code: cat,
+          label: expCategoryLabelMap.get(cat) || cat.replace(/_/g, " "),
+          total: 0,
+          isExcluded,
+          entries: [],
+        });
+      }
+      const entry = bankByCategoryMap.get(cat)!;
+      entry.total += amt;
+      entry.entries.push({
+        id: exp.id,
+        month: exp.month,
+        label: exp.label,
+        vendorName: exp.vendorName || null,
+        amount: amt,
+        paymentMode: exp.paymentMode,
+        paymentDate: exp.paymentDate,
+        chequeIssueDate: exp.chequeIssueDate,
+        referenceNo: exp.referenceNo,
+        bankName: exp.bankName,
+        narration: exp.narration,
+        isRecurring: exp.isRecurring,
+        isSalaryAuto: exp.isSalaryAuto,
+      });
+    }
+
+    const bankByCategory = Array.from(bankByCategoryMap.values())
+      .map((c) => ({ ...c, total: Math.round(c.total * 100) / 100 }))
+      .sort((a, b) => b.total - a.total);
+
+    const nonExcludedBankTotal = bankByCategory
+      .filter((c) => !c.isExcluded)
+      .reduce((s, c) => s + c.total, 0);
+
+    const bankHeads = bankByCategory.map((c) => ({
+      code: `BANK_${c.code}`,
+      label: `🏦 ${c.label}`,
+      total: c.total,
+      isExcluded: c.isExcluded,
+      entries: c.entries,
+    }));
+
+    const combinedExpenditureByHead = [...expenditureByHead, ...bankHeads].sort((a, b) => b.total - a.total);
+
+    // =========================================================================
+    // Compute Filtered Totals (Cash + Bank)
+    // =========================================================================
     const totalIncome = reports.reduce((s, r) => s + parseFloat(r.totalIncome || "0"), 0);
-    const totalExpenditure = reports.reduce((s, r) => s + parseFloat(r.totalExpenditure || "0"), 0);
+
+    // Filtered total cash expenditure: sum of non-excluded expenditure heads + non-excluded staff advances
+    const nonExcludedExpTotal = expenditureByHead
+      .filter((h) => !h.isExcluded)
+      .reduce((s, h) => s + h.total, 0);
+
+    const totalCashExpenditure = nonExcludedExpTotal + (isStaffAdvancesExcluded ? 0 : staffAdvancesTotal);
+    const totalBankExpenditure = nonExcludedBankTotal;
+    const totalExpenditure = totalCashExpenditure + totalBankExpenditure;
     const netBalance = totalIncome - totalExpenditure;
     const reportCount = reports.length;
 
-    // Daily trends for charting
-    const dailyTrends = reports.map((r) => ({
-      date: r.reportDate,
-      income: parseFloat(r.totalIncome || "0"),
-      expenditure: parseFloat(r.totalExpenditure || "0"),
-      balance: parseFloat(r.closingBalance || "0"),
-    }));
+    // Daily trends filtered dynamically per report date
+    const dailyTrends = reports.map((r) => {
+      const inc = parseFloat(r.totalIncome || "0");
+      const exp = (dailyExpenditureMap.get(r.reportDate) || 0) + (dailyStaffAdvancesMap.get(r.reportDate) || 0);
+      return {
+        date: r.reportDate,
+        income: Math.round(inc * 100) / 100,
+        expenditure: Math.round(exp * 100) / 100,
+        balance: Math.round((inc - exp) * 100) / 100,
+      };
+    });
 
     return c.json({
       period: { startDate, endDate },
       reportCount,
       summary: {
         totalIncome: Math.round(totalIncome * 100) / 100,
+        totalCashExpenditure: Math.round(totalCashExpenditure * 100) / 100,
+        totalBankExpenditure: Math.round(totalBankExpenditure * 100) / 100,
         totalExpenditure: Math.round(totalExpenditure * 100) / 100,
         netBalance: Math.round(netBalance * 100) / 100,
         avgDailyIncome: Math.round((totalIncome / reportCount) * 100) / 100,
@@ -342,9 +522,10 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       },
       incomeByHead,
       pharmacyIncome,
-      expenditureByHead,
+      expenditureByHead: combinedExpenditureByHead,
       staffAdvancesTotal: Math.round(staffAdvancesTotal * 100) / 100,
       staffAdvancesEntries,
+      staffAdvancesExcluded: isStaffAdvancesExcluded,
       ipdAdmissionsTotal: Math.round(ipdAdmissionsTotal * 100) / 100,
       ipdAdmissionsEntries,
       ipdDischargesTotal: Math.round(ipdDischargesTotal * 100) / 100,
@@ -352,6 +533,46 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       additionalIncomeTotal: Math.round(additionalIncomeTotal * 100) / 100,
       additionalIncomeEntries,
       discountsReturnsTotal: Math.round(discountsReturnsTotal * 100) / 100,
+      bankExpenditures: {
+        total: Math.round(nonExcludedBankTotal * 100) / 100,
+        byCategory: bankByCategory,
+      },
       dailyTrends,
+      availableCategories,
+      savedExclusions,
+      activeExclusions,
     });
+  })
+  .post("/daily-closing/monthly-report/exclusions", async (c) => {
+    if (!(await hasHrOrAccountsViewAccess(c))) {
+      return c.json({ error: "Forbidden: HR/Accounts or Management Approver view access required" }, 403);
+    }
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (!session?.user?.id) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const body = await c.req.json();
+    const excludedCategories = Array.isArray(body.excludedCategories)
+      ? body.excludedCategories.map((s: any) => String(s).trim()).filter(Boolean)
+      : [];
+
+    await db
+      .insert(reportCategoryExclusions)
+      .values({
+        userId: session.user.id,
+        reportType: "monthly-report",
+        excludedCategories,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [reportCategoryExclusions.userId, reportCategoryExclusions.reportType],
+        set: {
+          excludedCategories,
+          updatedAt: new Date(),
+        },
+      })
+      .execute();
+
+    return c.json({ success: true, excludedCategories });
   });
+

@@ -315,9 +315,29 @@ export const mastersRoutes = new Hono<AuthEnv>()
   // -------------------------------------------------------------------------
   // Banks
   // -------------------------------------------------------------------------
-  .get("/masters/banks", async (c) =>
-    c.json(await db.select().from(banks).orderBy(banks.name).execute())
-  )
+  .get("/masters/banks", async (c) => {
+    let rows = await db.select().from(banks).orderBy(banks.name).execute();
+    if (rows.length === 0) {
+      const defaults = [
+        "State Bank of India",
+        "HDFC Bank",
+        "ICICI Bank",
+        "Axis Bank",
+        "Punjab National Bank",
+        "Bank of Baroda",
+        "Canara Bank",
+        "Kotak Mahindra Bank",
+        "Union Bank of India",
+        "Indian Bank",
+        "IDBI Bank",
+        "IndusInd Bank",
+        "Federal Bank",
+      ];
+      await db.insert(banks).values(defaults.map((name) => ({ name }))).execute();
+      rows = await db.select().from(banks).orderBy(banks.name).execute();
+    }
+    return c.json(rows);
+  })
   .post("/masters/banks", requireAdmin, async (c) => {
     const input = await jsonBody(c, bankInput);
     const [row] = await db.insert(banks).values(input).returning().execute();
