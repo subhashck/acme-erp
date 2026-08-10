@@ -1655,13 +1655,6 @@ export function ReportForm({
                 <CardContent className="p-5 space-y-5">
                   <div className="space-y-3">
                     <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Outflow Payments</h5>
-                    <datalist id="predefined-expenses">
-                      {expCatalogList.map((item) => (
-                        <option key={item.id} value={item.itemName}>
-                          {item.itemName} ({activeExpCategories.find(c => c.code === item.category)?.label || item.category} - ₹{item.defaultAmount})
-                        </option>
-                      ))}
-                    </datalist>
 
                     {expenditures.map((item, idx) => {
                       const isAutoExpenditure =
@@ -1669,6 +1662,13 @@ export function ReportForm({
                         (item.details?.startsWith("Salary Payment -") ||
                           item.narration?.includes("Payslip #") ||
                           item.narration?.includes("Cash salary payment"));
+
+                      const filteredCatalog = expCatalogList.filter((catItem) => {
+                        if (!item.category) return true;
+                        const c1 = (catItem.category || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        const c2 = (item.category || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        return catItem.category === item.category || c1 === c2 || c1.includes(c2) || c2.includes(c1);
+                      });
 
                       return (
                         <div
@@ -1680,6 +1680,14 @@ export function ReportForm({
                               : "bg-muted/15"
                           )}
                         >
+                          <datalist id={`predefined-expenses-${idx}`}>
+                            {filteredCatalog.map((catItem) => (
+                              <option key={catItem.id} value={catItem.itemName}>
+                                {catItem.itemName} ({activeExpCategories.find(c => c.code === catItem.category)?.label || catItem.category} - ₹{catItem.defaultAmount})
+                              </option>
+                            ))}
+                          </datalist>
+
                           {isAutoExpenditure && (
                             <div className="w-full mb-1 flex items-center justify-between text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded border border-amber-200/70 dark:border-amber-900/50">
                               <span className="flex items-center gap-1.5">
@@ -1708,7 +1716,7 @@ export function ReportForm({
                             <Label className="text-[10px]">Details / Payee</Label>
                             <Input
                               type="text"
-                              list="predefined-expenses"
+                              list={`predefined-expenses-${idx}`}
                               placeholder="e.g. M/S SB Surgical, Bamboo purchase"
                               value={item.details}
                               readOnly={isAutoExpenditure}

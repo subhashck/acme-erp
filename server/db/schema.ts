@@ -810,6 +810,16 @@ export const dailyAdditionalIncome = sqliteTable("daily_additional_income", {
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
 
+export const reportCategoryExclusions = sqliteTable("report_category_exclusions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  reportType: text("report_type").notNull().default("monthly-report"),
+  excludedCategories: jsonb("excluded_categories").notNull().default("[]"),
+  ...timestamps
+}, (table) => ({
+  userReportUnique: unique().on(table.userId, table.reportType),
+}));
+
 export const dailyDiscountsReturns = sqliteTable("daily_discounts_returns", {
   id: serial("id").primaryKey(),
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
@@ -878,6 +888,53 @@ export const dailyPaymentChannelsRelations = relations(dailyPaymentChannels, ({ 
 export const dailyDiscountsReturnsRelations = relations(dailyDiscountsReturns, ({ one }) => ({
   report: one(dailyClosingReports, { fields: [dailyDiscountsReturns.reportId], references: [dailyClosingReports.id] })
 }));
+
+// ---------------------------------------------------------------------------
+// Bank Expenses (Monthly Fixed Expenses & Vendor Payables)
+// ---------------------------------------------------------------------------
+
+export const monthlyBankExpenses = sqliteTable("monthly_bank_expenses", {
+  id: serial("id").primaryKey(),
+  month: text("month").notNull(),                // "YYYY-MM" format
+  category: text("category").notNull(),          // references expenseCategories.code / expenseCatalog
+  label: text("label").notNull(),                // description of the expense
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode").notNull().default("Bank Transfer"),
+  paymentDate: text("payment_date"),             // YYYY-MM-DD (Clearance Date)
+  chequeIssueDate: text("cheque_issue_date"),     // YYYY-MM-DD (Cheque / Instrument Issue Date)
+  referenceNo: text("reference_no"),             // UTR / cheque no / transaction ref
+  bankName: text("bank_name"),                   // which hospital bank account
+  narration: text("narration"),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  isSalaryAuto: boolean("is_salary_auto").notNull().default(false),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps
+});
+
+export const monthlyBankExpensesRelations = relations(monthlyBankExpenses, ({ one }) => ({
+  vendor: one(vendors, { fields: [monthlyBankExpenses.vendorId], references: [vendors.id] }),
+  creator: one(user, { fields: [monthlyBankExpenses.createdBy], references: [user.id] }),
+}));
+
+// ---------------------------------------------------------------------------
+// Bank Accounts Master (Entity-tagged Accounts)
+// ---------------------------------------------------------------------------
+
+export const bankAccounts = sqliteTable("bank_accounts", {
+  id: serial("id").primaryKey(),
+  accountName: text("account_name").notNull(),
+  bankName: text("bank_name").notNull(),
+  accountNumber: text("account_number").notNull(),
+  ifscCode: text("ifsc_code"),
+  branchName: text("branch_name"),
+  accountType: text("account_type").notNull().default("Current"), // Current, Savings, OD, CC
+  legalEntity: text("legal_entity").notNull().default("ACME_HOSPITAL"), // ACME_HOSPITAL | ACME_NURSING | HUMANKIND
+  openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  active: boolean("active").notNull().default(true),
+  notes: text("notes"),
+  ...timestamps
+});
 
 // Purchase Orders Module Enums
 export const poStatusEnum = pgEnum("po_status", ["open", "partial", "closed", "cancelled"]);

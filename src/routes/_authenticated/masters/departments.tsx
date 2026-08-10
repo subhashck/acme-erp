@@ -541,7 +541,6 @@ function Departments() {
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setIsFormDrawerOpen(false)}
           />
 
           {/* Slide-over panel */}
@@ -692,7 +691,6 @@ function Departments() {
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setIsFilterDrawerOpen(false)}
           />
 
           {/* Slide-over panel */}

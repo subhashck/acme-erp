@@ -6,7 +6,7 @@ import { Search, ChevronDown, X } from "lucide-react";
 type Option = [string, string]; // [value, label]
 
 interface AutocompleteProps {
-  label: string;
+  label?: string;
   value: string;
   onChange: (value: string) => void;
   options: Option[];
@@ -89,10 +89,11 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
     };
 
     return (
-      <div className={cn("relative flex flex-col w-full", isOpen && "z-[99999]", className)} ref={containerRef}>
-        {label && <Label>{label}</Label>}
+      <div className={cn("relative flex flex-col w-full", isOpen && "z-99999", className)} ref={containerRef}>
+        {label && <Label className="font-semibold block mb-1 text-xs">{label}</Label>}
         <div className="relative flex items-center">
           <input
+            ref={ref}
             type="text"
             placeholder={placeholder}
             value={query}
@@ -100,12 +101,12 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
             onFocus={() => setIsOpen(true)}
             disabled={disabled}
             className={cn(
-              "flex h-10 w-full rounded-md border bg-background pl-9 pr-10 py-2 text-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed",
+              "flex h-9 w-full rounded-md border bg-background pl-8 pr-10 py-1.5 text-xs outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed",
               error ? "border-red-500" : ""
             )}
           />
-          <div className="absolute left-3 text-muted-foreground pointer-events-none">
-            <Search size={16} />
+          <div className="absolute left-2.5 text-muted-foreground pointer-events-none">
+            <Search size={14} />
           </div>
 
           <div className="absolute right-2 flex items-center gap-1">
@@ -129,7 +130,7 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
         </div>
 
         {isOpen && (
-          <ul className="absolute top-[calc(100%+4px)] z-[99999] w-full max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-200">
+          <ul className="absolute top-[calc(100%+4px)] z-99999 w-full max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-200">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
                 const isSelected = opt[0] === value;

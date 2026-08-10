@@ -923,7 +923,10 @@ function AddStaff() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
+                              <Calendar mode="single"
+                                startMonth={new Date(new Date().getFullYear() - 5, 0)}
+                                endMonth={new Date(new Date().getFullYear() + 5, 11)}
+                                captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                             </PopoverContent>
                           </Popover>
                         )}
@@ -943,7 +946,10 @@ function AddStaff() {
                               </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar mode="single" captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
+                              <Calendar mode="single"
+                                startMonth={new Date(new Date().getFullYear() - 5, 0)}
+                                endMonth={new Date(new Date().getFullYear() + 5, 11)}
+                                captionLayout="dropdown" selected={safeParseDate(field.value)} onSelect={(date) => field.onChange(date && isValid(date) ? format(date, "yyyy-MM-dd") : "")} />
                             </PopoverContent>
                           </Popover>
                         )}

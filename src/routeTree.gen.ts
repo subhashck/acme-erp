@@ -48,6 +48,8 @@ import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authen
 import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
 import { Route as AuthenticatedAccountsMonthlyReportRouteImport } from './routes/_authenticated/accounts/monthly-report'
 import { Route as AuthenticatedAccountsConsultantChargesRouteImport } from './routes/_authenticated/accounts/consultant-charges'
+import { Route as AuthenticatedAccountsBankExpensesRouteImport } from './routes/_authenticated/accounts/bank-expenses'
+import { Route as AuthenticatedAccountsBankAccountsRouteImport } from './routes/_authenticated/accounts/bank-accounts'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIndexRouteImport } from './routes/_authenticated/purchases/purchase-orders/index'
 import { Route as AuthenticatedPurchasesGrnsIndexRouteImport } from './routes/_authenticated/purchases/grns/index'
 import { Route as AuthenticatedAccountsReportsIndexRouteImport } from './routes/_authenticated/accounts/reports/index'
@@ -284,6 +286,18 @@ const AuthenticatedAccountsConsultantChargesRoute =
     path: '/accounts/consultant-charges',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAccountsBankExpensesRoute =
+  AuthenticatedAccountsBankExpensesRouteImport.update({
+    id: '/accounts/bank-expenses',
+    path: '/accounts/bank-expenses',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAccountsBankAccountsRoute =
+  AuthenticatedAccountsBankAccountsRouteImport.update({
+    id: '/accounts/bank-accounts',
+    path: '/accounts/bank-accounts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedPurchasesPurchaseOrdersIndexRoute =
   AuthenticatedPurchasesPurchaseOrdersIndexRouteImport.update({
     id: '/',
@@ -369,6 +383,8 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
+  '/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
   '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
   '/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
@@ -422,6 +438,8 @@ export interface FileRoutesByTo {
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
+  '/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
   '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
   '/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
@@ -476,6 +494,8 @@ export interface FileRoutesById {
   '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
+  '/_authenticated/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
   '/_authenticated/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
   '/_authenticated/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/_authenticated/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
@@ -531,6 +551,8 @@ export interface FileRouteTypes {
     | '/login'
     | '/communication'
     | '/settings'
+    | '/accounts/bank-accounts'
+    | '/accounts/bank-expenses'
     | '/accounts/consultant-charges'
     | '/accounts/monthly-report'
     | '/accounts/service-charges'
@@ -584,6 +606,8 @@ export interface FileRouteTypes {
     | '/communication'
     | '/settings'
     | '/'
+    | '/accounts/bank-accounts'
+    | '/accounts/bank-expenses'
     | '/accounts/consultant-charges'
     | '/accounts/monthly-report'
     | '/accounts/service-charges'
@@ -637,6 +661,8 @@ export interface FileRouteTypes {
     | '/_authenticated/communication'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/accounts/bank-accounts'
+    | '/_authenticated/accounts/bank-expenses'
     | '/_authenticated/accounts/consultant-charges'
     | '/_authenticated/accounts/monthly-report'
     | '/_authenticated/accounts/service-charges'
@@ -967,6 +993,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsConsultantChargesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/accounts/bank-expenses': {
+      id: '/_authenticated/accounts/bank-expenses'
+      path: '/accounts/bank-expenses'
+      fullPath: '/accounts/bank-expenses'
+      preLoaderRoute: typeof AuthenticatedAccountsBankExpensesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/accounts/bank-accounts': {
+      id: '/_authenticated/accounts/bank-accounts'
+      path: '/accounts/bank-accounts'
+      fullPath: '/accounts/bank-accounts'
+      preLoaderRoute: typeof AuthenticatedAccountsBankAccountsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/purchases/purchase-orders/': {
       id: '/_authenticated/purchases/purchase-orders/'
       path: '/'
@@ -1092,6 +1132,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAccountsBankAccountsRoute: typeof AuthenticatedAccountsBankAccountsRoute
+  AuthenticatedAccountsBankExpensesRoute: typeof AuthenticatedAccountsBankExpensesRoute
   AuthenticatedAccountsConsultantChargesRoute: typeof AuthenticatedAccountsConsultantChargesRoute
   AuthenticatedAccountsMonthlyReportRoute: typeof AuthenticatedAccountsMonthlyReportRoute
   AuthenticatedAccountsServiceChargesRoute: typeof AuthenticatedAccountsServiceChargesRoute
@@ -1138,6 +1180,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAccountsBankAccountsRoute:
+    AuthenticatedAccountsBankAccountsRoute,
+  AuthenticatedAccountsBankExpensesRoute:
+    AuthenticatedAccountsBankExpensesRoute,
   AuthenticatedAccountsConsultantChargesRoute:
     AuthenticatedAccountsConsultantChargesRoute,
   AuthenticatedAccountsMonthlyReportRoute:
