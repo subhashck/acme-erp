@@ -101,6 +101,66 @@ export const hasHrOrAccountsViewAccess = async (c: Context<AuthEnv>): Promise<bo
   return await isManagementApprover(c);
 };
 
+export const hasCollegeAccess = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) return false;
+
+  const userRole = (session.user.role || "").trim().toLowerCase();
+  if (userRole === "admin" || userRole === "accounts" || userRole === "acon") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const staffRole = (currentStaff.role || "").trim().toLowerCase();
+  if (staffRole === "admin" || staffRole === "accounts" || staffRole === "acon") return true;
+
+  // Check active department assignment in staffDepartments
+  const activeStaffDepts = await db
+    .select({ name: departments.name })
+    .from(staffDepartments)
+    .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+    .where(
+      and(
+        eq(staffDepartments.staffId, currentStaff.staffId),
+        eq(staffDepartments.status, "Active")
+      )
+    )
+    .execute();
+
+  const hasAllowedDept = activeStaffDepts.some((d) => {
+    const deptName = (d.name || "").trim().toUpperCase();
+    return deptName === "ACCOUNTS" || deptName === "ACON";
+  });
+
+  if (hasAllowedDept) return true;
+
+  // Fallback: check direct departmentId on currentStaff if set
+  if (currentStaff.departmentId) {
+    const [dept] = await db
+      .select({ name: departments.name })
+      .from(departments)
+      .where(eq(departments.id, currentStaff.departmentId))
+      .execute();
+    if (dept) {
+      const deptName = (dept.name || "").trim().toUpperCase();
+      if (deptName === "ACCOUNTS" || deptName === "ACON") return true;
+    }
+  }
+
+  return false;
+};
+
+export const requireCollegeAccess = async (c: Context<AuthEnv>, next: any) => {
+  const allowed = await hasCollegeAccess(c);
+  if (!allowed) {
+    return c.json(
+      { error: "Forbidden: Access to College Module is restricted to Admin, Accounts, and ACON department." },
+      403
+    );
+  }
+  await next();
+};
+
 export const isSupervisorOf = (
   supervisor: typeof staff.$inferSelect | null | undefined,
   employee: typeof staff.$inferSelect | null | undefined

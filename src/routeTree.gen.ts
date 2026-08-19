@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
+import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
 import { Route as AuthenticatedPurchasesUnitTypesRouteImport } from './routes/_authenticated/purchases/unit-types'
@@ -40,6 +41,15 @@ import { Route as AuthenticatedHrOffDayRequestsRouteImport } from './routes/_aut
 import { Route as AuthenticatedHrLeavesRouteImport } from './routes/_authenticated/hr/leaves'
 import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authenticated/hr/attendance'
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
+import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
+import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
+import { Route as AuthenticatedCollegeFeesRouteImport } from './routes/_authenticated/college/fees'
+import { Route as AuthenticatedCollegeFeeStructuresRouteImport } from './routes/_authenticated/college/fee-structures'
+import { Route as AuthenticatedCollegeFeeDuesRouteImport } from './routes/_authenticated/college/fee-dues'
+import { Route as AuthenticatedCollegeCoursesRouteImport } from './routes/_authenticated/college/courses'
+import { Route as AuthenticatedCollegeAttendanceRouteImport } from './routes/_authenticated/college/attendance'
+import { Route as AuthenticatedCollegeAdmissionsRouteImport } from './routes/_authenticated/college/admissions'
+import { Route as AuthenticatedCollegeAcademicSchedulesRouteImport } from './routes/_authenticated/college/academic-schedules'
 import { Route as AuthenticatedClinicalImmunizationRouteImport } from './routes/_authenticated/clinical/immunization'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
@@ -57,6 +67,7 @@ import { Route as AuthenticatedPurchasesPurchaseOrdersNewRouteImport } from './r
 import { Route as AuthenticatedPurchasesPurchaseOrdersIdRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id'
 import { Route as AuthenticatedPurchasesGrnsNewRouteImport } from './routes/_authenticated/purchases/grns/new'
 import { Route as AuthenticatedPurchasesGrnsGrnIdRouteImport } from './routes/_authenticated/purchases/grns/$grnId'
+import { Route as AuthenticatedCollegeStudentIdRouteImport } from './routes/_authenticated/college/student/$id'
 import { Route as AuthenticatedAccountsReportsNewRouteImport } from './routes/_authenticated/accounts/reports/new'
 import { Route as AuthenticatedAccountsReportsIdRouteImport } from './routes/_authenticated/accounts/reports/$id'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.edit'
@@ -92,6 +103,12 @@ const AuthenticatedCommunicationRoute =
   AuthenticatedCommunicationRouteImport.update({
     id: '/communication',
     path: '/communication',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeIndexRoute =
+  AuthenticatedCollegeIndexRouteImport.update({
+    id: '/college/',
+    path: '/college/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
@@ -239,6 +256,60 @@ const AuthenticatedHrAddStaffRoute = AuthenticatedHrAddStaffRouteImport.update({
   path: '/hr/add-staff',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCollegeSubjectsRoute =
+  AuthenticatedCollegeSubjectsRouteImport.update({
+    id: '/college/subjects',
+    path: '/college/subjects',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeStudentsRoute =
+  AuthenticatedCollegeStudentsRouteImport.update({
+    id: '/college/students',
+    path: '/college/students',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeFeesRoute =
+  AuthenticatedCollegeFeesRouteImport.update({
+    id: '/college/fees',
+    path: '/college/fees',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeFeeStructuresRoute =
+  AuthenticatedCollegeFeeStructuresRouteImport.update({
+    id: '/college/fee-structures',
+    path: '/college/fee-structures',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeFeeDuesRoute =
+  AuthenticatedCollegeFeeDuesRouteImport.update({
+    id: '/college/fee-dues',
+    path: '/college/fee-dues',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeCoursesRoute =
+  AuthenticatedCollegeCoursesRouteImport.update({
+    id: '/college/courses',
+    path: '/college/courses',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeAttendanceRoute =
+  AuthenticatedCollegeAttendanceRouteImport.update({
+    id: '/college/attendance',
+    path: '/college/attendance',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeAdmissionsRoute =
+  AuthenticatedCollegeAdmissionsRouteImport.update({
+    id: '/college/admissions',
+    path: '/college/admissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeAcademicSchedulesRoute =
+  AuthenticatedCollegeAcademicSchedulesRouteImport.update({
+    id: '/college/academic-schedules',
+    path: '/college/academic-schedules',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedClinicalImmunizationRoute =
   AuthenticatedClinicalImmunizationRouteImport.update({
     id: '/clinical/immunization',
@@ -340,6 +411,12 @@ const AuthenticatedPurchasesGrnsGrnIdRoute =
     path: '/purchases/grns/$grnId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedCollegeStudentIdRoute =
+  AuthenticatedCollegeStudentIdRouteImport.update({
+    id: '/college/student/$id',
+    path: '/college/student/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountsReportsNewRoute =
   AuthenticatedAccountsReportsNewRouteImport.update({
     id: '/accounts/reports/new',
@@ -393,6 +470,15 @@ export interface FileRoutesByFullPath {
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
+  '/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
+  '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
+  '/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
+  '/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
+  '/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
+  '/college/fees': typeof AuthenticatedCollegeFeesRoute
+  '/college/students': typeof AuthenticatedCollegeStudentsRoute
+  '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -418,8 +504,10 @@ export interface FileRoutesByFullPath {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/college/': typeof AuthenticatedCollegeIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
   '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
@@ -448,6 +536,15 @@ export interface FileRoutesByTo {
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
+  '/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
+  '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
+  '/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
+  '/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
+  '/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
+  '/college/fees': typeof AuthenticatedCollegeFeesRoute
+  '/college/students': typeof AuthenticatedCollegeStudentsRoute
+  '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -472,8 +569,10 @@ export interface FileRoutesByTo {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/college': typeof AuthenticatedCollegeIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
   '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
@@ -504,6 +603,15 @@ export interface FileRoutesById {
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
+  '/_authenticated/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
+  '/_authenticated/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
+  '/_authenticated/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
+  '/_authenticated/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/_authenticated/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
+  '/_authenticated/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
+  '/_authenticated/college/fees': typeof AuthenticatedCollegeFeesRoute
+  '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
+  '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/_authenticated/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/_authenticated/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -529,8 +637,10 @@ export interface FileRoutesById {
   '/_authenticated/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/_authenticated/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
   '/_authenticated/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/_authenticated/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/_authenticated/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
@@ -561,6 +671,15 @@ export interface FileRouteTypes {
     | '/admin/payroll'
     | '/admin/users'
     | '/clinical/immunization'
+    | '/college/academic-schedules'
+    | '/college/admissions'
+    | '/college/attendance'
+    | '/college/courses'
+    | '/college/fee-dues'
+    | '/college/fee-structures'
+    | '/college/fees'
+    | '/college/students'
+    | '/college/subjects'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
@@ -586,8 +705,10 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/college/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/college/student/$id'
     | '/purchases/grns/$grnId'
     | '/purchases/grns/new'
     | '/purchases/purchase-orders/$id'
@@ -616,6 +737,15 @@ export interface FileRouteTypes {
     | '/admin/payroll'
     | '/admin/users'
     | '/clinical/immunization'
+    | '/college/academic-schedules'
+    | '/college/admissions'
+    | '/college/attendance'
+    | '/college/courses'
+    | '/college/fee-dues'
+    | '/college/fee-structures'
+    | '/college/fees'
+    | '/college/students'
+    | '/college/subjects'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
@@ -640,8 +770,10 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/college'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/college/student/$id'
     | '/purchases/grns/$grnId'
     | '/purchases/grns/new'
     | '/purchases/purchase-orders/$id'
@@ -671,6 +803,15 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
     | '/_authenticated/clinical/immunization'
+    | '/_authenticated/college/academic-schedules'
+    | '/_authenticated/college/admissions'
+    | '/_authenticated/college/attendance'
+    | '/_authenticated/college/courses'
+    | '/_authenticated/college/fee-dues'
+    | '/_authenticated/college/fee-structures'
+    | '/_authenticated/college/fees'
+    | '/_authenticated/college/students'
+    | '/_authenticated/college/subjects'
     | '/_authenticated/hr/add-staff'
     | '/_authenticated/hr/attendance'
     | '/_authenticated/hr/leaves'
@@ -696,8 +837,10 @@ export interface FileRouteTypes {
     | '/_authenticated/purchases/unit-types'
     | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
+    | '/_authenticated/college/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
+    | '/_authenticated/college/student/$id'
     | '/_authenticated/purchases/grns/$grnId'
     | '/_authenticated/purchases/grns/new'
     | '/_authenticated/purchases/purchase-orders/$id'
@@ -760,6 +903,13 @@ declare module '@tanstack/react-router' {
       path: '/communication'
       fullPath: '/communication'
       preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/': {
+      id: '/_authenticated/college/'
+      path: '/college'
+      fullPath: '/college/'
+      preLoaderRoute: typeof AuthenticatedCollegeIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/shared/report/$token': {
@@ -937,6 +1087,69 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrAddStaffRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/college/subjects': {
+      id: '/_authenticated/college/subjects'
+      path: '/college/subjects'
+      fullPath: '/college/subjects'
+      preLoaderRoute: typeof AuthenticatedCollegeSubjectsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/students': {
+      id: '/_authenticated/college/students'
+      path: '/college/students'
+      fullPath: '/college/students'
+      preLoaderRoute: typeof AuthenticatedCollegeStudentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/fees': {
+      id: '/_authenticated/college/fees'
+      path: '/college/fees'
+      fullPath: '/college/fees'
+      preLoaderRoute: typeof AuthenticatedCollegeFeesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/fee-structures': {
+      id: '/_authenticated/college/fee-structures'
+      path: '/college/fee-structures'
+      fullPath: '/college/fee-structures'
+      preLoaderRoute: typeof AuthenticatedCollegeFeeStructuresRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/fee-dues': {
+      id: '/_authenticated/college/fee-dues'
+      path: '/college/fee-dues'
+      fullPath: '/college/fee-dues'
+      preLoaderRoute: typeof AuthenticatedCollegeFeeDuesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/courses': {
+      id: '/_authenticated/college/courses'
+      path: '/college/courses'
+      fullPath: '/college/courses'
+      preLoaderRoute: typeof AuthenticatedCollegeCoursesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/attendance': {
+      id: '/_authenticated/college/attendance'
+      path: '/college/attendance'
+      fullPath: '/college/attendance'
+      preLoaderRoute: typeof AuthenticatedCollegeAttendanceRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/admissions': {
+      id: '/_authenticated/college/admissions'
+      path: '/college/admissions'
+      fullPath: '/college/admissions'
+      preLoaderRoute: typeof AuthenticatedCollegeAdmissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/academic-schedules': {
+      id: '/_authenticated/college/academic-schedules'
+      path: '/college/academic-schedules'
+      fullPath: '/college/academic-schedules'
+      preLoaderRoute: typeof AuthenticatedCollegeAcademicSchedulesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/clinical/immunization': {
       id: '/_authenticated/clinical/immunization'
       path: '/clinical/immunization'
@@ -1056,6 +1269,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/college/student/$id': {
+      id: '/_authenticated/college/student/$id'
+      path: '/college/student/$id'
+      fullPath: '/college/student/$id'
+      preLoaderRoute: typeof AuthenticatedCollegeStudentIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/accounts/reports/new': {
       id: '/_authenticated/accounts/reports/new'
       path: '/accounts/reports/new'
@@ -1142,6 +1362,15 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminPayrollRoute: typeof AuthenticatedAdminPayrollRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
+  AuthenticatedCollegeAcademicSchedulesRoute: typeof AuthenticatedCollegeAcademicSchedulesRoute
+  AuthenticatedCollegeAdmissionsRoute: typeof AuthenticatedCollegeAdmissionsRoute
+  AuthenticatedCollegeAttendanceRoute: typeof AuthenticatedCollegeAttendanceRoute
+  AuthenticatedCollegeCoursesRoute: typeof AuthenticatedCollegeCoursesRoute
+  AuthenticatedCollegeFeeDuesRoute: typeof AuthenticatedCollegeFeeDuesRoute
+  AuthenticatedCollegeFeeStructuresRoute: typeof AuthenticatedCollegeFeeStructuresRoute
+  AuthenticatedCollegeFeesRoute: typeof AuthenticatedCollegeFeesRoute
+  AuthenticatedCollegeStudentsRoute: typeof AuthenticatedCollegeStudentsRoute
+  AuthenticatedCollegeSubjectsRoute: typeof AuthenticatedCollegeSubjectsRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
   AuthenticatedHrAttendanceRoute: typeof AuthenticatedHrAttendanceRoute
   AuthenticatedHrLeavesRoute: typeof AuthenticatedHrLeavesRoute
@@ -1166,8 +1395,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPurchasesPurchaseOrdersRoute: typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
   AuthenticatedPurchasesUnitTypesRoute: typeof AuthenticatedPurchasesUnitTypesRoute
   AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
+  AuthenticatedCollegeIndexRoute: typeof AuthenticatedCollegeIndexRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
+  AuthenticatedCollegeStudentIdRoute: typeof AuthenticatedCollegeStudentIdRoute
   AuthenticatedPurchasesGrnsGrnIdRoute: typeof AuthenticatedPurchasesGrnsGrnIdRoute
   AuthenticatedPurchasesGrnsNewRoute: typeof AuthenticatedPurchasesGrnsNewRoute
   AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
@@ -1196,6 +1427,17 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
+  AuthenticatedCollegeAcademicSchedulesRoute:
+    AuthenticatedCollegeAcademicSchedulesRoute,
+  AuthenticatedCollegeAdmissionsRoute: AuthenticatedCollegeAdmissionsRoute,
+  AuthenticatedCollegeAttendanceRoute: AuthenticatedCollegeAttendanceRoute,
+  AuthenticatedCollegeCoursesRoute: AuthenticatedCollegeCoursesRoute,
+  AuthenticatedCollegeFeeDuesRoute: AuthenticatedCollegeFeeDuesRoute,
+  AuthenticatedCollegeFeeStructuresRoute:
+    AuthenticatedCollegeFeeStructuresRoute,
+  AuthenticatedCollegeFeesRoute: AuthenticatedCollegeFeesRoute,
+  AuthenticatedCollegeStudentsRoute: AuthenticatedCollegeStudentsRoute,
+  AuthenticatedCollegeSubjectsRoute: AuthenticatedCollegeSubjectsRoute,
   AuthenticatedHrAddStaffRoute: AuthenticatedHrAddStaffRoute,
   AuthenticatedHrAttendanceRoute: AuthenticatedHrAttendanceRoute,
   AuthenticatedHrLeavesRoute: AuthenticatedHrLeavesRoute,
@@ -1224,8 +1466,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedPurchasesPurchaseOrdersRouteWithChildren,
   AuthenticatedPurchasesUnitTypesRoute: AuthenticatedPurchasesUnitTypesRoute,
   AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
+  AuthenticatedCollegeIndexRoute: AuthenticatedCollegeIndexRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
+  AuthenticatedCollegeStudentIdRoute: AuthenticatedCollegeStudentIdRoute,
   AuthenticatedPurchasesGrnsGrnIdRoute: AuthenticatedPurchasesGrnsGrnIdRoute,
   AuthenticatedPurchasesGrnsNewRoute: AuthenticatedPurchasesGrnsNewRoute,
   AuthenticatedAccountsReportsIndexRoute:

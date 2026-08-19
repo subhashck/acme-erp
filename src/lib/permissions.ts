@@ -38,18 +38,28 @@ export function useUserPermissions() {
     );
   }, [currentStaff?.staffId, managementApproversQuery.data]);
 
-  const isAdmin = session.data?.user?.role === "admin";
-  const isHr = session.data?.user?.role === "hr" || currentStaff?.role === "hr";
-  const isAccounts = currentStaff?.departmentName === "Accounts";
+  const userRole = (session.data?.user?.role || "").trim().toLowerCase();
+  const staffDept = (currentStaff?.departmentName || "").trim().toUpperCase();
+
+  const isAdmin = userRole === "admin";
+  const isHr = userRole === "hr" || (currentStaff?.role || "").toLowerCase() === "hr";
+  const isAccounts = staffDept === "ACCOUNTS" || userRole === "accounts";
+  const isAcon = staffDept === "ACON" || userRole === "acon";
+
+  const canViewAccounts = isAdmin || isAccounts || isManagementApprover;
+  const canViewHr = isAdmin || isHr || isManagementApprover;
+  const canViewCollege = isAdmin || isAccounts || isAcon;
 
   return {
     currentStaff,
     isAdmin,
     isHr,
     isAccounts,
+    isAcon,
     isManagementApprover,
-    canViewAccounts: isAdmin || isAccounts || isManagementApprover,
-    canViewHr: isAdmin || isHr || isManagementApprover,
+    canViewAccounts,
+    canViewHr,
+    canViewCollege,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
   };
 }

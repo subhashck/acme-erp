@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
+import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, uniqueIndex, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -226,7 +226,7 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   currentAddress: text("current_address"),
   landmarkCurrentAddress: text("landmar_current_address"), //d
   permanentAddress: text("permanent_address"),
-  landmarkPermanentAddress:text("landmark_permanent_address"), //d
+  landmarkPermanentAddress: text("landmark_permanent_address"), //d
   educationHistory: jsonb("education_history").notNull().default([]),
   professionalHistory: jsonb("professional_history").notNull().default([]),
   uan: text("uan"),
@@ -1143,3 +1143,266 @@ export const poPaymentsRelations = relations(poPayments, ({ one }) => ({
   purchaseOrder: one(purchaseOrders, { fields: [poPayments.poId], references: [purchaseOrders.id] }),
   createdBy: one(user, { fields: [poPayments.createdBy], references: [user.id] }),
 }));
+
+// ===========================================================================
+// Nursing College Module Schemas (Phase 1 & Phase 2)
+// ===========================================================================
+
+export const nursingCourses = sqliteTable("nursing_courses", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  durationYears: integer("duration_years").notNull().default(3),
+  totalSeats: integer("total_seats").notNull().default(60),
+  regulatoryBody: text("regulatory_body").notNull().default("INC / State Council"),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingBatches = sqliteTable("nursing_batches", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id, { onDelete: "cascade" }),
+  academicYear: text("academic_year").notNull(),
+  section: text("section").notNull().default("A"),
+  maxSeats: integer("max_seats").notNull().default(60),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingApplicants = sqliteTable("nursing_applicants", {
+  id: serial("id").primaryKey(),
+  applicationNo: text("application_no").notNull().unique(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id),
+  academicYear: text("academic_year").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  gender: text("gender").notNull().default("Female"),
+  dob: text("dob"),
+  address: text("address"),
+  entranceMeritScore: numeric("entrance_merit_score", { precision: 5, scale: 2 }).notNull().default("0"),
+  quotaCategory: text("quota_category").notNull().default("general"), // general, reserved, management
+  status: text("status").notNull().default("pending"), // pending, approved, rejected, converted
+  notes: text("notes"),
+  seatBookingAmount: numeric("seat_booking_amount", { precision: 12, scale: 2 }).default("0"),
+  seatBookingStatus: text("seat_booking_status").default("none"), // none, unadjusted, adjusted, refunded
+  seatBookingReceiptNo: text("seat_booking_receipt_no"),
+  seatBookingDate: text("seat_booking_date"),
+  seatBookingPaymentMode: text("seat_booking_payment_mode"),
+  seatBookingNotes: text("seat_booking_notes"),
+  ...timestamps
+});
+
+export const nursingStudents = sqliteTable("nursing_students", {
+  id: serial("id").primaryKey(),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "set null" }),
+  batchId: integer("batch_id").notNull().references(() => nursingBatches.id),
+  enrollmentNo: text("enrollment_no").notNull().unique(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  gender: text("gender").notNull().default("Female"),
+  dob: text("dob"),
+  address: text("address"),
+  guardianName: text("guardian_name"),
+  guardianPhone: text("guardian_phone"),
+  guardianRelation: text("guardian_relation"),
+  status: text("status").notNull().default("active"), // active, promoted, graduated, dropped, transferred
+  admissionDate: text("admission_date"),
+  ...timestamps
+});
+
+export const nursingStudentDocuments = sqliteTable("nursing_student_documents", {
+  id: serial("id").primaryKey(),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "cascade" }),
+  studentId: integer("student_id").references(() => nursingStudents.id, { onDelete: "cascade" }),
+  documentType: text("document_type").notNull(), // certificate, medical_fitness, id_proof, mark_sheet, other
+  title: text("title").notNull(),
+  fileUrl: text("file_url").notNull(),
+  verificationStatus: text("verification_status").notNull().default("pending"), // pending, verified, rejected
+  verifiedBy: text("verified_by").references(() => user.id),
+  verifiedAt: timestamp("verified_at"),
+  ...timestamps
+});
+
+export const nursingFeeStructures = sqliteTable("nursing_fee_structures", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id, { onDelete: "cascade" }),
+  quotaCategory: text("quota_category").notNull().default("general"),
+  academicYear: text("academic_year").notNull(),
+  feeType: text("fee_type").notNull().default("Tuition & Composite Fee"),
+  paymentFrequency: text("payment_frequency").notNull().default("yearly"), // one_time, yearly, semester, quarterly, monthly
+  oneTimeRebatePercent: numeric("one_time_rebate_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+  tuitionFee: numeric("tuition_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  admissionFee: numeric("admission_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
+  uniformFee: numeric("uniform_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  hostelFee: numeric("hostel_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  hostelMessMonthlyFee: numeric("hostel_mess_monthly_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  examFee: numeric("exam_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  miscFee: numeric("misc_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  rebatesConfig: text("rebates_config"),
+  surchargesConfig: text("surcharges_config"),
+  componentsConfig: text("components_config"),
+  totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  ...timestamps
+}, (t) => [
+  uniqueIndex("nursing_fee_structures_course_year_quota_idx").on(t.courseId, t.academicYear, t.quotaCategory),
+]);
+
+export const nursingFeeTransactions = sqliteTable("nursing_fee_transactions", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").references(() => nursingStudents.id, { onDelete: "cascade" }),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "set null" }),
+  feeStructureId: integer("fee_structure_id").references(() => nursingFeeStructures.id),
+  invoiceNo: text("invoice_no").notNull(),
+  receiptNumber: text("receipt_number").notNull().unique(),
+  feeType: text("fee_type"),
+  paymentFrequency: text("payment_frequency"),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode").notNull().default("cash"), // cash, bank_transfer, upi, card, cheque
+  paymentDate: text("payment_date").notNull(),
+  status: text("status").notNull().default("paid"), // paid, pending, partially_paid, refunded, adjusted
+  remarks: jsonb("remarks"),
+  collectedBy: text("collected_by").references(() => user.id),
+  ...timestamps
+});
+
+export const nursingStudentFeeFrequencies = sqliteTable("nursing_student_fee_frequencies", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull().references(() => nursingStudents.id, { onDelete: "cascade" }),
+  academicYear: text("academic_year").notNull(), // e.g. "2025-2026"
+  componentId: text("component_id"),
+  componentName: text("component_name").notNull(),
+  frequencyKey: text("frequency_key").notNull(), // "monthly", "quarterly", "semester", "annually", "one_time"
+  frequencyLabel: text("frequency_label"),
+  installmentCount: integer("installment_count").notNull().default(1),
+  baseAmount: numeric("base_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  installmentAmount: numeric("installment_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  lockedAt: timestamp("locked_at").notNull().defaultNow(),
+  ...timestamps
+}, (t) => [
+  uniqueIndex("nursing_student_fee_frequencies_unique_idx").on(t.studentId, t.academicYear, t.componentName),
+]);
+
+export const nursingAttendanceRecords = sqliteTable("nursing_attendance_records", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull().references(() => nursingStudents.id, { onDelete: "cascade" }),
+  batchId: integer("batch_id").notNull().references(() => nursingBatches.id, { onDelete: "cascade" }),
+  sessionDate: date("session_date").notNull(),
+  subjectName: text("subject_name"),
+  sessionType: text("session_type").notNull().default("theory"), // theory, practical
+  status: text("status").notNull().default("present"), // present, absent, late, leave
+  markedBy: text("marked_by").references(() => user.id),
+  ...timestamps
+});
+
+export const nursingAuditLogs = sqliteTable("nursing_audit_logs", {
+  id: serial("id").primaryKey(),
+  entity: text("entity").notNull(),
+  entityId: text("entity_id").notNull(),
+  action: text("action").notNull(),
+  changedBy: text("changed_by").references(() => user.id),
+  diff: jsonb("diff"),
+  changedAt: timestamp("changed_at").notNull().defaultNow()
+});
+
+export const nursingSubjects = sqliteTable("nursing_subjects", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id, { onDelete: "cascade" }),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  year: integer("year").notNull().default(1),
+  semester: integer("semester").notNull().default(1),
+  theoryMaxMarks: integer("theory_max_marks").notNull().default(75),
+  practicalMaxMarks: integer("practical_max_marks").notNull().default(25),
+  credits: integer("credits").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingAcademicSchedules = sqliteTable("nursing_academic_schedules", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull().references(() => nursingBatches.id, { onDelete: "cascade" }),
+  academicYear: text("academic_year").notNull(),
+  semester: integer("semester").notNull().default(1),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  feeDueDate: text("fee_due_date"),
+  feeDueOffsetDays: integer("fee_due_offset_days").notNull().default(15),
+  remarks: text("remarks"),
+  ...timestamps
+});
+
+// Nursing Relations Definitions
+export const nursingCoursesRelations = relations(nursingCourses, ({ many }) => ({
+  batches: many(nursingBatches),
+  applicants: many(nursingApplicants),
+  feeStructures: many(nursingFeeStructures),
+  subjects: many(nursingSubjects),
+}));
+
+export const nursingBatchesRelations = relations(nursingBatches, ({ one, many }) => ({
+  course: one(nursingCourses, { fields: [nursingBatches.courseId], references: [nursingCourses.id] }),
+  students: many(nursingStudents),
+  attendanceRecords: many(nursingAttendanceRecords),
+  academicSchedules: many(nursingAcademicSchedules),
+}));
+
+export const nursingAcademicSchedulesRelations = relations(nursingAcademicSchedules, ({ one }) => ({
+  batch: one(nursingBatches, { fields: [nursingAcademicSchedules.batchId], references: [nursingBatches.id] }),
+}));
+
+export const nursingApplicantsRelations = relations(nursingApplicants, ({ one, many }) => ({
+  course: one(nursingCourses, { fields: [nursingApplicants.courseId], references: [nursingCourses.id] }),
+  documents: many(nursingStudentDocuments),
+  student: one(nursingStudents, { fields: [nursingApplicants.id], references: [nursingStudents.applicantId] }),
+  feeTransactions: many(nursingFeeTransactions),
+}));
+
+export const nursingStudentsRelations = relations(nursingStudents, ({ one, many }) => ({
+  applicant: one(nursingApplicants, { fields: [nursingStudents.applicantId], references: [nursingApplicants.id] }),
+  batch: one(nursingBatches, { fields: [nursingStudents.batchId], references: [nursingBatches.id] }),
+  documents: many(nursingStudentDocuments),
+  feeTransactions: many(nursingFeeTransactions),
+  feeFrequencies: many(nursingStudentFeeFrequencies),
+  attendanceRecords: many(nursingAttendanceRecords),
+}));
+
+export const nursingStudentFeeFrequenciesRelations = relations(nursingStudentFeeFrequencies, ({ one }) => ({
+  student: one(nursingStudents, { fields: [nursingStudentFeeFrequencies.studentId], references: [nursingStudents.id] }),
+}));
+
+export const nursingStudentDocumentsRelations = relations(nursingStudentDocuments, ({ one }) => ({
+  applicant: one(nursingApplicants, { fields: [nursingStudentDocuments.applicantId], references: [nursingApplicants.id] }),
+  student: one(nursingStudents, { fields: [nursingStudentDocuments.studentId], references: [nursingStudents.id] }),
+  verifiedByUser: one(user, { fields: [nursingStudentDocuments.verifiedBy], references: [user.id] }),
+}));
+
+export const nursingFeeStructuresRelations = relations(nursingFeeStructures, ({ one, many }) => ({
+  course: one(nursingCourses, { fields: [nursingFeeStructures.courseId], references: [nursingCourses.id] }),
+  transactions: many(nursingFeeTransactions),
+}));
+
+export const nursingFeeTransactionsRelations = relations(nursingFeeTransactions, ({ one }) => ({
+  student: one(nursingStudents, { fields: [nursingFeeTransactions.studentId], references: [nursingStudents.id] }),
+  applicant: one(nursingApplicants, { fields: [nursingFeeTransactions.applicantId], references: [nursingApplicants.id] }),
+  feeStructure: one(nursingFeeStructures, { fields: [nursingFeeTransactions.feeStructureId], references: [nursingFeeStructures.id] }),
+  collectedByUser: one(user, { fields: [nursingFeeTransactions.collectedBy], references: [user.id] }),
+}));
+
+export const nursingAttendanceRecordsRelations = relations(nursingAttendanceRecords, ({ one }) => ({
+  student: one(nursingStudents, { fields: [nursingAttendanceRecords.studentId], references: [nursingStudents.id] }),
+  batch: one(nursingBatches, { fields: [nursingAttendanceRecords.batchId], references: [nursingBatches.id] }),
+  markedByUser: one(user, { fields: [nursingAttendanceRecords.markedBy], references: [user.id] }),
+}));
+
+export const nursingSubjectsRelations = relations(nursingSubjects, ({ one }) => ({
+  course: one(nursingCourses, { fields: [nursingSubjects.courseId], references: [nursingCourses.id] }),
+}));
+
+
+
+
