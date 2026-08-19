@@ -1,19 +1,19 @@
 import { Link, Outlet, useRouter, useLocation } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { 
-  Activity, 
-  LayoutDashboard, 
-  LogOut, 
-  Search, 
-  Settings, 
-  ShieldCheck, 
-  Users, 
-  ChevronDown, 
-  ChevronRight, 
-  ChevronLeft, 
-  CalendarClock, 
-  CalendarDays, 
-  Clock, 
+import {
+  Activity,
+  LayoutDashboard,
+  LogOut,
+  Search,
+  Settings,
+  ShieldCheck,
+  Users,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  CalendarClock,
+  CalendarDays,
+  Clock,
   Landmark,
   Receipt,
   Menu,
@@ -36,7 +36,8 @@ import {
   Layers,
   Scale,
   CalendarOff,
-  FileBarChart
+  FileBarChart,
+  GraduationCap
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -53,21 +54,21 @@ import { useUserPermissions } from "../lib/permissions";
 
 const getBreadcrumbs = (pathname: string) => {
   const items = [{ label: "Dashboard", to: "/" }];
-  
+
   if (pathname === "/" || pathname === "") {
     return items;
   }
-  
+
   if (pathname === "/settings" || pathname === "/settings/") {
     items.push({ label: "Settings", to: "/settings" });
     return items;
   }
-  
+
   if (pathname === "/hr" || pathname === "/hr/") {
     items.push({ label: "Employee Details", to: "/hr/staff-list" });
     return items;
   }
-  
+
   if (pathname.startsWith("/hr/")) {
     items.push({ label: "HR Management", to: "/hr/staff-list" });
     const sub = pathname.replace("/hr/", "");
@@ -87,14 +88,14 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "View Payslip", to: "/hr/view-payslip" });
     } else if (sub === "review-leave") {
       items.push({ label: "Review Leave", to: "/hr/review-leave" });
-    } else if(sub === "staff-list") {
+    } else if (sub === "staff-list") {
       items.push({ label: "Staff List", to: "/hr/staff-list" });
     } else if (sub === "off-day-requests") {
       items.push({ label: "Off-Day Requests", to: "/hr/off-day-requests" });
     }
     return items;
   }
-  
+
   if (pathname.startsWith("/masters/")) {
     items.push({ label: "Masters", to: "/masters/roles" });
     const sub = pathname.replace("/masters/", "");
@@ -164,33 +165,73 @@ const getBreadcrumbs = (pathname: string) => {
     }
     return items;
   }
-  
-    if (pathname.startsWith("/admin/")) {
-      items.push({ label: "Admin Console", to: "/admin/users" });
-      const sub = pathname.replace("/admin/", "");
-      if (sub === "users") {
-        items.push({ label: "User Management", to: "/admin/users" });
-      } else if (sub === "hospital") {
-        items.push({ label: "Hospital Profile", to: "/admin/hospital" });
-      } else if (sub === "payroll") {
-        items.push({ label: "Payroll statutory", to: "/admin/payroll" });
-      } else if (sub === "localization") {
-        items.push({ label: "Localization", to: "/admin/localization" });
-      }
-      return items;
+
+  if (pathname.startsWith("/admin/")) {
+    items.push({ label: "Admin Console", to: "/admin/users" });
+    const sub = pathname.replace("/admin/", "");
+    if (sub === "users") {
+      items.push({ label: "User Management", to: "/admin/users" });
+    } else if (sub === "hospital") {
+      items.push({ label: "Hospital Profile", to: "/admin/hospital" });
+    } else if (sub === "payroll") {
+      items.push({ label: "Payroll statutory", to: "/admin/payroll" });
+    } else if (sub === "localization") {
+      items.push({ label: "Localization", to: "/admin/localization" });
     }
-  
+    return items;
+  }
+
+  if (pathname === "/college") {
+    items.push({ label: "Nursing College Dashboard", to: "/college" });
+    return items;
+  }
+
+  if (pathname.startsWith("/college/")) {
+    items.push({ label: "Nursing College", to: "/college" });
+    const sub = pathname.replace("/college/", "");
+    if (sub === "courses") {
+      items.push({ label: "Masters", to: "/college/courses" });
+      items.push({ label: "Courses & Batches", to: "/college/courses" });
+    } else if (sub === "academic-schedules") {
+      items.push({ label: "Masters", to: "/college/academic-schedules" });
+      items.push({ label: "Academic Schedules", to: "/college/academic-schedules" });
+    } else if (sub === "subjects") {
+      items.push({ label: "Masters", to: "/college/subjects" });
+      items.push({ label: "Subject Master", to: "/college/subjects" });
+    } else if (sub === "fee-structures") {
+      items.push({ label: "Masters", to: "/college/fee-structures" });
+      items.push({ label: "Fee Structures Master", to: "/college/fee-structures" });
+    } else if (sub === "students" || sub.startsWith("students/")) {
+      items.push({ label: "Masters", to: "/college/students" });
+      items.push({ label: "Student Master List", to: "/college/students" });
+    } else if (sub.startsWith("student/")) {
+      items.push({ label: "Masters", to: "/college/students" });
+      items.push({ label: "Student Profile", to: "/college/students" });
+    } else if (sub === "admissions") {
+      items.push({ label: "Admissions Pipeline", to: "/college/admissions" });
+    } else if (sub === "fees") {
+      items.push({ label: "Fee Ledger & Collection", to: "/college/fees" });
+    } else if (sub === "fee-dues") {
+      items.push({ label: "Student Fee Due Tracking", to: "/college/fee-dues" });
+    } else if (sub === "attendance") {
+      items.push({ label: "Attendance Marking", to: "/college/attendance" });
+    }
+    return items;
+  }
+
   return items;
 };
 
 export function Shell() {
   const router = useRouter();
   const location = useLocation();
-  const search = useStore(uiStore, (state) => state.search);
+  // const search = useStore(uiStore, (state) => state.search);
   const session = authClient.useSession();
   const hospital = useHospitalSettings();
+  const [collegeOpen, setCollegeOpen] = React.useState(false);
+  const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
-  const [clinicalOpen, setClinicalOpen] = React.useState(false);
+  // const [clinicalOpen, setClinicalOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
   const [purchasesMastersOpen, setPurchasesMastersOpen] = React.useState(false);
@@ -198,18 +239,29 @@ export function Shell() {
   const [adminOpen, setAdminOpen] = React.useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  
-  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible } = useUserPermissions();
+
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege } = useUserPermissions();
   const displayName = currentStaff?.name || session.data?.user?.name;
 
   React.useEffect(() => {
+    if (location.pathname.startsWith("/college")) setCollegeOpen(true);
+    if (
+      location.pathname.startsWith("/college/courses") ||
+      location.pathname.startsWith("/college/academic-schedules") ||
+      location.pathname.startsWith("/college/subjects") ||
+      location.pathname.startsWith("/college/students") ||
+      location.pathname.startsWith("/college/student/") ||
+      location.pathname.startsWith("/college/fee-structures")
+    ) {
+      setCollegeMastersOpen(true);
+    }
     if (location.pathname.startsWith("/hr/")) setHrOpen(true);
     if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
     if (location.pathname.startsWith("/masters/")) setMastersOpen(true);
     if (location.pathname.startsWith("/admin/")) setAdminOpen(true);
   }, [location.pathname]);
-  
+
   // Notification system state and hooks
   const { notifications } = useStore(notificationsStore);
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -255,13 +307,13 @@ export function Shell() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Mobile Sidebar Overlay Backdrop */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden transition-opacity"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      <aside 
+      <aside
         className={cn(
           "fixed inset-y-0 left-0 border-r py-6 transition-all duration-300 z-50",
           // Desktop behavior
@@ -289,7 +341,7 @@ export function Shell() {
             {!isSidebarMinimized && (
               <div>
                 <p className="text-sm text-muted-foreground">Acme ERP</p>
-                <h1 className="text-xl font-semibold truncate max-w-[170px]" title={hospital.name}>
+                <h1 className="text-xl font-semibold truncate max-w-42" title={hospital.name}>
                   {hospital.name}
                 </h1>
               </div>
@@ -309,7 +361,7 @@ export function Shell() {
         </div>
 
         {/* Navigation */}
-        <nav 
+        <nav
           onClick={() => setIsMobileMenuOpen(false)}
           className={cn("space-y-1.5", isSidebarMinimized && "space-y-3 flex flex-col items-center")}
         >
@@ -344,6 +396,121 @@ export function Shell() {
                 )}
               </Link>
 
+              {/* Collapsible Nursing College group */}
+              {canViewCollege && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCollegeOpen(!collegeOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <GraduationCap size={18} />
+                      <span>Nursing College</span>
+                    </div>
+                    {collegeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {collegeOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/college" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Nursing College Dashboard
+                      </Link>
+                      <Link
+                        to={"/college/admissions" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Admissions Pipeline
+                      </Link>
+                      <Link
+                        to={"/college/fees" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Fee Ledger & Collection
+                      </Link>
+                      <Link
+                        to={"/college/fee-dues" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Fee Due Tracking
+                      </Link>
+                      <Link
+                        to={"/college/attendance" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Attendance Marking
+                      </Link>
+
+                      {/* Collapsible College Masters subgroup */}
+                      <div className="flex flex-col mt-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCollegeMastersOpen(!collegeMastersOpen);
+                          }}
+                          className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Layers size={13} className="text-teal-600 dark:text-teal-400" />
+                            <span>Masters</span>
+                          </span>
+                          {collegeMastersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {collegeMastersOpen && (
+                          <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
+                            <Link
+                              to={"/college/courses" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Courses & Batches
+                            </Link>
+                            <Link
+                              to={"/college/academic-schedules" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Academic Schedules
+                            </Link>
+                            <Link
+                              to={"/college/subjects" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Subject Master
+                            </Link>
+                            <Link
+                              to={"/college/students" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Student Master List
+                            </Link>
+                            <Link
+                              to={"/college/fee-structures" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Fee Structures Master
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Collapsible HR group */}
               <div className="flex flex-col">
                 <button
@@ -359,7 +526,7 @@ export function Shell() {
                   </div>
                   {hrOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
-                
+
                 {hrOpen && (
                   <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                     <Link
@@ -556,7 +723,7 @@ export function Shell() {
                     >
                       Bills & Invoices
                     </Link>
-                    
+
                     {/* Collapsible Purchases Masters subgroup */}
                     <div className="flex flex-col">
                       <button
@@ -607,7 +774,7 @@ export function Shell() {
               </div>
 
               {/* Collapsible Masters group */}
-              {(session.data?.user.role === "admin"||session.data?.user.role === "hr") && (
+              {(session.data?.user.role === "admin" || session.data?.user.role === "hr") && (
                 <div className="flex flex-col">
                   <button
                     onClick={(e) => {
@@ -622,7 +789,7 @@ export function Shell() {
                     </div>
                     {mastersOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
-                  
+
                   {mastersOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                       <Link
@@ -697,7 +864,7 @@ export function Shell() {
                     </div>
                     {adminOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
-                  
+
                   {adminOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                       <Link
@@ -739,7 +906,7 @@ export function Shell() {
                   )}
                 </div>
               )}
-              
+
               <Link
                 to="/settings"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -760,7 +927,7 @@ export function Shell() {
               >
                 <LayoutDashboard size={20} />
               </Link>
-              
+
               <Link
                 to="/communication"
                 className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -774,7 +941,18 @@ export function Shell() {
                   </span>
                 )}
               </Link>
-              
+
+              {canViewCollege && (
+                <Link
+                  to={"/college" as any}
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Nursing College"
+                >
+                  <GraduationCap size={20} />
+                </Link>
+              )}
+
               <div className="w-8 h-px bg-border my-2" />
 
               <Link
@@ -935,7 +1113,7 @@ export function Shell() {
               {session.data?.user.role === "admin" && (
                 <>
                   <div className="w-8 h-px bg-border my-2" />
-                  
+
                   <Link
                     to="/masters/roles"
                     className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -1044,7 +1222,7 @@ export function Shell() {
 
 
       </aside>
-      
+
       <main className={cn("transition-all duration-300", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")}>
         <header className="sticky top-0 z-20 border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

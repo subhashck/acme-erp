@@ -15,7 +15,7 @@ docker exec -t acme-erp-db pg_restore -U <db_user> -d <db_name> --clean --if-exi
 
 
 ### copy backup to windows
-scp -P 20033 deploy@148.113.8.82:/home/deploy/backup/backup_20260806_085435.sql.gz D:\deploy\backups
+scp -P 20033 deploy@148.113.8.82:/home/deploy/backup/backup_20260817_050457.sql.gz D:\deploy\backups
 
 ### drop and recreate empty database
 docker exec -i acme-erp-db sh -c "dropdb -U postgres acme_erp && createdb -U postgres acme_erp"
