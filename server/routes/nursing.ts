@@ -373,9 +373,34 @@ export const nursingRoutes = new Hono<AuthEnv>()
         name: nursingApplicants.name,
         email: nursingApplicants.email,
         phone: nursingApplicants.phone,
+        aadharNo: nursingApplicants.aadharNo,
         gender: nursingApplicants.gender,
         dob: nursingApplicants.dob,
         address: nursingApplicants.address,
+        // Parents Information
+        fatherName: nursingApplicants.fatherName,
+        fatherPhone: nursingApplicants.fatherPhone,
+        fatherAadharNo: nursingApplicants.fatherAadharNo,
+        fatherOccupation: nursingApplicants.fatherOccupation,
+        fatherOrganization: nursingApplicants.fatherOrganization,
+        fatherAnnualIncome: nursingApplicants.fatherAnnualIncome,
+        motherName: nursingApplicants.motherName,
+        motherPhone: nursingApplicants.motherPhone,
+        motherAadharNo: nursingApplicants.motherAadharNo,
+        motherOccupation: nursingApplicants.motherOccupation,
+        motherOrganization: nursingApplicants.motherOrganization,
+        motherAnnualIncome: nursingApplicants.motherAnnualIncome,
+        // Addresses
+        presentAddress: nursingApplicants.presentAddress,
+        presentDistrict: nursingApplicants.presentDistrict,
+        presentPincode: nursingApplicants.presentPincode,
+        presentState: nursingApplicants.presentState,
+        permanentAddress: nursingApplicants.permanentAddress,
+        permanentDistrict: nursingApplicants.permanentDistrict,
+        permanentPincode: nursingApplicants.permanentPincode,
+        permanentState: nursingApplicants.permanentState,
+        // Academic History
+        academicHistory: nursingApplicants.academicHistory,
         entranceMeritScore: nursingApplicants.entranceMeritScore,
         quotaCategory: nursingApplicants.quotaCategory,
         status: nursingApplicants.status,
@@ -403,7 +428,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
         (r.name || "").toLowerCase().includes(search) ||
         (r.applicationNo || "").toLowerCase().includes(search) ||
         (r.email || "").toLowerCase().includes(search) ||
-        (r.phone || "").toLowerCase().includes(search)
+        (r.phone || "").toLowerCase().includes(search) ||
+        (r.aadharNo || "").toLowerCase().includes(search) ||
+        (r.fatherName || "").toLowerCase().includes(search) ||
+        (r.fatherPhone || "").toLowerCase().includes(search) ||
+        (r.motherPhone || "").toLowerCase().includes(search)
       );
     }
 
@@ -438,10 +467,35 @@ export const nursingRoutes = new Hono<AuthEnv>()
         academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 4}`; }),
         name: z.string().min(1, "Applicant name is required"),
         email: z.string().optional().or(z.literal("")).nullable(),
-        phone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Phone number must be exactly 10 digits"),
+        phone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Student contact number must be exactly 10 digits"),
+        aadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 12, "Student Aadhar number must be exactly 12 digits"),
         gender: z.string().default("Female"),
         dob: z.string().optional().nullable(),
         address: z.string().optional().nullable(),
+        // Parents Information
+        fatherName: z.string().optional().nullable(),
+        fatherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Father's contact number must be exactly 10 digits"),
+        fatherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 12, "Father's Aadhar number must be exactly 12 digits"),
+        fatherOccupation: z.string().optional().nullable(),
+        fatherOrganization: z.string().optional().nullable(),
+        fatherAnnualIncome: z.coerce.number().optional().nullable(),
+        motherName: z.string().optional().nullable(),
+        motherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Mother's contact number must be exactly 10 digits"),
+        motherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 12, "Mother's Aadhar number must be exactly 12 digits"),
+        motherOccupation: z.string().optional().nullable(),
+        motherOrganization: z.string().optional().nullable(),
+        motherAnnualIncome: z.coerce.number().optional().nullable(),
+        // Addresses
+        presentAddress: z.string().optional().nullable(),
+        presentDistrict: z.string().optional().nullable(),
+        presentPincode: z.string().optional().nullable(),
+        presentState: z.string().optional().nullable(),
+        permanentAddress: z.string().optional().nullable(),
+        permanentDistrict: z.string().optional().nullable(),
+        permanentPincode: z.string().optional().nullable(),
+        permanentState: z.string().optional().nullable(),
+        // Exams History
+        academicHistory: z.any().optional().nullable(),
         entranceMeritScore: z.coerce
           .number({ message: "Entrance / Merit Score must be a valid number" })
           .min(0, "Entrance / Merit Score (%) must be at least 0%")
@@ -465,12 +519,34 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .values({
         courseId: input.courseId,
         academicYear: input.academicYear,
-        name: input.name,
+        name: input.name.trim().toUpperCase(),
         email: input.email || "",
-        phone: input.phone || "",
+        phone: input.phone,
+        aadharNo: input.aadharNo,
         gender: input.gender,
         dob: input.dob || null,
-        address: input.address || null,
+        address: input.address || input.presentAddress || null,
+        fatherName: input.fatherName || null,
+        fatherPhone: input.fatherPhone,
+        fatherAadharNo: input.fatherAadharNo,
+        fatherOccupation: input.fatherOccupation || null,
+        fatherOrganization: input.fatherOrganization || null,
+        fatherAnnualIncome: input.fatherAnnualIncome != null ? String(input.fatherAnnualIncome) : null,
+        motherName: input.motherName || null,
+        motherPhone: input.motherPhone,
+        motherAadharNo: input.motherAadharNo,
+        motherOccupation: input.motherOccupation || null,
+        motherOrganization: input.motherOrganization || null,
+        motherAnnualIncome: input.motherAnnualIncome != null ? String(input.motherAnnualIncome) : null,
+        presentAddress: input.presentAddress || null,
+        presentDistrict: input.presentDistrict || null,
+        presentPincode: input.presentPincode || null,
+        presentState: input.presentState || null,
+        permanentAddress: input.permanentAddress || null,
+        permanentDistrict: input.permanentDistrict || null,
+        permanentPincode: input.permanentPincode || null,
+        permanentState: input.permanentState || null,
+        academicHistory: input.academicHistory || null,
         entranceMeritScore: meritScore,
         quotaCategory: input.quotaCategory,
         notes: input.notes || null,
@@ -494,10 +570,12 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
   .put("/nursing/applicants/:id/status", async (c) => {
     const id = Number(c.req.param("id"));
+    if (!id || isNaN(id)) return c.json({ error: "Invalid applicant ID" }, 400);
+
     const { status, notes } = await jsonBody(
       c,
       z.object({
-        status: z.enum(["pending", "approved", "rejected"]),
+        status: z.enum(["pending", "approved", "rejected", "converted"]),
         notes: z.string().optional().nullable(),
       })
     );
@@ -532,10 +610,35 @@ export const nursingRoutes = new Hono<AuthEnv>()
         academicYear: z.string().min(1).optional(),
         name: z.string().min(1, "Applicant name is required").optional(),
         email: z.string().optional().or(z.literal("")).nullable(),
-        phone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 10, "Phone number must be exactly 10 digits").optional(),
+        phone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 10, "Student contact number must be exactly 10 digits").optional(),
+        aadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 12, "Student Aadhar number must be exactly 12 digits").optional(),
         gender: z.string().optional(),
         dob: z.string().optional().nullable(),
         address: z.string().optional().nullable(),
+        // Parents Information
+        fatherName: z.string().optional().nullable(),
+        fatherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 10, "Father's contact number must be exactly 10 digits").optional(),
+        fatherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 12, "Father's Aadhar number must be exactly 12 digits").optional(),
+        fatherOccupation: z.string().optional().nullable(),
+        fatherOrganization: z.string().optional().nullable(),
+        fatherAnnualIncome: z.coerce.number().optional().nullable(),
+        motherName: z.string().optional().nullable(),
+        motherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 10, "Mother's contact number must be exactly 10 digits").optional(),
+        motherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 12, "Mother's Aadhar number must be exactly 12 digits").optional(),
+        motherOccupation: z.string().optional().nullable(),
+        motherOrganization: z.string().optional().nullable(),
+        motherAnnualIncome: z.coerce.number().optional().nullable(),
+        // Addresses
+        presentAddress: z.string().optional().nullable(),
+        presentDistrict: z.string().optional().nullable(),
+        presentPincode: z.string().optional().nullable(),
+        presentState: z.string().optional().nullable(),
+        permanentAddress: z.string().optional().nullable(),
+        permanentDistrict: z.string().optional().nullable(),
+        permanentPincode: z.string().optional().nullable(),
+        permanentState: z.string().optional().nullable(),
+        // Exams History
+        academicHistory: z.any().optional().nullable(),
         entranceMeritScore: z.coerce
           .number({ message: "Entrance / Merit Score must be a valid number" })
           .min(0, "Entrance / Merit Score (%) must be at least 0%")
@@ -551,12 +654,34 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
     if (input.courseId !== undefined) updatePayload.courseId = input.courseId;
     if (input.academicYear !== undefined) updatePayload.academicYear = input.academicYear;
-    if (input.name !== undefined) updatePayload.name = input.name;
+    if (input.name !== undefined) updatePayload.name = input.name.trim().toUpperCase();
     if (input.email !== undefined) updatePayload.email = input.email || "";
     if (input.phone !== undefined) updatePayload.phone = input.phone || "";
+    if (input.aadharNo !== undefined) updatePayload.aadharNo = input.aadharNo ? input.aadharNo.trim().toUpperCase() : null;
     if (input.gender !== undefined) updatePayload.gender = input.gender;
     if (input.dob !== undefined) updatePayload.dob = input.dob || null;
     if (input.address !== undefined) updatePayload.address = input.address || null;
+    if (input.fatherName !== undefined) updatePayload.fatherName = input.fatherName || null;
+    if (input.fatherPhone !== undefined) updatePayload.fatherPhone = input.fatherPhone ? input.fatherPhone.trim() : null;
+    if (input.fatherAadharNo !== undefined) updatePayload.fatherAadharNo = input.fatherAadharNo ? input.fatherAadharNo.trim().toUpperCase() : null;
+    if (input.fatherOccupation !== undefined) updatePayload.fatherOccupation = input.fatherOccupation || null;
+    if (input.fatherOrganization !== undefined) updatePayload.fatherOrganization = input.fatherOrganization || null;
+    if (input.fatherAnnualIncome !== undefined) updatePayload.fatherAnnualIncome = input.fatherAnnualIncome != null ? String(input.fatherAnnualIncome) : null;
+    if (input.motherName !== undefined) updatePayload.motherName = input.motherName || null;
+    if (input.motherPhone !== undefined) updatePayload.motherPhone = input.motherPhone ? input.motherPhone.trim() : null;
+    if (input.motherAadharNo !== undefined) updatePayload.motherAadharNo = input.motherAadharNo ? input.motherAadharNo.trim().toUpperCase() : null;
+    if (input.motherOccupation !== undefined) updatePayload.motherOccupation = input.motherOccupation || null;
+    if (input.motherOrganization !== undefined) updatePayload.motherOrganization = input.motherOrganization || null;
+    if (input.motherAnnualIncome !== undefined) updatePayload.motherAnnualIncome = input.motherAnnualIncome != null ? String(input.motherAnnualIncome) : null;
+    if (input.presentAddress !== undefined) updatePayload.presentAddress = input.presentAddress || null;
+    if (input.presentDistrict !== undefined) updatePayload.presentDistrict = input.presentDistrict || null;
+    if (input.presentPincode !== undefined) updatePayload.presentPincode = input.presentPincode || null;
+    if (input.presentState !== undefined) updatePayload.presentState = input.presentState || null;
+    if (input.permanentAddress !== undefined) updatePayload.permanentAddress = input.permanentAddress || null;
+    if (input.permanentDistrict !== undefined) updatePayload.permanentDistrict = input.permanentDistrict || null;
+    if (input.permanentPincode !== undefined) updatePayload.permanentPincode = input.permanentPincode || null;
+    if (input.permanentState !== undefined) updatePayload.permanentState = input.permanentState || null;
+    if (input.academicHistory !== undefined) updatePayload.academicHistory = input.academicHistory || null;
     if (input.entranceMeritScore !== undefined) {
       updatePayload.entranceMeritScore = !isNaN(input.entranceMeritScore)
         ? input.entranceMeritScore.toFixed(2)
@@ -787,12 +912,34 @@ export const nursingRoutes = new Hono<AuthEnv>()
         name: applicant.name,
         email: applicant.email,
         phone: applicant.phone,
+        aadharNo: applicant.aadharNo,
         gender: applicant.gender,
         dob: applicant.dob,
         address: applicant.address,
-        guardianName: guardianName ?? null,
-        guardianPhone: guardianPhone ?? null,
-        guardianRelation: guardianRelation ?? null,
+        fatherName: applicant.fatherName,
+        fatherPhone: applicant.fatherPhone,
+        fatherAadharNo: applicant.fatherAadharNo,
+        fatherOccupation: applicant.fatherOccupation,
+        fatherOrganization: applicant.fatherOrganization,
+        fatherAnnualIncome: applicant.fatherAnnualIncome,
+        motherName: applicant.motherName,
+        motherPhone: applicant.motherPhone,
+        motherAadharNo: applicant.motherAadharNo,
+        motherOccupation: applicant.motherOccupation,
+        motherOrganization: applicant.motherOrganization,
+        motherAnnualIncome: applicant.motherAnnualIncome,
+        presentAddress: applicant.presentAddress,
+        presentDistrict: applicant.presentDistrict,
+        presentPincode: applicant.presentPincode,
+        presentState: applicant.presentState,
+        permanentAddress: applicant.permanentAddress,
+        permanentDistrict: applicant.permanentDistrict,
+        permanentPincode: applicant.permanentPincode,
+        permanentState: applicant.permanentState,
+        academicHistory: applicant.academicHistory,
+        guardianName: guardianName ?? (applicant.fatherName || applicant.motherName || null),
+        guardianPhone: guardianPhone ?? (applicant.fatherPhone || applicant.motherPhone || applicant.phone || null),
+        guardianRelation: guardianRelation ?? "Parent",
         status: "active",
         admissionDate,
       })
@@ -848,13 +995,36 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const rows = await db
       .select({
         id: nursingStudents.id,
+        applicantId: nursingStudents.applicantId,
         enrollmentNo: nursingStudents.enrollmentNo,
         name: nursingStudents.name,
         email: nursingStudents.email,
         phone: nursingStudents.phone,
+        aadharNo: nursingStudents.aadharNo,
         gender: nursingStudents.gender,
         dob: nursingStudents.dob,
         address: nursingStudents.address,
+        fatherName: nursingStudents.fatherName,
+        fatherPhone: nursingStudents.fatherPhone,
+        fatherAadharNo: nursingStudents.fatherAadharNo,
+        fatherOccupation: nursingStudents.fatherOccupation,
+        fatherOrganization: nursingStudents.fatherOrganization,
+        fatherAnnualIncome: nursingStudents.fatherAnnualIncome,
+        motherName: nursingStudents.motherName,
+        motherPhone: nursingStudents.motherPhone,
+        motherAadharNo: nursingStudents.motherAadharNo,
+        motherOccupation: nursingStudents.motherOccupation,
+        motherOrganization: nursingStudents.motherOrganization,
+        motherAnnualIncome: nursingStudents.motherAnnualIncome,
+        presentAddress: nursingStudents.presentAddress,
+        presentDistrict: nursingStudents.presentDistrict,
+        presentPincode: nursingStudents.presentPincode,
+        presentState: nursingStudents.presentState,
+        permanentAddress: nursingStudents.permanentAddress,
+        permanentDistrict: nursingStudents.permanentDistrict,
+        permanentPincode: nursingStudents.permanentPincode,
+        permanentState: nursingStudents.permanentState,
+        academicHistory: nursingStudents.academicHistory,
         guardianName: nursingStudents.guardianName,
         guardianPhone: nursingStudents.guardianPhone,
         guardianRelation: nursingStudents.guardianRelation,
@@ -865,10 +1035,17 @@ export const nursingRoutes = new Hono<AuthEnv>()
         courseId: nursingBatches.courseId,
         courseName: nursingCourses.name,
         admissionDate: nursingStudents.admissionDate,
+        applicationNo: nursingApplicants.applicationNo,
+        quotaCategory: nursingApplicants.quotaCategory,
+        entranceMeritScore: nursingApplicants.entranceMeritScore,
+        applicantNotes: nursingApplicants.notes,
+        seatBookingAmount: nursingApplicants.seatBookingAmount,
+        seatBookingStatus: nursingApplicants.seatBookingStatus,
       })
       .from(nursingStudents)
       .leftJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
       .leftJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
+      .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
       .orderBy(desc(nursingStudents.id))
       .execute();
 
@@ -883,7 +1060,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
         (r.name || "").toLowerCase().includes(search) ||
         (r.enrollmentNo || "").toLowerCase().includes(search) ||
         (r.email || "").toLowerCase().includes(search) ||
-        (r.phone || "").toLowerCase().includes(search)
+        (r.phone || "").toLowerCase().includes(search) ||
+        (r.aadharNo || "").toLowerCase().includes(search) ||
+        (r.applicationNo || "").toLowerCase().includes(search) ||
+        (r.fatherName || "").toLowerCase().includes(search) ||
+        (r.motherName || "").toLowerCase().includes(search)
       );
     }
 
@@ -922,22 +1103,53 @@ export const nursingRoutes = new Hono<AuthEnv>()
         name: nursingStudents.name,
         email: nursingStudents.email,
         phone: nursingStudents.phone,
+        aadharNo: nursingStudents.aadharNo,
         gender: nursingStudents.gender,
         dob: nursingStudents.dob,
         address: nursingStudents.address,
+        fatherName: nursingStudents.fatherName,
+        fatherPhone: nursingStudents.fatherPhone,
+        fatherAadharNo: nursingStudents.fatherAadharNo,
+        fatherOccupation: nursingStudents.fatherOccupation,
+        fatherOrganization: nursingStudents.fatherOrganization,
+        fatherAnnualIncome: nursingStudents.fatherAnnualIncome,
+        motherName: nursingStudents.motherName,
+        motherPhone: nursingStudents.motherPhone,
+        motherAadharNo: nursingStudents.motherAadharNo,
+        motherOccupation: nursingStudents.motherOccupation,
+        motherOrganization: nursingStudents.motherOrganization,
+        motherAnnualIncome: nursingStudents.motherAnnualIncome,
+        presentAddress: nursingStudents.presentAddress,
+        presentDistrict: nursingStudents.presentDistrict,
+        presentPincode: nursingStudents.presentPincode,
+        presentState: nursingStudents.presentState,
+        permanentAddress: nursingStudents.permanentAddress,
+        permanentDistrict: nursingStudents.permanentDistrict,
+        permanentPincode: nursingStudents.permanentPincode,
+        permanentState: nursingStudents.permanentState,
+        academicHistory: nursingStudents.academicHistory,
         guardianName: nursingStudents.guardianName,
         guardianPhone: nursingStudents.guardianPhone,
         guardianRelation: nursingStudents.guardianRelation,
         status: nursingStudents.status,
         admissionDate: nursingStudents.admissionDate,
+        createdAt: nursingStudents.createdAt,
+        updatedAt: nursingStudents.updatedAt,
         batchYear: nursingBatches.academicYear,
         batchSection: nursingBatches.section,
+        courseId: nursingBatches.courseId,
         courseName: nursingCourses.name,
+        courseCode: nursingCourses.code,
+        applicationNo: nursingApplicants.applicationNo,
+        entranceMeritScore: nursingApplicants.entranceMeritScore,
+        quotaCategory: nursingApplicants.quotaCategory,
+        applicantNotes: nursingApplicants.notes,
         seatBookingAmount: nursingApplicants.seatBookingAmount,
         seatBookingStatus: nursingApplicants.seatBookingStatus,
         seatBookingReceiptNo: nursingApplicants.seatBookingReceiptNo,
         seatBookingDate: nursingApplicants.seatBookingDate,
         seatBookingPaymentMode: nursingApplicants.seatBookingPaymentMode,
+        seatBookingNotes: nursingApplicants.seatBookingNotes,
       })
       .from(nursingStudents)
       .leftJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
@@ -977,11 +1189,33 @@ export const nursingRoutes = new Hono<AuthEnv>()
       c,
       z.object({
         name: z.string().min(1).optional(),
-        email: z.string().email().optional(),
+        email: z.string().optional().nullable().transform((v) => v?.trim() || ""),
         phone: z.string().min(1).optional(),
+        aadharNo: z.string().nullable().optional(),
         gender: z.string().optional(),
         dob: z.string().nullable().optional(),
         address: z.string().nullable().optional(),
+        fatherName: z.string().nullable().optional(),
+        fatherPhone: z.string().nullable().optional(),
+        fatherAadharNo: z.string().nullable().optional(),
+        fatherOccupation: z.string().nullable().optional(),
+        fatherOrganization: z.string().nullable().optional(),
+        fatherAnnualIncome: z.union([z.string(), z.number()]).nullable().optional(),
+        motherName: z.string().nullable().optional(),
+        motherPhone: z.string().nullable().optional(),
+        motherAadharNo: z.string().nullable().optional(),
+        motherOccupation: z.string().nullable().optional(),
+        motherOrganization: z.string().nullable().optional(),
+        motherAnnualIncome: z.union([z.string(), z.number()]).nullable().optional(),
+        presentAddress: z.string().nullable().optional(),
+        presentDistrict: z.string().nullable().optional(),
+        presentPincode: z.string().nullable().optional(),
+        presentState: z.string().nullable().optional(),
+        permanentAddress: z.string().nullable().optional(),
+        permanentDistrict: z.string().nullable().optional(),
+        permanentPincode: z.string().nullable().optional(),
+        permanentState: z.string().nullable().optional(),
+        academicHistory: z.any().optional(),
         guardianName: z.string().nullable().optional(),
         guardianPhone: z.string().nullable().optional(),
         guardianRelation: z.string().nullable().optional(),
@@ -989,6 +1223,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
         status: z.enum(["active", "promoted", "graduated", "dropped", "transferred"]).optional(),
         admissionDate: z.string().nullable().optional(),
         enrollmentNo: z.string().min(1).optional(),
+        quotaCategory: z.enum(["general", "reserved", "management"]).optional(),
+        entranceMeritScore: z.union([z.string(), z.number()]).optional(),
+        applicantNotes: z.string().nullable().optional(),
       })
     );
 
@@ -1021,15 +1258,31 @@ export const nursingRoutes = new Hono<AuthEnv>()
       input.enrollmentNo = trimmed;
     }
 
+    const { quotaCategory, entranceMeritScore, applicantNotes, ...studentFields } = input;
+
     const [updated] = await db
       .update(nursingStudents)
       .set({
-        ...input,
+        ...studentFields,
         updatedAt: new Date(),
       })
       .where(eq(nursingStudents.id, id))
       .returning()
       .execute();
+
+    if (existing.applicantId && (quotaCategory !== undefined || entranceMeritScore !== undefined || applicantNotes !== undefined)) {
+      const applicantUpdates: any = {};
+      if (quotaCategory !== undefined) applicantUpdates.quotaCategory = quotaCategory;
+      if (entranceMeritScore !== undefined) applicantUpdates.entranceMeritScore = String(entranceMeritScore);
+      if (applicantNotes !== undefined) applicantUpdates.notes = applicantNotes;
+      applicantUpdates.updatedAt = new Date();
+
+      await db
+        .update(nursingApplicants)
+        .set(applicantUpdates)
+        .where(eq(nursingApplicants.id, existing.applicantId))
+        .execute();
+    }
 
     return c.json(updated);
   })

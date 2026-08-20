@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray, Control } from "react-hook-form";
 import {
   UserCheck,
   Plus,
@@ -10,28 +10,35 @@ import {
   X,
   ArrowRight,
   UserPlus,
-  Filter,
   Search,
   Calendar as CalendarIcon,
   Eye,
   Edit,
-  Save,
   Tag,
   Download,
   Printer,
-  Receipt,
-  DollarSign,
-  Info,
   RotateCcw,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  GraduationCap,
+  User,
+  Users,
+  MapPin,
+  BookOpen,
+  Award,
+  FileText,
+  Building2,
+  Briefcase,
+  IndianRupee,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Field } from "@/components/Field";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/utils/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -43,9 +50,9 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const entranceMeritScoreSchema = z.coerce
-  .number({ message: "Merit score must be a valid number" })
-  .min(0, "Entrance / Merit Score (%) must be at least 0%")
-  .max(100, "Entrance / Merit Score (%) cannot exceed 100%");
+  .number({ message: "Entrance / Merit score must be a valid number" })
+  .min(0, "Score must be a valid percentage between 0% and 100%")
+  .max(100, "Score must be a valid percentage between 0% and 100%");
 
 import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 
@@ -57,7 +64,18 @@ export const Route = createFileRoute("/_authenticated/college/admissions")({
   ),
 });
 
-interface Applicant {
+export interface ExamDetail {
+  exam: "10th" | "11th" | "12th" | string;
+  instituteName?: string;
+  instituteAddress?: string;
+  board: string;
+  year: string;
+  subjects: string;
+  subjectScores?: string;
+  percentage: number | string;
+}
+
+export interface Applicant {
   id: number;
   applicationNo: string;
   courseId: number;
@@ -66,9 +84,34 @@ interface Applicant {
   name: string;
   email: string;
   phone: string;
+  aadharNo?: string | null;
   gender: string;
   dob?: string;
   address?: string;
+  // Parents Information
+  fatherName?: string | null;
+  fatherPhone?: string | null;
+  fatherAadharNo?: string | null;
+  fatherOccupation?: string | null;
+  fatherOrganization?: string | null;
+  fatherAnnualIncome?: string | number | null;
+  motherName?: string | null;
+  motherPhone?: string | null;
+  motherAadharNo?: string | null;
+  motherOccupation?: string | null;
+  motherOrganization?: string | null;
+  motherAnnualIncome?: string | number | null;
+  // Addresses
+  presentAddress?: string | null;
+  presentDistrict?: string | null;
+  presentPincode?: string | null;
+  presentState?: string | null;
+  permanentAddress?: string | null;
+  permanentDistrict?: string | null;
+  permanentPincode?: string | null;
+  permanentState?: string | null;
+  // Academic & Exam History (10th, 11th, 12th)
+  academicHistory?: ExamDetail[] | null;
   entranceMeritScore: number;
   quotaCategory: "general" | "reserved" | "management";
   status: "pending" | "approved" | "rejected" | "converted";
@@ -80,6 +123,42 @@ interface Applicant {
   seatBookingNotes?: string | null;
   notes?: string;
   createdAt: string;
+}
+
+export interface ApplicantFormData {
+  batchId?: number;
+  courseId: number;
+  academicYear: string;
+  name: string;
+  email: string;
+  phone: string;
+  aadharNo: string;
+  gender: string;
+  dob: string;
+  fatherName: string;
+  fatherPhone: string;
+  fatherAadharNo: string;
+  fatherOccupation: string;
+  fatherOrganization: string;
+  fatherAnnualIncome: string | number;
+  motherName: string;
+  motherPhone: string;
+  motherAadharNo: string;
+  motherOccupation: string;
+  motherOrganization: string;
+  motherAnnualIncome: string | number;
+  presentAddress: string;
+  presentDistrict: string;
+  presentPincode: string;
+  presentState: string;
+  permanentAddress: string;
+  permanentDistrict: string;
+  permanentPincode: string;
+  permanentState: string;
+  academicHistory: ExamDetail[];
+  entranceMeritScore: number;
+  quotaCategory: "general" | "reserved" | "management";
+  notes: string;
 }
 
 const buildSeatBookingReceiptDoc = (applicant: Applicant): jsPDF => {
@@ -205,9 +284,956 @@ const downloadSeatBookingPDF = (applicant: Applicant) => {
   doc.save(`Seat-Booking-Receipt-${applicant.applicationNo || "receipt"}.pdf`);
 };
 
+const defaultAcademicHistory: ExamDetail[] = [
+  { exam: "10th", instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
+  { exam: "11th", instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
+  { exam: "12th", instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
+];
+
+export function ApplicantFormPanels({
+  form,
+  courses,
+  batches = [],
+}: {
+  form: any;
+  courses: any[];
+  batches?: any[];
+}) {
+  const [sameAddress, setSameAddress] = React.useState(false);
+
+  const handleSameAddressChange = (checked: boolean) => {
+    setSameAddress(checked);
+    if (checked) {
+      form.setValue("permanentAddress", form.getValues("presentAddress") || "");
+      form.setValue("permanentDistrict", form.getValues("presentDistrict") || "");
+      form.setValue("permanentPincode", form.getValues("presentPincode") || "");
+      form.setValue("permanentState", form.getValues("presentState") || "");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Panel 1: Academic Program, Batch & Quota Selection */}
+      <Card className="border shadow-xs">
+        <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <GraduationCap className="h-4 w-4 text-teal-600" />
+            1. Academic Program & Quota Allocation
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+            {/* Academic Batch SELECT from master */}
+            <div>
+              <Label className="text-xs font-medium text-foreground block mb-1">Academic Batch</Label>
+              <Controller
+                control={form.control}
+                name="batchId"
+                render={({ field }) => {
+                  const selectedCourseId = Number(form.watch("courseId") || 0);
+                  const filteredBatches = selectedCourseId > 0
+                    ? batches.filter((b) => Number(b.courseId) === selectedCourseId)
+                    : batches;
+
+                  return (
+                    <select
+                      className="w-full border border-input rounded-md p-2 bg-background text-sm font-medium transition-colors"
+                      value={field.value || 0}
+                      onChange={(e) => {
+                        const bId = Number(e.target.value);
+                        field.onChange(bId);
+                        if (bId > 0) {
+                          const matched = batches.find((b) => b.id === bId);
+                          if (matched) {
+                            if (matched.courseId) {
+                              form.setValue("courseId", Number(matched.courseId));
+                              form.clearErrors("courseId");
+                            }
+                            if (matched.academicYear) {
+                              form.setValue("academicYear", matched.academicYear.toUpperCase());
+                              form.clearErrors("academicYear");
+                            }
+                          }
+                        }
+                      }}
+                    >
+                      <option value={0}>-- Select Academic Batch --</option>
+                      {filteredBatches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name ? `${b.name} (${b.academicYear || ""})` : `${b.courseName || "Batch"} - ${b.academicYear || ""}`}
+                        </option>
+                      ))}
+                    </select>
+                  );
+                }}
+              />
+            </div>
+
+            {/* Target Program / Course */}
+            <div>
+              <Label htmlFor="courseId" className="text-xs font-medium text-foreground block mb-1">Target Program / Course *</Label>
+              <Controller
+                control={form.control}
+                name="courseId"
+                render={({ field, fieldState }) => (
+                  <div>
+                    <select
+                      className={cn(
+                        "w-full border rounded-md p-2 bg-background text-sm transition-colors",
+                        fieldState.error ? "border-red-500 focus:ring-red-500 bg-red-50/20 dark:bg-red-950/20" : "border-input"
+                      )}
+                      value={field.value || 0}
+                      onChange={(e) => {
+                        const cId = Number(e.target.value);
+                        field.onChange(cId);
+                        if (cId > 0) form.clearErrors("courseId");
+                      }}
+                    >
+                      <option value={0}>-- Select Program Course --</option>
+                      {courses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.code})
+                        </option>
+                      ))}
+                    </select>
+                    {fieldState.error && (
+                      <p className="text-xs text-red-500 font-medium mt-1">{fieldState.error.message}</p>
+                    )}
+                  </div>
+                )}
+              />
+            </div>
+
+            {/* Academic Session (Derived from current year, editable) */}
+            <Controller
+              control={form.control}
+              name="academicYear"
+              render={({ field, fieldState }) => (
+                <Field
+                  label="Academic Session *"
+                  placeholder="e.g. 2026-2030"
+                  {...field}
+                  value={field.value || ""}
+                  className="uppercase"
+                  onChange={(e: any) => {
+                    const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                    field.onChange(val.toUpperCase());
+                  }}
+                  error={fieldState.error?.message}
+                />
+              )}
+            />
+
+            {/* Quota Category */}
+            <Controller
+              control={form.control}
+              name="quotaCategory"
+              render={({ field }) => (
+                <div>
+                  <Label className="text-xs font-medium text-foreground block mb-1">Quota Category</Label>
+                  <select
+                    className="w-full border border-input rounded-md p-2 bg-background text-sm font-medium"
+                    value={field.value || "general"}
+                    onChange={(e) => field.onChange(e.target.value)}
+                  >
+                    <option value="general">General Quota</option>
+                    <option value="reserved">Reserved Quota</option>
+                    <option value="management">Management Quota</option>
+                  </select>
+                </div>
+              )}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <Controller
+              control={form.control}
+              name="entranceMeritScore"
+              render={({ field, fieldState }) => (
+                <Field
+                  label="Entrance / Merit Score (%) *"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  placeholder="e.g. 85.50"
+                  {...field}
+                  value={field.value !== undefined && field.value !== null ? field.value : ""}
+                  onChange={(e: any) => {
+                    const rawVal = e?.target ? e.target.value : e;
+                    if (rawVal === "") {
+                      field.onChange("");
+                      form.setError("entranceMeritScore", {
+                        type: "manual",
+                        message: "Entrance / Merit Score is required",
+                      });
+                      return;
+                    }
+                    const num = Number(rawVal);
+                    field.onChange(num);
+                    if (isNaN(num) || num < 0 || num > 100) {
+                      form.setError("entranceMeritScore", {
+                        type: "manual",
+                        message: "Score must be a valid percentage between 0% and 100%",
+                      });
+                    } else {
+                      form.clearErrors("entranceMeritScore");
+                    }
+                  }}
+                  error={fieldState.error?.message}
+                />
+              )}
+            />
+            <div className="text-xs text-muted-foreground flex items-center p-3 rounded-md bg-muted/40 border">
+              Provisional admission merit percentage (0.00% – 100.00%) used for quota ranking and seat allocation.
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Panel 2: Applicant Personal Details */}
+      <Card className="border shadow-xs">
+        <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <User className="h-4 w-4 text-teal-600" />
+            2. Applicant Personal Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          <Controller
+            control={form.control}
+            name="name"
+            render={({ field, fieldState }) => (
+              <Field
+                label="Full Applicant Name (Uppercase) *"
+                placeholder="e.g. ANANYA SHARMA"
+                {...field}
+                value={field.value || ""}
+                className="uppercase"
+                onChange={(e: any) => {
+                  const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                  field.onChange(val.toUpperCase());
+                }}
+                error={fieldState.error?.message}
+              />
+            )}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <Controller
+              control={form.control}
+              name="dob"
+              render={({ field, fieldState }) => {
+                let parsedDate: Date | undefined = undefined;
+                if (field.value) {
+                  const d = new Date(field.value);
+                  if (!isNaN(d.getTime())) parsedDate = d;
+                }
+
+                return (
+                  <div>
+                    <label className="text-xs font-medium text-foreground block mb-1">Date of Birth</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "w-full justify-start text-left font-normal h-9 border-input bg-background text-sm",
+                            !field.value && "text-muted-foreground",
+                            fieldState.error && "border-red-500"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4 text-teal-600 shrink-0" />
+                          {parsedDate ? format(parsedDate, "PPP") : <span>Pick date of birth</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0 z-[99999]" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={parsedDate}
+                          onSelect={(date) => {
+                            if (date) {
+                              const yyyy = date.getFullYear();
+                              const mm = String(date.getMonth() + 1).padStart(2, "0");
+                              const dd = String(date.getDate()).padStart(2, "0");
+                              field.onChange(`${yyyy}-${mm}-${dd}`);
+                            } else {
+                              field.onChange("");
+                            }
+                          }}
+                          captionLayout="dropdown"
+                          startMonth={new Date(1970, 0)}
+                          endMonth={new Date(new Date().getFullYear(), 11)}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    {fieldState.error && (
+                      <p className="text-xs text-red-500 font-medium mt-1">{fieldState.error.message}</p>
+                    )}
+                  </div>
+                );
+              }}
+            />
+
+            <Controller
+              control={form.control}
+              name="gender"
+              render={({ field }) => (
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Gender</label>
+                  <select
+                    className="w-full border border-input rounded-md p-2 bg-background text-sm font-medium h-9"
+                    value={field.value || "Female"}
+                    onChange={(e) => field.onChange(e.target.value)}
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              )}
+            />
+
+            <Controller
+              control={form.control}
+              name="phone"
+              render={({ field, fieldState }) => (
+                <Field
+                  label="Student Contact No *"
+                  placeholder="10-digit number"
+                  {...field}
+                  value={field.value || ""}
+                  onChange={(e: any) => {
+                    const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                    field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                  }}
+                  error={fieldState.error?.message}
+                />
+              )}
+            />
+
+            <Controller
+              control={form.control}
+              name="aadharNo"
+              render={({ field, fieldState }) => (
+                <Field
+                  label="Student Aadhar No *"
+                  placeholder="12-digit Aadhar"
+                  {...field}
+                  value={field.value || ""}
+                  className="uppercase"
+                  maxLength={12}
+                  onChange={(e: any) => {
+                    const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                    field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                  }}
+                  error={fieldState.error?.message}
+                />
+              )}
+            />
+
+            <Controller
+              control={form.control}
+              name="email"
+              render={({ field, fieldState }) => (
+                <Field label="Email Address" type="email" placeholder="applicant@example.com" {...field} error={fieldState.error?.message} />
+              )}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Panel 3: Parents & Family Details */}
+      <Card className="border shadow-xs">
+        <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <Users className="h-4 w-4 text-teal-600" />
+            3. Parents Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          {/* Father's Info */}
+          <div className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 text-teal-600" /> Father's Details
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Controller
+                control={form.control}
+                name="fatherName"
+                render={({ field }) => (
+                  <Field
+                    label="Father's Full Name"
+                    placeholder="e.g. RAJESH SHARMA"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="fatherPhone"
+                render={({ field, fieldState }) => (
+                  <Field
+                    label="Father's Contact No *"
+                    placeholder="10-digit number"
+                    {...field}
+                    value={field.value || ""}
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                    }}
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="fatherAadharNo"
+                render={({ field, fieldState }) => (
+                  <Field
+                    label="Father's Aadhar No *"
+                    placeholder="12-digit Aadhar"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    maxLength={12}
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                    }}
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="fatherOccupation"
+                render={({ field }) => (
+                  <Field
+                    label="Occupation"
+                    placeholder="e.g. GOVERNMENT SERVICE / BUSINESS"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="fatherOrganization"
+                render={({ field }) => (
+                  <Field
+                    label="Organization / Employer"
+                    placeholder="e.g. HEALTH DEPARTMENT"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="fatherAnnualIncome"
+                render={({ field }) => (
+                  <Field label="Annual Income (₹)" type="number" placeholder="e.g. 600000" {...field} value={field.value || ""} />
+                )}
+              />
+            </div>
+          </div>
+
+          {/* Mother's Info */}
+          <div className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5 text-teal-600" /> Mother's Details
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <Controller
+                control={form.control}
+                name="motherName"
+                render={({ field }) => (
+                  <Field
+                    label="Mother's Full Name"
+                    placeholder="e.g. SUNITA SHARMA"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="motherPhone"
+                render={({ field, fieldState }) => (
+                  <Field
+                    label="Mother's Contact No *"
+                    placeholder="10-digit number"
+                    {...field}
+                    value={field.value || ""}
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                    }}
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="motherAadharNo"
+                render={({ field, fieldState }) => (
+                  <Field
+                    label="Mother's Aadhar No *"
+                    placeholder="12-digit Aadhar"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    maxLength={12}
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                    }}
+                    error={fieldState.error?.message}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="motherOccupation"
+                render={({ field }) => (
+                  <Field
+                    label="Occupation"
+                    placeholder="e.g. TEACHER / HOMEMAKER"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="motherOrganization"
+                render={({ field }) => (
+                  <Field
+                    label="Organization / Employer"
+                    placeholder="e.g. PUBLIC SCHOOL"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                  />
+                )}
+              />
+              <Controller
+                control={form.control}
+                name="motherAnnualIncome"
+                render={({ field }) => (
+                  <Field label="Annual Income (₹)" type="number" placeholder="e.g. 450000" {...field} value={field.value || ""} />
+                )}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Panel 4: Residential Addresses */}
+      <Card className="border shadow-xs">
+        <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <MapPin className="h-4 w-4 text-teal-600" />
+            4. Residential Addresses (Present & Permanent)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+            {/* Present Address */}
+            <div className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
+              <div className="flex items-center justify-between h-6">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-teal-600" /> Present Address
+                </h4>
+              </div>
+              <div>
+                <Label>Address (Street / House / Landmark) *</Label>
+                <Controller
+                  control={form.control}
+                  name="presentAddress"
+                  render={({ field }) => (
+                    <Textarea
+                      placeholder="ENTER FULL PRESENT RESIDENTIAL ADDRESS..."
+                      rows={3}
+                      className="resize-none bg-background uppercase"
+                      {...field}
+                      value={field.value || ""}
+                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    />
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Controller
+                  control={form.control}
+                  name="presentDistrict"
+                  render={({ field }) => (
+                    <Field
+                      label="District"
+                      placeholder="e.g. IMPHAL WEST"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name="presentPincode"
+                  render={({ field }) => (
+                    <Field
+                      label="Pin Code"
+                      placeholder="e.g. 795001"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name="presentState"
+                  render={({ field }) => (
+                    <Field
+                      label="State"
+                      placeholder="e.g. MANIPUR"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Permanent Address */}
+            <div className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
+              <div className="flex items-center justify-between h-6">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-teal-600" /> Permanent Address
+                </h4>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    id="same-present-address"
+                    checked={sameAddress}
+                    onChange={(e) => handleSameAddressChange(e.target.checked)}
+                    className="h-3.5 w-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                  />
+                  <label htmlFor="same-present-address" className="text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                    Same as Present
+                  </label>
+                </div>
+              </div>
+              <div>
+                <Label>Address (Street / House / Landmark)</Label>
+                <Controller
+                  control={form.control}
+                  name="permanentAddress"
+                  render={({ field }) => (
+                    <Textarea
+                      placeholder="ENTER FULL PERMANENT ADDRESS..."
+                      rows={3}
+                      className="resize-none bg-background uppercase"
+                      {...field}
+                      value={field.value || ""}
+                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    />
+                  )}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Controller
+                  control={form.control}
+                  name="permanentDistrict"
+                  render={({ field }) => (
+                    <Field
+                      label="District"
+                      placeholder="e.g. IMPHAL WEST"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name="permanentPincode"
+                  render={({ field }) => (
+                    <Field
+                      label="Pin Code"
+                      placeholder="e.g. 795001"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name="permanentState"
+                  render={({ field }) => (
+                    <Field
+                      label="State"
+                      placeholder="e.g. MANIPUR"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Panel 5: Examination History (Class 10, 11, 12) */}
+      <Card className="border shadow-xs">
+        <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <BookOpen className="h-4 w-4 text-teal-600" />
+            5. Academic & Qualifying Examination History (Class 10, 11, 12)
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Capture Board/University, Passing Year, Multiline Subjects Taken, and Percentage Scored in each subject.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4 space-y-4">
+          {[
+            { index: 0, title: "Class 10 / Matriculation / SSLC", defaultExam: "10th" },
+            { index: 1, title: "Class 11 / Higher Secondary Year 1", defaultExam: "11th" },
+            { index: 2, title: "Class 12 / Higher Secondary (10+2)", defaultExam: "12th" },
+          ].map((examItem) => (
+            <div key={examItem.index} className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
+              <div className="flex items-center justify-between border-b pb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                  <Award className="h-3.5 w-3.5 text-teal-600" /> {examItem.title}
+                </h4>
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                  {examItem.defaultExam}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Controller
+                  control={form.control}
+                  name={`academicHistory.${examItem.index}.instituteName`}
+                  render={({ field }) => (
+                    <Field
+                      label="School / College / Institute Name"
+                      placeholder="e.g. ST. JOSEPH HIGHER SECONDARY SCHOOL"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name={`academicHistory.${examItem.index}.instituteAddress`}
+                  render={({ field }) => (
+                    <Field
+                      label="Institute Address / Location"
+                      placeholder="e.g. IMPHAL, MANIPUR"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Controller
+                  control={form.control}
+                  name={`academicHistory.${examItem.index}.board`}
+                  render={({ field }) => (
+                    <Field
+                      label="University / Board"
+                      placeholder="e.g. CBSE / STATE BOARD / COHSEM"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name={`academicHistory.${examItem.index}.year`}
+                  render={({ field }) => (
+                    <Field
+                      label="Year of Passing"
+                      placeholder="e.g. 2022"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+                <Controller
+                  control={form.control}
+                  name={`academicHistory.${examItem.index}.percentage`}
+                  render={({ field }) => (
+                    <Field
+                      label="Aggregate / Total %"
+                      placeholder="e.g. 86.4%"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                    />
+                  )}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label>Subjects Taken (Multiline Input)</Label>
+                  <Controller
+                    control={form.control}
+                    name={`academicHistory.${examItem.index}.subjects`}
+                    render={({ field }) => (
+                      <Textarea
+                        placeholder="ENTER SUBJECTS (MULTILINE)&#10;E.G.&#10;ENGLISH&#10;PHYSICS&#10;CHEMISTRY&#10;BIOLOGY&#10;MATHEMATICS"
+                        rows={3}
+                        className="font-mono text-xs resize-none uppercase"
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                      />
+                    )}
+                  />
+                </div>
+                <div>
+                  <Label>Percentage / Marks Scored in Each Subject</Label>
+                  <Controller
+                    control={form.control}
+                    name={`academicHistory.${examItem.index}.subjectScores`}
+                    render={({ field }) => (
+                      <Textarea
+                        placeholder="ENTER SUBJECT-WISE SCORES&#10;E.G.&#10;ENGLISH: 85%&#10;PHYSICS: 90%&#10;CHEMISTRY: 88%&#10;BIOLOGY: 92%"
+                        rows={3}
+                        className="font-mono text-xs resize-none uppercase"
+                        {...field}
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Panel 6: Admission Remarks & Verification Notes */}
+      <Card className="border shadow-xs">
+        <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <FileText className="h-4 w-4 text-teal-600" />
+            6. Admission Notes & Remarks
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <Controller
+            control={form.control}
+            name="notes"
+            render={({ field }) => (
+              <Textarea
+                placeholder="ENTER ANY ADMISSION REMARKS, SPECIAL QUOTAS, REFERENCE DETAILS, OR VERIFICATION NOTES..."
+                rows={2}
+                className="resize-none uppercase"
+                {...field}
+                value={field.value || ""}
+                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+              />
+            )}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function AdmissionsPage() {
   const queryClient = useQueryClient();
-  const [step, setStep] = React.useState<1 | 2 | 3>(1);
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [courseFilter, setCourseFilter] = React.useState<number>(0);
   const [quotaFilter, setQuotaFilter] = React.useState<string>("all");
@@ -287,20 +1313,52 @@ function AdmissionsPage() {
   const currentYear = new Date().getFullYear();
   const defaultAcademicYear = `${currentYear}-${currentYear + 4}`;
 
-  const intakeForm = useForm({
-    defaultValues: {
-      courseId: 0,
-      academicYear: defaultAcademicYear,
-      name: "",
-      email: "",
-      phone: "",
-      gender: "Female",
-      dob: "",
-      address: "",
-      entranceMeritScore: 0,
-      quotaCategory: "general" as "general" | "reserved" | "management",
-      notes: "",
-    },
+  const defaultApplicantFormValues: ApplicantFormData = {
+    batchId: 0,
+    courseId: 0,
+    academicYear: defaultAcademicYear,
+    name: "",
+    email: "",
+    phone: "",
+    aadharNo: "",
+    gender: "Female",
+    dob: "",
+    fatherName: "",
+    fatherPhone: "",
+    fatherAadharNo: "",
+    fatherOccupation: "",
+    fatherOrganization: "",
+    fatherAnnualIncome: "",
+    motherName: "",
+    motherPhone: "",
+    motherAadharNo: "",
+    motherOccupation: "",
+    motherOrganization: "",
+    motherAnnualIncome: "",
+    presentAddress: "",
+    presentDistrict: "",
+    presentPincode: "",
+    presentState: "",
+    permanentAddress: "",
+    permanentDistrict: "",
+    permanentPincode: "",
+    permanentState: "",
+    academicHistory: [
+      { exam: "10th", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
+      { exam: "11th", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
+      { exam: "12th", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
+    ],
+    entranceMeritScore: 0,
+    quotaCategory: "general",
+    notes: "",
+  };
+
+  const intakeForm = useForm<ApplicantFormData>({
+    defaultValues: defaultApplicantFormValues,
+  });
+
+  const profileForm = useForm<ApplicantFormData>({
+    defaultValues: defaultApplicantFormValues,
   });
 
   const convertForm = useForm<{
@@ -381,34 +1439,6 @@ function AdmissionsPage() {
     }
   };
 
-  const profileForm = useForm<{
-    courseId: number;
-    academicYear: string;
-    name: string;
-    email: string;
-    phone: string;
-    gender: string;
-    dob: string;
-    address: string;
-    entranceMeritScore: number;
-    quotaCategory: "general" | "reserved" | "management";
-    notes: string;
-  }>({
-    defaultValues: {
-      courseId: 0,
-      academicYear: defaultAcademicYear,
-      name: "",
-      email: "",
-      phone: "",
-      gender: "Female",
-      dob: "",
-      address: "",
-      entranceMeritScore: 0,
-      quotaCategory: "general",
-      notes: "",
-    },
-  });
-
   const createApplicantMutation = useMutation({
     mutationFn: async (values: any) => {
       const res = await fetch("/api/nursing/applicants", {
@@ -427,8 +1457,7 @@ function AdmissionsPage() {
       queryClient.invalidateQueries({ queryKey: ["nursing", "applicants"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       setIntakeDialogOpen(false);
-      setStep(1);
-      intakeForm.reset();
+      intakeForm.reset(defaultApplicantFormValues);
     },
     onError: (err: any) => {
       toast.error(err.message);
@@ -532,7 +1561,7 @@ function AdmissionsPage() {
     notes: string;
   }>({
     defaultValues: {
-      amount: 25000,
+      amount: 3000,
       paymentMode: "cash",
       paymentDate: format(new Date(), "yyyy-MM-dd"),
       notes: "",
@@ -573,20 +1602,158 @@ function AdmissionsPage() {
   const handleOpenProfile = (applicant: Applicant) => {
     setViewApplicant(applicant);
     setIsEditingProfile(false);
+
+    let parsedHistory = applicant.academicHistory;
+    if (typeof parsedHistory === "string") {
+      try {
+        parsedHistory = JSON.parse(parsedHistory);
+      } catch (e) {
+        parsedHistory = defaultAcademicHistory;
+      }
+    }
+    if (!Array.isArray(parsedHistory) || parsedHistory.length === 0) {
+      parsedHistory = defaultAcademicHistory;
+    } else {
+      const exams = ["10th", "11th", "12th"];
+      parsedHistory = exams.map((ex) => {
+        const found = (parsedHistory as ExamDetail[]).find((p) => p.exam === ex);
+        return found || { exam: ex, instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" };
+      });
+    }
+
+    const matchedBatch = batches.find(
+      (b) => b.courseId === applicant.courseId && b.academicYear === applicant.academicYear
+    );
+
     profileForm.reset({
+      batchId: matchedBatch ? matchedBatch.id : 0,
       courseId: applicant.courseId,
       academicYear: applicant.academicYear || defaultAcademicYear,
       name: applicant.name || "",
       email: applicant.email || "",
       phone: applicant.phone || "",
+      aadharNo: applicant.aadharNo || "",
       gender: applicant.gender || "Female",
       dob: applicant.dob || "",
-      address: applicant.address || "",
+      fatherName: applicant.fatherName || "",
+      fatherPhone: applicant.fatherPhone || "",
+      fatherAadharNo: applicant.fatherAadharNo || "",
+      fatherOccupation: applicant.fatherOccupation || "",
+      fatherOrganization: applicant.fatherOrganization || "",
+      fatherAnnualIncome: applicant.fatherAnnualIncome != null ? String(applicant.fatherAnnualIncome) : "",
+      motherName: applicant.motherName || "",
+      motherPhone: applicant.motherPhone || "",
+      motherAadharNo: applicant.motherAadharNo || "",
+      motherOccupation: applicant.motherOccupation || "",
+      motherOrganization: applicant.motherOrganization || "",
+      motherAnnualIncome: applicant.motherAnnualIncome != null ? String(applicant.motherAnnualIncome) : "",
+      presentAddress: applicant.presentAddress || applicant.address || "",
+      presentDistrict: applicant.presentDistrict || "",
+      presentPincode: applicant.presentPincode || "",
+      presentState: applicant.presentState || "",
+      permanentAddress: applicant.permanentAddress || "",
+      permanentDistrict: applicant.permanentDistrict || "",
+      permanentPincode: applicant.permanentPincode || "",
+      permanentState: applicant.permanentState || "",
+      academicHistory: parsedHistory,
       entranceMeritScore: applicant.entranceMeritScore ?? 0,
       quotaCategory: applicant.quotaCategory || "general",
       notes: applicant.notes || "",
     });
     setProfileDialogOpen(true);
+  };
+
+  const sanitizeApplicantData = (data: any) => {
+    const sanitized: any = { ...data };
+    const textKeys = [
+      "name",
+      "academicYear",
+      "aadharNo",
+      "fatherName",
+      "fatherPhone",
+      "fatherAadharNo",
+      "fatherOccupation",
+      "fatherOrganization",
+      "motherName",
+      "motherPhone",
+      "motherAadharNo",
+      "motherOccupation",
+      "motherOrganization",
+      "presentAddress",
+      "presentDistrict",
+      "presentPincode",
+      "presentState",
+      "permanentAddress",
+      "permanentDistrict",
+      "permanentPincode",
+      "permanentState",
+      "notes",
+    ];
+    for (const k of textKeys) {
+      if (typeof sanitized[k] === "string") {
+        sanitized[k] = sanitized[k].trim().toUpperCase();
+      }
+    }
+    if (Array.isArray(sanitized.academicHistory)) {
+      sanitized.academicHistory = sanitized.academicHistory.map((h: any) => ({
+        ...h,
+        instituteName: typeof h.instituteName === "string" ? h.instituteName.trim().toUpperCase() : h.instituteName,
+        instituteAddress: typeof h.instituteAddress === "string" ? h.instituteAddress.trim().toUpperCase() : h.instituteAddress,
+        board: typeof h.board === "string" ? h.board.trim().toUpperCase() : h.board,
+        year: typeof h.year === "string" ? h.year.trim().toUpperCase() : h.year,
+        percentage: typeof h.percentage === "string" ? h.percentage.trim().toUpperCase() : h.percentage,
+        subjects: typeof h.subjects === "string" ? h.subjects.trim().toUpperCase() : h.subjects,
+        subjectScores: typeof h.subjectScores === "string" ? h.subjectScores.trim().toUpperCase() : h.subjectScores,
+      }));
+    }
+    return sanitized;
+  };
+
+  const validateApplicantMandatoryFields = (form: any, data: any): boolean => {
+    let isValid = true;
+
+    if (!data.name || !data.name.trim()) {
+      form.setError("name", { type: "manual", message: "Full applicant name is required" });
+      isValid = false;
+    }
+
+    const studentPhone = data.phone ? String(data.phone).replace(/\D/g, "") : "";
+    if (studentPhone.length !== 10) {
+      form.setError("phone", { type: "manual", message: "Student contact number is required (10 digits)" });
+      isValid = false;
+    }
+
+    const studentAadhar = data.aadharNo ? String(data.aadharNo).replace(/\D/g, "") : "";
+    if (studentAadhar.length !== 12) {
+      form.setError("aadharNo", { type: "manual", message: "Student Aadhar number is required (12 digits)" });
+      isValid = false;
+    }
+
+    const fatherPhone = data.fatherPhone ? String(data.fatherPhone).replace(/\D/g, "") : "";
+    if (fatherPhone.length !== 10) {
+      form.setError("fatherPhone", { type: "manual", message: "Father's contact number is required (10 digits)" });
+      isValid = false;
+    }
+
+    const fatherAadhar = data.fatherAadharNo ? String(data.fatherAadharNo).replace(/\D/g, "") : "";
+    if (fatherAadhar.length !== 12) {
+      form.setError("fatherAadharNo", { type: "manual", message: "Father's Aadhar number is required (12 digits)" });
+      isValid = false;
+    }
+
+    const motherPhone = data.motherPhone ? String(data.motherPhone).replace(/\D/g, "") : "";
+    if (motherPhone.length !== 10) {
+      form.setError("motherPhone", { type: "manual", message: "Mother's contact number is required (10 digits)" });
+      isValid = false;
+    }
+
+    const motherAadhar = data.motherAadharNo ? String(data.motherAadharNo).replace(/\D/g, "") : "";
+    if (motherAadhar.length !== 12) {
+      form.setError("motherAadharNo", { type: "manual", message: "Mother's Aadhar number is required (12 digits)" });
+      isValid = false;
+    }
+
+    return isValid;
   };
 
   const onProfileSubmit = (data: any) => {
@@ -596,28 +1763,24 @@ function AdmissionsPage() {
       toast.error("Please select a valid target program course");
       return;
     }
-    if (!data.name || !data.name.trim()) {
-      profileForm.setError("name", { type: "manual", message: "Full applicant name is required" });
-      toast.error("Please enter applicant full name");
-      return;
-    }
-    const phoneDigits = data.phone ? String(data.phone).replace(/\D/g, "") : "";
-    if (phoneDigits.length !== 10) {
-      profileForm.setError("phone", { type: "manual", message: "Phone number must be exactly 10 digits" });
-      toast.error("Phone number must be exactly 10 digits");
+
+    const isMandatoryValid = validateApplicantMandatoryFields(profileForm, data);
+    if (!isMandatoryValid) {
+      toast.error("Please fill in all mandatory contact numbers (10 digits) and Aadhar numbers (12 digits)");
       return;
     }
 
     const meritScoreResult = entranceMeritScoreSchema.safeParse(data.entranceMeritScore);
     if (!meritScoreResult.success) {
-      const errMsg = meritScoreResult.error.issues[0]?.message || "Entrance / Merit score must be between 0 and 100%";
+      const errMsg = meritScoreResult.error.issues[0]?.message || "Score must be a valid percentage between 0% and 100%";
       profileForm.setError("entranceMeritScore", { type: "manual", message: errMsg });
       toast.error(errMsg);
       return;
     }
 
+    const payload = sanitizeApplicantData(data);
     updateApplicantMutation.mutate({
-      ...data,
+      ...payload,
       courseId,
       entranceMeritScore: meritScoreResult.data,
     });
@@ -630,28 +1793,24 @@ function AdmissionsPage() {
       toast.error("Please select a valid target program course");
       return;
     }
-    if (!data.name || !data.name.trim()) {
-      intakeForm.setError("name", { type: "manual", message: "Full applicant name is required" });
-      toast.error("Please enter applicant full name");
-      return;
-    }
-    const phoneDigits = data.phone ? String(data.phone).replace(/\D/g, "") : "";
-    if (phoneDigits.length !== 10) {
-      intakeForm.setError("phone", { type: "manual", message: "Phone number must be exactly 10 digits" });
-      toast.error("Phone number must be exactly 10 digits");
+
+    const isMandatoryValid = validateApplicantMandatoryFields(intakeForm, data);
+    if (!isMandatoryValid) {
+      toast.error("Please fill in all mandatory contact numbers (10 digits) and Aadhar numbers (12 digits)");
       return;
     }
 
     const meritScoreResult = entranceMeritScoreSchema.safeParse(data.entranceMeritScore);
     if (!meritScoreResult.success) {
-      const errMsg = meritScoreResult.error.issues[0]?.message || "Entrance / Merit score must be between 0 and 100%";
+      const errMsg = meritScoreResult.error.issues[0]?.message || "Score must be a valid percentage between 0% and 100%";
       intakeForm.setError("entranceMeritScore", { type: "manual", message: errMsg });
       toast.error(errMsg);
       return;
     }
 
+    const payload = sanitizeApplicantData(data);
     createApplicantMutation.mutate({
-      ...data,
+      ...payload,
       courseId,
       entranceMeritScore: meritScoreResult.data,
     });
@@ -667,65 +1826,9 @@ function AdmissionsPage() {
     convertToStudentMutation.mutate({
       ...data,
       batchId,
-      enrollmentNo: data.enrollmentNo ? data.enrollmentNo.trim() : undefined,
+      enrollmentNo: data.enrollmentNo ? data.enrollmentNo.trim().toUpperCase() : undefined,
+      guardianName: data.guardianName ? data.guardianName.trim().toUpperCase() : undefined,
     });
-  };
-
-  const handleNextStep = () => {
-    let hasError = false;
-    if (step === 1) {
-      const courseId = Number(intakeForm.getValues("courseId"));
-      const name = intakeForm.getValues("name");
-      const phone = intakeForm.getValues("phone");
-      const email = intakeForm.getValues("email");
-
-      if (!courseId || courseId <= 0) {
-        intakeForm.setError("courseId", { type: "manual", message: "Please select a target program course" });
-        hasError = true;
-      } else {
-        intakeForm.clearErrors("courseId");
-      }
-
-      if (!name || !name.trim()) {
-        intakeForm.setError("name", { type: "manual", message: "Full applicant name is required" });
-        hasError = true;
-      } else {
-        intakeForm.clearErrors("name");
-      }
-
-      const phoneDigits = phone ? String(phone).replace(/\D/g, "") : "";
-      if (phoneDigits.length !== 10) {
-        intakeForm.setError("phone", { type: "manual", message: "Phone number must be exactly 10 digits" });
-        hasError = true;
-      } else {
-        intakeForm.clearErrors("phone");
-      }
-
-      if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        intakeForm.setError("email", { type: "manual", message: "Please enter a valid email address" });
-        hasError = true;
-      } else {
-        intakeForm.clearErrors("email");
-      }
-    }
-
-    if (step === 2) {
-      const meritScoreResult = entranceMeritScoreSchema.safeParse(intakeForm.getValues("entranceMeritScore"));
-      if (!meritScoreResult.success) {
-        const errMsg = meritScoreResult.error.issues[0]?.message || "Enter a valid score percentage (0 - 100%)";
-        intakeForm.setError("entranceMeritScore", { type: "manual", message: errMsg });
-        hasError = true;
-      } else {
-        intakeForm.clearErrors("entranceMeritScore");
-      }
-    }
-
-    if (hasError) {
-      toast.error("Please fill out all highlighted mandatory fields before proceeding");
-      return;
-    }
-
-    setStep((s) => Math.min(s + 1, 3) as any);
   };
 
   return (
@@ -741,11 +1844,10 @@ function AdmissionsPage() {
           </p>
         </div>
 
-        {/* New Applicant Multi-step Modal */}
+        {/* New Applicant Multi-Panel Modal */}
         <Dialog open={intakeDialogOpen} onOpenChange={(open) => {
           setIntakeDialogOpen(open);
           if (open) {
-            setStep(1);
             intakeForm.clearErrors();
           }
         }}>
@@ -755,18 +1857,18 @@ function AdmissionsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent
-            className="w-full max-w-[95vw] sm:max-w-lg md:max-w-xl max-h-[90vh] overflow-y-auto p-4 sm:p-6"
+            className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6"
             onInteractOutside={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => e.preventDefault()}
           >
             <DialogHeader className="flex flex-row items-center justify-between border-b pb-3 space-y-0 gap-2">
               <div>
-                <DialogTitle className="text-lg font-bold">Applicant Intake Form</DialogTitle>
-                <DialogDescription className="text-xs">
-                  Step {step} of 3 • Register new candidate for provisional admission
+                <DialogTitle className="text-lg font-bold text-foreground">New Applicant Registration</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Complete candidate admission intake details across all sections below.
                 </DialogDescription>
               </div>
-              <Button
+              {/* <Button
                 type="button"
                 variant="ghost"
                 size="sm"
@@ -775,235 +1877,23 @@ function AdmissionsPage() {
               >
                 <X size={16} />
                 <span className="sr-only">Close</span>
-              </Button>
+              </Button> */}
             </DialogHeader>
 
-            <form onSubmit={intakeForm.handleSubmit(onIntakeSubmit)} className="space-y-4 py-1">
-              {step === 1 && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Step 1: Personal Details</h4>
-                  <div>
-                    <label className="text-sm font-medium text-foreground block mb-1">Target Course *</label>
-                    <Controller
-                      control={intakeForm.control}
-                      name="courseId"
-                      render={({ field, fieldState }) => (
-                        <div>
-                          <select
-                            className={cn(
-                              "w-full border rounded-md p-2 bg-background text-sm transition-colors",
-                              fieldState.error ? "border-red-500 focus:ring-red-500 bg-red-50/20 dark:bg-red-950/20" : "border-input"
-                            )}
-                            value={field.value}
-                            onChange={(e) => {
-                              field.onChange(Number(e.target.value));
-                              if (Number(e.target.value) > 0) intakeForm.clearErrors("courseId");
-                            }}
-                          >
-                            <option value={0}>-- Select Course --</option>
-                            {courses.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.code} - {c.name}
-                              </option>
-                            ))}
-                          </select>
-                          {fieldState.error && (
-                            <p className="text-xs text-red-500 font-medium mt-1">{fieldState.error.message}</p>
-                          )}
-                        </div>
-                      )}
-                    />
-                  </div>
+            <form onSubmit={intakeForm.handleSubmit(onIntakeSubmit)} className="space-y-4 py-2">
+              <ApplicantFormPanels
+                form={intakeForm}
+                courses={courses}
+                batches={batches}
+              />
 
-                  <Controller
-                    control={intakeForm.control}
-                    name="name"
-                    render={({ field, fieldState }) => (
-                      <Field label="Full Applicant Name *" placeholder="e.g. Ananya Sharma" {...field} error={fieldState.error?.message} />
-                    )}
-                  />
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Controller
-                      control={intakeForm.control}
-                      name="email"
-                      render={({ field, fieldState }) => (
-                        <Field label="Email Address" type="email" placeholder="ananya@example.com" {...field} error={fieldState.error?.message} />
-                      )}
-                    />
-                    <Controller
-                      control={intakeForm.control}
-                      name="phone"
-                      render={({ field, fieldState }) => (
-                        <Field label="Phone Number *" placeholder="9876543210" {...field} error={fieldState.error?.message} />
-                      )}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Controller
-                      control={intakeForm.control}
-                      name="gender"
-                      render={({ field }) => (
-                        <div>
-                          <label className="text-sm font-medium text-foreground block mb-1">Gender</label>
-                          <select
-                            className="w-full border border-input rounded-md p-2 bg-background text-sm font-medium"
-                            value={field.value}
-                            onChange={(e) => field.onChange(e.target.value)}
-                          >
-                            <option value="Female">Female</option>
-                            <option value="Male">Male</option>
-                            <option value="Other">Other</option>
-                          </select>
-                        </div>
-                      )}
-                    />
-
-                    <Controller
-                      control={intakeForm.control}
-                      name="dob"
-                      render={({ field, fieldState }) => {
-                        let parsedDate: Date | undefined = undefined;
-                        if (field.value) {
-                          const d = new Date(field.value);
-                          if (!isNaN(d.getTime())) parsedDate = d;
-                        }
-
-                        return (
-                          <div>
-                            <label className="text-sm font-medium text-foreground block mb-1">Date of Birth</label>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className={cn(
-                                    "w-full justify-start text-left font-normal h-9 border-input bg-background text-sm",
-                                    !field.value && "text-muted-foreground",
-                                    fieldState.error && "border-red-500"
-                                  )}
-                                >
-                                  <CalendarIcon className="mr-2 h-4 w-4 text-teal-600 shrink-0" />
-                                  {parsedDate ? (
-                                    format(parsedDate, "PPP")
-                                  ) : (
-                                    <span>Pick date of birth</span>
-                                  )}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0 z-[99999]" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={parsedDate}
-                                  onSelect={(date) => {
-                                    if (date) {
-                                      const yyyy = date.getFullYear();
-                                      const mm = String(date.getMonth() + 1).padStart(2, "0");
-                                      const dd = String(date.getDate()).padStart(2, "0");
-                                      field.onChange(`${yyyy}-${mm}-${dd}`);
-                                    } else {
-                                      field.onChange("");
-                                    }
-                                  }}
-                                  captionLayout="dropdown"
-                                  startMonth={new Date(1970, 0)}
-                                  endMonth={new Date(new Date().getFullYear(), 11)}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                            {fieldState.error && (
-                              <p className="text-xs text-red-500 font-medium mt-1">{fieldState.error.message}</p>
-                            )}
-                          </div>
-                        );
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {step === 2 && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Step 2: Entrance Score & Quota Selection</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Controller
-                      control={intakeForm.control}
-                      name="entranceMeritScore"
-                      render={({ field, fieldState }) => (
-                        <Field label="Entrance / Merit Score (%) *" type="number" step="0.01" {...field} error={fieldState.error?.message} />
-                      )}
-                    />
-                    <Controller
-                      control={intakeForm.control}
-                      name="quotaCategory"
-                      render={({ field }) => (
-                        <div>
-                          <label className="text-sm font-medium text-foreground block mb-1">Quota Category</label>
-                          <select
-                            className="w-full border border-input rounded-md p-2 bg-background text-sm font-medium"
-                            value={field.value || "general"}
-                            onChange={(e) => field.onChange(e.target.value)}
-                          >
-                            <option value="general">General Quota</option>
-                            <option value="reserved">Reserved Quota</option>
-                            <option value="management">Management Quota</option>
-                          </select>
-                        </div>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    control={intakeForm.control}
-                    name="address"
-                    render={({ field, fieldState }) => (
-                      <Field label="Residential Address" placeholder="City, State, Pincode" {...field} error={fieldState.error?.message} />
-                    )}
-                  />
-                </div>
-              )}
-
-              {step === 3 && (
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">Step 3: Summary & Notes</h4>
-                  <Controller
-                    control={intakeForm.control}
-                    name="notes"
-                    render={({ field, fieldState }) => (
-                      <Field label="Admission Notes / Reference" placeholder="Any special recommendation or verification notes" {...field} error={fieldState.error?.message} />
-                    )}
-                  />
-
-                  <div className="p-3 bg-muted rounded-md text-xs space-y-1">
-                    <div className="font-semibold text-foreground">Intake Summary:</div>
-                    <div>Applicant: <strong className="text-foreground">{intakeForm.watch("name") || "N/A"}</strong></div>
-                    <div>Score: <strong className="text-teal-600">{intakeForm.watch("entranceMeritScore")}%</strong></div>
-                    <div>Quota: <span className="capitalize">{intakeForm.watch("quotaCategory") || "general"}</span></div>
-                  </div>
-                </div>
-              )}
-
-              <DialogFooter className="flex flex-col-reverse sm:flex-row justify-between gap-2 pt-3 border-t">
-                {step > 1 ? (
-                  <Button type="button" variant="outline" onClick={() => setStep((s) => (s - 1) as any)}>
-                    Back
-                  </Button>
-                ) : (
-                  <Button type="button" variant="ghost" onClick={() => setIntakeDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                )}
-
-                {step < 3 ? (
-                  <Button type="button" className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleNextStep}>
-                    Next Step <ArrowRight size={14} className="ml-1" />
-                  </Button>
-                ) : (
-                  <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white" disabled={createApplicantMutation.isPending}>
-                    {createApplicantMutation.isPending ? "Submitting..." : "Submit Application"}
-                  </Button>
-                )}
+              <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xs py-2">
+                <Button type="button" variant="outline" onClick={() => setIntakeDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white" disabled={createApplicantMutation.isPending}>
+                  {createApplicantMutation.isPending ? "Registering Application..." : "Submit Application"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -1331,7 +2221,7 @@ function AdmissionsPage() {
       {/* View / Edit Admission Profile Dialog */}
       <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
         <DialogContent
-          className="w-full max-w-[95vw] sm:max-w-2xl lg:max-w-3xl max-h-[90vh] overflow-y-auto p-4 sm:p-6"
+          className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -1391,15 +2281,59 @@ function AdmissionsPage() {
                     className="h-8 text-xs gap-1.5 self-start sm:self-auto"
                     onClick={() => {
                       if (!isEditingProfile) {
+                        let parsedHistory = viewApplicant.academicHistory;
+                        if (typeof parsedHistory === "string") {
+                          try {
+                            parsedHistory = JSON.parse(parsedHistory);
+                          } catch (e) {
+                            parsedHistory = defaultAcademicHistory;
+                          }
+                        }
+                        if (!Array.isArray(parsedHistory) || parsedHistory.length === 0) {
+                          parsedHistory = defaultAcademicHistory;
+                        } else {
+                          const exams = ["10th", "11th", "12th"];
+                          parsedHistory = exams.map((ex) => {
+                            const found = (parsedHistory as ExamDetail[]).find((p) => p.exam === ex);
+                            return found || { exam: ex, instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" };
+                          });
+                        }
+
+                        const matchedBatch = batches.find(
+                          (b) => b.courseId === viewApplicant.courseId && b.academicYear === viewApplicant.academicYear
+                        );
+
                         profileForm.reset({
+                          batchId: matchedBatch ? matchedBatch.id : 0,
                           courseId: viewApplicant.courseId,
                           academicYear: viewApplicant.academicYear || defaultAcademicYear,
                           name: viewApplicant.name || "",
                           email: viewApplicant.email || "",
                           phone: viewApplicant.phone || "",
+                          aadharNo: viewApplicant.aadharNo || "",
                           gender: viewApplicant.gender || "Female",
                           dob: viewApplicant.dob || "",
-                          address: viewApplicant.address || "",
+                          fatherName: viewApplicant.fatherName || "",
+                          fatherPhone: viewApplicant.fatherPhone || "",
+                          fatherAadharNo: viewApplicant.fatherAadharNo || "",
+                          fatherOccupation: viewApplicant.fatherOccupation || "",
+                          fatherOrganization: viewApplicant.fatherOrganization || "",
+                          fatherAnnualIncome: viewApplicant.fatherAnnualIncome != null ? String(viewApplicant.fatherAnnualIncome) : "",
+                          motherName: viewApplicant.motherName || "",
+                          motherPhone: viewApplicant.motherPhone || "",
+                          motherAadharNo: viewApplicant.motherAadharNo || "",
+                          motherOccupation: viewApplicant.motherOccupation || "",
+                          motherOrganization: viewApplicant.motherOrganization || "",
+                          motherAnnualIncome: viewApplicant.motherAnnualIncome != null ? String(viewApplicant.motherAnnualIncome) : "",
+                          presentAddress: viewApplicant.presentAddress || viewApplicant.address || "",
+                          presentDistrict: viewApplicant.presentDistrict || "",
+                          presentPincode: viewApplicant.presentPincode || "",
+                          presentState: viewApplicant.presentState || "",
+                          permanentAddress: viewApplicant.permanentAddress || "",
+                          permanentDistrict: viewApplicant.permanentDistrict || "",
+                          permanentPincode: viewApplicant.permanentPincode || "",
+                          permanentState: viewApplicant.permanentState || "",
+                          academicHistory: parsedHistory,
                           entranceMeritScore: viewApplicant.entranceMeritScore ?? 0,
                           quotaCategory: viewApplicant.quotaCategory || "general",
                           notes: viewApplicant.notes || "",
@@ -1546,7 +2480,7 @@ function AdmissionsPage() {
                             onClick={() => {
                               setSeatBookingApplicant(viewApplicant);
                               seatBookingForm.reset({
-                                amount: 25000,
+                                amount: 3000,
                                 paymentMode: "cash",
                                 paymentDate: format(new Date(), "yyyy-MM-dd"),
                                 notes: "",
@@ -1602,53 +2536,207 @@ function AdmissionsPage() {
                     )}
                   </div>
 
-                  <div className="border rounded-md p-4 space-y-3">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Personal & Contact Information
+                  {/* Personal & Contact Info Card */}
+                  <div className="border rounded-md p-4 space-y-3 bg-card">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <User className="h-3.5 w-3.5 text-teal-600" /> Personal & Contact Information
                     </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
                       <div>
                         <span className="text-muted-foreground text-xs block">Full Name</span>
-                        <span className="font-medium text-foreground">{viewApplicant.name}</span>
+                        <span className="font-semibold text-foreground uppercase">{viewApplicant.name}</span>
                       </div>
                       <div>
                         <span className="text-muted-foreground text-xs block">Gender</span>
                         <span className="font-medium text-foreground">{viewApplicant.gender || "Female"}</span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground text-xs block">Email Address</span>
-                        <span className="font-medium text-foreground">{viewApplicant.email || "Not specified"}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground text-xs block">Phone Number</span>
-                        <span className="font-medium text-foreground">{viewApplicant.phone}</span>
-                      </div>
-                      <div>
                         <span className="text-muted-foreground text-xs block">Date of Birth</span>
                         <span className="font-medium text-foreground">
-                          {viewApplicant.dob
-                            ? format(new Date(viewApplicant.dob), "PPP")
-                            : "Not specified"}
+                          {viewApplicant.dob ? format(new Date(viewApplicant.dob), "PPP") : "Not specified"}
                         </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground text-xs block">Registration Date</span>
-                        <span className="font-medium text-foreground">
-                          {viewApplicant.createdAt
-                            ? format(new Date(viewApplicant.createdAt), "PPP")
-                            : "N/A"}
-                        </span>
+                        <span className="text-muted-foreground text-xs block">Student Contact No</span>
+                        <span className="font-semibold text-teal-700 dark:text-teal-300 font-mono">{viewApplicant.phone}</span>
                       </div>
-                      <div className="sm:col-span-2">
-                        <span className="text-muted-foreground text-xs block">Residential Address</span>
-                        <span className="font-medium text-foreground">{viewApplicant.address || "Not specified"}</span>
+                      <div>
+                        <span className="text-muted-foreground text-xs block">Student Aadhar No</span>
+                        <span className="font-medium text-foreground font-mono">{viewApplicant.aadharNo || "N/A"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground text-xs block">Email Address</span>
+                        <span className="font-medium text-foreground">{viewApplicant.email || "Not specified"}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="border rounded-md p-4 space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                      Admission Notes & Remarks
+                  {/* Parents Information Card */}
+                  <div className="border rounded-md p-4 space-y-3 bg-card">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5 text-teal-600" /> Parents Information
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Father */}
+                      <div className="p-3 rounded-lg border bg-muted/20 space-y-2 text-xs">
+                        <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide">
+                          Father's Details
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Name</span>
+                            <span className="font-medium text-foreground">{viewApplicant.fatherName || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Contact No</span>
+                            <span className="font-semibold text-teal-700 dark:text-teal-300 font-mono">{viewApplicant.fatherPhone || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Aadhar No</span>
+                            <span className="font-medium text-foreground font-mono">{viewApplicant.fatherAadharNo || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Occupation</span>
+                            <span className="font-medium text-foreground">{viewApplicant.fatherOccupation || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Organization / Employer</span>
+                            <span className="font-medium text-foreground">{viewApplicant.fatherOrganization || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Annual Income</span>
+                            <span className="font-medium text-foreground font-mono">
+                              {viewApplicant.fatherAnnualIncome ? `₹${Number(viewApplicant.fatherAnnualIncome).toLocaleString()}` : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Mother */}
+                      <div className="p-3 rounded-lg border bg-muted/20 space-y-2 text-xs">
+                        <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide">
+                          Mother's Details
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Name</span>
+                            <span className="font-medium text-foreground">{viewApplicant.motherName || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Contact No</span>
+                            <span className="font-semibold text-teal-700 dark:text-teal-300 font-mono">{viewApplicant.motherPhone || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Aadhar No</span>
+                            <span className="font-medium text-foreground font-mono">{viewApplicant.motherAadharNo || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Occupation</span>
+                            <span className="font-medium text-foreground">{viewApplicant.motherOccupation || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Organization / Employer</span>
+                            <span className="font-medium text-foreground">{viewApplicant.motherOrganization || "N/A"}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Annual Income</span>
+                            <span className="font-medium text-foreground font-mono">
+                              {viewApplicant.motherAnnualIncome ? `₹${Number(viewApplicant.motherAnnualIncome).toLocaleString()}` : "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Residential Addresses Card */}
+                  <div className="border rounded-md p-4 space-y-3 bg-card">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-teal-600" /> Residential Addresses
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="p-3 rounded-lg border bg-muted/20 space-y-1.5">
+                        <span className="font-bold text-muted-foreground uppercase text-[11px] block">Present Address</span>
+                        <p className="font-medium text-foreground whitespace-pre-wrap">
+                          {viewApplicant.presentAddress || viewApplicant.address || "Not specified"}
+                        </p>
+                        <div className="text-muted-foreground pt-1 flex flex-wrap gap-2">
+                          {viewApplicant.presentDistrict && <span>District: <strong>{viewApplicant.presentDistrict}</strong></span>}
+                          {viewApplicant.presentPincode && <span>PIN: <strong>{viewApplicant.presentPincode}</strong></span>}
+                          {viewApplicant.presentState && <span>State: <strong>{viewApplicant.presentState}</strong></span>}
+                        </div>
+                      </div>
+
+                      <div className="p-3 rounded-lg border bg-muted/20 space-y-1.5">
+                        <span className="font-bold text-muted-foreground uppercase text-[11px] block">Permanent Address</span>
+                        <p className="font-medium text-foreground whitespace-pre-wrap">
+                          {viewApplicant.permanentAddress || "Same as Present / Not specified"}
+                        </p>
+                        <div className="text-muted-foreground pt-1 flex flex-wrap gap-2">
+                          {viewApplicant.permanentDistrict && <span>District: <strong>{viewApplicant.permanentDistrict}</strong></span>}
+                          {viewApplicant.permanentPincode && <span>PIN: <strong>{viewApplicant.permanentPincode}</strong></span>}
+                          {viewApplicant.permanentState && <span>State: <strong>{viewApplicant.permanentState}</strong></span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Academic & Examination History Card */}
+                  <div className="border rounded-md p-4 space-y-3 bg-card">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <BookOpen className="h-3.5 w-3.5 text-teal-600" /> Academic & Qualifying Examination History (10th, 11th, 12th)
+                    </h4>
+                    <div className="space-y-3">
+                      {(() => {
+                        let history = viewApplicant.academicHistory;
+                        if (typeof history === "string") {
+                          try { history = JSON.parse(history); } catch (e) { history = []; }
+                        }
+                        if (!Array.isArray(history) || history.length === 0) {
+                          return <p className="text-xs text-muted-foreground italic">No academic exam records captured yet.</p>;
+                        }
+                        return history.map((h, i) => (
+                          <div key={i} className="p-3 rounded-lg border bg-muted/20 space-y-2 text-xs">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-1.5 gap-1">
+                              <span className="font-bold text-teal-800 dark:text-teal-300 uppercase">
+                                {h.exam === "10th" ? "Class 10 / Matriculation" : h.exam === "11th" ? "Class 11" : "Class 12 / Higher Secondary (10+2)"}
+                              </span>
+                              <div className="flex flex-wrap items-center gap-3">
+                                {h.board && <span>Board: <strong>{h.board}</strong></span>}
+                                {h.year && <span>Year: <strong>{h.year}</strong></span>}
+                                {h.percentage && <span className="font-bold text-teal-600">Total: {h.percentage}%</span>}
+                              </div>
+                            </div>
+                            {(h.instituteName || h.instituteAddress) && (
+                              <div className="text-xs text-foreground/90 bg-background/60 p-2 rounded border flex flex-wrap gap-x-4 gap-y-1">
+                                {h.instituteName && <span>Institute: <strong>{h.instituteName}</strong></span>}
+                                {h.instituteAddress && <span>Address: <strong>{h.instituteAddress}</strong></span>}
+                              </div>
+                            )}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                              <div>
+                                <span className="text-muted-foreground block text-[11px] font-semibold">Subjects Taken:</span>
+                                <p className="font-mono text-xs whitespace-pre-wrap bg-background/80 p-2 rounded border mt-0.5">
+                                  {h.subjects || "N/A"}
+                                </p>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block text-[11px] font-semibold">Subject-wise Scores:</span>
+                                <p className="font-mono text-xs whitespace-pre-wrap bg-background/80 p-2 rounded border mt-0.5">
+                                  {h.subjectScores || "N/A"}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Notes & Remarks Card */}
+                  <div className="border rounded-md p-4 space-y-2 bg-card">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                      <FileText className="h-3.5 w-3.5 text-teal-600" /> Admission Notes & Remarks
                     </h4>
                     <p className="text-sm text-foreground bg-muted/30 p-2.5 rounded border italic">
                       {viewApplicant.notes || "No notes recorded for this applicant."}
@@ -1695,187 +2783,20 @@ function AdmissionsPage() {
                   </DialogFooter>
                 </div>
               ) : (
-                /* Profile Edit Form */
-                <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-sm font-medium text-foreground block mb-1">Target Course *</label>
-                      <Controller
-                        control={profileForm.control}
-                        name="courseId"
-                        render={({ field, fieldState }) => (
-                          <div>
-                            <select
-                              className={cn(
-                                "w-full border rounded-md p-2 bg-background text-sm transition-colors",
-                                fieldState.error ? "border-red-500 bg-red-50/20" : "border-input"
-                              )}
-                              value={field.value}
-                              onChange={(e) => field.onChange(Number(e.target.value))}
-                            >
-                              <option value={0}>-- Select Course --</option>
-                              {courses.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.code} - {c.name}
-                                </option>
-                              ))}
-                            </select>
-                            {fieldState.error && (
-                              <p className="text-xs text-red-500 font-medium mt-1">{fieldState.error.message}</p>
-                            )}
-                          </div>
-                        )}
-                      />
-                    </div>
-
-                    <Controller
-                      control={profileForm.control}
-                      name="quotaCategory"
-                      render={({ field }) => (
-                        <div>
-                          <label className="text-sm font-medium text-foreground block mb-1">Quota Category</label>
-                          <select
-                            className="w-full border border-input rounded-md p-2 bg-background text-sm"
-                            value={field.value}
-                            onChange={(e) => field.onChange(e.target.value)}
-                          >
-                            <option value="general">General Quota</option>
-                            <option value="reserved">Reserved Quota</option>
-                            <option value="management">Management Quota</option>
-                          </select>
-                        </div>
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    control={profileForm.control}
-                    name="name"
-                    render={({ field, fieldState }) => (
-                      <Field label="Full Applicant Name *" placeholder="Applicant Name" {...field} error={fieldState.error?.message} />
-                    )}
+                /* Profile Edit Form using multi-panel cards */
+                <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4 py-2">
+                  <ApplicantFormPanels
+                    form={profileForm}
+                    courses={courses}
+                    batches={batches}
                   />
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Controller
-                      control={profileForm.control}
-                      name="email"
-                      render={({ field, fieldState }) => (
-                        <Field label="Email Address" type="email" placeholder="email@example.com" {...field} error={fieldState.error?.message} />
-                      )}
-                    />
-                    <Controller
-                      control={profileForm.control}
-                      name="phone"
-                      render={({ field, fieldState }) => (
-                        <Field label="Phone Number *" placeholder="10-digit phone" {...field} error={fieldState.error?.message} />
-                      )}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <Controller
-                      control={profileForm.control}
-                      name="gender"
-                      render={({ field }) => (
-                        <div>
-                          <label className="text-sm font-medium text-foreground block mb-1">Gender</label>
-                          <select
-                            className="w-full border border-input rounded-md p-2 bg-background text-sm"
-                            value={field.value}
-                            onChange={(e) => field.onChange(e.target.value)}
-                          >
-                            <option value="Female">Female</option>
-                            <option value="Male">Male</option>
-                            <option value="Other">Other</option>
-                          </select>
-                        </div>
-                      )}
-                    />
-
-                    <Controller
-                      control={profileForm.control}
-                      name="dob"
-                      render={({ field, fieldState }) => {
-                        let parsedDate: Date | undefined = undefined;
-                        if (field.value) {
-                          const d = new Date(field.value);
-                          if (!isNaN(d.getTime())) parsedDate = d;
-                        }
-                        return (
-                          <div>
-                            <label className="text-sm font-medium text-foreground block mb-1">Date of Birth</label>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className={cn(
-                                    "w-full justify-start text-left font-normal h-9 border-input bg-background text-sm",
-                                    !field.value && "text-muted-foreground",
-                                    fieldState.error && "border-red-500"
-                                  )}
-                                >
-                                  <CalendarIcon className="mr-2 h-4 w-4 text-teal-600 shrink-0" />
-                                  {parsedDate ? format(parsedDate, "PPP") : <span>Pick date</span>}
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0 z-[99999]" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={parsedDate}
-                                  onSelect={(date) => {
-                                    if (date) {
-                                      const yyyy = date.getFullYear();
-                                      const mm = String(date.getMonth() + 1).padStart(2, "0");
-                                      const dd = String(date.getDate()).padStart(2, "0");
-                                      field.onChange(`${yyyy}-${mm}-${dd}`);
-                                    } else {
-                                      field.onChange("");
-                                    }
-                                  }}
-                                  captionLayout="dropdown"
-                                  startMonth={new Date(1970, 0)}
-                                  endMonth={new Date(new Date().getFullYear(), 11)}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                        );
-                      }}
-                    />
-
-                    <Controller
-                      control={profileForm.control}
-                      name="entranceMeritScore"
-                      render={({ field, fieldState }) => (
-                        <Field label="Merit Score (%) *" type="number" step="0.01" {...field} error={fieldState.error?.message} />
-                      )}
-                    />
-                  </div>
-
-                  <Controller
-                    control={profileForm.control}
-                    name="address"
-                    render={({ field, fieldState }) => (
-                      <Field label="Residential Address" placeholder="Address, City, State, Pincode" {...field} error={fieldState.error?.message} />
-                    )}
-                  />
-
-                  <Controller
-                    control={profileForm.control}
-                    name="notes"
-                    render={({ field, fieldState }) => (
-                      <Field label="Admission Notes / Remarks" placeholder="Remarks or notes" {...field} error={fieldState.error?.message} />
-                    )}
-                  />
-
-                  <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t">
+                  <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xs py-2">
                     <Button type="button" variant="outline" onClick={() => setIsEditingProfile(false)}>
                       Cancel
                     </Button>
                     <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white" disabled={updateApplicantMutation.isPending}>
-                      {updateApplicantMutation.isPending ? "Saving..." : "Save Profile Changes"}
+                      {updateApplicantMutation.isPending ? "Saving Changes..." : "Save Profile Changes"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -1989,9 +2910,11 @@ function AdmissionsPage() {
                       {...field}
                       placeholder="e.g. NUR-STU-2026-0001 (or leave blank for auto)"
                       className={cn(
-                        "w-full px-3 py-2 text-sm border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono",
+                        "w-full px-3 py-2 text-sm border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono uppercase",
                         fieldState.error && "border-red-500 bg-red-50/20"
                       )}
+                      value={field.value || ""}
+                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                     />
                     <p className="text-[11px] text-muted-foreground mt-1">
                       Defaults to sequential order upon conversion. You can customize it if needed (must be unique).
@@ -2009,7 +2932,18 @@ function AdmissionsPage() {
                 control={convertForm.control}
                 name="guardianName"
                 render={({ field, fieldState }) => (
-                  <Field label="Guardian Name" placeholder="Father/Mother Name" {...field} error={fieldState.error?.message} />
+                  <Field
+                    label="Guardian Name"
+                    placeholder="e.g. FATHER / MOTHER NAME"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                    error={fieldState.error?.message}
+                  />
                 )}
               />
               <Controller
@@ -2169,8 +3103,14 @@ function AdmissionsPage() {
                 render={({ field }) => (
                   <Field
                     label="Transaction Reference / Notes"
-                    placeholder="e.g. UTR number, provisional reservation notes"
+                    placeholder="e.g. UTR NUMBER, PROVISIONAL RESERVATION NOTES"
                     {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
                   />
                 )}
               />

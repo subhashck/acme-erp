@@ -380,7 +380,7 @@ const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
       headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold" },
       styles: { fontSize: 9, cellPadding: 3 },
       columnStyles: {
-        0: { cellWidth: 90 },
+        0: { cellWidth: 92 },
         1: { cellWidth: 50, halign: "center" },
         2: { cellWidth: 40, halign: "right" },
       },
@@ -389,31 +389,38 @@ const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
     startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 6 : metaY + 40;
   }
 
-  // Subtotals, Discounts & Advance Adjustment Section
+  // Subtotals, Discounts & Advance Adjustment Section (Right-aligned under table amount columns)
   if (gross > 0 || disc > 0 || advanceAdjusted > 0) {
     doc.setFontSize(9);
-    doc.setTextColor(71, 85, 105);
+    const summaryLabelX = 106; // Aligned with the start of column 1 in table
+    const summaryValueX = 193; // Aligned with right padding of table column 2
 
     if (gross > 0) {
-      doc.text("Gross Component Subtotal:", 14, startY);
-      doc.text(`INR ${gross.toLocaleString()}`, 196, startY, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Gross Component Subtotal:", summaryLabelX, startY);
+      doc.text(`INR ${gross.toLocaleString()}`, summaryValueX, startY, { align: "right" });
       startY += 5;
     }
 
     if (disc > 0) {
+      doc.setFont("helvetica", "normal");
       doc.setTextColor(16, 149, 106); // Emerald
-      doc.text(`Concession / Scholarship (${reason}):`, 14, startY);
-      doc.text(`- INR ${disc.toLocaleString()}`, 196, startY, { align: "right" });
-      startY += 6;
+      doc.text(`Concession / Scholarship (${reason}):`, summaryLabelX, startY);
+      doc.text(`- INR ${disc.toLocaleString()}`, summaryValueX, startY, { align: "right" });
+      startY += 5;
     }
 
     if (advanceAdjusted > 0) {
+      doc.setFont("helvetica", "normal");
       doc.setTextColor(14, 116, 144); // Cyan / Teal
-      const advLabel = advanceReceiptNo ? `Seat Booking Advance Adjusted (${advanceReceiptNo}):` : "Seat Booking Advance Adjusted:";
-      doc.text(advLabel, 14, startY);
-      doc.text(`- INR ${advanceAdjusted.toLocaleString()}`, 196, startY, { align: "right" });
-      startY += 6;
+      const advLabel = advanceReceiptNo ? `Seat Booking Advance (${advanceReceiptNo}):` : "Seat Booking Advance Adjusted:";
+      doc.text(advLabel, summaryLabelX, startY);
+      doc.text(`- INR ${advanceAdjusted.toLocaleString()}`, summaryValueX, startY, { align: "right" });
+      startY += 5;
     }
+
+    startY += 2;
   }
 
   // Total Box
@@ -426,7 +433,7 @@ const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
   doc.setFont("helvetica", "bold");
   doc.text(advanceAdjusted > 0 ? "NET AMOUNT RECEIVED NOW:" : "TOTAL AMOUNT RECEIVED:", 20, startY + 10);
   doc.setFontSize(13);
-  doc.text(`INR ${toNum(tx.amount).toLocaleString()}`, 190, startY + 10, { align: "right" });
+  doc.text(`INR ${toNum(tx.amount).toLocaleString()}`, 193, startY + 10, { align: "right" });
 
   // Signatures
   const sigY = Math.max(startY + 30, 230);
