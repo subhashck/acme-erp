@@ -1200,13 +1200,13 @@ export const nursingRoutes = new Hono<AuthEnv>()
         fatherAadharNo: z.string().nullable().optional(),
         fatherOccupation: z.string().nullable().optional(),
         fatherOrganization: z.string().nullable().optional(),
-        fatherAnnualIncome: z.union([z.string(), z.number()]).nullable().optional(),
+        fatherAnnualIncome: z.union([z.string(), z.number()]).nullable().optional().transform((v) => v != null && v !== "" ? String(v) : null),
         motherName: z.string().nullable().optional(),
         motherPhone: z.string().nullable().optional(),
         motherAadharNo: z.string().nullable().optional(),
         motherOccupation: z.string().nullable().optional(),
         motherOrganization: z.string().nullable().optional(),
-        motherAnnualIncome: z.union([z.string(), z.number()]).nullable().optional(),
+        motherAnnualIncome: z.union([z.string(), z.number()]).nullable().optional().transform((v) => v != null && v !== "" ? String(v) : null),
         presentAddress: z.string().nullable().optional(),
         presentDistrict: z.string().nullable().optional(),
         presentPincode: z.string().nullable().optional(),
@@ -1264,6 +1264,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .update(nursingStudents)
       .set({
         ...studentFields,
+        fatherAnnualIncome: studentFields.fatherAnnualIncome ?? null,
+        motherAnnualIncome: studentFields.motherAnnualIncome ?? null,
         updatedAt: new Date(),
       })
       .where(eq(nursingStudents.id, id))
