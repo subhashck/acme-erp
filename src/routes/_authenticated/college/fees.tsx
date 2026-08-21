@@ -87,6 +87,9 @@ export interface CollectFeeItem {
   amount: number;
   isFrequencyLocked?: boolean;
   lockedFrequencyLabel?: string;
+  isOneTimePaid?: boolean;
+  paidReceiptNumber?: string;
+  paidDate?: string;
 }
 
 const calcInstallmentAmount = (baseAmt: number, row?: ComponentFrequencyRow) => {
@@ -733,6 +736,58 @@ function FeeManagementPage() {
     return map;
   }, [watchStudentId, studentTransactions, watchTargetAcademicYear, periodValueOptions, watchBillingPeriodType]);
 
+  // Build a map of one-time fee components already paid by this student across all transactions
+  const paidOneTimeMap = React.useMemo(() => {
+    const map = new Map<string, { receiptNumber: string; paymentDate: string; amount: number }>();
+    if (!watchStudentId || studentTransactions.length === 0) return map;
+
+    studentTransactions.forEach((tx) => {
+      if (tx.status === "refunded") return;
+      const r = parseRemarks(tx.remarks);
+      const items = Array.isArray(r?.items) ? r.items : (Array.isArray(r?.breakdown) ? r.breakdown : []);
+
+      if (items.length > 0) {
+        items.forEach((item: any) => {
+          const isOneTime =
+            item.frequencyKey === "one_time" ||
+            item.selectedFrequencyKey === "one_time" ||
+            (item.frequencyLabel || "").toLowerCase().includes("one-time") ||
+            (item.frequency || "").toLowerCase().includes("one-time") ||
+            (item.name || "").toLowerCase().includes("security deposit");
+
+          if (isOneTime && item.name) {
+            const key = item.name.trim().toLowerCase();
+            if (!map.has(key)) {
+              map.set(key, {
+                receiptNumber: tx.receiptNumber,
+                paymentDate: tx.paymentDate,
+                amount: toNum(item.amount || item.unitAmount),
+              });
+            }
+          }
+        });
+      } else if (tx.feeType) {
+        const isOneTime =
+          tx.paymentFrequency === "one_time" ||
+          tx.feeType.toLowerCase().includes("security deposit") ||
+          tx.feeType.toLowerCase().includes("one-time");
+
+        if (isOneTime) {
+          const key = tx.feeType.trim().toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, {
+              receiptNumber: tx.receiptNumber,
+              paymentDate: tx.paymentDate,
+              amount: toNum(tx.amount),
+            });
+          }
+        }
+      }
+    });
+
+    return map;
+  }, [watchStudentId, studentTransactions]);
+
   const getPaidInfoForPeriod = React.useCallback(
     (opt: string) => {
       const list = paidPeriodsMap.get(opt.toLowerCase()) || [];
@@ -1136,6 +1191,10 @@ function FeeManagementPage() {
       const unitAmt = lock && toNum(lock.installmentAmount) > 0 ? toNum(lock.installmentAmount) : calcInstallmentAmount(baseAmt, selRow);
       const mult = allowsPeriodMultiplier(c.name, selKey) ? selectedPeriods.length : 1;
 
+      const isOneTime = selKey === "one_time" || c.name.toLowerCase().includes("security deposit");
+      const paidOneTimeInfo = isOneTime ? paidOneTimeMap.get(c.name.trim().toLowerCase()) : null;
+      const isOneTimePaid = !!paidOneTimeInfo;
+
       return {
         componentId: c.id,
         name: c.name,
@@ -1150,16 +1209,48 @@ function FeeManagementPage() {
         lockedFrequencyLabel: tuitionLocked
           ? (selRow?.label || tuitionFreqKey)
           : lock ? (lock.frequencyLabel || selRow?.label) : undefined,
+        isOneTimePaid,
+        paidReceiptNumber: paidOneTimeInfo?.receiptNumber,
+        paidDate: paidOneTimeInfo?.paymentDate,
       };
     });
 
     setCollectItems(items);
   };
 
+  // Sync paid one-time fee status into collectItems if studentTransactions loads or changes
+  React.useEffect(() => {
+    if (collectItems.length > 0) {
+      setCollectItems((prev) =>
+        prev.map((item) => {
+          const isOneTime = item.selectedFrequencyKey === "one_time" || item.name.toLowerCase().includes("security deposit");
+          const paidOneTimeInfo = isOneTime ? paidOneTimeMap.get(item.name.trim().toLowerCase()) : null;
+          const isOneTimePaid = !!paidOneTimeInfo;
+          if (item.isOneTimePaid !== isOneTimePaid || item.paidReceiptNumber !== paidOneTimeInfo?.receiptNumber) {
+            return {
+              ...item,
+              selected: isOneTimePaid ? false : item.selected,
+              isOneTimePaid,
+              paidReceiptNumber: paidOneTimeInfo?.receiptNumber,
+              paidDate: paidOneTimeInfo?.paymentDate,
+            };
+          }
+          return item;
+        })
+      );
+    }
+  }, [paidOneTimeMap]);
+
   const toggleCollectItemSelect = (compId: string) => {
     setCollectItems((prev) => {
       const target = prev.find((item) => item.componentId === compId);
       if (!target) return prev;
+      if (target.isOneTimePaid) {
+        toast.error(
+          `${target.name} is a one-time fee that was already paid in Receipt #${target.paidReceiptNumber} (${target.paidDate}). One-time fees cannot be paid again.`
+        );
+        return prev;
+      }
       const willSelect = !target.selected;
 
       if (willSelect) {
@@ -1195,17 +1286,24 @@ function FeeManagementPage() {
   const changeCollectItemSchedule = (compId: string, newFreqKey: string) => {
     setCollectItems((prev) =>
       prev.map((item) => {
-        if (item.componentId !== compId || item.isFrequencyLocked || isTuitionFee(item.name)) return item;
+        if (item.componentId !== compId || item.isFrequencyLocked || isTuitionFee(item.name) || item.isOneTimePaid) return item;
         const targetRow =
           item.availableFrequencies.find((r) => r.key === newFreqKey) || item.availableFrequencies[0];
         const newUnitAmt = calcInstallmentAmount(item.baseAmount, targetRow);
         const mult = allowsPeriodMultiplier(item.name, newFreqKey) ? selectedPeriods.length : 1;
+        const isOneTime = newFreqKey === "one_time" || item.name.toLowerCase().includes("security deposit");
+        const paidInfo = isOneTime ? paidOneTimeMap.get(item.name.trim().toLowerCase()) : null;
+        const isOneTimePaid = !!paidInfo;
         return {
           ...item,
           selectedFrequencyKey: newFreqKey,
           unitAmount: newUnitAmt,
           multiplier: mult,
           amount: Math.round(newUnitAmt * mult),
+          selected: isOneTimePaid ? false : item.selected,
+          isOneTimePaid,
+          paidReceiptNumber: paidInfo?.receiptNumber,
+          paidDate: paidInfo?.paymentDate,
         };
       })
     );
@@ -1372,6 +1470,18 @@ function FeeManagementPage() {
                     if (paidInfo) {
                       toast.error(
                         `Cannot record payment: '${period}' has already been paid in receipt ${paidInfo.receiptNumber} (${paidInfo.paymentDate}). Duplicate payments of the same period are not allowed.`
+                      );
+                      return;
+                    }
+                  }
+
+                  // Verify none of the selected items are already-paid one-time fees
+                  for (const item of selectedPaidItems) {
+                    const isOneTime = item.frequencyKey === "one_time" || item.name.toLowerCase().includes("security deposit");
+                    if (isOneTime && paidOneTimeMap.has(item.name.trim().toLowerCase())) {
+                      const info = paidOneTimeMap.get(item.name.trim().toLowerCase());
+                      toast.error(
+                        `Cannot record payment: '${item.name}' is a one-time fee that was already paid in Receipt #${info?.receiptNumber} (${info?.paymentDate}). One-time fees cannot be paid more than once.`
                       );
                       return;
                     }
@@ -1789,7 +1899,7 @@ function FeeManagementPage() {
                         <button
                           type="button"
                           className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline font-medium"
-                          onClick={() => setCollectItems((prev) => prev.map((i) => ({ ...i, selected: !isHostelFee(i.name) })))}
+                          onClick={() => setCollectItems((prev) => prev.map((i) => ({ ...i, selected: !isHostelFee(i.name) && !i.isOneTimePaid })))}
                         >
                           Select Academic Fees
                         </button>
@@ -1798,7 +1908,7 @@ function FeeManagementPage() {
                           type="button"
                           className="text-[11px] text-purple-700 dark:text-purple-300 hover:underline font-semibold"
                           onClick={() => {
-                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelFee(i.name) })));
+                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelFee(i.name) && !i.isOneTimePaid })));
                             if (watchBillingPeriodType !== "month") {
                                 toast.warning("Period type forced to Monthly for Hostel/Mess fees.");
                                 handlePeriodTypeChange("month");
@@ -1829,7 +1939,9 @@ function FeeManagementPage() {
                             key={item.componentId}
                             className={cn(
                               "flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg border text-xs gap-2 transition-colors",
-                              item.selected
+                              item.isOneTimePaid
+                                ? "bg-slate-100/70 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800 opacity-80"
+                                : item.selected
                                 ? isHostel
                                   ? "bg-purple-50/70 dark:bg-purple-950/40 border-purple-300 dark:border-purple-800 shadow-xs"
                                   : "bg-card border-teal-300 dark:border-teal-800 shadow-xs"
@@ -1841,17 +1953,35 @@ function FeeManagementPage() {
                                 type="checkbox"
                                 id={`item-cb-${item.componentId}`}
                                 checked={item.selected}
+                                disabled={item.isOneTimePaid}
                                 onChange={() => toggleCollectItemSelect(item.componentId)}
-                                className="h-4 w-4 rounded text-teal-600 focus:ring-teal-500 cursor-pointer"
+                                className={cn(
+                                  "h-4 w-4 rounded text-teal-600 focus:ring-teal-500",
+                                  item.isOneTimePaid ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                                )}
                               />
-                              <label htmlFor={`item-cb-${item.componentId}`} className="font-semibold text-foreground cursor-pointer select-none flex items-center gap-1.5 flex-wrap">
-                                {item.name}
+                              <label
+                                htmlFor={`item-cb-${item.componentId}`}
+                                className={cn(
+                                  "font-semibold text-foreground flex items-center gap-1.5 flex-wrap",
+                                  item.isOneTimePaid ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer select-none"
+                                )}
+                              >
+                                <span className={cn(item.isOneTimePaid && "line-through opacity-75")}>
+                                  {item.name}
+                                </span>
+                                {item.isOneTimePaid && (
+                                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded font-semibold border border-emerald-300 dark:border-emerald-800 not-italic no-underline">
+                                    <Check size={11} className="text-emerald-600 dark:text-emerald-400" />
+                                    Already Paid (#{item.paidReceiptNumber})
+                                  </span>
+                                )}
                                 {isHostel && (
                                   <span className="text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.2 rounded font-medium border border-purple-200 dark:border-purple-800">
                                     Standalone Fee
                                   </span>
                                 )}
-                                {item.isFrequencyLocked && (
+                                {item.isFrequencyLocked && !item.isOneTimePaid && (
                                   <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded font-normal">
                                     <Lock size={9} /> Locked ({item.lockedFrequencyLabel || item.selectedFrequencyKey})
                                   </span>
@@ -1862,13 +1992,13 @@ function FeeManagementPage() {
                           <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">
                             {/* Schedule Select */}
                             <Select
-                              disabled={!item.selected || item.isFrequencyLocked}
+                              disabled={!item.selected || item.isFrequencyLocked || item.isOneTimePaid}
                               value={item.selectedFrequencyKey}
                               onValueChange={(val) => changeCollectItemSchedule(item.componentId, val)}
                             >
-                              <SelectTrigger className={cn("h-8 text-xs min-w-[130px]", item.isFrequencyLocked && "bg-muted/80 text-muted-foreground border-amber-300 dark:border-amber-800")}>
+                              <SelectTrigger className={cn("h-8 text-xs min-w-[130px]", (item.isFrequencyLocked || item.isOneTimePaid) && "bg-muted/80 text-muted-foreground border-slate-300 dark:border-slate-800")}>
                                 <div className="flex items-center gap-1">
-                                  {item.isFrequencyLocked && <Lock size={10} className="text-amber-600 dark:text-amber-400 shrink-0" />}
+                                  {item.isFrequencyLocked && !item.isOneTimePaid && <Lock size={10} className="text-amber-600 dark:text-amber-400 shrink-0" />}
                                   <SelectValue placeholder="Schedule" />
                                 </div>
                               </SelectTrigger>
@@ -1884,13 +2014,13 @@ function FeeManagementPage() {
                               </SelectContent>
                             </Select>
 
-
-
                             {/* Total Line Item Amount */}
                             <div className="flex flex-col items-end min-w-[90px]">
                               <span className={cn(
                                 "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono border",
-                                item.selected
+                                item.isOneTimePaid
+                                  ? "bg-slate-200/60 dark:bg-slate-800 text-slate-500 border-slate-300 dark:border-slate-700 line-through"
+                                  : item.selected
                                   ? "bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800"
                                   : "bg-muted text-muted-foreground border-transparent"
                               )}>

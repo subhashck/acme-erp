@@ -550,9 +550,19 @@ function StudentProfilePage() {
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 {/* Father Info */}
-                <div className="p-3 bg-muted/20 border rounded-lg space-y-2">
-                  <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <User size={13} /> Father's Profile
+                <div className={cn(
+                  "p-3 border rounded-lg space-y-2",
+                  student.fatherDeceased ? "bg-slate-100/50 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800" : "bg-muted/20"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <User size={13} /> Father's Profile
+                    </div>
+                    {student.fatherDeceased && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        Deceased
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
@@ -561,33 +571,51 @@ function StudentProfilePage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Contact: </span>
-                      <strong className="text-foreground">{student.fatherPhone || "N/A"}</strong>
+                      <strong className={cn(student.fatherDeceased ? "text-muted-foreground italic font-normal" : "text-foreground font-mono")}>
+                        {student.fatherDeceased ? "N/A (Deceased)" : (student.fatherPhone || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Aadhar: </span>
-                      <strong className="font-mono text-foreground">{student.fatherAadharNo || "N/A"}</strong>
+                      <strong className="font-mono text-foreground">
+                        {student.fatherDeceased ? "N/A (Deceased)" : (student.fatherAadharNo || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Occupation: </span>
-                      <strong className="text-foreground">{student.fatherOccupation || "N/A"}</strong>
+                      <strong className="text-foreground">
+                        {student.fatherDeceased ? "N/A (Deceased)" : (student.fatherOccupation || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Organization: </span>
-                      <strong className="text-foreground">{student.fatherOrganization || "N/A"}</strong>
+                      <strong className="text-foreground">
+                        {student.fatherDeceased ? "N/A (Deceased)" : (student.fatherOrganization || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Annual Income: </span>
                       <strong className="text-foreground">
-                        {student.fatherAnnualIncome ? `₹${Number(student.fatherAnnualIncome).toLocaleString()}` : "N/A"}
+                        {student.fatherDeceased ? "N/A" : (student.fatherAnnualIncome ? `₹${Number(student.fatherAnnualIncome).toLocaleString()}` : "N/A")}
                       </strong>
                     </div>
                   </div>
                 </div>
 
                 {/* Mother Info */}
-                <div className="p-3 bg-muted/20 border rounded-lg space-y-2">
-                  <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <User size={13} /> Mother's Profile
+                <div className={cn(
+                  "p-3 border rounded-lg space-y-2",
+                  student.motherDeceased ? "bg-slate-100/50 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800" : "bg-muted/20"
+                )}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <User size={13} /> Mother's Profile
+                    </div>
+                    {student.motherDeceased && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        Deceased
+                      </span>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
@@ -596,41 +624,84 @@ function StudentProfilePage() {
                     </div>
                     <div>
                       <span className="text-muted-foreground">Contact: </span>
-                      <strong className="text-foreground">{student.motherPhone || "N/A"}</strong>
+                      <strong className={cn(student.motherDeceased ? "text-muted-foreground italic font-normal" : "text-foreground font-mono")}>
+                        {student.motherDeceased ? "N/A (Deceased)" : (student.motherPhone || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Aadhar: </span>
-                      <strong className="font-mono text-foreground">{student.motherAadharNo || "N/A"}</strong>
+                      <strong className="font-mono text-foreground">
+                        {student.motherDeceased ? "N/A (Deceased)" : (student.motherAadharNo || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Occupation: </span>
-                      <strong className="text-foreground">{student.motherOccupation || "N/A"}</strong>
+                      <strong className="text-foreground">
+                        {student.motherDeceased ? "N/A (Deceased)" : (student.motherOccupation || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Organization: </span>
-                      <strong className="text-foreground">{student.motherOrganization || "N/A"}</strong>
+                      <strong className="text-foreground">
+                        {student.motherDeceased ? "N/A (Deceased)" : (student.motherOrganization || "N/A")}
+                      </strong>
                     </div>
                     <div>
                       <span className="text-muted-foreground">Annual Income: </span>
                       <strong className="text-foreground">
-                        {student.motherAnnualIncome ? `₹${Number(student.motherAnnualIncome).toLocaleString()}` : "N/A"}
+                        {student.motherDeceased ? "N/A" : (student.motherAnnualIncome ? `₹${Number(student.motherAnnualIncome).toLocaleString()}` : "N/A")}
                       </strong>
                     </div>
                   </div>
                 </div>
 
-                {/* Emergency Guardian */}
-                <div className="p-3 bg-muted/10 border rounded-lg flex items-center justify-between text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Emergency Guardian: </span>
-                    <strong className="text-foreground">{student.guardianName || "N/A"}</strong>
-                    {student.guardianRelation && ` (${student.guardianRelation})`}
+                {/* Guardian Info */}
+                {(student.hasGuardian || student.guardianName) && (
+                  <div className="p-3 bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/60 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <User size={13} /> Guardian / Local Guardian's Profile
+                      </div>
+                      {student.guardianRelation && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                          {student.guardianRelation}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Name: </span>
+                        <strong className="text-foreground">{student.guardianName || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Relationship: </span>
+                        <strong className="text-foreground">{student.guardianRelation || "Guardian"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Contact: </span>
+                        <strong className="font-mono text-teal-700 dark:text-teal-300 font-semibold">{student.guardianPhone || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Aadhar: </span>
+                        <strong className="font-mono text-foreground">{student.guardianAadharNo || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Occupation: </span>
+                        <strong className="text-foreground">{student.guardianOccupation || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Organization: </span>
+                        <strong className="text-foreground">{student.guardianOrganization || "N/A"}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Annual Income: </span>
+                        <strong className="text-foreground">
+                          {student.guardianAnnualIncome ? `₹${Number(student.guardianAnnualIncome).toLocaleString()}` : "N/A"}
+                        </strong>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Phone: </span>
-                    <strong className="text-foreground">{student.guardianPhone || "N/A"}</strong>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>

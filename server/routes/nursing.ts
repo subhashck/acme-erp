@@ -378,18 +378,29 @@ export const nursingRoutes = new Hono<AuthEnv>()
         dob: nursingApplicants.dob,
         address: nursingApplicants.address,
         // Parents Information
+        fatherDeceased: nursingApplicants.fatherDeceased,
         fatherName: nursingApplicants.fatherName,
         fatherPhone: nursingApplicants.fatherPhone,
         fatherAadharNo: nursingApplicants.fatherAadharNo,
         fatherOccupation: nursingApplicants.fatherOccupation,
         fatherOrganization: nursingApplicants.fatherOrganization,
         fatherAnnualIncome: nursingApplicants.fatherAnnualIncome,
+        motherDeceased: nursingApplicants.motherDeceased,
         motherName: nursingApplicants.motherName,
         motherPhone: nursingApplicants.motherPhone,
         motherAadharNo: nursingApplicants.motherAadharNo,
         motherOccupation: nursingApplicants.motherOccupation,
         motherOrganization: nursingApplicants.motherOrganization,
         motherAnnualIncome: nursingApplicants.motherAnnualIncome,
+        // Guardian Information
+        hasGuardian: nursingApplicants.hasGuardian,
+        guardianName: nursingApplicants.guardianName,
+        guardianRelation: nursingApplicants.guardianRelation,
+        guardianPhone: nursingApplicants.guardianPhone,
+        guardianAadharNo: nursingApplicants.guardianAadharNo,
+        guardianOccupation: nursingApplicants.guardianOccupation,
+        guardianOrganization: nursingApplicants.guardianOrganization,
+        guardianAnnualIncome: nursingApplicants.guardianAnnualIncome,
         // Addresses
         presentAddress: nursingApplicants.presentAddress,
         presentDistrict: nursingApplicants.presentDistrict,
@@ -464,7 +475,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       c,
       z.object({
         courseId: z.coerce.number().int().positive("Select a valid program course"),
-        academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 4}`; }),
+        academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 1}`; }),
         name: z.string().min(1, "Applicant name is required"),
         email: z.string().optional().or(z.literal("")).nullable(),
         phone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Student contact number must be exactly 10 digits"),
@@ -473,18 +484,29 @@ export const nursingRoutes = new Hono<AuthEnv>()
         dob: z.string().optional().nullable(),
         address: z.string().optional().nullable(),
         // Parents Information
+        fatherDeceased: z.boolean().optional().default(false),
         fatherName: z.string().optional().nullable(),
-        fatherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Father's contact number must be exactly 10 digits"),
-        fatherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 12, "Father's Aadhar number must be exactly 12 digits"),
+        fatherPhone: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        fatherAadharNo: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
         fatherOccupation: z.string().optional().nullable(),
         fatherOrganization: z.string().optional().nullable(),
         fatherAnnualIncome: z.coerce.number().optional().nullable(),
+        motherDeceased: z.boolean().optional().default(false),
         motherName: z.string().optional().nullable(),
-        motherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Mother's contact number must be exactly 10 digits"),
-        motherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 12, "Mother's Aadhar number must be exactly 12 digits"),
+        motherPhone: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        motherAadharNo: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
         motherOccupation: z.string().optional().nullable(),
         motherOrganization: z.string().optional().nullable(),
         motherAnnualIncome: z.coerce.number().optional().nullable(),
+        // Guardian Information
+        hasGuardian: z.boolean().optional().default(false),
+        guardianName: z.string().optional().nullable(),
+        guardianRelation: z.string().optional().nullable(),
+        guardianPhone: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        guardianAadharNo: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        guardianOccupation: z.string().optional().nullable(),
+        guardianOrganization: z.string().optional().nullable(),
+        guardianAnnualIncome: z.coerce.number().optional().nullable(),
         // Addresses
         presentAddress: z.string().optional().nullable(),
         presentDistrict: z.string().optional().nullable(),
@@ -503,6 +525,45 @@ export const nursingRoutes = new Hono<AuthEnv>()
           .default(0),
         quotaCategory: z.enum(["general", "reserved", "management"]).default("general"),
         notes: z.string().optional().nullable(),
+      }).superRefine((data, ctx) => {
+        if (!data.fatherDeceased) {
+          if (!data.fatherPhone || data.fatherPhone.length !== 10) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["fatherPhone"], message: "Father's contact number must be exactly 10 digits" });
+          }
+          if (!data.fatherAadharNo || data.fatherAadharNo.length !== 12) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["fatherAadharNo"], message: "Father's Aadhar number must be exactly 12 digits" });
+          }
+        } else {
+          if (!data.fatherName || !data.fatherName.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["fatherName"], message: "Father's name is required" });
+          }
+        }
+        if (!data.motherDeceased) {
+          if (!data.motherPhone || data.motherPhone.length !== 10) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["motherPhone"], message: "Mother's contact number must be exactly 10 digits" });
+          }
+          if (!data.motherAadharNo || data.motherAadharNo.length !== 12) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["motherAadharNo"], message: "Mother's Aadhar number must be exactly 12 digits" });
+          }
+        } else {
+          if (!data.motherName || !data.motherName.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["motherName"], message: "Mother's name is required" });
+          }
+        }
+        if (data.hasGuardian) {
+          if (!data.guardianName || !data.guardianName.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianName"], message: "Guardian's full name is required when guardian is enabled" });
+          }
+          if (!data.guardianRelation || !data.guardianRelation.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianRelation"], message: "Relationship with student is required" });
+          }
+          if (!data.guardianPhone || data.guardianPhone.length !== 10) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianPhone"], message: "Guardian's contact number is required and must be exactly 10 digits" });
+          }
+          if (!data.guardianAadharNo || data.guardianAadharNo.length !== 12) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianAadharNo"], message: "Guardian's Aadhar number is required and must be exactly 12 digits" });
+          }
+        }
       })
     );
 
@@ -526,18 +587,28 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: input.gender,
         dob: input.dob || null,
         address: input.address || input.presentAddress || null,
+        fatherDeceased: Boolean(input.fatherDeceased),
         fatherName: input.fatherName || null,
-        fatherPhone: input.fatherPhone,
-        fatherAadharNo: input.fatherAadharNo,
-        fatherOccupation: input.fatherOccupation || null,
-        fatherOrganization: input.fatherOrganization || null,
-        fatherAnnualIncome: input.fatherAnnualIncome != null ? String(input.fatherAnnualIncome) : null,
+        fatherPhone: input.fatherDeceased ? null : (input.fatherPhone || null),
+        fatherAadharNo: input.fatherDeceased ? null : (input.fatherAadharNo || null),
+        fatherOccupation: input.fatherDeceased ? null : (input.fatherOccupation || null),
+        fatherOrganization: input.fatherDeceased ? null : (input.fatherOrganization || null),
+        fatherAnnualIncome: input.fatherDeceased || input.fatherAnnualIncome == null ? null : String(input.fatherAnnualIncome),
+        motherDeceased: Boolean(input.motherDeceased),
         motherName: input.motherName || null,
-        motherPhone: input.motherPhone,
-        motherAadharNo: input.motherAadharNo,
-        motherOccupation: input.motherOccupation || null,
-        motherOrganization: input.motherOrganization || null,
-        motherAnnualIncome: input.motherAnnualIncome != null ? String(input.motherAnnualIncome) : null,
+        motherPhone: input.motherDeceased ? null : (input.motherPhone || null),
+        motherAadharNo: input.motherDeceased ? null : (input.motherAadharNo || null),
+        motherOccupation: input.motherDeceased ? null : (input.motherOccupation || null),
+        motherOrganization: input.motherDeceased ? null : (input.motherOrganization || null),
+        motherAnnualIncome: input.motherDeceased || input.motherAnnualIncome == null ? null : String(input.motherAnnualIncome),
+        hasGuardian: Boolean(input.hasGuardian),
+        guardianName: input.hasGuardian ? (input.guardianName || null) : null,
+        guardianRelation: input.hasGuardian ? (input.guardianRelation || null) : null,
+        guardianPhone: input.hasGuardian ? (input.guardianPhone || null) : null,
+        guardianAadharNo: input.hasGuardian ? (input.guardianAadharNo || null) : null,
+        guardianOccupation: input.hasGuardian ? (input.guardianOccupation || null) : null,
+        guardianOrganization: input.hasGuardian ? (input.guardianOrganization || null) : null,
+        guardianAnnualIncome: input.hasGuardian && input.guardianAnnualIncome != null ? String(input.guardianAnnualIncome) : null,
         presentAddress: input.presentAddress || null,
         presentDistrict: input.presentDistrict || null,
         presentPincode: input.presentPincode || null,
@@ -582,16 +653,24 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
     const [updated] = await db
       .update(nursingApplicants)
-      .set({ status, notes, updatedAt: new Date() })
+      .set({
+        status,
+        notes: notes || undefined,
+        updatedAt: new Date(),
+      })
       .where(eq(nursingApplicants.id, id))
       .returning()
       .execute();
+
+    if (!updated) {
+      return c.json({ error: "Applicant not found" }, 404);
+    }
 
     const session = c.get("session");
     await db.insert(nursingAuditLogs).values({
       entity: "nursing_applicants",
       entityId: String(id),
-      action: "UPDATE_STATUS",
+      action: "STATUS_UPDATE",
       changedBy: session?.user?.id,
       diff: { status, notes },
     }).execute();
@@ -616,18 +695,29 @@ export const nursingRoutes = new Hono<AuthEnv>()
         dob: z.string().optional().nullable(),
         address: z.string().optional().nullable(),
         // Parents Information
+        fatherDeceased: z.boolean().optional(),
         fatherName: z.string().optional().nullable(),
-        fatherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 10, "Father's contact number must be exactly 10 digits").optional(),
-        fatherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 12, "Father's Aadhar number must be exactly 12 digits").optional(),
+        fatherPhone: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        fatherAadharNo: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
         fatherOccupation: z.string().optional().nullable(),
         fatherOrganization: z.string().optional().nullable(),
         fatherAnnualIncome: z.coerce.number().optional().nullable(),
+        motherDeceased: z.boolean().optional(),
         motherName: z.string().optional().nullable(),
-        motherPhone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 10, "Mother's contact number must be exactly 10 digits").optional(),
-        motherAadharNo: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => !v || v.length === 12, "Mother's Aadhar number must be exactly 12 digits").optional(),
+        motherPhone: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        motherAadharNo: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
         motherOccupation: z.string().optional().nullable(),
         motherOrganization: z.string().optional().nullable(),
         motherAnnualIncome: z.coerce.number().optional().nullable(),
+        // Guardian Information
+        hasGuardian: z.boolean().optional(),
+        guardianName: z.string().optional().nullable(),
+        guardianRelation: z.string().optional().nullable(),
+        guardianPhone: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        guardianAadharNo: z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, "") : "")),
+        guardianOccupation: z.string().optional().nullable(),
+        guardianOrganization: z.string().optional().nullable(),
+        guardianAnnualIncome: z.coerce.number().optional().nullable(),
         // Addresses
         presentAddress: z.string().optional().nullable(),
         presentDistrict: z.string().optional().nullable(),
@@ -647,6 +737,21 @@ export const nursingRoutes = new Hono<AuthEnv>()
         quotaCategory: z.enum(["general", "reserved", "management"]).optional(),
         status: z.enum(["pending", "approved", "rejected", "converted"]).optional(),
         notes: z.string().optional().nullable(),
+      }).superRefine((data, ctx) => {
+        if (data.hasGuardian) {
+          if (!data.guardianName || !data.guardianName.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianName"], message: "Guardian's full name is required when guardian is enabled" });
+          }
+          if (!data.guardianRelation || !data.guardianRelation.trim()) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianRelation"], message: "Relationship with student is required" });
+          }
+          if (!data.guardianPhone || data.guardianPhone.length !== 10) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianPhone"], message: "Guardian's contact number is required and must be exactly 10 digits" });
+          }
+          if (!data.guardianAadharNo || data.guardianAadharNo.length !== 12) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guardianAadharNo"], message: "Guardian's Aadhar number is required and must be exactly 12 digits" });
+          }
+        }
       })
     );
 
@@ -661,18 +766,54 @@ export const nursingRoutes = new Hono<AuthEnv>()
     if (input.gender !== undefined) updatePayload.gender = input.gender;
     if (input.dob !== undefined) updatePayload.dob = input.dob || null;
     if (input.address !== undefined) updatePayload.address = input.address || null;
+    if (input.fatherDeceased !== undefined) updatePayload.fatherDeceased = Boolean(input.fatherDeceased);
     if (input.fatherName !== undefined) updatePayload.fatherName = input.fatherName || null;
-    if (input.fatherPhone !== undefined) updatePayload.fatherPhone = input.fatherPhone ? input.fatherPhone.trim() : null;
-    if (input.fatherAadharNo !== undefined) updatePayload.fatherAadharNo = input.fatherAadharNo ? input.fatherAadharNo.trim().toUpperCase() : null;
-    if (input.fatherOccupation !== undefined) updatePayload.fatherOccupation = input.fatherOccupation || null;
-    if (input.fatherOrganization !== undefined) updatePayload.fatherOrganization = input.fatherOrganization || null;
-    if (input.fatherAnnualIncome !== undefined) updatePayload.fatherAnnualIncome = input.fatherAnnualIncome != null ? String(input.fatherAnnualIncome) : null;
+    if (input.fatherDeceased) {
+      updatePayload.fatherPhone = null;
+      updatePayload.fatherAadharNo = null;
+      updatePayload.fatherOccupation = null;
+      updatePayload.fatherOrganization = null;
+      updatePayload.fatherAnnualIncome = null;
+    } else {
+      if (input.fatherPhone !== undefined) updatePayload.fatherPhone = input.fatherPhone ? input.fatherPhone.trim() : null;
+      if (input.fatherAadharNo !== undefined) updatePayload.fatherAadharNo = input.fatherAadharNo ? input.fatherAadharNo.trim().toUpperCase() : null;
+      if (input.fatherOccupation !== undefined) updatePayload.fatherOccupation = input.fatherOccupation || null;
+      if (input.fatherOrganization !== undefined) updatePayload.fatherOrganization = input.fatherOrganization || null;
+      if (input.fatherAnnualIncome !== undefined) updatePayload.fatherAnnualIncome = input.fatherAnnualIncome != null ? String(input.fatherAnnualIncome) : null;
+    }
+    if (input.motherDeceased !== undefined) updatePayload.motherDeceased = Boolean(input.motherDeceased);
     if (input.motherName !== undefined) updatePayload.motherName = input.motherName || null;
-    if (input.motherPhone !== undefined) updatePayload.motherPhone = input.motherPhone ? input.motherPhone.trim() : null;
-    if (input.motherAadharNo !== undefined) updatePayload.motherAadharNo = input.motherAadharNo ? input.motherAadharNo.trim().toUpperCase() : null;
-    if (input.motherOccupation !== undefined) updatePayload.motherOccupation = input.motherOccupation || null;
-    if (input.motherOrganization !== undefined) updatePayload.motherOrganization = input.motherOrganization || null;
-    if (input.motherAnnualIncome !== undefined) updatePayload.motherAnnualIncome = input.motherAnnualIncome != null ? String(input.motherAnnualIncome) : null;
+    if (input.motherDeceased) {
+      updatePayload.motherPhone = null;
+      updatePayload.motherAadharNo = null;
+      updatePayload.motherOccupation = null;
+      updatePayload.motherOrganization = null;
+      updatePayload.motherAnnualIncome = null;
+    } else {
+      if (input.motherPhone !== undefined) updatePayload.motherPhone = input.motherPhone ? input.motherPhone.trim() : null;
+      if (input.motherAadharNo !== undefined) updatePayload.motherAadharNo = input.motherAadharNo ? input.motherAadharNo.trim().toUpperCase() : null;
+      if (input.motherOccupation !== undefined) updatePayload.motherOccupation = input.motherOccupation || null;
+      if (input.motherOrganization !== undefined) updatePayload.motherOrganization = input.motherOrganization || null;
+      if (input.motherAnnualIncome !== undefined) updatePayload.motherAnnualIncome = input.motherAnnualIncome != null ? String(input.motherAnnualIncome) : null;
+    }
+    if (input.hasGuardian !== undefined) updatePayload.hasGuardian = Boolean(input.hasGuardian);
+    if (input.hasGuardian === false) {
+      updatePayload.guardianName = null;
+      updatePayload.guardianRelation = null;
+      updatePayload.guardianPhone = null;
+      updatePayload.guardianAadharNo = null;
+      updatePayload.guardianOccupation = null;
+      updatePayload.guardianOrganization = null;
+      updatePayload.guardianAnnualIncome = null;
+    } else {
+      if (input.guardianName !== undefined) updatePayload.guardianName = input.guardianName || null;
+      if (input.guardianRelation !== undefined) updatePayload.guardianRelation = input.guardianRelation || null;
+      if (input.guardianPhone !== undefined) updatePayload.guardianPhone = input.guardianPhone ? input.guardianPhone.trim() : null;
+      if (input.guardianAadharNo !== undefined) updatePayload.guardianAadharNo = input.guardianAadharNo ? input.guardianAadharNo.trim().toUpperCase() : null;
+      if (input.guardianOccupation !== undefined) updatePayload.guardianOccupation = input.guardianOccupation || null;
+      if (input.guardianOrganization !== undefined) updatePayload.guardianOrganization = input.guardianOrganization || null;
+      if (input.guardianAnnualIncome !== undefined) updatePayload.guardianAnnualIncome = input.guardianAnnualIncome != null ? String(input.guardianAnnualIncome) : null;
+    }
     if (input.presentAddress !== undefined) updatePayload.presentAddress = input.presentAddress || null;
     if (input.presentDistrict !== undefined) updatePayload.presentDistrict = input.presentDistrict || null;
     if (input.presentPincode !== undefined) updatePayload.presentPincode = input.presentPincode || null;
@@ -842,14 +983,30 @@ export const nursingRoutes = new Hono<AuthEnv>()
   // Transactionally Convert Applicant to Student
   .post("/nursing/applicants/:id/convert-to-student", async (c) => {
     const applicantId = Number(c.req.param("id"));
-    const { batchId, enrollmentNo: userEnrollmentNo, guardianName, guardianPhone, guardianRelation } = await jsonBody(
+    const {
+      batchId,
+      enrollmentNo: userEnrollmentNo,
+      hasGuardian,
+      guardianName,
+      guardianPhone,
+      guardianRelation,
+      guardianAadharNo,
+      guardianOccupation,
+      guardianOrganization,
+      guardianAnnualIncome,
+    } = await jsonBody(
       c,
       z.object({
         batchId: z.number().int().positive(),
         enrollmentNo: z.string().optional().nullable(),
+        hasGuardian: z.boolean().optional(),
         guardianName: z.string().optional().nullable(),
         guardianPhone: z.string().optional().nullable(),
         guardianRelation: z.string().optional().nullable(),
+        guardianAadharNo: z.string().optional().nullable(),
+        guardianOccupation: z.string().optional().nullable(),
+        guardianOrganization: z.string().optional().nullable(),
+        guardianAnnualIncome: z.union([z.number(), z.string()]).optional().nullable(),
       })
     );
 
@@ -902,6 +1059,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
     const admissionDate = new Date().toISOString().split("T")[0];
 
+    const isGuardianEnabled = hasGuardian !== undefined ? Boolean(hasGuardian) : Boolean(applicant.hasGuardian);
+
     // Transactional conversion
     const [student] = await db
       .insert(nursingStudents)
@@ -916,18 +1075,30 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: applicant.gender,
         dob: applicant.dob,
         address: applicant.address,
+        fatherDeceased: Boolean(applicant.fatherDeceased),
         fatherName: applicant.fatherName,
         fatherPhone: applicant.fatherPhone,
         fatherAadharNo: applicant.fatherAadharNo,
         fatherOccupation: applicant.fatherOccupation,
         fatherOrganization: applicant.fatherOrganization,
         fatherAnnualIncome: applicant.fatherAnnualIncome,
+        motherDeceased: Boolean(applicant.motherDeceased),
         motherName: applicant.motherName,
         motherPhone: applicant.motherPhone,
         motherAadharNo: applicant.motherAadharNo,
         motherOccupation: applicant.motherOccupation,
         motherOrganization: applicant.motherOrganization,
         motherAnnualIncome: applicant.motherAnnualIncome,
+        hasGuardian: isGuardianEnabled,
+        guardianName: isGuardianEnabled ? (guardianName ?? applicant.guardianName ?? null) : null,
+        guardianRelation: isGuardianEnabled ? (guardianRelation ?? applicant.guardianRelation ?? null) : null,
+        guardianPhone: isGuardianEnabled ? (guardianPhone ?? applicant.guardianPhone ?? null) : null,
+        guardianAadharNo: isGuardianEnabled ? (guardianAadharNo ?? applicant.guardianAadharNo ?? null) : null,
+        guardianOccupation: isGuardianEnabled ? (guardianOccupation ?? applicant.guardianOccupation ?? null) : null,
+        guardianOrganization: isGuardianEnabled ? (guardianOrganization ?? applicant.guardianOrganization ?? null) : null,
+        guardianAnnualIncome: isGuardianEnabled
+          ? (guardianAnnualIncome != null ? String(guardianAnnualIncome) : (applicant.guardianAnnualIncome ? String(applicant.guardianAnnualIncome) : null))
+          : null,
         presentAddress: applicant.presentAddress,
         presentDistrict: applicant.presentDistrict,
         presentPincode: applicant.presentPincode,
@@ -937,9 +1108,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
         permanentPincode: applicant.permanentPincode,
         permanentState: applicant.permanentState,
         academicHistory: applicant.academicHistory,
-        guardianName: guardianName ?? (applicant.fatherName || applicant.motherName || null),
-        guardianPhone: guardianPhone ?? (applicant.fatherPhone || applicant.motherPhone || applicant.phone || null),
-        guardianRelation: guardianRelation ?? "Parent",
         status: "active",
         admissionDate,
       })
@@ -1004,12 +1172,14 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: nursingStudents.gender,
         dob: nursingStudents.dob,
         address: nursingStudents.address,
+        fatherDeceased: nursingStudents.fatherDeceased,
         fatherName: nursingStudents.fatherName,
         fatherPhone: nursingStudents.fatherPhone,
         fatherAadharNo: nursingStudents.fatherAadharNo,
         fatherOccupation: nursingStudents.fatherOccupation,
         fatherOrganization: nursingStudents.fatherOrganization,
         fatherAnnualIncome: nursingStudents.fatherAnnualIncome,
+        motherDeceased: nursingStudents.motherDeceased,
         motherName: nursingStudents.motherName,
         motherPhone: nursingStudents.motherPhone,
         motherAadharNo: nursingStudents.motherAadharNo,
@@ -1025,9 +1195,14 @@ export const nursingRoutes = new Hono<AuthEnv>()
         permanentPincode: nursingStudents.permanentPincode,
         permanentState: nursingStudents.permanentState,
         academicHistory: nursingStudents.academicHistory,
+        hasGuardian: nursingStudents.hasGuardian,
         guardianName: nursingStudents.guardianName,
-        guardianPhone: nursingStudents.guardianPhone,
         guardianRelation: nursingStudents.guardianRelation,
+        guardianPhone: nursingStudents.guardianPhone,
+        guardianAadharNo: nursingStudents.guardianAadharNo,
+        guardianOccupation: nursingStudents.guardianOccupation,
+        guardianOrganization: nursingStudents.guardianOrganization,
+        guardianAnnualIncome: nursingStudents.guardianAnnualIncome,
         status: nursingStudents.status,
         batchId: nursingStudents.batchId,
         academicYear: nursingBatches.academicYear,
@@ -1064,7 +1239,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
         (r.aadharNo || "").toLowerCase().includes(search) ||
         (r.applicationNo || "").toLowerCase().includes(search) ||
         (r.fatherName || "").toLowerCase().includes(search) ||
-        (r.motherName || "").toLowerCase().includes(search)
+        (r.motherName || "").toLowerCase().includes(search) ||
+        (r.guardianName || "").toLowerCase().includes(search)
       );
     }
 
@@ -1107,12 +1283,14 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: nursingStudents.gender,
         dob: nursingStudents.dob,
         address: nursingStudents.address,
+        fatherDeceased: nursingStudents.fatherDeceased,
         fatherName: nursingStudents.fatherName,
         fatherPhone: nursingStudents.fatherPhone,
         fatherAadharNo: nursingStudents.fatherAadharNo,
         fatherOccupation: nursingStudents.fatherOccupation,
         fatherOrganization: nursingStudents.fatherOrganization,
         fatherAnnualIncome: nursingStudents.fatherAnnualIncome,
+        motherDeceased: nursingStudents.motherDeceased,
         motherName: nursingStudents.motherName,
         motherPhone: nursingStudents.motherPhone,
         motherAadharNo: nursingStudents.motherAadharNo,
@@ -1128,9 +1306,14 @@ export const nursingRoutes = new Hono<AuthEnv>()
         permanentPincode: nursingStudents.permanentPincode,
         permanentState: nursingStudents.permanentState,
         academicHistory: nursingStudents.academicHistory,
+        hasGuardian: nursingStudents.hasGuardian,
         guardianName: nursingStudents.guardianName,
-        guardianPhone: nursingStudents.guardianPhone,
         guardianRelation: nursingStudents.guardianRelation,
+        guardianPhone: nursingStudents.guardianPhone,
+        guardianAadharNo: nursingStudents.guardianAadharNo,
+        guardianOccupation: nursingStudents.guardianOccupation,
+        guardianOrganization: nursingStudents.guardianOrganization,
+        guardianAnnualIncome: nursingStudents.guardianAnnualIncome,
         status: nursingStudents.status,
         admissionDate: nursingStudents.admissionDate,
         createdAt: nursingStudents.createdAt,
@@ -1981,6 +2164,80 @@ export const nursingRoutes = new Hono<AuthEnv>()
               return c.json(
                 {
                   error: `Duplicate payment error: '${reqPeriod}' has already been paid for AY ${targetAy} in receipt ${pastTx.receiptNumber}. Duplicate payments for the same period are not allowed.`
+                },
+                400
+              );
+            }
+          }
+        }
+      }
+
+      // 3.7 Validate duplicate one-time fee payments for the student across all time
+      const submissionItems = Array.isArray(parsedRemarks.items)
+        ? parsedRemarks.items
+        : Array.isArray(parsedRemarks.breakdown)
+        ? parsedRemarks.breakdown
+        : [];
+
+      const oneTimeItemsInSubmission = submissionItems.filter((i: any) => {
+        const freq = (i.frequencyKey || i.selectedFrequencyKey || i.frequencyLabel || i.frequency || "").toLowerCase();
+        const name = (i.name || "").toLowerCase();
+        return freq.includes("one_time") || freq.includes("one-time") || name.includes("security deposit");
+      });
+
+      if (oneTimeItemsInSubmission.length > 0 || (input.feeType || "").toLowerCase().includes("security deposit")) {
+        const studentPastTxs = await db
+          .select({
+            id: nursingFeeTransactions.id,
+            receiptNumber: nursingFeeTransactions.receiptNumber,
+            feeType: nursingFeeTransactions.feeType,
+            paymentFrequency: nursingFeeTransactions.paymentFrequency,
+            status: nursingFeeTransactions.status,
+            remarks: nursingFeeTransactions.remarks,
+            paymentDate: nursingFeeTransactions.paymentDate,
+          })
+          .from(nursingFeeTransactions)
+          .where(
+            and(
+              eq(nursingFeeTransactions.studentId, input.studentId),
+              ne(nursingFeeTransactions.status, "refunded")
+            )
+          )
+          .execute();
+
+        for (const targetItem of oneTimeItemsInSubmission) {
+          const targetName = (targetItem.name || "").trim().toLowerCase();
+          for (const pastTx of studentPastTxs) {
+            const pastRemarks = parseRemarks(pastTx.remarks);
+            const pastItems = Array.isArray(pastRemarks?.items)
+              ? pastRemarks.items
+              : Array.isArray(pastRemarks?.breakdown)
+              ? pastRemarks.breakdown
+              : [];
+
+            let matchingPastItem: any = null;
+            if (pastItems.length > 0) {
+              matchingPastItem = pastItems.find((pi: any) => {
+                const piName = (pi.name || "").trim().toLowerCase();
+                const piFreq = (pi.frequencyKey || pi.selectedFrequencyKey || pi.frequencyLabel || pi.frequency || "").toLowerCase();
+                const isOneTime = piFreq.includes("one_time") || piFreq.includes("one-time") || piName.includes("security deposit");
+                return isOneTime && (piName === targetName || (targetName.includes("security deposit") && piName.includes("security deposit")));
+              });
+            } else if (pastTx.feeType) {
+              const pastFeeType = pastTx.feeType.toLowerCase();
+              if (
+                pastFeeType.includes(targetName) ||
+                (targetName.includes("security deposit") && pastFeeType.includes("security deposit")) ||
+                (pastTx.paymentFrequency === "one_time" && pastFeeType.includes(targetName))
+              ) {
+                matchingPastItem = { name: pastTx.feeType };
+              }
+            }
+
+            if (matchingPastItem) {
+              return c.json(
+                {
+                  error: `One-time fee '${targetItem.name}' has already been paid for this student in Receipt #${pastTx.receiptNumber} (${pastTx.paymentDate}). Duplicate payment of one-time fees is not allowed.`
                 },
                 400
               );
