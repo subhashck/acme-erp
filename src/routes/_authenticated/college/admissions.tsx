@@ -32,6 +32,7 @@ import {
   Building2,
   Briefcase,
   IndianRupee,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -54,6 +55,7 @@ const entranceMeritScoreSchema = z.coerce
   .min(0, "Score must be a valid percentage between 0% and 100%")
   .max(100, "Score must be a valid percentage between 0% and 100%");
 
+import { Switch } from "@/components/ui/switch";
 import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 
 export const Route = createFileRoute("/_authenticated/college/admissions")({
@@ -89,18 +91,29 @@ export interface Applicant {
   dob?: string;
   address?: string;
   // Parents Information
+  fatherDeceased?: boolean | null;
   fatherName?: string | null;
   fatherPhone?: string | null;
   fatherAadharNo?: string | null;
   fatherOccupation?: string | null;
   fatherOrganization?: string | null;
   fatherAnnualIncome?: string | number | null;
+  motherDeceased?: boolean | null;
   motherName?: string | null;
   motherPhone?: string | null;
   motherAadharNo?: string | null;
   motherOccupation?: string | null;
   motherOrganization?: string | null;
   motherAnnualIncome?: string | number | null;
+  // Guardian Information
+  hasGuardian?: boolean | null;
+  guardianName?: string | null;
+  guardianRelation?: string | null;
+  guardianPhone?: string | null;
+  guardianAadharNo?: string | null;
+  guardianOccupation?: string | null;
+  guardianOrganization?: string | null;
+  guardianAnnualIncome?: string | number | null;
   // Addresses
   presentAddress?: string | null;
   presentDistrict?: string | null;
@@ -135,18 +148,28 @@ export interface ApplicantFormData {
   aadharNo: string;
   gender: string;
   dob: string;
+  fatherDeceased?: boolean;
   fatherName: string;
   fatherPhone: string;
   fatherAadharNo: string;
   fatherOccupation: string;
   fatherOrganization: string;
   fatherAnnualIncome: string | number;
+  motherDeceased?: boolean;
   motherName: string;
   motherPhone: string;
   motherAadharNo: string;
   motherOccupation: string;
   motherOrganization: string;
   motherAnnualIncome: string | number;
+  hasGuardian?: boolean;
+  guardianName: string;
+  guardianRelation: string;
+  guardianPhone: string;
+  guardianAadharNo: string;
+  guardianOccupation: string;
+  guardianOrganization: string;
+  guardianAnnualIncome: string | number;
   presentAddress: string;
   presentDistrict: string;
   presentPincode: string;
@@ -286,7 +309,6 @@ const downloadSeatBookingPDF = (applicant: Applicant) => {
 
 const defaultAcademicHistory: ExamDetail[] = [
   { exam: "10th", instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
-  { exam: "11th", instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
   { exam: "12th", instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
 ];
 
@@ -349,10 +371,6 @@ export function ApplicantFormPanels({
                               form.setValue("courseId", Number(matched.courseId));
                               form.clearErrors("courseId");
                             }
-                            if (matched.academicYear) {
-                              form.setValue("academicYear", matched.academicYear.toUpperCase());
-                              form.clearErrors("academicYear");
-                            }
                           }
                         }
                       }}
@@ -411,7 +429,7 @@ export function ApplicantFormPanels({
               render={({ field, fieldState }) => (
                 <Field
                   label="Academic Session *"
-                  placeholder="e.g. 2026-2030"
+                  placeholder="e.g. 2026-2027"
                   {...field}
                   value={field.value || ""}
                   className="uppercase"
@@ -654,210 +672,505 @@ export function ApplicantFormPanels({
         </CardHeader>
         <CardContent className="p-4 space-y-4">
           {/* Father's Info */}
-          <div className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5 text-teal-600" /> Father's Details
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <Controller
-                control={form.control}
-                name="fatherName"
-                render={({ field }) => (
-                  <Field
-                    label="Father's Full Name"
-                    placeholder="e.g. RAJESH SHARMA"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
+          {(() => {
+            const isFatherDeceased = Boolean(form.watch("fatherDeceased"));
+            return (
+              <div className={cn(
+                "p-3.5 rounded-lg border space-y-3 transition-colors",
+                isFatherDeceased ? "bg-slate-100/70 dark:bg-slate-900/50 border-slate-300 dark:border-slate-800" : "bg-slate-50/50 dark:bg-slate-900/30"
+              )}>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-teal-600" /> Father's Details
+                    {isFatherDeceased && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 normal-case tracking-normal">
+                        Deceased
+                      </span>
+                    )}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="father-deceased-switch" className="text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                      Deceased
+                    </Label>
+                    <Controller
+                      control={form.control}
+                      name="fatherDeceased"
+                      render={({ field }) => (
+                        <Switch
+                          id="father-deceased-switch"
+                          checked={Boolean(field.value)}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            if (checked) {
+                              form.clearErrors(["fatherPhone", "fatherAadharNo"]);
+                              form.setValue("fatherPhone", "");
+                              form.setValue("fatherAadharNo", "");
+                              form.setValue("fatherOccupation", "");
+                              form.setValue("fatherOrganization", "");
+                              form.setValue("fatherAnnualIncome", "");
+                            }
+                          }}
+                        />
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <Controller
+                    control={form.control}
+                    name="fatherName"
+                    render={({ field, fieldState }) => (
+                      <Field
+                        label={`Father's Full Name ${isFatherDeceased ? "*" : ""}`}
+                        placeholder={isFatherDeceased ? "e.g. LATE RAJESH SHARMA" : "e.g. RAJESH SHARMA"}
+                        {...field}
+                        value={field.value || ""}
+                        className="uppercase"
+                        onChange={(e: any) => {
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.toUpperCase());
+                        }}
+                        error={fieldState.error?.message}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="fatherPhone"
-                render={({ field, fieldState }) => (
-                  <Field
-                    label="Father's Contact No *"
-                    placeholder="10-digit number"
-                    {...field}
-                    value={field.value || ""}
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.replace(/\D/g, "").slice(0, 10));
-                    }}
-                    error={fieldState.error?.message}
+                  <Controller
+                    control={form.control}
+                    name="fatherPhone"
+                    render={({ field, fieldState }) => (
+                      <Field
+                        label={`Father's Contact No ${isFatherDeceased ? "" : "*"}`}
+                        placeholder={isFatherDeceased ? "N/A (Deceased)" : "10-digit number"}
+                        disabled={isFatherDeceased}
+                        {...field}
+                        value={isFatherDeceased ? "" : (field.value || "")}
+                        onChange={(e: any) => {
+                          if (isFatherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                        }}
+                        error={isFatherDeceased ? undefined : fieldState.error?.message}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="fatherAadharNo"
-                render={({ field, fieldState }) => (
-                  <Field
-                    label="Father's Aadhar No *"
-                    placeholder="12-digit Aadhar"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    maxLength={12}
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.replace(/\D/g, "").slice(0, 12));
-                    }}
-                    error={fieldState.error?.message}
+                  <Controller
+                    control={form.control}
+                    name="fatherAadharNo"
+                    render={({ field, fieldState }) => (
+                      <Field
+                        label={`Father's Aadhar No ${isFatherDeceased ? "" : "*"}`}
+                        placeholder={isFatherDeceased ? "N/A (Deceased)" : "12-digit Aadhar"}
+                        disabled={isFatherDeceased}
+                        {...field}
+                        value={isFatherDeceased ? "" : (field.value || "")}
+                        className="uppercase"
+                        maxLength={12}
+                        onChange={(e: any) => {
+                          if (isFatherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                        }}
+                        error={isFatherDeceased ? undefined : fieldState.error?.message}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="fatherOccupation"
-                render={({ field }) => (
-                  <Field
-                    label="Occupation"
-                    placeholder="e.g. GOVERNMENT SERVICE / BUSINESS"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
+                  <Controller
+                    control={form.control}
+                    name="fatherOccupation"
+                    render={({ field }) => (
+                      <Field
+                        label="Occupation"
+                        placeholder={isFatherDeceased ? "N/A (Deceased)" : "e.g. GOVERNMENT SERVICE / BUSINESS"}
+                        disabled={isFatherDeceased}
+                        {...field}
+                        value={isFatherDeceased ? "" : (field.value || "")}
+                        className="uppercase"
+                        onChange={(e: any) => {
+                          if (isFatherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.toUpperCase());
+                        }}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="fatherOrganization"
-                render={({ field }) => (
-                  <Field
-                    label="Organization / Employer"
-                    placeholder="e.g. HEALTH DEPARTMENT"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
+                  <Controller
+                    control={form.control}
+                    name="fatherOrganization"
+                    render={({ field }) => (
+                      <Field
+                        label="Organization / Employer"
+                        placeholder={isFatherDeceased ? "N/A (Deceased)" : "e.g. HEALTH DEPARTMENT"}
+                        disabled={isFatherDeceased}
+                        {...field}
+                        value={isFatherDeceased ? "" : (field.value || "")}
+                        className="uppercase"
+                        onChange={(e: any) => {
+                          if (isFatherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.toUpperCase());
+                        }}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="fatherAnnualIncome"
-                render={({ field }) => (
-                  <Field label="Annual Income (₹)" type="number" placeholder="e.g. 600000" {...field} value={field.value || ""} />
-                )}
-              />
-            </div>
-          </div>
+                  <Controller
+                    control={form.control}
+                    name="fatherAnnualIncome"
+                    render={({ field }) => (
+                      <Field
+                        label="Annual Income (₹)"
+                        type="number"
+                        placeholder={isFatherDeceased ? "N/A" : "e.g. 600000"}
+                        disabled={isFatherDeceased}
+                        {...field}
+                        value={isFatherDeceased ? "" : (field.value || "")}
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Mother's Info */}
-          <div className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5 text-teal-600" /> Mother's Details
-            </h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <Controller
-                control={form.control}
-                name="motherName"
-                render={({ field }) => (
-                  <Field
-                    label="Mother's Full Name"
-                    placeholder="e.g. SUNITA SHARMA"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
+          {(() => {
+            const isMotherDeceased = Boolean(form.watch("motherDeceased"));
+            return (
+              <div className={cn(
+                "p-3.5 rounded-lg border space-y-3 transition-colors",
+                isMotherDeceased ? "bg-slate-100/70 dark:bg-slate-900/50 border-slate-300 dark:border-slate-800" : "bg-slate-50/50 dark:bg-slate-900/30"
+              )}>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-teal-600" /> Mother's Details
+                    {isMotherDeceased && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 normal-case tracking-normal">
+                        Deceased
+                      </span>
+                    )}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="mother-deceased-switch" className="text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                      Deceased
+                    </Label>
+                    <Controller
+                      control={form.control}
+                      name="motherDeceased"
+                      render={({ field }) => (
+                        <Switch
+                          id="mother-deceased-switch"
+                          checked={Boolean(field.value)}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            if (checked) {
+                              form.clearErrors(["motherPhone", "motherAadharNo"]);
+                              form.setValue("motherPhone", "");
+                              form.setValue("motherAadharNo", "");
+                              form.setValue("motherOccupation", "");
+                              form.setValue("motherOrganization", "");
+                              form.setValue("motherAnnualIncome", "");
+                            }
+                          }}
+                        />
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <Controller
+                    control={form.control}
+                    name="motherName"
+                    render={({ field, fieldState }) => (
+                      <Field
+                        label={`Mother's Full Name ${isMotherDeceased ? "*" : ""}`}
+                        placeholder={isMotherDeceased ? "e.g. LATE SUNITA SHARMA" : "e.g. SUNITA SHARMA"}
+                        {...field}
+                        value={field.value || ""}
+                        className="uppercase"
+                        onChange={(e: any) => {
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.toUpperCase());
+                        }}
+                        error={fieldState.error?.message}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="motherPhone"
-                render={({ field, fieldState }) => (
-                  <Field
-                    label="Mother's Contact No *"
-                    placeholder="10-digit number"
-                    {...field}
-                    value={field.value || ""}
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.replace(/\D/g, "").slice(0, 10));
-                    }}
-                    error={fieldState.error?.message}
+                  <Controller
+                    control={form.control}
+                    name="motherPhone"
+                    render={({ field, fieldState }) => (
+                      <Field
+                        label={`Mother's Contact No ${isMotherDeceased ? "" : "*"}`}
+                        placeholder={isMotherDeceased ? "N/A (Deceased)" : "10-digit number"}
+                        disabled={isMotherDeceased}
+                        {...field}
+                        value={isMotherDeceased ? "" : (field.value || "")}
+                        onChange={(e: any) => {
+                          if (isMotherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                        }}
+                        error={isMotherDeceased ? undefined : fieldState.error?.message}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="motherAadharNo"
-                render={({ field, fieldState }) => (
-                  <Field
-                    label="Mother's Aadhar No *"
-                    placeholder="12-digit Aadhar"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    maxLength={12}
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.replace(/\D/g, "").slice(0, 12));
-                    }}
-                    error={fieldState.error?.message}
+                  <Controller
+                    control={form.control}
+                    name="motherAadharNo"
+                    render={({ field, fieldState }) => (
+                      <Field
+                        label={`Mother's Aadhar No ${isMotherDeceased ? "" : "*"}`}
+                        placeholder={isMotherDeceased ? "N/A (Deceased)" : "12-digit Aadhar"}
+                        disabled={isMotherDeceased}
+                        {...field}
+                        value={isMotherDeceased ? "" : (field.value || "")}
+                        className="uppercase"
+                        maxLength={12}
+                        onChange={(e: any) => {
+                          if (isMotherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                        }}
+                        error={isMotherDeceased ? undefined : fieldState.error?.message}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="motherOccupation"
-                render={({ field }) => (
-                  <Field
-                    label="Occupation"
-                    placeholder="e.g. TEACHER / HOMEMAKER"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
+                  <Controller
+                    control={form.control}
+                    name="motherOccupation"
+                    render={({ field }) => (
+                      <Field
+                        label="Occupation"
+                        placeholder={isMotherDeceased ? "N/A (Deceased)" : "e.g. TEACHER / HOMEMAKER"}
+                        disabled={isMotherDeceased}
+                        {...field}
+                        value={isMotherDeceased ? "" : (field.value || "")}
+                        className="uppercase"
+                        onChange={(e: any) => {
+                          if (isMotherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.toUpperCase());
+                        }}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={form.control}
-                name="motherOrganization"
-                render={({ field }) => (
-                  <Field
-                    label="Organization / Employer"
-                    placeholder="e.g. PUBLIC SCHOOL"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
+                  <Controller
+                    control={form.control}
+                    name="motherOrganization"
+                    render={({ field }) => (
+                      <Field
+                        label="Organization / Employer"
+                        placeholder={isMotherDeceased ? "N/A (Deceased)" : "e.g. PUBLIC SCHOOL"}
+                        disabled={isMotherDeceased}
+                        {...field}
+                        value={isMotherDeceased ? "" : (field.value || "")}
+                        className="uppercase"
+                        onChange={(e: any) => {
+                          if (isMotherDeceased) return;
+                          const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                          field.onChange(val.toUpperCase());
+                        }}
+                      />
+                    )}
                   />
+                  <Controller
+                    control={form.control}
+                    name="motherAnnualIncome"
+                    render={({ field }) => (
+                      <Field
+                        label="Annual Income (₹)"
+                        type="number"
+                        placeholder={isMotherDeceased ? "N/A" : "e.g. 450000"}
+                        disabled={isMotherDeceased}
+                        {...field}
+                        value={isMotherDeceased ? "" : (field.value || "")}
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Guardian's Info */}
+          {(() => {
+            const hasGuardian = Boolean(form.watch("hasGuardian"));
+            return (
+              <div className={cn(
+                "p-3.5 rounded-lg border space-y-3 transition-colors",
+                hasGuardian ? "bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/60 shadow-xs" : "bg-slate-50/40 dark:bg-slate-900/20 border-dashed border-slate-200 dark:border-slate-800"
+              )}>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5 text-teal-600" /> Guardian / Local Guardian's Details
+                    {hasGuardian && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 normal-case tracking-normal border border-purple-200 dark:border-purple-800">
+                        Active
+                      </span>
+                    )}
+                  </h4>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="has-guardian-switch" className="text-xs font-medium text-muted-foreground cursor-pointer select-none">
+                      {hasGuardian ? "Guardian Details Enabled" : "Add Guardian Details"}
+                    </Label>
+                    <Controller
+                      control={form.control}
+                      name="hasGuardian"
+                      render={({ field }) => (
+                        <Switch
+                          id="has-guardian-switch"
+                          checked={Boolean(field.value)}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            if (!checked) {
+                              form.clearErrors([
+                                "guardianName",
+                                "guardianRelation",
+                                "guardianPhone",
+                                "guardianAadharNo",
+                              ]);
+                              form.setValue("guardianName", "");
+                              form.setValue("guardianRelation", "");
+                              form.setValue("guardianPhone", "");
+                              form.setValue("guardianAadharNo", "");
+                              form.setValue("guardianOccupation", "");
+                              form.setValue("guardianOrganization", "");
+                              form.setValue("guardianAnnualIncome", "");
+                            }
+                          }}
+                        />
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {hasGuardian && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                    <Controller
+                      control={form.control}
+                      name="guardianName"
+                      render={({ field, fieldState }) => (
+                        <Field
+                          label="Guardian's Full Name *"
+                          placeholder="e.g. SURESH VERMA"
+                          {...field}
+                          value={field.value || ""}
+                          className="uppercase"
+                          onChange={(e: any) => {
+                            const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                            field.onChange(val.toUpperCase());
+                          }}
+                          error={fieldState.error?.message}
+                        />
+                      )}
+                    />
+                    <Controller
+                      control={form.control}
+                      name="guardianRelation"
+                      render={({ field, fieldState }) => (
+                        <Field
+                          label="Relationship with Student *"
+                          placeholder="e.g. UNCLE / AUNT / LOCAL GUARDIAN"
+                          {...field}
+                          value={field.value || ""}
+                          className="uppercase"
+                          onChange={(e: any) => {
+                            const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                            field.onChange(val.toUpperCase());
+                          }}
+                          error={fieldState.error?.message}
+                        />
+                      )}
+                    />
+                    <Controller
+                      control={form.control}
+                      name="guardianPhone"
+                      render={({ field, fieldState }) => (
+                        <Field
+                          label="Guardian's Contact No *"
+                          placeholder="10-digit number"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e: any) => {
+                            const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                            field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                          }}
+                          error={fieldState.error?.message}
+                        />
+                      )}
+                    />
+                    <Controller
+                      control={form.control}
+                      name="guardianAadharNo"
+                      render={({ field, fieldState }) => (
+                        <Field
+                          label="Guardian's Aadhar No *"
+                          placeholder="12-digit Aadhar"
+                          {...field}
+                          value={field.value || ""}
+                          className="uppercase"
+                          maxLength={12}
+                          onChange={(e: any) => {
+                            const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                            field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                          }}
+                          error={fieldState.error?.message}
+                        />
+                      )}
+                    />
+                    <Controller
+                      control={form.control}
+                      name="guardianOccupation"
+                      render={({ field }) => (
+                        <Field
+                          label="Occupation"
+                          placeholder="e.g. ADVOCATE / BUSINESS"
+                          {...field}
+                          value={field.value || ""}
+                          className="uppercase"
+                          onChange={(e: any) => {
+                            const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                            field.onChange(val.toUpperCase());
+                          }}
+                        />
+                      )}
+                    />
+                    <Controller
+                      control={form.control}
+                      name="guardianOrganization"
+                      render={({ field }) => (
+                        <Field
+                          label="Organization / Employer"
+                          placeholder="e.g. HIGH COURT / PRIVATE LTD"
+                          {...field}
+                          value={field.value || ""}
+                          className="uppercase"
+                          onChange={(e: any) => {
+                            const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                            field.onChange(val.toUpperCase());
+                          }}
+                        />
+                      )}
+                    />
+                    <Controller
+                      control={form.control}
+                      name="guardianAnnualIncome"
+                      render={({ field }) => (
+                        <Field
+                          label="Annual Income (₹)"
+                          type="number"
+                          placeholder="e.g. 500000"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      )}
+                    />
+                  </div>
                 )}
-              />
-              <Controller
-                control={form.control}
-                name="motherAnnualIncome"
-                render={({ field }) => (
-                  <Field label="Annual Income (₹)" type="number" placeholder="e.g. 450000" {...field} value={field.value || ""} />
-                )}
-              />
-            </div>
-          </div>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -1044,12 +1357,12 @@ export function ApplicantFormPanels({
         </CardContent>
       </Card>
 
-      {/* Panel 5: Examination History (Class 10, 11, 12) */}
+      {/* Panel 5: Examination History (Class 10, 12) */}
       <Card className="border shadow-xs">
         <CardHeader className="py-2.5 px-4 bg-muted/30 border-b">
           <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
             <BookOpen className="h-4 w-4 text-teal-600" />
-            5. Academic & Qualifying Examination History (Class 10, 11, 12)
+            5. Academic & Qualifying Examination History (Class 10, 12)
           </CardTitle>
           <CardDescription className="text-xs">
             Capture Board/University, Passing Year, Multiline Subjects Taken, and Percentage Scored in each subject.
@@ -1058,8 +1371,7 @@ export function ApplicantFormPanels({
         <CardContent className="p-4 space-y-4">
           {[
             { index: 0, title: "Class 10 / Matriculation / SSLC", defaultExam: "10th" },
-            { index: 1, title: "Class 11 / Higher Secondary Year 1", defaultExam: "11th" },
-            { index: 2, title: "Class 12 / Higher Secondary (10+2)", defaultExam: "12th" },
+            { index: 1, title: "Class 12 / Higher Secondary (10+2)", defaultExam: "12th" },
           ].map((examItem) => (
             <div key={examItem.index} className="p-3.5 rounded-lg border bg-slate-50/50 dark:bg-slate-900/30 space-y-3">
               <div className="flex items-center justify-between border-b pb-2">
@@ -1311,7 +1623,7 @@ function AdmissionsPage() {
   const pagination = applicantsResponse?.pagination;
 
   const currentYear = new Date().getFullYear();
-  const defaultAcademicYear = `${currentYear}-${currentYear + 4}`;
+  const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
 
   const defaultApplicantFormValues: ApplicantFormData = {
     batchId: 0,
@@ -1323,18 +1635,28 @@ function AdmissionsPage() {
     aadharNo: "",
     gender: "Female",
     dob: "",
+    fatherDeceased: false,
     fatherName: "",
     fatherPhone: "",
     fatherAadharNo: "",
     fatherOccupation: "",
     fatherOrganization: "",
     fatherAnnualIncome: "",
+    motherDeceased: false,
     motherName: "",
     motherPhone: "",
     motherAadharNo: "",
     motherOccupation: "",
     motherOrganization: "",
     motherAnnualIncome: "",
+    hasGuardian: false,
+    guardianName: "",
+    guardianRelation: "",
+    guardianPhone: "",
+    guardianAadharNo: "",
+    guardianOccupation: "",
+    guardianOrganization: "",
+    guardianAnnualIncome: "",
     presentAddress: "",
     presentDistrict: "",
     presentPincode: "",
@@ -1345,7 +1667,6 @@ function AdmissionsPage() {
     permanentState: "",
     academicHistory: [
       { exam: "10th", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
-      { exam: "11th", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
       { exam: "12th", board: "", year: "", subjects: "", subjectScores: "", percentage: "" },
     ],
     entranceMeritScore: 0,
@@ -1364,16 +1685,26 @@ function AdmissionsPage() {
   const convertForm = useForm<{
     batchId: number;
     enrollmentNo: string;
+    hasGuardian: boolean;
     guardianName: string;
-    guardianPhone: string;
     guardianRelation: string;
+    guardianPhone: string;
+    guardianAadharNo: string;
+    guardianOccupation: string;
+    guardianOrganization: string;
+    guardianAnnualIncome: string;
   }>({
     defaultValues: {
       batchId: 0,
       enrollmentNo: "",
+      hasGuardian: false,
       guardianName: "",
+      guardianRelation: "",
       guardianPhone: "",
-      guardianRelation: "Mother",
+      guardianAadharNo: "",
+      guardianOccupation: "",
+      guardianOrganization: "",
+      guardianAnnualIncome: "",
     },
   });
 
@@ -1614,7 +1945,7 @@ function AdmissionsPage() {
     if (!Array.isArray(parsedHistory) || parsedHistory.length === 0) {
       parsedHistory = defaultAcademicHistory;
     } else {
-      const exams = ["10th", "11th", "12th"];
+      const exams = ["10th", "12th"];
       parsedHistory = exams.map((ex) => {
         const found = (parsedHistory as ExamDetail[]).find((p) => p.exam === ex);
         return found || { exam: ex, instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" };
@@ -1635,18 +1966,28 @@ function AdmissionsPage() {
       aadharNo: applicant.aadharNo || "",
       gender: applicant.gender || "Female",
       dob: applicant.dob || "",
+      fatherDeceased: Boolean(applicant.fatherDeceased),
       fatherName: applicant.fatherName || "",
       fatherPhone: applicant.fatherPhone || "",
       fatherAadharNo: applicant.fatherAadharNo || "",
       fatherOccupation: applicant.fatherOccupation || "",
       fatherOrganization: applicant.fatherOrganization || "",
       fatherAnnualIncome: applicant.fatherAnnualIncome != null ? String(applicant.fatherAnnualIncome) : "",
+      motherDeceased: Boolean(applicant.motherDeceased),
       motherName: applicant.motherName || "",
       motherPhone: applicant.motherPhone || "",
       motherAadharNo: applicant.motherAadharNo || "",
       motherOccupation: applicant.motherOccupation || "",
       motherOrganization: applicant.motherOrganization || "",
       motherAnnualIncome: applicant.motherAnnualIncome != null ? String(applicant.motherAnnualIncome) : "",
+      hasGuardian: Boolean(applicant.hasGuardian),
+      guardianName: applicant.guardianName || "",
+      guardianRelation: applicant.guardianRelation || "",
+      guardianPhone: applicant.guardianPhone || "",
+      guardianAadharNo: applicant.guardianAadharNo || "",
+      guardianOccupation: applicant.guardianOccupation || "",
+      guardianOrganization: applicant.guardianOrganization || "",
+      guardianAnnualIncome: applicant.guardianAnnualIncome != null ? String(applicant.guardianAnnualIncome) : "",
       presentAddress: applicant.presentAddress || applicant.address || "",
       presentDistrict: applicant.presentDistrict || "",
       presentPincode: applicant.presentPincode || "",
@@ -1679,6 +2020,12 @@ function AdmissionsPage() {
       "motherAadharNo",
       "motherOccupation",
       "motherOrganization",
+      "guardianName",
+      "guardianRelation",
+      "guardianPhone",
+      "guardianAadharNo",
+      "guardianOccupation",
+      "guardianOrganization",
       "presentAddress",
       "presentDistrict",
       "presentPincode",
@@ -1729,31 +2076,103 @@ function AdmissionsPage() {
       isValid = false;
     }
 
-    const fatherPhone = data.fatherPhone ? String(data.fatherPhone).replace(/\D/g, "") : "";
-    if (fatherPhone.length !== 10) {
-      form.setError("fatherPhone", { type: "manual", message: "Father's contact number is required (10 digits)" });
-      isValid = false;
+    if (data.fatherDeceased) {
+      if (!data.fatherName || !data.fatherName.trim()) {
+        form.setError("fatherName", { type: "manual", message: "Father's name is required" });
+        isValid = false;
+      }
+    } else {
+      const fatherPhone = data.fatherPhone ? String(data.fatherPhone).replace(/\D/g, "") : "";
+      if (fatherPhone.length !== 10) {
+        form.setError("fatherPhone", { type: "manual", message: "Father's contact number is required (10 digits)" });
+        isValid = false;
+      }
+
+      const fatherAadhar = data.fatherAadharNo ? String(data.fatherAadharNo).replace(/\D/g, "") : "";
+      if (fatherAadhar.length !== 12) {
+        form.setError("fatherAadharNo", { type: "manual", message: "Father's Aadhar number is required (12 digits)" });
+        isValid = false;
+      }
     }
 
-    const fatherAadhar = data.fatherAadharNo ? String(data.fatherAadharNo).replace(/\D/g, "") : "";
-    if (fatherAadhar.length !== 12) {
-      form.setError("fatherAadharNo", { type: "manual", message: "Father's Aadhar number is required (12 digits)" });
-      isValid = false;
+    if (data.motherDeceased) {
+      if (!data.motherName || !data.motherName.trim()) {
+        form.setError("motherName", { type: "manual", message: "Mother's name is required" });
+        isValid = false;
+      }
+    } else {
+      const motherPhone = data.motherPhone ? String(data.motherPhone).replace(/\D/g, "") : "";
+      if (motherPhone.length !== 10) {
+        form.setError("motherPhone", { type: "manual", message: "Mother's contact number is required (10 digits)" });
+        isValid = false;
+      }
+
+      const motherAadhar = data.motherAadharNo ? String(data.motherAadharNo).replace(/\D/g, "") : "";
+      if (motherAadhar.length !== 12) {
+        form.setError("motherAadharNo", { type: "manual", message: "Mother's Aadhar number is required (12 digits)" });
+        isValid = false;
+      }
     }
 
-    const motherPhone = data.motherPhone ? String(data.motherPhone).replace(/\D/g, "") : "";
-    if (motherPhone.length !== 10) {
-      form.setError("motherPhone", { type: "manual", message: "Mother's contact number is required (10 digits)" });
-      isValid = false;
-    }
-
-    const motherAadhar = data.motherAadharNo ? String(data.motherAadharNo).replace(/\D/g, "") : "";
-    if (motherAadhar.length !== 12) {
-      form.setError("motherAadharNo", { type: "manual", message: "Mother's Aadhar number is required (12 digits)" });
-      isValid = false;
+    if (data.hasGuardian) {
+      if (!data.guardianName || !data.guardianName.trim()) {
+        form.setError("guardianName", { type: "manual", message: "Guardian's full name is required" });
+        isValid = false;
+      }
+      if (!data.guardianRelation || !data.guardianRelation.trim()) {
+        form.setError("guardianRelation", { type: "manual", message: "Relationship with student is required" });
+        isValid = false;
+      }
+      const guardianPhone = data.guardianPhone ? String(data.guardianPhone).replace(/\D/g, "") : "";
+      if (guardianPhone.length !== 10) {
+        form.setError("guardianPhone", { type: "manual", message: "Guardian's contact number is required (10 digits)" });
+        isValid = false;
+      }
+      const guardianAadhar = data.guardianAadharNo ? String(data.guardianAadharNo).replace(/\D/g, "") : "";
+      if (guardianAadhar.length !== 12) {
+        form.setError("guardianAadharNo", { type: "manual", message: "Guardian's Aadhar number is required (12 digits)" });
+        isValid = false;
+      }
     }
 
     return isValid;
+  };
+
+  const openConvertModal = (applicant: Applicant) => {
+    setSelectedApplicant(applicant);
+    const matchedBatch =
+      batches.find((b) => b.courseId === applicant.courseId && b.academicYear === applicant.academicYear) ||
+      batches.find((b) => b.courseId === applicant.courseId) ||
+      batches[0];
+
+    const hasGuardian = Boolean(applicant.hasGuardian);
+    const defaultName = hasGuardian && applicant.guardianName
+      ? applicant.guardianName
+      : applicant.fatherName || applicant.motherName || "";
+    const defaultPhone = hasGuardian && applicant.guardianPhone
+      ? applicant.guardianPhone
+      : applicant.fatherPhone || applicant.motherPhone || applicant.phone || "";
+    const defaultRelation = hasGuardian && applicant.guardianRelation
+      ? applicant.guardianRelation
+      : applicant.fatherName
+      ? "Father"
+      : applicant.motherName
+      ? "Mother"
+      : "Parent";
+
+    convertForm.reset({
+      batchId: matchedBatch ? matchedBatch.id : 0,
+      enrollmentNo: "",
+      hasGuardian,
+      guardianName: defaultName,
+      guardianPhone: defaultPhone,
+      guardianRelation: defaultRelation,
+      guardianAadharNo: applicant.guardianAadharNo || "",
+      guardianOccupation: applicant.guardianOccupation || "",
+      guardianOrganization: applicant.guardianOrganization || "",
+      guardianAnnualIncome: applicant.guardianAnnualIncome != null ? String(applicant.guardianAnnualIncome) : "",
+    });
+    setConvertModalOpen(true);
   };
 
   const onProfileSubmit = (data: any) => {
@@ -1823,11 +2242,43 @@ function AdmissionsPage() {
       toast.error("Please select a valid academic batch for student enrollment");
       return;
     }
+    if (data.hasGuardian) {
+      let isConvertValid = true;
+      if (!data.guardianName || !data.guardianName.trim()) {
+        convertForm.setError("guardianName", { type: "manual", message: "Guardian's name is required" });
+        isConvertValid = false;
+      }
+      if (!data.guardianRelation || !data.guardianRelation.trim()) {
+        convertForm.setError("guardianRelation", { type: "manual", message: "Relationship is required" });
+        isConvertValid = false;
+      }
+      const gPhone = data.guardianPhone ? String(data.guardianPhone).replace(/\D/g, "") : "";
+      if (gPhone.length !== 10) {
+        convertForm.setError("guardianPhone", { type: "manual", message: "Guardian phone is required (10 digits)" });
+        isConvertValid = false;
+      }
+      const gAadhar = data.guardianAadharNo ? String(data.guardianAadharNo).replace(/\D/g, "") : "";
+      if (gAadhar.length !== 12) {
+        convertForm.setError("guardianAadharNo", { type: "manual", message: "Guardian Aadhar is required (12 digits)" });
+        isConvertValid = false;
+      }
+      if (!isConvertValid) {
+        toast.error("Please provide valid Guardian contact number (10 digits) and Aadhar (12 digits)");
+        return;
+      }
+    }
     convertToStudentMutation.mutate({
       ...data,
       batchId,
       enrollmentNo: data.enrollmentNo ? data.enrollmentNo.trim().toUpperCase() : undefined,
+      hasGuardian: data.hasGuardian,
       guardianName: data.guardianName ? data.guardianName.trim().toUpperCase() : undefined,
+      guardianRelation: data.guardianRelation ? data.guardianRelation.trim().toUpperCase() : undefined,
+      guardianPhone: data.guardianPhone ? data.guardianPhone.trim() : undefined,
+      guardianAadharNo: data.guardianAadharNo ? data.guardianAadharNo.trim().toUpperCase() : undefined,
+      guardianOccupation: data.guardianOccupation ? data.guardianOccupation.trim().toUpperCase() : undefined,
+      guardianOrganization: data.guardianOrganization ? data.guardianOrganization.trim().toUpperCase() : undefined,
+      guardianAnnualIncome: data.guardianAnnualIncome ? data.guardianAnnualIncome : undefined,
     });
   };
 
@@ -2116,10 +2567,7 @@ function AdmissionsPage() {
                             <Button
                               size="sm"
                               className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-7 px-2"
-                              onClick={() => {
-                                setSelectedApplicant(app);
-                                setConvertModalOpen(true);
-                              }}
+                              onClick={() => openConvertModal(app)}
                             >
                               <UserPlus size={12} className="mr-1" /> Convert
                             </Button>
@@ -2259,16 +2707,16 @@ function AdmissionsPage() {
                     )}
                   </div>
 
-                  <Button
+                  {/* <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground shrink-0"
                     onClick={() => setProfileDialogOpen(false)}
                   >
-                    <X size={18} />
+                    <X size={18} />sdd
                     <span className="sr-only">Close</span>
-                  </Button>
+                  </Button> */}
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
@@ -2292,7 +2740,7 @@ function AdmissionsPage() {
                         if (!Array.isArray(parsedHistory) || parsedHistory.length === 0) {
                           parsedHistory = defaultAcademicHistory;
                         } else {
-                          const exams = ["10th", "11th", "12th"];
+                          const exams = ["10th", "12th"];
                           parsedHistory = exams.map((ex) => {
                             const found = (parsedHistory as ExamDetail[]).find((p) => p.exam === ex);
                             return found || { exam: ex, instituteName: "", instituteAddress: "", board: "", year: "", subjects: "", subjectScores: "", percentage: "" };
@@ -2313,18 +2761,28 @@ function AdmissionsPage() {
                           aadharNo: viewApplicant.aadharNo || "",
                           gender: viewApplicant.gender || "Female",
                           dob: viewApplicant.dob || "",
+                          fatherDeceased: Boolean(viewApplicant.fatherDeceased),
                           fatherName: viewApplicant.fatherName || "",
                           fatherPhone: viewApplicant.fatherPhone || "",
                           fatherAadharNo: viewApplicant.fatherAadharNo || "",
                           fatherOccupation: viewApplicant.fatherOccupation || "",
                           fatherOrganization: viewApplicant.fatherOrganization || "",
                           fatherAnnualIncome: viewApplicant.fatherAnnualIncome != null ? String(viewApplicant.fatherAnnualIncome) : "",
+                          motherDeceased: Boolean(viewApplicant.motherDeceased),
                           motherName: viewApplicant.motherName || "",
                           motherPhone: viewApplicant.motherPhone || "",
                           motherAadharNo: viewApplicant.motherAadharNo || "",
                           motherOccupation: viewApplicant.motherOccupation || "",
                           motherOrganization: viewApplicant.motherOrganization || "",
                           motherAnnualIncome: viewApplicant.motherAnnualIncome != null ? String(viewApplicant.motherAnnualIncome) : "",
+                          hasGuardian: Boolean(viewApplicant.hasGuardian),
+                          guardianName: viewApplicant.guardianName || "",
+                          guardianRelation: viewApplicant.guardianRelation || "",
+                          guardianPhone: viewApplicant.guardianPhone || "",
+                          guardianAadharNo: viewApplicant.guardianAadharNo || "",
+                          guardianOccupation: viewApplicant.guardianOccupation || "",
+                          guardianOrganization: viewApplicant.guardianOrganization || "",
+                          guardianAnnualIncome: viewApplicant.guardianAnnualIncome != null ? String(viewApplicant.guardianAnnualIncome) : "",
                           presentAddress: viewApplicant.presentAddress || viewApplicant.address || "",
                           presentDistrict: viewApplicant.presentDistrict || "",
                           presentPincode: viewApplicant.presentPincode || "",
@@ -2391,8 +2849,7 @@ function AdmissionsPage() {
                       className="bg-teal-600 hover:bg-teal-700 text-white text-xs h-8 px-3 gap-1.5 w-full sm:w-auto"
                       onClick={() => {
                         setProfileDialogOpen(false);
-                        setSelectedApplicant(viewApplicant);
-                        setConvertModalOpen(true);
+                        openConvertModal(viewApplicant);
                       }}
                     >
                       <UserPlus size={14} /> Convert to Enrolled Student
@@ -2578,9 +3035,19 @@ function AdmissionsPage() {
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Father */}
-                      <div className="p-3 rounded-lg border bg-muted/20 space-y-2 text-xs">
-                        <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide">
-                          Father's Details
+                      <div className={cn(
+                        "p-3 rounded-lg border space-y-2 text-xs",
+                        viewApplicant.fatherDeceased ? "bg-slate-100/50 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800" : "bg-muted/20"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide">
+                            Father's Details
+                          </div>
+                          {viewApplicant.fatherDeceased && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              Deceased
+                            </span>
+                          )}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -2589,33 +3056,54 @@ function AdmissionsPage() {
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Contact No</span>
-                            <span className="font-semibold text-teal-700 dark:text-teal-300 font-mono">{viewApplicant.fatherPhone || "N/A"}</span>
+                            <span className={cn(
+                              "font-semibold text-xs",
+                              viewApplicant.fatherDeceased ? "text-muted-foreground italic font-normal" : "text-teal-700 dark:text-teal-300 font-mono"
+                            )}>
+                              {viewApplicant.fatherDeceased ? "N/A (Deceased)" : (viewApplicant.fatherPhone || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Aadhar No</span>
-                            <span className="font-medium text-foreground font-mono">{viewApplicant.fatherAadharNo || "N/A"}</span>
+                            <span className={cn("font-medium", viewApplicant.fatherDeceased ? "text-muted-foreground italic font-normal" : "text-foreground font-mono")}>
+                              {viewApplicant.fatherDeceased ? "N/A (Deceased)" : (viewApplicant.fatherAadharNo || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Occupation</span>
-                            <span className="font-medium text-foreground">{viewApplicant.fatherOccupation || "N/A"}</span>
+                            <span className="font-medium text-foreground">
+                              {viewApplicant.fatherDeceased ? "N/A (Deceased)" : (viewApplicant.fatherOccupation || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Organization / Employer</span>
-                            <span className="font-medium text-foreground">{viewApplicant.fatherOrganization || "N/A"}</span>
+                            <span className="font-medium text-foreground">
+                              {viewApplicant.fatherDeceased ? "N/A (Deceased)" : (viewApplicant.fatherOrganization || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Annual Income</span>
                             <span className="font-medium text-foreground font-mono">
-                              {viewApplicant.fatherAnnualIncome ? `₹${Number(viewApplicant.fatherAnnualIncome).toLocaleString()}` : "N/A"}
+                              {viewApplicant.fatherDeceased ? "N/A" : (viewApplicant.fatherAnnualIncome ? `₹${Number(viewApplicant.fatherAnnualIncome).toLocaleString()}` : "N/A")}
                             </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Mother */}
-                      <div className="p-3 rounded-lg border bg-muted/20 space-y-2 text-xs">
-                        <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide">
-                          Mother's Details
+                      <div className={cn(
+                        "p-3 rounded-lg border space-y-2 text-xs",
+                        viewApplicant.motherDeceased ? "bg-slate-100/50 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800" : "bg-muted/20"
+                      )}>
+                        <div className="flex items-center justify-between">
+                          <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide">
+                            Mother's Details
+                          </div>
+                          {viewApplicant.motherDeceased && (
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              Deceased
+                            </span>
+                          )}
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
@@ -2624,28 +3112,95 @@ function AdmissionsPage() {
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Contact No</span>
-                            <span className="font-semibold text-teal-700 dark:text-teal-300 font-mono">{viewApplicant.motherPhone || "N/A"}</span>
+                            <span className={cn(
+                              "font-semibold text-xs",
+                              viewApplicant.motherDeceased ? "text-muted-foreground italic font-normal" : "text-teal-700 dark:text-teal-300 font-mono"
+                            )}>
+                              {viewApplicant.motherDeceased ? "N/A (Deceased)" : (viewApplicant.motherPhone || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Aadhar No</span>
-                            <span className="font-medium text-foreground font-mono">{viewApplicant.motherAadharNo || "N/A"}</span>
+                            <span className={cn("font-medium", viewApplicant.motherDeceased ? "text-muted-foreground italic font-normal" : "text-foreground font-mono")}>
+                              {viewApplicant.motherDeceased ? "N/A (Deceased)" : (viewApplicant.motherAadharNo || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Occupation</span>
-                            <span className="font-medium text-foreground">{viewApplicant.motherOccupation || "N/A"}</span>
+                            <span className="font-medium text-foreground">
+                              {viewApplicant.motherDeceased ? "N/A (Deceased)" : (viewApplicant.motherOccupation || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Organization / Employer</span>
-                            <span className="font-medium text-foreground">{viewApplicant.motherOrganization || "N/A"}</span>
+                            <span className="font-medium text-foreground">
+                              {viewApplicant.motherDeceased ? "N/A (Deceased)" : (viewApplicant.motherOrganization || "N/A")}
+                            </span>
                           </div>
                           <div>
                             <span className="text-muted-foreground block text-[11px]">Annual Income</span>
                             <span className="font-medium text-foreground font-mono">
-                              {viewApplicant.motherAnnualIncome ? `₹${Number(viewApplicant.motherAnnualIncome).toLocaleString()}` : "N/A"}
+                              {viewApplicant.motherDeceased ? "N/A" : (viewApplicant.motherAnnualIncome ? `₹${Number(viewApplicant.motherAnnualIncome).toLocaleString()}` : "N/A")}
                             </span>
                           </div>
                         </div>
                       </div>
+
+                      {/* Guardian Details */}
+                      {viewApplicant.hasGuardian && (
+                        <div className="p-3 rounded-lg border space-y-2 text-xs bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/60 md:col-span-2">
+                          <div className="flex items-center justify-between">
+                            <div className="font-bold text-teal-800 dark:text-teal-300 uppercase tracking-wide flex items-center gap-1.5">
+                              <ShieldCheck className="h-3.5 w-3.5 text-teal-600" /> Guardian / Local Guardian's Details
+                            </div>
+                            {viewApplicant.guardianRelation && (
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                                {viewApplicant.guardianRelation}
+                              </span>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Name</span>
+                              <span className="font-medium text-foreground">{viewApplicant.guardianName || "N/A"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Relationship</span>
+                              <span className="font-medium text-foreground">{viewApplicant.guardianRelation || "N/A"}</span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Contact No</span>
+                              <span className="font-semibold text-xs text-teal-700 dark:text-teal-300 font-mono">
+                                {viewApplicant.guardianPhone || "N/A"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Aadhar No</span>
+                              <span className="font-medium text-foreground font-mono">
+                                {viewApplicant.guardianAadharNo || "N/A"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Occupation</span>
+                              <span className="font-medium text-foreground">
+                                {viewApplicant.guardianOccupation || "N/A"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Organization / Employer</span>
+                              <span className="font-medium text-foreground">
+                                {viewApplicant.guardianOrganization || "N/A"}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[11px]">Annual Income</span>
+                              <span className="font-medium text-foreground font-mono">
+                                {viewApplicant.guardianAnnualIncome ? `₹${Number(viewApplicant.guardianAnnualIncome).toLocaleString()}` : "N/A"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2684,7 +3239,7 @@ function AdmissionsPage() {
                   {/* Academic & Examination History Card */}
                   <div className="border rounded-md p-4 space-y-3 bg-card">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                      <BookOpen className="h-3.5 w-3.5 text-teal-600" /> Academic & Qualifying Examination History (10th, 11th, 12th)
+                      <BookOpen className="h-3.5 w-3.5 text-teal-600" /> Academic & Qualifying Examination History (10th, 12th)
                     </h4>
                     <div className="space-y-3">
                       {(() => {
@@ -2692,10 +3247,11 @@ function AdmissionsPage() {
                         if (typeof history === "string") {
                           try { history = JSON.parse(history); } catch (e) { history = []; }
                         }
-                        if (!Array.isArray(history) || history.length === 0) {
+                        const visibleHistory = Array.isArray(history) ? history.filter((h: any) => h.exam !== "11th") : [];
+                        if (visibleHistory.length === 0) {
                           return <p className="text-xs text-muted-foreground italic">No academic exam records captured yet.</p>;
                         }
-                        return history.map((h, i) => (
+                        return visibleHistory.map((h, i) => (
                           <div key={i} className="p-3 rounded-lg border bg-muted/20 space-y-2 text-xs">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-1.5 gap-1">
                               <span className="font-bold text-teal-800 dark:text-teal-300 uppercase">
@@ -2772,8 +3328,7 @@ function AdmissionsPage() {
                           className="bg-teal-600 hover:bg-teal-700 text-white flex-1 sm:flex-initial"
                           onClick={() => {
                             setProfileDialogOpen(false);
-                            setSelectedApplicant(viewApplicant);
-                            setConvertModalOpen(true);
+                            openConvertModal(viewApplicant);
                           }}
                         >
                           <UserPlus size={13} className="mr-1" /> Convert to Student
@@ -2809,7 +3364,7 @@ function AdmissionsPage() {
       {/* Convert to Student Modal */}
       <Dialog open={convertModalOpen} onOpenChange={setConvertModalOpen}>
         <DialogContent
-          className="w-full max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6"
+          className="w-full max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -2927,32 +3482,103 @@ function AdmissionsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Controller
-                control={convertForm.control}
-                name="guardianName"
-                render={({ field, fieldState }) => (
-                  <Field
-                    label="Guardian Name"
-                    placeholder="e.g. FATHER / MOTHER NAME"
-                    {...field}
-                    value={field.value || ""}
-                    className="uppercase"
-                    onChange={(e: any) => {
-                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                      field.onChange(val.toUpperCase());
-                    }}
-                    error={fieldState.error?.message}
+            {/* Guardian Information in Conversion */}
+            <div className="p-3 bg-purple-50/40 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900/60 rounded-md space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-teal-800 dark:text-teal-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-teal-600" /> Guardian / Parent for Student Profile
+                </span>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="convert-has-guardian" className="text-xs text-muted-foreground cursor-pointer">
+                    {convertForm.watch("hasGuardian") ? "Guardian Active" : "Parent Fallback"}
+                  </Label>
+                  <Controller
+                    control={convertForm.control}
+                    name="hasGuardian"
+                    render={({ field }) => (
+                      <Switch
+                        id="convert-has-guardian"
+                        checked={Boolean(field.value)}
+                        onCheckedChange={field.onChange}
+                      />
+                    )}
                   />
-                )}
-              />
-              <Controller
-                control={convertForm.control}
-                name="guardianPhone"
-                render={({ field, fieldState }) => (
-                  <Field label="Guardian Phone" placeholder="+91 9876543210" {...field} error={fieldState.error?.message} />
-                )}
-              />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Controller
+                  control={convertForm.control}
+                  name="guardianName"
+                  render={({ field, fieldState }) => (
+                    <Field
+                      label="Guardian / Contact Name *"
+                      placeholder="e.g. FATHER / MOTHER / GUARDIAN NAME"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+                <Controller
+                  control={convertForm.control}
+                  name="guardianRelation"
+                  render={({ field, fieldState }) => (
+                    <Field
+                      label="Relationship *"
+                      placeholder="e.g. Father, Mother, Guardian, Uncle"
+                      {...field}
+                      value={field.value || ""}
+                      className="uppercase"
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.toUpperCase());
+                      }}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+                <Controller
+                  control={convertForm.control}
+                  name="guardianPhone"
+                  render={({ field, fieldState }) => (
+                    <Field
+                      label="Contact Phone *"
+                      placeholder="10-digit phone"
+                      {...field}
+                      value={field.value || ""}
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.replace(/\D/g, "").slice(0, 10));
+                      }}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+                <Controller
+                  control={convertForm.control}
+                  name="guardianAadharNo"
+                  render={({ field, fieldState }) => (
+                    <Field
+                      label="Aadhar Number *"
+                      placeholder="12-digit Aadhar"
+                      {...field}
+                      value={field.value || ""}
+                      maxLength={12}
+                      onChange={(e: any) => {
+                        const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                        field.onChange(val.replace(/\D/g, "").slice(0, 12));
+                      }}
+                      error={fieldState.error?.message}
+                    />
+                  )}
+                />
+              </div>
             </div>
 
             <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t">
