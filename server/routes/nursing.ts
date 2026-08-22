@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql, like, gte, lte, count } from "drizzle-orm";
+import { and, or, desc, eq, ne, sql, like, gte, lte, count } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -16,6 +16,12 @@ import {
   nursingAuditLogs,
   nursingSubjects,
   nursingAcademicSchedules,
+  nursingReferrers,
+  nursingReferrerPayments,
+  nursingReferrerPaymentAllocations,
+  dailyClosingReports,
+  dailyExpenditures,
+  monthlyBankExpenses,
   user,
 } from "../db/schema.ts";
 import { jsonBody, idParam, code, requireCollegeAccess } from "./shared.ts";
@@ -45,6 +51,64 @@ export function getAcademicYear(dateStr?: string): string {
   return month >= 6 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
 }
 
+export async function syncAconCashReceiptToDailyClosing(paymentDate: string) {
+  if (!paymentDate) return;
+  try {
+    const cashTxList = await db
+      .select({ amount: nursingFeeTransactions.amount })
+      .from(nursingFeeTransactions)
+      .where(
+        and(
+          eq(nursingFeeTransactions.paymentDate, paymentDate),
+          sql`LOWER(${nursingFeeTransactions.paymentMode}) = 'cash'`,
+          ne(nursingFeeTransactions.status, "refunded")
+        )
+      )
+      .execute();
+
+    const totalAconCash = cashTxList.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+    let [report] = await db
+      .select()
+      .from(dailyClosingReports)
+      .where(eq(dailyClosingReports.reportDate, paymentDate))
+      .limit(1)
+      .execute();
+
+    if (!report) {
+      const [newReport] = await db
+        .insert(dailyClosingReports)
+        .values({
+          reportDate: paymentDate,
+          createdBy: "system",
+          openingBalance: "0",
+          cashReceiptAcon: totalAconCash.toFixed(2),
+          cashReceiptsTotal: totalAconCash.toFixed(2),
+          status: "draft",
+        })
+        .returning()
+        .execute();
+      report = newReport;
+    } else {
+      const cashSir = parseFloat(report.cashReceiptSir) || 0;
+      const cashMam = parseFloat(report.cashReceiptMam) || 0;
+      const newCashTotal = cashSir + cashMam + totalAconCash;
+
+      await db
+        .update(dailyClosingReports)
+        .set({
+          cashReceiptAcon: totalAconCash.toFixed(2),
+          cashReceiptsTotal: newCashTotal.toFixed(2),
+          updatedAt: new Date(),
+        })
+        .where(eq(dailyClosingReports.id, report.id))
+        .execute();
+    }
+  } catch (err) {
+    console.error("Failed to sync ACON cash receipt to Daily Closing:", err);
+  }
+}
+
 export async function generateNextEnrollmentNo(batchStartYear: string): Promise<string> {
   const existing = await db
     .select({ enrollmentNo: nursingStudents.enrollmentNo })
@@ -59,6 +123,38 @@ export async function generateNextEnrollmentNo(batchStartYear: string): Promise<
     const en = (item.enrollmentNo || "").trim();
     if (en.toUpperCase().startsWith(prefix.toUpperCase())) {
       const suffix = en.slice(prefix.length);
+      const num = parseInt(suffix, 10);
+      if (!isNaN(num) && num > maxSeq) {
+        maxSeq = num;
+      }
+    }
+  }
+
+  let candidateSeq = Math.max(maxSeq + 1, existing.length + 1);
+  let candidate = `${prefix}${String(candidateSeq).padStart(4, "0")}`;
+
+  while (existingSet.has(candidate.toUpperCase())) {
+    candidateSeq++;
+    candidate = `${prefix}${String(candidateSeq).padStart(4, "0")}`;
+  }
+
+  return candidate;
+}
+
+export async function generateNextReferrerPaymentVoucherNo(year: string): Promise<string> {
+  const existing = await db
+    .select({ voucherNo: nursingReferrerPayments.voucherNo })
+    .from(nursingReferrerPayments)
+    .execute();
+
+  const existingSet = new Set(existing.map((e) => (e.voucherNo || "").trim().toUpperCase()));
+  const prefix = `REF-PAY-${year}-`;
+
+  let maxSeq = 0;
+  for (const item of existing) {
+    const vn = (item.voucherNo || "").trim();
+    if (vn.toUpperCase().startsWith(prefix.toUpperCase())) {
+      const suffix = vn.slice(prefix.length);
       const num = parseInt(suffix, 10);
       if (!isNaN(num) && num > maxSeq) {
         maxSeq = num;
@@ -377,6 +473,12 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: nursingApplicants.gender,
         dob: nursingApplicants.dob,
         address: nursingApplicants.address,
+        // Referrer Details
+        referrerId: nursingApplicants.referrerId,
+        referralAmount: nursingApplicants.referralAmount,
+        referralComments: nursingApplicants.referralComments,
+        referrerName: nursingReferrers.name,
+        referrerPhone: nursingReferrers.phone,
         // Parents Information
         fatherDeceased: nursingApplicants.fatherDeceased,
         fatherName: nursingApplicants.fatherName,
@@ -425,7 +527,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
         createdAt: nursingApplicants.createdAt,
       })
       .from(nursingApplicants)
-      .leftJoin(nursingCourses, eq(nursingApplicants.courseId, nursingCourses.id));
+      .leftJoin(nursingCourses, eq(nursingApplicants.courseId, nursingCourses.id))
+      .leftJoin(nursingReferrers, eq(nursingApplicants.referrerId, nursingReferrers.id));
 
     const rows = await query.orderBy(desc(nursingApplicants.id)).execute();
 
@@ -483,6 +586,10 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: z.string().default("Female"),
         dob: z.string().optional().nullable(),
         address: z.string().optional().nullable(),
+        // Referrer Details
+        referrerId: z.coerce.number().optional().nullable(),
+        referralAmount: z.string().optional().nullable(),
+        referralComments: z.string().optional().nullable(),
         // Parents Information
         fatherDeceased: z.boolean().optional().default(false),
         fatherName: z.string().optional().nullable(),
@@ -587,6 +694,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: input.gender,
         dob: input.dob || null,
         address: input.address || input.presentAddress || null,
+        referrerId: input.referrerId || null,
+        referralAmount: input.referralAmount ? String(input.referralAmount).trim() : null,
+        referralComments: input.referralComments ? input.referralComments.trim() : null,
         fatherDeceased: Boolean(input.fatherDeceased),
         fatherName: input.fatherName || null,
         fatherPhone: input.fatherDeceased ? null : (input.fatherPhone || null),
@@ -694,6 +804,10 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: z.string().optional(),
         dob: z.string().optional().nullable(),
         address: z.string().optional().nullable(),
+        // Referrer Details
+        referrerId: z.coerce.number().optional().nullable(),
+        referralAmount: z.string().optional().nullable(),
+        referralComments: z.string().optional().nullable(),
         // Parents Information
         fatherDeceased: z.boolean().optional(),
         fatherName: z.string().optional().nullable(),
@@ -766,6 +880,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
     if (input.gender !== undefined) updatePayload.gender = input.gender;
     if (input.dob !== undefined) updatePayload.dob = input.dob || null;
     if (input.address !== undefined) updatePayload.address = input.address || null;
+    if (input.referrerId !== undefined) updatePayload.referrerId = input.referrerId || null;
+    if (input.referralAmount !== undefined) updatePayload.referralAmount = input.referralAmount ? String(input.referralAmount).trim() : null;
+    if (input.referralComments !== undefined) updatePayload.referralComments = input.referralComments ? input.referralComments.trim() : null;
     if (input.fatherDeceased !== undefined) updatePayload.fatherDeceased = Boolean(input.fatherDeceased);
     if (input.fatherName !== undefined) updatePayload.fatherName = input.fatherName || null;
     if (input.fatherDeceased) {
@@ -932,11 +1049,14 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .returning()
       .execute();
 
-    // 2. Update nursingApplicants
+    // 2. Update nursingApplicants (accumulate total advance amount)
+    const currentTotal = toNum(applicant.seatBookingAmount);
+    const newTotalAdvance = (currentTotal + input.amount).toFixed(2);
+
     const [updatedApplicant] = await db
       .update(nursingApplicants)
       .set({
-        seatBookingAmount: input.amount.toFixed(2),
+        seatBookingAmount: newTotalAdvance,
         seatBookingStatus: "unadjusted",
         seatBookingReceiptNo: receiptNumber,
         seatBookingDate: input.paymentDate,
@@ -953,13 +1073,46 @@ export const nursingRoutes = new Hono<AuthEnv>()
       entityId: String(applicantId),
       action: "BOOK_SEAT_ADVANCE",
       changedBy: session?.user?.id,
-      diff: { amount: input.amount, receiptNumber, paymentMode: input.paymentMode },
+      diff: { amount: input.amount, receiptNumber, paymentMode: input.paymentMode, newTotalAdvance },
     }).execute();
+
+    // Auto-sync ACON Cash Receipt to Daily Closing if payment mode is cash
+    if (input.paymentMode.toLowerCase() === "cash") {
+      await syncAconCashReceiptToDailyClosing(input.paymentDate);
+    }
 
     return c.json({
       transaction: tx,
       applicant: updatedApplicant,
     }, 201);
+  })
+
+  // Get Fee Transactions & Receipts for an Applicant / Converted Student
+  .get("/nursing/applicants/:id/transactions", async (c) => {
+    const applicantId = Number(c.req.param("id"));
+    if (!applicantId || isNaN(applicantId)) return c.json({ error: "Invalid applicant ID" }, 400);
+
+    const [existingStudent] = await db
+      .select({ id: nursingStudents.id })
+      .from(nursingStudents)
+      .where(eq(nursingStudents.applicantId, applicantId))
+      .execute();
+
+    const transactions = await db
+      .select()
+      .from(nursingFeeTransactions)
+      .where(
+        existingStudent
+          ? or(
+            eq(nursingFeeTransactions.applicantId, applicantId),
+            eq(nursingFeeTransactions.studentId, existingStudent.id)
+          )
+          : eq(nursingFeeTransactions.applicantId, applicantId)
+      )
+      .orderBy(desc(nursingFeeTransactions.id))
+      .execute();
+
+    return c.json(transactions);
   })
 
   // Get Next Suggested Sequential Enrollment Number
@@ -972,8 +1125,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
         batchStartYear = batch.academicYear
           ? batch.academicYear.split(/[-/]/)[0].trim()
           : batch.startDate
-          ? batch.startDate.slice(0, 4)
-          : String(new Date().getFullYear());
+            ? batch.startDate.slice(0, 4)
+            : String(new Date().getFullYear());
       }
     }
     const enrollmentNo = await generateNextEnrollmentNo(batchStartYear);
@@ -994,6 +1147,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
       guardianOccupation,
       guardianOrganization,
       guardianAnnualIncome,
+      referrerId,
+      referralAmount,
+      referralComments,
     } = await jsonBody(
       c,
       z.object({
@@ -1007,6 +1163,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
         guardianOccupation: z.string().optional().nullable(),
         guardianOrganization: z.string().optional().nullable(),
         guardianAnnualIncome: z.union([z.number(), z.string()]).optional().nullable(),
+        referrerId: z.coerce.number().optional().nullable(),
+        referralAmount: z.string().optional().nullable(),
+        referralComments: z.string().optional().nullable(),
       })
     );
 
@@ -1037,8 +1196,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const batchStartYear = batch.academicYear
       ? batch.academicYear.split(/[-/]/)[0].trim()
       : batch.startDate
-      ? batch.startDate.slice(0, 4)
-      : String(new Date().getFullYear());
+        ? batch.startDate.slice(0, 4)
+        : String(new Date().getFullYear());
 
     let finalEnrollmentNo = (userEnrollmentNo || "").trim();
     if (finalEnrollmentNo) {
@@ -1075,6 +1234,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: applicant.gender,
         dob: applicant.dob,
         address: applicant.address,
+        referrerId: referrerId !== undefined ? (referrerId || null) : (applicant.referrerId || null),
+        referralAmount: referralAmount !== undefined ? (referralAmount ? String(referralAmount).trim() : null) : (applicant.referralAmount ? String(applicant.referralAmount).trim() : null),
+        referralComments: referralComments !== undefined ? (referralComments ? referralComments.trim() : null) : (applicant.referralComments ? applicant.referralComments.trim() : null),
         fatherDeceased: Boolean(applicant.fatherDeceased),
         fatherName: applicant.fatherName,
         fatherPhone: applicant.fatherPhone,
@@ -1172,6 +1334,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: nursingStudents.gender,
         dob: nursingStudents.dob,
         address: nursingStudents.address,
+        referrerId: nursingStudents.referrerId,
+        referralAmount: nursingStudents.referralAmount,
+        referralComments: nursingStudents.referralComments,
+        referrerName: nursingReferrers.name,
+        referrerPhone: nursingReferrers.phone,
         fatherDeceased: nursingStudents.fatherDeceased,
         fatherName: nursingStudents.fatherName,
         fatherPhone: nursingStudents.fatherPhone,
@@ -1221,6 +1388,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .leftJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
       .leftJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
       .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
+      .leftJoin(nursingReferrers, eq(nursingStudents.referrerId, nursingReferrers.id))
       .orderBy(desc(nursingStudents.id))
       .execute();
 
@@ -1283,6 +1451,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
         gender: nursingStudents.gender,
         dob: nursingStudents.dob,
         address: nursingStudents.address,
+        referrerId: nursingStudents.referrerId,
+        referralAmount: nursingStudents.referralAmount,
+        referralComments: nursingStudents.referralComments,
+        referrerName: nursingReferrers.name,
+        referrerPhone: nursingReferrers.phone,
         fatherDeceased: nursingStudents.fatherDeceased,
         fatherName: nursingStudents.fatherName,
         fatherPhone: nursingStudents.fatherPhone,
@@ -1338,6 +1511,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .leftJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
       .leftJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
       .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
+      .leftJoin(nursingReferrers, eq(nursingStudents.referrerId, nursingReferrers.id))
       .where(eq(nursingStudents.id, id))
       .execute();
 
@@ -1615,8 +1789,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const totalAnnual = input.totalAmount != null
       ? Number(input.totalAmount)
       : input.totalAnnualFees && input.totalAnnualFees > 0
-      ? input.totalAnnualFees
-      : calculatedAnnualTotal;
+        ? input.totalAnnualFees
+        : calculatedAnnualTotal;
 
     const rebatePercent = input.oneTimeRebatePercent ?? 10;
 
@@ -1740,8 +1914,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const totalAnnual = input.totalAmount != null
       ? Number(input.totalAmount)
       : input.totalAnnualFees && input.totalAnnualFees > 0
-      ? input.totalAnnualFees
-      : calculatedTotal;
+        ? input.totalAnnualFees
+        : calculatedTotal;
 
     try {
       const [row] = await db
@@ -2064,15 +2238,15 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
       // Validate that Hostel & Mess Fee cannot be clubbed with other fee components
       if (Array.isArray(parsedRemarks.breakdown) && parsedRemarks.breakdown.length > 1) {
-        const isHostelComp = (name: string) => {
+        const isHostelOrMessComp = (name: string) => {
           const n = (name || "").toLowerCase();
           return n.includes("hostel") || n.includes("mess");
         };
-        const hasHostel = parsedRemarks.breakdown.some((b: any) => isHostelComp(b.name));
-        const hasNonHostel = parsedRemarks.breakdown.some((b: any) => !isHostelComp(b.name));
-        if (hasHostel && hasNonHostel) {
+        const hasHostelOrMess = parsedRemarks.breakdown.some((b: any) => isHostelOrMessComp(b.name));
+        const hasAcademic = parsedRemarks.breakdown.some((b: any) => !isHostelOrMessComp(b.name));
+        if (hasHostelOrMess && hasAcademic) {
           return c.json(
-            { error: "Hostel & Mess Fee cannot be clubbed with any other fee payment. Please record hostel/mess fees as a separate transaction." },
+            { error: "Hostel / Mess fees cannot be clubbed with academic fee payments (Course, Admission, Uniform, etc.). Please record hostel and mess fees as separate transactions from academic fees." },
             400
           );
         }
@@ -2083,7 +2257,13 @@ export const nursingRoutes = new Hono<AuthEnv>()
         ? parsedRemarks.selectedPeriods
         : (parsedRemarks.billingPeriodValue ? [parsedRemarks.billingPeriodValue] : []);
 
-      const isHostelTarget = (input.feeType || "").toLowerCase().includes("hostel") || (input.feeType || "").toLowerCase().includes("mess");
+      const targetItems = Array.isArray(parsedRemarks.items) ? parsedRemarks.items : (Array.isArray(parsedRemarks.breakdown) ? parsedRemarks.breakdown : []);
+      const targetHasHostel = (input.feeType || "").toLowerCase().includes("hostel") || targetItems.some((i: any) => (i.name || "").toLowerCase().includes("hostel"));
+      const targetHasMess = (input.feeType || "").toLowerCase().includes("mess") || targetItems.some((i: any) => (i.name || "").toLowerCase().includes("mess"));
+      const targetHasAcademic = targetItems.some((i: any) => {
+        const n = (i.name || "").toLowerCase();
+        return !n.includes("hostel") && !n.includes("mess");
+      }) || (!targetHasHostel && !targetHasMess);
 
       if (targetPeriods.length > 0 && targetAy) {
         const studentPastTxs = await db
@@ -2108,9 +2288,20 @@ export const nursingRoutes = new Hono<AuthEnv>()
           if (!pastRemarks) continue;
           if (pastRemarks.academicYear && pastRemarks.academicYear !== targetAy) continue;
 
-          const isHostelPast = (pastTx.feeType || "").toLowerCase().includes("hostel") || (pastTx.feeType || "").toLowerCase().includes("mess");
-          if (isHostelTarget !== isHostelPast) {
-            // One is hostel and the other is academic; different fee categories
+          const pastItems = Array.isArray(pastRemarks.items) ? pastRemarks.items : (Array.isArray(pastRemarks.breakdown) ? pastRemarks.breakdown : []);
+          const pastHasHostel = (pastTx.feeType || "").toLowerCase().includes("hostel") || pastItems.some((i: any) => (i.name || "").toLowerCase().includes("hostel"));
+          const pastHasMess = (pastTx.feeType || "").toLowerCase().includes("mess") || pastItems.some((i: any) => (i.name || "").toLowerCase().includes("mess"));
+          const pastHasAcademic = pastItems.some((i: any) => {
+            const n = (i.name || "").toLowerCase();
+            return !n.includes("hostel") && !n.includes("mess");
+          }) || (!pastHasHostel && !pastHasMess);
+
+          const sharesCategory =
+            (targetHasHostel && pastHasHostel) ||
+            (targetHasMess && pastHasMess) ||
+            (targetHasAcademic && pastHasAcademic);
+
+          if (!sharesCategory) {
             continue;
           }
 
@@ -2176,8 +2367,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
       const submissionItems = Array.isArray(parsedRemarks.items)
         ? parsedRemarks.items
         : Array.isArray(parsedRemarks.breakdown)
-        ? parsedRemarks.breakdown
-        : [];
+          ? parsedRemarks.breakdown
+          : [];
 
       const oneTimeItemsInSubmission = submissionItems.filter((i: any) => {
         const freq = (i.frequencyKey || i.selectedFrequencyKey || i.frequencyLabel || i.frequency || "").toLowerCase();
@@ -2212,8 +2403,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
             const pastItems = Array.isArray(pastRemarks?.items)
               ? pastRemarks.items
               : Array.isArray(pastRemarks?.breakdown)
-              ? pastRemarks.breakdown
-              : [];
+                ? pastRemarks.breakdown
+                : [];
 
             let matchingPastItem: any = null;
             if (pastItems.length > 0) {
@@ -2294,6 +2485,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
       })
       .returning()
       .execute();
+
+    // Auto-sync ACON Cash Receipt to Daily Closing if payment mode is cash
+    if (input.paymentMode.toLowerCase() === "cash") {
+      await syncAconCashReceiptToDailyClosing(input.paymentDate);
+    }
 
     // If advance payment was adjusted, mark the applicant seat booking as adjusted
     if (advanceAdjustedAmount > 0 && student.applicantId) {
@@ -2386,6 +2582,866 @@ export const nursingRoutes = new Hono<AuthEnv>()
     }).execute();
 
     return c.json(tx, 201);
+  })
+
+  // -------------------------------------------------------------------------
+  // General & Miscellaneous Receipts (Prospectus, Books, Uniform, etc.)
+  // -------------------------------------------------------------------------
+  .get("/nursing/general-receipts", async (c) => {
+    const category = c.req.query("category")?.trim();
+    const paymentMode = c.req.query("paymentMode")?.trim();
+    const recipientType = c.req.query("recipientType")?.trim();
+    const search = c.req.query("search")?.trim().toLowerCase() || "";
+    const startDate = c.req.query("startDate")?.trim();
+    const endDate = c.req.query("endDate")?.trim();
+    const pageParam = c.req.query("page");
+    const pageSizeParam = c.req.query("pageSize");
+
+    const page = Math.max(1, Number(pageParam) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(pageSizeParam) || 10));
+
+    // Fetch transactions that are general receipts (either RCP-GEN- prefix or marked in remarks)
+    const rows = await db
+      .select({
+        id: nursingFeeTransactions.id,
+        studentId: nursingFeeTransactions.studentId,
+        studentName: nursingStudents.name,
+        enrollmentNo: nursingStudents.enrollmentNo,
+        studentCourse: nursingCourses.name,
+        invoiceNo: nursingFeeTransactions.invoiceNo,
+        receiptNumber: nursingFeeTransactions.receiptNumber,
+        feeType: nursingFeeTransactions.feeType,
+        paymentFrequency: nursingFeeTransactions.paymentFrequency,
+        amount: nursingFeeTransactions.amount,
+        paymentMode: nursingFeeTransactions.paymentMode,
+        paymentDate: nursingFeeTransactions.paymentDate,
+        status: nursingFeeTransactions.status,
+        remarks: nursingFeeTransactions.remarks,
+        createdAt: nursingFeeTransactions.createdAt,
+      })
+      .from(nursingFeeTransactions)
+      .leftJoin(nursingStudents, eq(nursingFeeTransactions.studentId, nursingStudents.id))
+      .leftJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
+      .leftJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
+      .orderBy(desc(nursingFeeTransactions.id))
+      .execute();
+
+    // Filter strictly to general receipts
+    const generalRows = rows.filter((r) => {
+      const isGenNum = (r.receiptNumber || "").startsWith("RCP-GEN-");
+      let parsedRemarks: any = null;
+      if (typeof r.remarks === "object" && r.remarks !== null) {
+        parsedRemarks = r.remarks;
+      } else if (typeof r.remarks === "string") {
+        try { parsedRemarks = JSON.parse(r.remarks); } catch { }
+      }
+      const isGenMarked = parsedRemarks?.isGeneralReceipt === true;
+      return isGenNum || isGenMarked;
+    });
+
+    // Compute category breakdown metrics across all general receipts
+    const categoryStats: Record<string, { count: number; totalAmount: number }> = {};
+    let totalGeneralRevenue = 0;
+
+    generalRows.forEach((r) => {
+      const amt = toNum(r.amount);
+      totalGeneralRevenue += amt;
+      let cat = r.feeType || "Miscellaneous";
+      let parsedRemarks: any = null;
+      if (typeof r.remarks === "object" && r.remarks !== null) {
+        parsedRemarks = r.remarks;
+      } else if (typeof r.remarks === "string") {
+        try { parsedRemarks = JSON.parse(r.remarks); } catch { }
+      }
+      if (parsedRemarks?.category) {
+        cat = parsedRemarks.category;
+      }
+      if (!categoryStats[cat]) {
+        categoryStats[cat] = { count: 0, totalAmount: 0 };
+      }
+      categoryStats[cat].count += 1;
+      categoryStats[cat].totalAmount += amt;
+    });
+
+    // Apply server-side filtering
+    let filtered = generalRows;
+
+    // 1. Recipient Type Filter
+    if (recipientType && recipientType !== "all") {
+      filtered = filtered.filter((r) => {
+        let parsedRemarks: any = null;
+        if (typeof r.remarks === "object" && r.remarks !== null) {
+          parsedRemarks = r.remarks;
+        } else if (typeof r.remarks === "string") {
+          try { parsedRemarks = JSON.parse(r.remarks); } catch { }
+        }
+        const isStudent = Boolean(r.studentId || parsedRemarks?.recipientType === "student");
+        if (recipientType === "student") return isStudent;
+        if (recipientType === "direct") return !isStudent;
+        return true;
+      });
+    }
+
+    // 2. Category Filter
+    if (category && category !== "all") {
+      const catLower = category.toLowerCase();
+      filtered = filtered.filter((r) => {
+        let cat = (r.feeType || "").toLowerCase();
+        let parsedRemarks: any = null;
+        if (typeof r.remarks === "object" && r.remarks !== null) {
+          parsedRemarks = r.remarks;
+        } else if (typeof r.remarks === "string") {
+          try { parsedRemarks = JSON.parse(r.remarks); } catch { }
+        }
+        if (parsedRemarks?.category) cat = String(parsedRemarks.category).toLowerCase();
+        return cat === catLower || cat.includes(catLower) || catLower.includes(cat);
+      });
+    }
+
+    // 3. Payment Mode Filter
+    if (paymentMode && paymentMode !== "all") {
+      filtered = filtered.filter((r) => (r.paymentMode || "").toLowerCase() === paymentMode.toLowerCase());
+    }
+
+    // 4. Date Range Filters
+    if (startDate) {
+      filtered = filtered.filter((r) => (r.paymentDate || "") >= startDate);
+    }
+
+    if (endDate) {
+      filtered = filtered.filter((r) => (r.paymentDate || "") <= endDate);
+    }
+
+    // 5. Search Predicate
+    if (search) {
+      filtered = filtered.filter((r) => {
+        let parsedRemarks: any = null;
+        if (typeof r.remarks === "object" && r.remarks !== null) {
+          parsedRemarks = r.remarks;
+        } else if (typeof r.remarks === "string") {
+          try { parsedRemarks = JSON.parse(r.remarks); } catch { }
+        }
+
+        const studentName = (r.studentName || "").toLowerCase();
+        const enrollmentNo = (r.enrollmentNo || "").toLowerCase();
+        const courseName = (r.studentCourse || "").toLowerCase();
+        const recipientName = (parsedRemarks?.recipientName || "").toLowerCase();
+        const recipientPhone = (parsedRemarks?.recipientPhone || "").toLowerCase();
+        const recipientEmail = (parsedRemarks?.recipientEmail || "").toLowerCase();
+        const receiptNo = (r.receiptNumber || "").toLowerCase();
+        const invoiceNo = (r.invoiceNo || "").toLowerCase();
+        const feeType = (r.feeType || "").toLowerCase();
+        const narration = (parsedRemarks?.narration || "").toLowerCase();
+        const categoryVal = (parsedRemarks?.category || "").toLowerCase();
+        const notes = (parsedRemarks?.notes || parsedRemarks?.remarks || "").toLowerCase();
+
+        // Search through item descriptions
+        const itemMatches = Array.isArray(parsedRemarks?.items)
+          ? parsedRemarks.items.some((it: any) =>
+            (it?.description || "").toLowerCase().includes(search)
+          )
+          : false;
+
+        return (
+          studentName.includes(search) ||
+          enrollmentNo.includes(search) ||
+          courseName.includes(search) ||
+          recipientName.includes(search) ||
+          recipientPhone.includes(search) ||
+          recipientEmail.includes(search) ||
+          receiptNo.includes(search) ||
+          invoiceNo.includes(search) ||
+          feeType.includes(search) ||
+          narration.includes(search) ||
+          categoryVal.includes(search) ||
+          notes.includes(search) ||
+          itemMatches
+        );
+      });
+    }
+
+    const filteredRevenue = filtered.reduce((sum, tx) => sum + toNum(tx.amount), 0);
+    const totalRecords = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const offset = (safePage - 1) * pageSize;
+    const pagedData = filtered.slice(offset, offset + pageSize);
+
+    return c.json({
+      data: pagedData,
+      pagination: {
+        page: safePage,
+        pageSize,
+        totalRecords,
+        totalPages,
+      },
+      summary: {
+        totalReceipts: generalRows.length,
+        totalCollected: totalGeneralRevenue,
+        filteredReceipts: totalRecords,
+        filteredCollected: filteredRevenue,
+        categoryStats,
+      },
+    });
+  })
+
+  .post("/nursing/general-receipts", async (c) => {
+    const input = await jsonBody(
+      c,
+      z.object({
+        recipientType: z.enum(["student", "direct"]).default("direct"),
+        studentId: z.number().int().positive().optional().nullable(),
+        recipientName: z.string().min(1, "Recipient name is required"),
+        recipientPhone: z.string().optional().nullable(),
+        recipientEmail: z.string().optional().nullable(),
+        category: z.string().min(1, "Receipt category is required"),
+        narration: z.string().optional().nullable(),
+        items: z
+          .array(
+            z.object({
+              description: z.string(),
+              quantity: z.number().min(1).default(1),
+              unitPrice: z.number().min(0).default(0),
+              amount: z.number().min(0),
+            })
+          )
+          .optional()
+          .nullable(),
+        amount: z.number().min(0.01, "Payment amount must be greater than zero"),
+        paymentMode: z.enum(["cash", "bank_transfer", "upi", "card", "cheque"]).default("cash"),
+        paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
+        academicYear: z.string().optional().nullable(),
+        remarks: z.string().optional().nullable(),
+      })
+    );
+
+    let verifiedStudent: any = null;
+    if (input.recipientType === "student" && input.studentId) {
+      const [st] = await db
+        .select()
+        .from(nursingStudents)
+        .where(eq(nursingStudents.id, input.studentId))
+        .execute();
+      if (st) {
+        verifiedStudent = st;
+      }
+    }
+
+    const currentYear = new Date().getFullYear();
+    const invoiceNo = code(`INV-GEN-${currentYear}`);
+    const receiptNumber = code(`RCP-GEN-${currentYear}`);
+    const session = c.get("session");
+
+    const fullRemarksObject = {
+      isGeneralReceipt: true,
+      recipientType: input.recipientType,
+      recipientName: input.recipientName.trim(),
+      recipientPhone: input.recipientPhone ? input.recipientPhone.trim() : null,
+      recipientEmail: input.recipientEmail ? input.recipientEmail.trim() : null,
+      studentId: verifiedStudent?.id || null,
+      studentEnrollmentNo: verifiedStudent?.enrollmentNo || null,
+      studentCourse: verifiedStudent?.courseName || null,
+      category: input.category.trim(),
+      narration: input.narration ? input.narration.trim() : null,
+      items: input.items || [],
+      academicYear: input.academicYear || getAcademicYear(input.paymentDate),
+      notes: input.remarks ? input.remarks.trim() : null,
+    };
+
+    const [tx] = await db
+      .insert(nursingFeeTransactions)
+      .values({
+        studentId: verifiedStudent?.id ?? null,
+        feeType: input.category.trim(),
+        paymentFrequency: "one_time",
+        invoiceNo,
+        receiptNumber,
+        amount: input.amount.toFixed(2),
+        paymentMode: input.paymentMode,
+        paymentDate: input.paymentDate,
+        status: "paid",
+        remarks: fullRemarksObject,
+        collectedBy: session?.user?.id,
+      })
+      .returning()
+      .execute();
+
+    await db.insert(nursingAuditLogs).values({
+      entity: "nursing_fee_transactions",
+      entityId: String(tx.id),
+      action: "GENERAL_RECEIPT_ISSUED",
+      changedBy: session?.user?.id,
+      diff: {
+        receiptNumber,
+        category: input.category,
+        recipientName: input.recipientName,
+        amount: input.amount,
+        paymentMode: input.paymentMode,
+      },
+    }).execute();
+
+    // Auto-sync ACON Cash Receipt to Daily Closing if payment mode is cash
+    if (input.paymentMode.toLowerCase() === "cash") {
+      await syncAconCashReceiptToDailyClosing(input.paymentDate);
+    }
+
+    return c.json({
+      ...tx,
+      studentName: verifiedStudent?.name || input.recipientName,
+      enrollmentNo: verifiedStudent?.enrollmentNo || null,
+      studentCourse: verifiedStudent?.courseName || null,
+    }, 201);
+  })
+
+  // -------------------------------------------------------------------------
+  // Referrers / Referral Agents Master & Payouts
+  // -------------------------------------------------------------------------
+  .get("/nursing/referrers", async (c) => {
+    const search = c.req.query("search")?.trim().toLowerCase();
+    const active = c.req.query("active");
+
+    const allReferrers = await db
+      .select({
+        id: nursingReferrers.id,
+        name: nursingReferrers.name,
+        phone: nursingReferrers.phone,
+        email: nursingReferrers.email,
+        address: nursingReferrers.address,
+        comments: nursingReferrers.comments,
+        active: nursingReferrers.active,
+        createdAt: nursingReferrers.createdAt,
+        updatedAt: nursingReferrers.updatedAt,
+      })
+      .from(nursingReferrers)
+      .orderBy(desc(nursingReferrers.id))
+      .execute();
+
+    // Fetch linked applicants & students counts
+    const allApplicants = await db
+      .select({
+        id: nursingApplicants.id,
+        name: nursingApplicants.name,
+        applicationNo: nursingApplicants.applicationNo,
+        status: nursingApplicants.status,
+        referrerId: nursingApplicants.referrerId,
+        referralAmount: nursingApplicants.referralAmount,
+        referralComments: nursingApplicants.referralComments,
+        createdAt: nursingApplicants.createdAt,
+      })
+      .from(nursingApplicants)
+      .where(sql`${nursingApplicants.referrerId} IS NOT NULL`)
+      .execute();
+
+    const allStudents = await db
+      .select({
+        id: nursingStudents.id,
+        name: nursingStudents.name,
+        enrollmentNo: nursingStudents.enrollmentNo,
+        status: nursingStudents.status,
+        referrerId: nursingStudents.referrerId,
+        referralAmount: nursingStudents.referralAmount,
+        referralComments: nursingStudents.referralComments,
+        createdAt: nursingStudents.createdAt,
+      })
+      .from(nursingStudents)
+      .where(sql`${nursingStudents.referrerId} IS NOT NULL`)
+      .execute();
+
+    // Fetch all payments and allocations
+    const allPayments = await db
+      .select({
+        id: nursingReferrerPayments.id,
+        referrerId: nursingReferrerPayments.referrerId,
+        voucherNo: nursingReferrerPayments.voucherNo,
+        paymentDate: nursingReferrerPayments.paymentDate,
+        amount: nursingReferrerPayments.amount,
+        paymentMode: nursingReferrerPayments.paymentMode,
+        referenceNumber: nursingReferrerPayments.referenceNumber,
+        notes: nursingReferrerPayments.notes,
+        createdAt: nursingReferrerPayments.createdAt,
+      })
+      .from(nursingReferrerPayments)
+      .execute();
+
+    const allAllocations = await db
+      .select({
+        id: nursingReferrerPaymentAllocations.id,
+        paymentId: nursingReferrerPaymentAllocations.paymentId,
+        studentId: nursingReferrerPaymentAllocations.studentId,
+        applicantId: nursingReferrerPaymentAllocations.applicantId,
+        amount: nursingReferrerPaymentAllocations.amount,
+      })
+      .from(nursingReferrerPaymentAllocations)
+      .execute();
+
+    const results = allReferrers.map((ref) => {
+      const rawApplicants = allApplicants.filter((a) => a.referrerId === ref.id);
+      const rawStudents = allStudents.filter((s) => s.referrerId === ref.id);
+      const refPayments = allPayments.filter((p) => p.referrerId === ref.id);
+
+      // Compute student-level payments and balances
+      const students = rawStudents.map((st) => {
+        const promisedAmount = parseFloat(st.referralAmount || "0") || 0;
+        const studentAllocations = allAllocations.filter((al) => al.studentId === st.id);
+        const paidAmount = studentAllocations.reduce((sum, al) => sum + (parseFloat(al.amount || "0") || 0), 0);
+        const balanceDue = Math.max(0, promisedAmount - paidAmount);
+        const paymentStatus = promisedAmount === 0 ? "no_dues" : paidAmount >= promisedAmount ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
+        return {
+          ...st,
+          promisedAmount,
+          paidAmount,
+          balanceDue,
+          paymentStatus,
+        };
+      });
+
+      // Compute applicant-level payments and balances
+      const applicants = rawApplicants.map((ap) => {
+        const promisedAmount = parseFloat(ap.referralAmount || "0") || 0;
+        const applicantAllocations = allAllocations.filter((al) => al.applicantId === ap.id);
+        const paidAmount = applicantAllocations.reduce((sum, al) => sum + (parseFloat(al.amount || "0") || 0), 0);
+        const balanceDue = Math.max(0, promisedAmount - paidAmount);
+        const paymentStatus = promisedAmount === 0 ? "no_dues" : paidAmount >= promisedAmount ? "paid" : paidAmount > 0 ? "partial" : "unpaid";
+        return {
+          ...ap,
+          promisedAmount,
+          paidAmount,
+          balanceDue,
+          paymentStatus,
+        };
+      });
+
+      // Total Commission (Promised)
+      let totalCommission = 0;
+      students.forEach((s) => {
+        totalCommission += s.promisedAmount;
+      });
+      applicants.forEach((a) => {
+        if (a.status !== "converted") {
+          totalCommission += a.promisedAmount;
+        }
+      });
+
+      // Total Paid
+      const totalPaid = refPayments.reduce((sum, p) => sum + (parseFloat(p.amount || "0") || 0), 0);
+      const balanceDue = Math.max(0, totalCommission - totalPaid);
+      const paymentStatus = totalCommission === 0 ? "no_dues" : totalPaid >= totalCommission ? "paid" : totalPaid > 0 ? "partial" : "unpaid";
+
+      return {
+        ...ref,
+        referredApplicantsCount: applicants.length,
+        referredStudentsCount: students.length,
+        totalReferralAmount: totalCommission, // for backward-compatibility
+        totalCommission,
+        totalPaid,
+        balanceDue,
+        paymentStatus,
+        paymentCount: refPayments.length,
+        applicants,
+        students,
+      };
+    });
+
+    const summary = {
+      totalReferrers: results.length,
+      activeReferrers: results.filter((r) => r.active).length,
+      totalReferredApplicants: results.reduce((sum, r) => sum + (r.referredApplicantsCount || 0), 0),
+      totalReferredStudents: results.reduce((sum, r) => sum + (r.referredStudentsCount || 0), 0),
+      totalReferralAmount: results.reduce((sum, r) => sum + (r.totalCommission || 0), 0),
+      totalPaidAmount: results.reduce((sum, r) => sum + (r.totalPaid || 0), 0),
+      totalBalanceDue: results.reduce((sum, r) => sum + (r.balanceDue || 0), 0),
+    };
+
+    let filtered = results;
+    if (active === "true") filtered = filtered.filter((r) => r.active);
+    if (active === "false") filtered = filtered.filter((r) => !r.active);
+
+    if (search) {
+      filtered = filtered.filter(
+        (r) =>
+          (r.name || "").toLowerCase().includes(search) ||
+          (r.phone || "").toLowerCase().includes(search) ||
+          (r.email || "").toLowerCase().includes(search) ||
+          (r.address || "").toLowerCase().includes(search) ||
+          (r.comments || "").toLowerCase().includes(search)
+      );
+    }
+
+    const pageParam = c.req.query("page");
+    const pageSizeParam = c.req.query("pageSize");
+
+    if (pageParam !== undefined || pageSizeParam !== undefined) {
+      const page = Math.max(1, Number(pageParam) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number(pageSizeParam) || 10));
+      const totalRecords = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const offset = (safePage - 1) * pageSize;
+      const paginatedRows = filtered.slice(offset, offset + pageSize);
+
+      return c.json({
+        data: paginatedRows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalRecords,
+          totalPages,
+        },
+        summary,
+      });
+    }
+
+    return c.json(filtered);
+  })
+
+  .post("/nursing/referrers", async (c) => {
+    const input = await jsonBody(
+      c,
+      z.object({
+        name: z.string().min(1, "Name is required"),
+        phone: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
+        address: z.string().optional().nullable(),
+        comments: z.string().optional().nullable(),
+        active: z.boolean().default(true),
+      })
+    );
+
+    const [created] = await db
+      .insert(nursingReferrers)
+      .values({
+        name: input.name.trim(),
+        phone: input.phone?.trim() || null,
+        email: input.email?.trim() || null,
+        address: input.address?.trim() || null,
+        comments: input.comments?.trim() || null,
+        active: input.active,
+      })
+      .returning()
+      .execute();
+
+    const session = c.get("session" as any);
+    await db.insert(nursingAuditLogs).values({
+      entity: "nursing_referrers",
+      entityId: String(created.id),
+      action: "CREATE_REFERRER",
+      changedBy: session?.user?.id,
+      diff: created,
+    }).execute();
+
+    return c.json(created, 201);
+  })
+
+  .put("/nursing/referrers/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const input = await jsonBody(
+      c,
+      z.object({
+        name: z.string().min(1, "Name is required"),
+        phone: z.string().optional().nullable(),
+        email: z.string().optional().nullable(),
+        address: z.string().optional().nullable(),
+        comments: z.string().optional().nullable(),
+        active: z.boolean().default(true),
+      })
+    );
+
+    const [updated] = await db
+      .update(nursingReferrers)
+      .set({
+        name: input.name.trim(),
+        phone: input.phone?.trim() || null,
+        email: input.email?.trim() || null,
+        address: input.address?.trim() || null,
+        comments: input.comments?.trim() || null,
+        active: input.active,
+        updatedAt: new Date(),
+      })
+      .where(eq(nursingReferrers.id, id))
+      .returning()
+      .execute();
+
+    if (!updated) {
+      return c.json({ error: "Referrer not found" }, 404);
+    }
+
+    return c.json(updated);
+  })
+
+  .delete("/nursing/referrers/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [existing] = await db.select().from(nursingReferrers).where(eq(nursingReferrers.id, id)).execute();
+    if (!existing) {
+      return c.json({ error: "Referrer not found" }, 404);
+    }
+
+    // Check if any applicant, student, or payment references this referrer
+    const linkedApplicant = await db.select({ id: nursingApplicants.id }).from(nursingApplicants).where(eq(nursingApplicants.referrerId, id)).limit(1).execute();
+    const linkedStudent = await db.select({ id: nursingStudents.id }).from(nursingStudents).where(eq(nursingStudents.referrerId, id)).limit(1).execute();
+    const linkedPayment = await db.select({ id: nursingReferrerPayments.id }).from(nursingReferrerPayments).where(eq(nursingReferrerPayments.referrerId, id)).limit(1).execute();
+
+    if (linkedApplicant.length > 0 || linkedStudent.length > 0 || linkedPayment.length > 0) {
+      // Soft-deactivate if linked records exist
+      await db.update(nursingReferrers).set({ active: false, updatedAt: new Date() }).where(eq(nursingReferrers.id, id)).execute();
+      return c.json({ message: "Referrer deactivated because linked records or payment vouchers exist." });
+    }
+
+    await db.delete(nursingReferrers).where(eq(nursingReferrers.id, id)).execute();
+    return c.json({ message: "Referrer deleted successfully." });
+  })
+
+  // -------------------------------------------------------------------------
+  // Referrer Payments & Voucher History
+  // -------------------------------------------------------------------------
+  .get("/nursing/referrers/:id/payments", async (c) => {
+    const referrerId = Number(c.req.param("id"));
+    const [referrer] = await db.select().from(nursingReferrers).where(eq(nursingReferrers.id, referrerId)).execute();
+    if (!referrer) {
+      return c.json({ error: "Referrer not found" }, 404);
+    }
+
+    const payments = await db
+      .select({
+        id: nursingReferrerPayments.id,
+        referrerId: nursingReferrerPayments.referrerId,
+        voucherNo: nursingReferrerPayments.voucherNo,
+        paymentDate: nursingReferrerPayments.paymentDate,
+        amount: nursingReferrerPayments.amount,
+        paymentMode: nursingReferrerPayments.paymentMode,
+        referenceNumber: nursingReferrerPayments.referenceNumber,
+        notes: nursingReferrerPayments.notes,
+        paidBy: nursingReferrerPayments.paidBy,
+        paidByName: user.name,
+        createdAt: nursingReferrerPayments.createdAt,
+      })
+      .from(nursingReferrerPayments)
+      .leftJoin(user, eq(nursingReferrerPayments.paidBy, user.id))
+      .where(eq(nursingReferrerPayments.referrerId, referrerId))
+      .orderBy(desc(nursingReferrerPayments.id))
+      .execute();
+
+    const paymentIds = payments.map((p) => p.id);
+    let allAllocations: any[] = [];
+    if (paymentIds.length > 0) {
+      allAllocations = await db
+        .select({
+          id: nursingReferrerPaymentAllocations.id,
+          paymentId: nursingReferrerPaymentAllocations.paymentId,
+          studentId: nursingReferrerPaymentAllocations.studentId,
+          applicantId: nursingReferrerPaymentAllocations.applicantId,
+          amount: nursingReferrerPaymentAllocations.amount,
+          notes: nursingReferrerPaymentAllocations.notes,
+          studentName: nursingStudents.name,
+          studentEnrollmentNo: nursingStudents.enrollmentNo,
+          applicantName: nursingApplicants.name,
+          applicantApplicationNo: nursingApplicants.applicationNo,
+        })
+        .from(nursingReferrerPaymentAllocations)
+        .leftJoin(nursingStudents, eq(nursingReferrerPaymentAllocations.studentId, nursingStudents.id))
+        .leftJoin(nursingApplicants, eq(nursingReferrerPaymentAllocations.applicantId, nursingApplicants.id))
+        .execute();
+    }
+
+    const enrichedPayments = payments.map((p) => ({
+      ...p,
+      allocations: allAllocations.filter((a) => a.paymentId === p.id),
+    }));
+
+    return c.json(enrichedPayments);
+  })
+
+  .post("/nursing/referrers/:id/payments", async (c) => {
+    const referrerId = Number(c.req.param("id"));
+    const [referrer] = await db.select().from(nursingReferrers).where(eq(nursingReferrers.id, referrerId)).execute();
+    if (!referrer) {
+      return c.json({ error: "Referrer not found" }, 404);
+    }
+
+    const input = await jsonBody(
+      c,
+      z.object({
+        paymentDate: z.string().min(1, "Payment date is required"),
+        amount: z.coerce.number().positive("Amount must be greater than 0"),
+        paymentMode: z.enum(["cash", "bank_transfer", "upi", "cheque", "card"]).default("cash"),
+        referenceNumber: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
+        allocations: z.array(
+          z.object({
+            studentId: z.number().optional().nullable(),
+            applicantId: z.number().optional().nullable(),
+            amount: z.coerce.number().min(0),
+            notes: z.string().optional().nullable(),
+          })
+        ).optional(),
+      })
+    );
+
+    const year = (input.paymentDate.split("-")[0] || String(new Date().getFullYear())).trim();
+    const voucherNo = await generateNextReferrerPaymentVoucherNo(year);
+    const session = c.get("session" as any);
+
+    const [payment] = await db
+      .insert(nursingReferrerPayments)
+      .values({
+        referrerId,
+        voucherNo,
+        paymentDate: input.paymentDate,
+        amount: String(input.amount),
+        paymentMode: input.paymentMode,
+        referenceNumber: input.referenceNumber?.trim() || null,
+        notes: input.notes?.trim() || null,
+        paidBy: session?.user?.id || null,
+      })
+      .returning()
+      .execute();
+
+    const insertedAllocations = [];
+    if (input.allocations && input.allocations.length > 0) {
+      for (const alloc of input.allocations) {
+        if (alloc.amount > 0 && (alloc.studentId || alloc.applicantId)) {
+          const [createdAlloc] = await db
+            .insert(nursingReferrerPaymentAllocations)
+            .values({
+              paymentId: payment.id,
+              studentId: alloc.studentId || null,
+              applicantId: alloc.applicantId || null,
+              amount: String(alloc.amount),
+              notes: alloc.notes?.trim() || null,
+            })
+            .returning()
+            .execute();
+          insertedAllocations.push(createdAlloc);
+        }
+      }
+    }
+
+    await db.insert(nursingAuditLogs).values({
+      entity: "nursing_referrer_payments",
+      entityId: String(payment.id),
+      action: "CREATE_REFERRER_PAYMENT",
+      changedBy: session?.user?.id,
+      diff: { payment, allocations: insertedAllocations },
+    }).execute();
+
+    // -----------------------------------------------------------------------
+    // Financial Sync with Accounts Module
+    // -----------------------------------------------------------------------
+    try {
+      const isCash = (input.paymentMode || "").toLowerCase() === "cash";
+      if (isCash) {
+        // Auto-post cash referrer payout to Daily Closing Expenditures
+        let report = await db
+          .select()
+          .from(dailyClosingReports)
+          .where(eq(dailyClosingReports.reportDate, input.paymentDate))
+          .limit(1)
+          .then((res: any) => res[0]);
+
+        if (!report) {
+          const [newReport] = await db
+            .insert(dailyClosingReports)
+            .values({
+              reportDate: input.paymentDate,
+              createdBy: session?.user?.id || "system",
+              openingBalance: "0",
+              status: "draft",
+            })
+            .returning()
+            .execute();
+          report = newReport;
+        }
+
+        if (report) {
+          await db
+            .insert(dailyExpenditures)
+            .values({
+              reportId: report.id,
+              category: "ACON",
+              details: `Referrer Payout - ${referrer.name} [Voucher: ${voucherNo}]`,
+              amount: String(input.amount),
+              narration: `Referrer commission settlement voucher ${voucherNo} for ${referrer.name}${input.notes ? ` (${input.notes})` : ""}`,
+            })
+            .execute();
+        }
+      } else {
+        // Auto-post bank/online/cheque/card referrer payout to Monthly Bank Expenses
+        const monthStr = input.paymentDate.slice(0, 7); // YYYY-MM
+        const modeLabelMap: Record<string, string> = {
+          bank_transfer: "Bank Transfer",
+          upi: "UPI",
+          cheque: "Cheque",
+          card: "Card",
+        };
+        const modeLabel = modeLabelMap[input.paymentMode] || "Bank Transfer";
+
+        await db
+          .insert(monthlyBankExpenses)
+          .values({
+            month: monthStr,
+            category: "REFERRAL",
+            label: `Referrer Payout - ${referrer.name} [Voucher: ${voucherNo}]`,
+            amount: String(input.amount),
+            paymentMode: modeLabel,
+            paymentDate: input.paymentDate,
+            referenceNo: input.referenceNumber?.trim() || voucherNo,
+            narration: `Referrer commission settlement voucher ${voucherNo} for ${referrer.name}${input.notes ? ` (${input.notes})` : ""}`,
+            createdBy: session?.user?.id || null,
+          })
+          .execute();
+      }
+    } catch (syncErr) {
+      console.error("Failed to financial sync referrer payment to Accounts:", syncErr);
+    }
+
+    return c.json({
+      ...payment,
+      allocations: insertedAllocations,
+    }, 201);
+  })
+
+  .delete("/nursing/referrers/payments/:paymentId", async (c) => {
+    const paymentId = Number(c.req.param("paymentId"));
+    const [payment] = await db.select().from(nursingReferrerPayments).where(eq(nursingReferrerPayments.id, paymentId)).execute();
+    if (!payment) {
+      return c.json({ error: "Payment voucher not found" }, 404);
+    }
+
+    // Financial Sync Cleanup: remove corresponding entries from Accounts tables
+    try {
+      if (payment.voucherNo) {
+        // 1. Remove from dailyExpenditures
+        await db
+          .delete(dailyExpenditures)
+          .where(sql`${dailyExpenditures.details} LIKE ${`%[Voucher: ${payment.voucherNo}]%`}`)
+          .execute();
+
+        // 2. Remove from monthlyBankExpenses
+        await db
+          .delete(monthlyBankExpenses)
+          .where(
+            or(
+              sql`${monthlyBankExpenses.label} LIKE ${`%[Voucher: ${payment.voucherNo}]%`}`,
+              eq(monthlyBankExpenses.referenceNo, payment.voucherNo)
+            )
+          )
+          .execute();
+      }
+    } catch (syncErr) {
+      console.error("Failed to clean up financial sync for referrer payment:", syncErr);
+    }
+
+    await db.delete(nursingReferrerPayments).where(eq(nursingReferrerPayments.id, paymentId)).execute();
+
+    const session = c.get("session" as any);
+    await db.insert(nursingAuditLogs).values({
+      entity: "nursing_referrer_payments",
+      entityId: String(paymentId),
+      action: "DELETE_REFERRER_PAYMENT",
+      changedBy: session?.user?.id,
+      diff: payment,
+    }).execute();
+
+    return c.json({ message: `Payment voucher ${payment.voucherNo} deleted successfully.` });
   })
 
   // -------------------------------------------------------------------------
@@ -2960,8 +4016,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
         const batchStartYear = batch?.academicYear
           ? parseInt(batch.academicYear.split(/[-/]/)[0].trim(), 10)
           : batch?.startDate
-          ? parseInt(batch.startDate.slice(0, 4), 10)
-          : currentYear;
+            ? parseInt(batch.startDate.slice(0, 4), 10)
+            : currentYear;
 
         const matchQuota = (fsQuota?: string | null, studentQuota?: string | null) => {
           const q1 = (fsQuota || "general").toLowerCase();
@@ -3259,7 +4315,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
                   };
                 });
               }
-            } catch (e) {}
+            } catch (e) { }
           }
 
           if (yearMasterComps.length === 0 && yearFs) {
@@ -3267,7 +4323,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
               { name: "Course Fee", amount: toNum(yearFs.tuitionFee), frequency: "Annual", frequencyKey: "annually" },
               { name: "Admission Fee", amount: isFirstYear ? toNum(yearFs.admissionFee) : 0, frequency: "Annual / Initial", frequencyKey: "annually" },
               { name: "Uniform & Kit Fee", amount: isFirstYear ? toNum(yearFs.uniformFee) : 0, frequency: "Annual / Initial", frequencyKey: "annually" },
-              { name: "Hostel & Mess Fee", amount: toNum(yearFs.hostelMessMonthlyFee) * 12, frequency: "Monthly", frequencyKey: "monthly" },
+              { name: "Hostel Fee", amount: toNum(yearFs.hostelFee) > 0 ? toNum(yearFs.hostelFee) : (toNum(yearFs.hostelMessMonthlyFee) > 0 ? toNum(yearFs.hostelMessMonthlyFee) * 12 * 0.6 : 36000), frequency: "Monthly", frequencyKey: "monthly" },
+              { name: "Mess Fee", amount: toNum(yearFs.hostelMessMonthlyFee) > 0 ? toNum(yearFs.hostelMessMonthlyFee) * 12 * 0.4 : 24000, frequency: "Monthly", frequencyKey: "monthly" },
               { name: "Examination Fee", amount: toNum(yearFs.examFee), frequency: "Semester", frequencyKey: "semester" },
               { name: "Security Deposit", amount: isFirstYear ? toNum(yearFs.securityDeposit) : 0, frequency: "One-Time", frequencyKey: "one_time" },
               { name: "Library & Misc Fee", amount: toNum(yearFs.miscFee), frequency: "Annual", frequencyKey: "annually" },
@@ -3652,5 +4709,558 @@ export const nursingRoutes = new Hono<AuthEnv>()
       },
       metrics,
     });
+  })
+
+  // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Report 1: Daily Income & Expenses Report
+  // -------------------------------------------------------------------------
+  .get("/nursing/reports/daily-income-expenses", async (c) => {
+    try {
+      const startDate = c.req.query("startDate") || new Date().toISOString().split("T")[0];
+      const endDate = c.req.query("endDate") || startDate;
+      const paymentMode = (c.req.query("paymentMode") || "all").toLowerCase();
+      const search = (c.req.query("search") || "").trim().toLowerCase();
+
+      // 1. Fetch Income Rows from nursingFeeTransactions
+      const feeTxRows = await db
+        .select({
+          id: nursingFeeTransactions.id,
+          invoiceNo: nursingFeeTransactions.invoiceNo,
+          receiptNumber: nursingFeeTransactions.receiptNumber,
+          feeType: nursingFeeTransactions.feeType,
+          paymentFrequency: nursingFeeTransactions.paymentFrequency,
+          amount: nursingFeeTransactions.amount,
+          paymentMode: nursingFeeTransactions.paymentMode,
+          paymentDate: nursingFeeTransactions.paymentDate,
+          status: nursingFeeTransactions.status,
+          remarks: nursingFeeTransactions.remarks,
+          studentName: sql<string>`COALESCE(${nursingStudents.name}, ${nursingApplicants.name}, 'Direct Payee')`,
+          enrollmentNo: sql<string>`COALESCE(${nursingStudents.enrollmentNo}, ${nursingApplicants.applicationNo}, '-')`,
+        })
+        .from(nursingFeeTransactions)
+        .leftJoin(nursingStudents, eq(nursingFeeTransactions.studentId, nursingStudents.id))
+        .leftJoin(nursingApplicants, eq(nursingFeeTransactions.applicantId, nursingApplicants.id))
+        .where(
+          and(
+            gte(nursingFeeTransactions.paymentDate, startDate),
+            lte(nursingFeeTransactions.paymentDate, endDate),
+            ne(nursingFeeTransactions.status, "refunded")
+          )
+        )
+        .orderBy(desc(nursingFeeTransactions.id))
+        .execute();
+
+      let incomeFiltered = feeTxRows;
+      if (paymentMode !== "all") {
+        incomeFiltered = incomeFiltered.filter((r) => (r.paymentMode || "").toLowerCase() === paymentMode);
+      }
+      if (search) {
+        incomeFiltered = incomeFiltered.filter(
+          (r) =>
+            (r.studentName || "").toLowerCase().includes(search) ||
+            (r.enrollmentNo || "").toLowerCase().includes(search) ||
+            (r.receiptNumber || "").toLowerCase().includes(search) ||
+            (r.feeType || "").toLowerCase().includes(search)
+        );
+      }
+
+      // 2. Fetch Expense Rows from dailyExpenditures where category = 'ACON'
+      const aconExpenses = await db
+        .select({
+          id: dailyExpenditures.id,
+          reportId: dailyExpenditures.reportId,
+          category: dailyExpenditures.category,
+          details: dailyExpenditures.details,
+          amount: dailyExpenditures.amount,
+          narration: dailyExpenditures.narration,
+          reportDate: dailyClosingReports.reportDate,
+        })
+        .from(dailyExpenditures)
+        .innerJoin(dailyClosingReports, eq(dailyExpenditures.reportId, dailyClosingReports.id))
+        .where(
+          and(
+            gte(dailyClosingReports.reportDate, startDate),
+            lte(dailyClosingReports.reportDate, endDate),
+            sql`UPPER(${dailyExpenditures.category}) = 'ACON'`
+          )
+        )
+        .orderBy(desc(dailyClosingReports.reportDate), desc(dailyExpenditures.id))
+        .execute();
+
+      let expenseFiltered = aconExpenses.map((r) => {
+        const voucherMatch = (r.details || "").match(/\[Voucher:\s*([^\]]+)\]/i);
+        const voucherNo = voucherMatch ? voucherMatch[1] : `EXP-${r.id}`;
+        const payee = (r.details || "").replace(/\[Voucher:\s*[^\]]+\]/i, "").trim() || r.details || "ACON Expense";
+
+        return {
+          id: `EXP-${r.id}`,
+          voucherNo,
+          category: r.category || "ACON",
+          payee,
+          amount: r.amount || "0",
+          paymentMode: "cash",
+          paymentDate: r.reportDate || "",
+          referenceNumber: voucherMatch ? voucherMatch[1] : "",
+          notes: r.narration || r.details || "",
+        };
+      });
+
+      if (paymentMode !== "all") {
+        expenseFiltered = expenseFiltered.filter((r) => (r.paymentMode || "").toLowerCase() === paymentMode);
+      }
+      if (search) {
+        expenseFiltered = expenseFiltered.filter(
+          (r) =>
+            (r.payee || "").toLowerCase().includes(search) ||
+            (r.voucherNo || "").toLowerCase().includes(search) ||
+            (r.notes || "").toLowerCase().includes(search) ||
+            (r.category || "").toLowerCase().includes(search)
+        );
+      }
+
+      // Aggregate summary metrics
+      const totalIncome = incomeFiltered.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+      const totalExpenses = expenseFiltered.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+      const netCashflow = totalIncome - totalExpenses;
+
+      const cashIncome = incomeFiltered.filter((r) => (r.paymentMode || "").toLowerCase() === "cash").reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+      const bankIncome = totalIncome - cashIncome;
+      const cashExpenses = expenseFiltered.filter((r) => (r.paymentMode || "").toLowerCase() === "cash").reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+      const bankExpenses = totalExpenses - cashExpenses;
+
+      return c.json({
+        startDate,
+        endDate,
+        summary: {
+          totalIncome,
+          totalExpenses,
+          netCashflow,
+          cashIncome,
+          bankIncome,
+          cashExpenses,
+          bankExpenses,
+          incomeCount: incomeFiltered.length,
+          expenseCount: expenseFiltered.length,
+        },
+        incomeRows: incomeFiltered,
+        expenseRows: expenseFiltered,
+      });
+    } catch (err: any) {
+      console.error("Error in GET /nursing/reports/daily-income-expenses:", err);
+      return c.json({ error: "Failed to generate daily income & expenses report: " + err.message }, 500);
+    }
+  })
+
+  // -------------------------------------------------------------------------
+  // Report 2: Due Report Student Wise
+  // -------------------------------------------------------------------------
+  .get("/nursing/reports/due-student-wise", async (c) => {
+    try {
+      const courseId = c.req.query("courseId");
+      const batchId = c.req.query("batchId");
+      const academicYear = c.req.query("academicYear");
+      const quotaCategory = c.req.query("quotaCategory");
+      const search = (c.req.query("search") || "").trim().toLowerCase();
+      const dueStatus = (c.req.query("dueStatus") || "all").toLowerCase();
+
+      // Fetch all active students with course & batch info
+      const studentRows = await db
+        .select({
+          id: nursingStudents.id,
+          applicantId: nursingStudents.applicantId,
+          enrollmentNo: nursingStudents.enrollmentNo,
+          name: nursingStudents.name,
+          phone: nursingStudents.phone,
+          fatherName: nursingStudents.fatherName,
+          status: nursingStudents.status,
+          batchId: nursingStudents.batchId,
+          section: nursingBatches.section,
+          academicYear: nursingBatches.academicYear,
+          courseId: nursingBatches.courseId,
+          courseName: nursingCourses.name,
+          seatBookingAmount: nursingApplicants.seatBookingAmount,
+          seatBookingStatus: nursingApplicants.seatBookingStatus,
+          quotaCategory: nursingApplicants.quotaCategory,
+        })
+        .from(nursingStudents)
+        .innerJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
+        .innerJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
+        .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
+        .execute();
+
+      // Fetch fee structures & fee transactions
+      const feeStructures = await db.select().from(nursingFeeStructures).execute();
+      const feeTransactions = await db.select().from(nursingFeeTransactions).where(ne(nursingFeeTransactions.status, "refunded")).execute();
+
+      const result = studentRows.map((st) => {
+        const quota = st.quotaCategory || "general";
+        const acYear = st.academicYear || "2025-2026";
+        const fs =
+          feeStructures.find(
+            (f) =>
+              f.courseId === st.courseId &&
+              f.academicYear === acYear &&
+              (f.quotaCategory || "general").toLowerCase() === quota.toLowerCase()
+          ) ||
+          feeStructures.find(
+            (f) => f.courseId === st.courseId && f.academicYear === acYear
+          ) ||
+          feeStructures.find((f) => f.courseId === st.courseId);
+
+        const demandedFee = fs ? (parseFloat(fs.totalAmount) || 0) : 0;
+        const txs = feeTransactions.filter((t) => t.studentId === st.id);
+        const totalPaid = txs.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+        const isAdvanceAdjusted = st.seatBookingStatus === "adjusted";
+        const advanceAmt = isAdvanceAdjusted ? (parseFloat(st.seatBookingAmount || "0") || 0) : 0;
+
+        const balanceDue = Math.max(0, demandedFee - totalPaid);
+        let status: "paid" | "partial" | "unpaid" = "unpaid";
+        if (balanceDue <= 0 && demandedFee > 0) status = "paid";
+        else if (totalPaid > 0) status = "partial";
+
+        return {
+          id: st.id,
+          enrollmentNo: st.enrollmentNo || "",
+          name: st.name || "",
+          phone: st.phone || "",
+          fatherName: st.fatherName || "",
+          courseId: st.courseId,
+          courseName: st.courseName || "",
+          batchId: st.batchId,
+          batchName: st.section ? `${acYear} (${st.section})` : acYear,
+          academicYear: acYear,
+          quotaCategory: quota,
+          demandedFee,
+          totalPaid,
+          advanceAmt,
+          balanceDue,
+          status,
+          lastPaymentDate: txs.length > 0 ? txs[0].paymentDate : null,
+        };
+      });
+
+      let filtered = result;
+      if (courseId && !isNaN(Number(courseId))) {
+        filtered = filtered.filter((r) => r.courseId === Number(courseId));
+      }
+      if (batchId && !isNaN(Number(batchId))) {
+        filtered = filtered.filter((r) => r.batchId === Number(batchId));
+      }
+      if (academicYear) {
+        filtered = filtered.filter((r) => r.academicYear === academicYear);
+      }
+      if (quotaCategory && quotaCategory !== "all") {
+        filtered = filtered.filter(
+          (r) => (r.quotaCategory || "").toLowerCase() === quotaCategory.toLowerCase()
+        );
+      }
+      if (dueStatus !== "all") {
+        filtered = filtered.filter((r) => r.status === dueStatus);
+      }
+      if (search) {
+        filtered = filtered.filter(
+          (r) =>
+            (r.name || "").toLowerCase().includes(search) ||
+            (r.enrollmentNo || "").toLowerCase().includes(search) ||
+            (r.phone || "").toLowerCase().includes(search)
+        );
+      }
+
+      const totalStudents = filtered.length;
+      const totalDemanded = filtered.reduce((sum, r) => sum + r.demandedFee, 0);
+      const totalCollected = filtered.reduce((sum, r) => sum + r.totalPaid, 0);
+      const totalOutstandingDues = filtered.reduce((sum, r) => sum + r.balanceDue, 0);
+      const paidCount = filtered.filter((r) => r.status === "paid").length;
+      const partialCount = filtered.filter((r) => r.status === "partial").length;
+      const unpaidCount = filtered.filter((r) => r.status === "unpaid").length;
+
+      return c.json({
+        students: filtered,
+        summary: {
+          totalStudents,
+          totalDemanded,
+          totalCollected,
+          totalOutstandingDues,
+          paidCount,
+          partialCount,
+          unpaidCount,
+        },
+      });
+    } catch (err: any) {
+      console.error("Error in GET /nursing/reports/due-student-wise:", err);
+      return c.json({ error: "Failed to generate student due report: " + err.message }, 500);
+    }
+  })
+
+  // -------------------------------------------------------------------------
+  // Report 3: Due Report Periodic (Monthly / Quarterly / Annually) with Drill Down
+  // -------------------------------------------------------------------------
+  .get("/nursing/reports/due-monthly-wise", async (c) => {
+    try {
+      const academicYear = c.req.query("academicYear") || "2025-2026";
+      const courseId = c.req.query("courseId");
+      const frequency = (c.req.query("frequency") || "monthly").toLowerCase();
+
+      // Fetch students with batch and course details
+      const studentRows = (await db
+        .select({
+          id: nursingStudents.id,
+          name: nursingStudents.name,
+          enrollmentNo: nursingStudents.enrollmentNo,
+          phone: nursingStudents.phone,
+          status: nursingStudents.status,
+          batchId: nursingStudents.batchId,
+          section: nursingBatches.section,
+          courseId: nursingBatches.courseId,
+          courseName: nursingCourses.name,
+          academicYear: nursingBatches.academicYear,
+          quotaCategory: nursingApplicants.quotaCategory,
+        })
+        .from(nursingStudents)
+        .innerJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
+        .innerJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
+        .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
+        .where(eq(nursingBatches.academicYear, academicYear))
+        .execute()) || [];
+
+      let targetStudents = studentRows;
+      if (courseId && !isNaN(Number(courseId))) {
+        targetStudents = targetStudents.filter((s) => s && s.courseId === Number(courseId));
+      }
+
+      const feeTransactions = (await db
+        .select()
+        .from(nursingFeeTransactions)
+        .where(ne(nursingFeeTransactions.status, "refunded"))
+        .execute()) || [];
+
+      const feeStructures = (await db
+        .select()
+        .from(nursingFeeStructures)
+        .where(eq(nursingFeeStructures.academicYear, academicYear))
+        .execute()) || [];
+
+      const startYear = parseInt((academicYear || "2025-2026").split(/[-/]/)[0], 10) || new Date().getFullYear();
+
+      interface PeriodDef {
+        key: string;
+        name: string;
+        monthKeys: string[];
+      }
+
+      let periods: PeriodDef[] = [];
+      let periodDivisor = 12;
+
+      if (frequency === "quarterly") {
+        periodDivisor = 4;
+        periods = [
+          {
+            key: "Q1",
+            name: `Q1 (Jun - Aug ${startYear})`,
+            monthKeys: [`${startYear}-06`, `${startYear}-07`, `${startYear}-08`],
+          },
+          {
+            key: "Q2",
+            name: `Q2 (Sep - Nov ${startYear})`,
+            monthKeys: [`${startYear}-09`, `${startYear}-10`, `${startYear}-11`],
+          },
+          {
+            key: "Q3",
+            name: `Q3 (Dec ${startYear} - Feb ${startYear + 1})`,
+            monthKeys: [`${startYear}-12`, `${startYear + 1}-01`, `${startYear + 1}-02`],
+          },
+          {
+            key: "Q4",
+            name: `Q4 (Mar - May ${startYear + 1})`,
+            monthKeys: [`${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`],
+          },
+        ];
+      } else if (frequency === "annually") {
+        periodDivisor = 1;
+        periods = [
+          {
+            key: "ANNUAL",
+            name: `Annual Academic Year (${academicYear})`,
+            monthKeys: [
+              `${startYear}-06`, `${startYear}-07`, `${startYear}-08`, `${startYear}-09`,
+              `${startYear}-10`, `${startYear}-11`, `${startYear}-12`, `${startYear + 1}-01`,
+              `${startYear + 1}-02`, `${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`,
+            ],
+          },
+        ];
+      } else {
+        // Monthly
+        periodDivisor = 12;
+        periods = [
+          { key: `${startYear}-06`, name: `June ${startYear}`, monthKeys: [`${startYear}-06`] },
+          { key: `${startYear}-07`, name: `July ${startYear}`, monthKeys: [`${startYear}-07`] },
+          { key: `${startYear}-08`, name: `August ${startYear}`, monthKeys: [`${startYear}-08`] },
+          { key: `${startYear}-09`, name: `September ${startYear}`, monthKeys: [`${startYear}-09`] },
+          { key: `${startYear}-10`, name: `October ${startYear}`, monthKeys: [`${startYear}-10`] },
+          { key: `${startYear}-11`, name: `November ${startYear}`, monthKeys: [`${startYear}-11`] },
+          { key: `${startYear}-12`, name: `December ${startYear}`, monthKeys: [`${startYear}-12`] },
+          { key: `${startYear + 1}-01`, name: `January ${startYear + 1}`, monthKeys: [`${startYear + 1}-01`] },
+          { key: `${startYear + 1}-02`, name: `February ${startYear + 1}`, monthKeys: [`${startYear + 1}-02`] },
+          { key: `${startYear + 1}-03`, name: `March ${startYear + 1}`, monthKeys: [`${startYear + 1}-03`] },
+          { key: `${startYear + 1}-04`, name: `April ${startYear + 1}`, monthKeys: [`${startYear + 1}-04`] },
+          { key: `${startYear + 1}-05`, name: `May ${startYear + 1}`, monthKeys: [`${startYear + 1}-05`] },
+        ];
+      }
+
+      // Group target students by batch
+      type TargetStudent = typeof targetStudents[number];
+      const batchesMap = new Map<number, { batchId: number; batchName: string; courseName: string; students: TargetStudent[] }>();
+
+      for (const st of targetStudents) {
+        if (!st) continue;
+        const bId = st.batchId || 0;
+        if (!batchesMap.has(bId)) {
+          batchesMap.set(bId, {
+            batchId: bId,
+            batchName: st.academicYear ? `${st.academicYear}${st.section ? ` (${st.section})` : ""}` : "Batch",
+            courseName: st.courseName || "Course",
+            students: [],
+          });
+        }
+        batchesMap.get(bId)!.students.push(st);
+      }
+
+      // Calculate total demanded fee for each student for full year
+      const studentYearDemanded = new Map<number, number>();
+      for (const st of targetStudents) {
+        if (!st || !st.id) continue;
+        const quota = (st.quotaCategory || "general").toLowerCase();
+        const fs =
+          feeStructures.find(
+            (f) =>
+              f &&
+              f.courseId === st.courseId &&
+              (f.academicYear || "").toLowerCase() === (academicYear || "").toLowerCase() &&
+              (f.quotaCategory || "general").toLowerCase() === quota
+          ) ||
+          feeStructures.find(
+            (f) =>
+              f &&
+              f.courseId === st.courseId &&
+              (f.academicYear || "").toLowerCase() === (academicYear || "").toLowerCase()
+          ) ||
+          feeStructures.find((f) => f && f.courseId === st.courseId);
+
+        studentYearDemanded.set(st.id, fs ? (parseFloat(fs.totalAmount || "0") || 0) : 0);
+      }
+
+      // Total Academic Year Demand across all target students
+      let totalDemanded = 0;
+      for (const val of studentYearDemanded.values()) {
+        totalDemanded += val || 0;
+      }
+
+      const batchesList = Array.from(batchesMap.values());
+
+      // Period Breakdown with Batch -> Student Drill-Down
+      const periodsBreakdown = periods.map((p) => {
+        // Find transactions in this period
+        const periodTxs = feeTransactions.filter((t) =>
+          t && t.paymentDate && p.monthKeys.some((mKey) => String(t.paymentDate).startsWith(mKey))
+        );
+
+        const periodTxsMap = new Map<number, number>();
+        for (const tx of periodTxs) {
+          if (tx && tx.studentId) {
+            periodTxsMap.set(tx.studentId, (periodTxsMap.get(tx.studentId) || 0) + (parseFloat(tx.amount || "0") || 0));
+          }
+        }
+
+        let periodExpectedTarget = 0;
+        let periodCollectedAmount = 0;
+
+        const batchBreakdownList = batchesList.map((b) => {
+          let batchExpectedTarget = 0;
+          let batchCollectedAmount = 0;
+
+          const studentList = b.students.map((st) => {
+            const yrDemanded = studentYearDemanded.get(st.id) || 0;
+            const stPeriodTarget = Math.round(yrDemanded / periodDivisor);
+            const stPeriodCollected = periodTxsMap.get(st.id) || 0;
+            const stPeriodBalance = Math.max(0, stPeriodTarget - stPeriodCollected);
+
+            let status: "paid" | "partial" | "unpaid" = "unpaid";
+            if (stPeriodBalance <= 0 && stPeriodTarget > 0) status = "paid";
+            else if (stPeriodCollected > 0) status = "partial";
+
+            batchExpectedTarget += stPeriodTarget;
+            batchCollectedAmount += stPeriodCollected;
+
+            return {
+              studentId: st.id,
+              enrollmentNo: st.enrollmentNo || "",
+              name: st.name || "",
+              phone: st.phone || "",
+              quotaCategory: st.quotaCategory || "general",
+              expectedTarget: stPeriodTarget,
+              collectedAmount: stPeriodCollected,
+              balanceDue: stPeriodBalance,
+              status,
+            };
+          });
+
+          const batchPendingDues = Math.max(0, batchExpectedTarget - batchCollectedAmount);
+          const batchEfficiency =
+            batchExpectedTarget > 0 ? Math.min(100, Math.round((batchCollectedAmount / batchExpectedTarget) * 100)) : 0;
+
+          periodExpectedTarget += batchExpectedTarget;
+          periodCollectedAmount += batchCollectedAmount;
+
+          return {
+            batchId: b.batchId,
+            batchName: b.batchName,
+            courseName: b.courseName,
+            studentCount: b.students.length,
+            expectedTarget: batchExpectedTarget,
+            collectedAmount: batchCollectedAmount,
+            pendingDues: batchPendingDues,
+            collectionEfficiency: batchEfficiency,
+            students: studentList,
+          };
+        });
+
+        const periodPendingDues = Math.max(0, periodExpectedTarget - periodCollectedAmount);
+        const periodEfficiency =
+          periodExpectedTarget > 0 ? Math.min(100, Math.round((periodCollectedAmount / periodExpectedTarget) * 100)) : 0;
+
+        return {
+          periodKey: p.key,
+          periodName: p.name,
+          expectedTarget: periodExpectedTarget,
+          collectedAmount: periodCollectedAmount,
+          pendingDues: periodPendingDues,
+          collectionEfficiency: periodEfficiency,
+          transactionsCount: periodTxs.length,
+          batches: batchBreakdownList,
+        };
+      });
+
+      const totalCollected = periodsBreakdown.reduce((sum, p) => sum + (p.collectedAmount || 0), 0);
+      const totalPendingDues = Math.max(0, totalDemanded - totalCollected);
+      const overallEfficiency = totalDemanded > 0 ? Math.min(100, Math.round((totalCollected / totalDemanded) * 100)) : 0;
+
+      return c.json({
+        academicYear,
+        frequency,
+        summary: {
+          totalEnrolledStudents: targetStudents.length,
+          totalDemanded,
+          totalCollected,
+          totalPendingDues,
+          overallEfficiency,
+        },
+        monthlyBreakdown: periodsBreakdown,
+        periods: periodsBreakdown,
+      });
+    } catch (err: any) {
+      console.error("Error in GET /nursing/reports/due-monthly-wise:", err.stack || err);
+      return c.json({ error: "Failed to generate periodic due report: " + err.message }, 500);
+    }
   });
 

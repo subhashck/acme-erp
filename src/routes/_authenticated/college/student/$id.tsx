@@ -529,6 +529,25 @@ function StudentProfilePage() {
                   <span className="text-muted-foreground">Quota Category:</span>
                   <span className="capitalize font-semibold text-teal-700 dark:text-teal-300">{student.quotaCategory || "General"}</span>
                 </div>
+                {(student.referrerId || student.referrerName || student.referralAmount) && (
+                  <div className="flex justify-between items-center pt-2.5 mt-1 border-t border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 p-2 rounded">
+                    <div>
+                      <span className="text-amber-800 dark:text-amber-300 font-semibold block text-xs">
+                        Referred By:
+                      </span>
+                      <span className="text-xs text-foreground font-medium">
+                        {student.referrerName || `Referrer #${student.referrerId}`}
+                        {student.referrerPhone ? ` (${student.referrerPhone})` : ""}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-muted-foreground block">Referral Amount</span>
+                      <span className="font-mono font-bold text-amber-700 dark:text-amber-400 text-xs">
+                        {student.referralAmount ? `₹${Number(student.referralAmount).toLocaleString()}` : "—"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

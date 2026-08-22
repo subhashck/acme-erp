@@ -1,4 +1,4 @@
-import { and, desc, asc, eq, sql, gte, lte, inArray } from "drizzle-orm";
+import { and, desc, asc, eq, ne, sql, gte, lte, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -21,6 +21,7 @@ import {
   user,
   expenseCategories,
   expenseCatalog,
+  nursingFeeTransactions,
 } from "../db/schema.ts";
 import { jsonBody } from "./shared.ts";
 
@@ -530,6 +531,44 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       .where(eq(user.id, report.createdBy))
       .limit(1)
       .execute();
+
+    // Auto-calculate & sync real-time ACON Cash Receipts from nursing fee transactions
+    try {
+      const aconCashTx = await db
+        .select({ amount: nursingFeeTransactions.amount })
+        .from(nursingFeeTransactions)
+        .where(
+          and(
+            eq(nursingFeeTransactions.paymentDate, report.reportDate),
+            sql`LOWER(${nursingFeeTransactions.paymentMode}) = 'cash'`,
+            ne(nursingFeeTransactions.status, "refunded")
+          )
+        )
+        .execute();
+      const liveAconCash = aconCashTx.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+      const currentStoredAcon = parseFloat(report.cashReceiptAcon) || 0;
+      if (liveAconCash > 0 || currentStoredAcon !== liveAconCash) {
+        const cashSir = parseFloat(report.cashReceiptSir) || 0;
+        const cashMam = parseFloat(report.cashReceiptMam) || 0;
+        const newCashTotal = cashSir + cashMam + liveAconCash;
+
+        if (report.cashReceiptAcon !== liveAconCash.toFixed(2)) {
+          await db
+            .update(dailyClosingReports)
+            .set({
+              cashReceiptAcon: liveAconCash.toFixed(2),
+              cashReceiptsTotal: newCashTotal.toFixed(2),
+              updatedAt: new Date(),
+            })
+            .where(eq(dailyClosingReports.id, id))
+            .execute();
+          report.cashReceiptAcon = liveAconCash.toFixed(2);
+          report.cashReceiptsTotal = newCashTotal.toFixed(2);
+        }
+      }
+    } catch (e) {
+      console.error("Error calculating live ACON cash receipts for closing report:", e);
+    }
 
     return c.json({
       ...report,
