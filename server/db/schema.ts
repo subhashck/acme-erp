@@ -1171,6 +1171,17 @@ export const nursingBatches = sqliteTable("nursing_batches", {
   ...timestamps
 });
 
+export const nursingReferrers = sqliteTable("nursing_referrers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  address: text("address"),
+  comments: text("comments"),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
 export const nursingApplicants = sqliteTable("nursing_applicants", {
   id: serial("id").primaryKey(),
   applicationNo: text("application_no").notNull().unique(),
@@ -1183,6 +1194,10 @@ export const nursingApplicants = sqliteTable("nursing_applicants", {
   gender: text("gender").notNull().default("Female"),
   dob: text("dob"),
   address: text("address"),
+  // Referrer Details
+  referrerId: integer("referrer_id").references(() => nursingReferrers.id, { onDelete: "set null" }),
+  referralAmount: text("referral_amount"),
+  referralComments: text("referral_comments"),
   // Parents Information
   fatherDeceased: boolean("father_deceased").default(false),
   fatherName: text("father_name"),
@@ -1243,6 +1258,10 @@ export const nursingStudents = sqliteTable("nursing_students", {
   gender: text("gender").notNull().default("Female"),
   dob: text("dob"),
   address: text("address"),
+  // Referrer Details
+  referrerId: integer("referrer_id").references(() => nursingReferrers.id, { onDelete: "set null" }),
+  referralAmount: text("referral_amount"),
+  referralComments: text("referral_comments"),
   // Parents Information
   fatherDeceased: boolean("father_deceased").default(false),
   fatherName: text("father_name"),
@@ -1424,20 +1443,53 @@ export const nursingAcademicSchedulesRelations = relations(nursingAcademicSchedu
   batch: one(nursingBatches, { fields: [nursingAcademicSchedules.batchId], references: [nursingBatches.id] }),
 }));
 
+export const nursingReferrerPayments = sqliteTable("nursing_referrer_payments", {
+  id: serial("id").primaryKey(),
+  referrerId: integer("referrer_id").notNull().references(() => nursingReferrers.id, { onDelete: "cascade" }),
+  voucherNo: text("voucher_no").notNull().unique(),
+  paymentDate: text("payment_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode").notNull().default("cash"), // cash, bank_transfer, upi, cheque, card
+  referenceNumber: text("reference_number"), // UTR / Cheque No / Tx ID
+  paidBy: text("paid_by").references(() => user.id),
+  notes: text("notes"),
+  ...timestamps
+});
+
+export const nursingReferrerPaymentAllocations = sqliteTable("nursing_referrer_payment_allocations", {
+  id: serial("id").primaryKey(),
+  paymentId: integer("payment_id").notNull().references(() => nursingReferrerPayments.id, { onDelete: "cascade" }),
+  studentId: integer("student_id").references(() => nursingStudents.id, { onDelete: "set null" }),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "set null" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  ...timestamps
+});
+
+export const nursingReferrersRelations = relations(nursingReferrers, ({ many }) => ({
+  applicants: many(nursingApplicants),
+  students: many(nursingStudents),
+  payments: many(nursingReferrerPayments),
+}));
+
 export const nursingApplicantsRelations = relations(nursingApplicants, ({ one, many }) => ({
   course: one(nursingCourses, { fields: [nursingApplicants.courseId], references: [nursingCourses.id] }),
+  referrer: one(nursingReferrers, { fields: [nursingApplicants.referrerId], references: [nursingReferrers.id] }),
   documents: many(nursingStudentDocuments),
   student: one(nursingStudents, { fields: [nursingApplicants.id], references: [nursingStudents.applicantId] }),
   feeTransactions: many(nursingFeeTransactions),
+  referrerPaymentAllocations: many(nursingReferrerPaymentAllocations),
 }));
 
 export const nursingStudentsRelations = relations(nursingStudents, ({ one, many }) => ({
   applicant: one(nursingApplicants, { fields: [nursingStudents.applicantId], references: [nursingApplicants.id] }),
+  referrer: one(nursingReferrers, { fields: [nursingStudents.referrerId], references: [nursingReferrers.id] }),
   batch: one(nursingBatches, { fields: [nursingStudents.batchId], references: [nursingBatches.id] }),
   documents: many(nursingStudentDocuments),
   feeTransactions: many(nursingFeeTransactions),
   feeFrequencies: many(nursingStudentFeeFrequencies),
   attendanceRecords: many(nursingAttendanceRecords),
+  referrerPaymentAllocations: many(nursingReferrerPaymentAllocations),
 }));
 
 export const nursingStudentFeeFrequenciesRelations = relations(nursingStudentFeeFrequencies, ({ one }) => ({
@@ -1470,6 +1522,18 @@ export const nursingAttendanceRecordsRelations = relations(nursingAttendanceReco
 
 export const nursingSubjectsRelations = relations(nursingSubjects, ({ one }) => ({
   course: one(nursingCourses, { fields: [nursingSubjects.courseId], references: [nursingCourses.id] }),
+}));
+
+export const nursingReferrerPaymentsRelations = relations(nursingReferrerPayments, ({ one, many }) => ({
+  referrer: one(nursingReferrers, { fields: [nursingReferrerPayments.referrerId], references: [nursingReferrers.id] }),
+  paidByUser: one(user, { fields: [nursingReferrerPayments.paidBy], references: [user.id] }),
+  allocations: many(nursingReferrerPaymentAllocations),
+}));
+
+export const nursingReferrerPaymentAllocationsRelations = relations(nursingReferrerPaymentAllocations, ({ one }) => ({
+  payment: one(nursingReferrerPayments, { fields: [nursingReferrerPaymentAllocations.paymentId], references: [nursingReferrerPayments.id] }),
+  student: one(nursingStudents, { fields: [nursingReferrerPaymentAllocations.studentId], references: [nursingStudents.id] }),
+  applicant: one(nursingApplicants, { fields: [nursingReferrerPaymentAllocations.applicantId], references: [nursingApplicants.id] }),
 }));
 
 

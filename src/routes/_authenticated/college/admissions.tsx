@@ -33,6 +33,9 @@ import {
   Briefcase,
   IndianRupee,
   ShieldCheck,
+  MessageCircle,
+  Copy,
+  Send,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -57,6 +60,7 @@ const entranceMeritScoreSchema = z.coerce
 
 import { Switch } from "@/components/ui/switch";
 import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
+import { authClient } from "@/services/auth";
 
 export const Route = createFileRoute("/_authenticated/college/admissions")({
   component: () => (
@@ -123,6 +127,12 @@ export interface Applicant {
   permanentDistrict?: string | null;
   permanentPincode?: string | null;
   permanentState?: string | null;
+  // Referral Details
+  referrerId?: number | null;
+  referralAmount?: string | null;
+  referralComments?: string | null;
+  referrerName?: string | null;
+  referrerPhone?: string | null;
   // Academic & Exam History (10th, 11th, 12th)
   academicHistory?: ExamDetail[] | null;
   entranceMeritScore: number;
@@ -148,6 +158,10 @@ export interface ApplicantFormData {
   aadharNo: string;
   gender: string;
   dob: string;
+  // Referral Details
+  referrerId?: number | null;
+  referralAmount?: string;
+  referralComments?: string;
   fatherDeceased?: boolean;
   fatherName: string;
   fatherPhone: string;
@@ -184,35 +198,46 @@ export interface ApplicantFormData {
   notes: string;
 }
 
-const buildSeatBookingReceiptDoc = (applicant: Applicant): jsPDF => {
-  const doc = new jsPDF();
+const buildSeatBookingReceiptDoc = (applicant: Applicant, tx?: any, userName?: string): jsPDF => {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a5",
+  });
 
+  // A5 dimensions: 148mm width x 210mm height
   doc.setFillColor(13, 148, 136); // Teal 600
-  doc.rect(0, 0, 210, 26, "F");
+  doc.rect(0, 0, 148, 20, "F");
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(15);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("ACME COLLEGE OF NURSING", 14, 14);
+  doc.text("ACME COLLEGE OF NURSING", 10, 9);
 
-  doc.setFontSize(9);
+  doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
-  doc.text("SEAT BOOKING ADVANCE PAYMENT RECEIPT", 14, 21);
+  const feeLabel = tx?.feeType ? `${String(tx.feeType).toUpperCase()} RECEIPT` : "SEAT BOOKING ADVANCE PAYMENT RECEIPT";
+  doc.text(feeLabel, 10, 15);
 
-  doc.setFontSize(9);
-  doc.text(`Receipt No: ${applicant.seatBookingReceiptNo || "RCP-ADV"}`, 196, 14, { align: "right" });
-  doc.text(`Payment Date: ${applicant.seatBookingDate || format(new Date(), "yyyy-MM-dd")}`, 196, 21, { align: "right" });
+  const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || "RCP-ADV";
+  const paymentDate = tx?.paymentDate || applicant.seatBookingDate || format(new Date(), "yyyy-MM-dd");
+  const paymentMode = tx?.paymentMode || applicant.seatBookingPaymentMode || "cash";
+  const amt = Number(tx?.amount !== undefined && tx?.amount !== null ? tx.amount : applicant.seatBookingAmount || 0);
+
+  doc.setFontSize(7.5);
+  doc.text(`Receipt No: ${receiptNo}`, 138, 9, { align: "right" });
+  doc.text(`Payment Date: ${paymentDate}`, 138, 15, { align: "right" });
 
   doc.setTextColor(30, 41, 59);
-  doc.setFontSize(9.5);
+  doc.setFontSize(8);
 
-  let metaY = 35;
-  const labelX = 14;
-  const valueX = 54;
-  const lineSpacing = 6;
+  let metaY = 26;
+  const labelX = 10;
+  const valueX = 42;
+  const lineSpacing = 4.5;
 
   doc.setFont("helvetica", "bold");
-  doc.text("Applicant Name:", labelX, metaY);
+  doc.text("Applicant / Student:", labelX, metaY);
   doc.setFont("helvetica", "normal");
   doc.text(applicant.name || "N/A", valueX, metaY);
   metaY += lineSpacing;
@@ -232,65 +257,70 @@ const buildSeatBookingReceiptDoc = (applicant: Applicant): jsPDF => {
   doc.setFont("helvetica", "bold");
   doc.text("Payment Mode:", labelX, metaY);
   doc.setFont("helvetica", "normal");
-  doc.text((applicant.seatBookingPaymentMode || "cash").toUpperCase(), valueX, metaY);
-  metaY += lineSpacing + 2;
-
-  const amt = Number(applicant.seatBookingAmount || 0);
+  doc.text(paymentMode.toUpperCase(), valueX, metaY);
+  metaY += lineSpacing + 2.5;
 
   autoTable(doc, {
     startY: metaY,
-    head: [["Description / Item", "Booking Status", "Advance Amount"]],
+    margin: { left: 10, right: 10 },
+    head: [["Description / Item", "Status", "Amount Received"]],
     body: [
       [
-        `Provisional Seat Reservation Fee (${applicant.courseName || "Nursing Program"})`,
+        tx?.feeType
+          ? `${tx.feeType} (${applicant.courseName || "Nursing Program"})`
+          : `Provisional Seat Reservation / Advance Fee (${applicant.courseName || "Nursing Program"})`,
         applicant.seatBookingStatus === "adjusted" ? "Adjusted in Admission" : "Valid Advance (Unadjusted)",
         `INR ${amt.toLocaleString()}`,
       ],
     ],
     theme: "striped",
-    headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold" },
-    styles: { fontSize: 9, cellPadding: 3 },
+    headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
+    styles: { fontSize: 7.5, cellPadding: 2 },
     columnStyles: {
-      0: { cellWidth: 100 },
-      1: { cellWidth: 45, halign: "center" },
-      2: { cellWidth: 35, halign: "right" },
+      0: { cellWidth: 68 },
+      1: { cellWidth: 32, halign: "center" },
+      2: { cellWidth: 28, halign: "right" },
     },
   });
 
-  const startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : metaY + 30;
+  const startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : metaY + 22;
 
   // Total Box
   doc.setFillColor(240, 253, 250);
   doc.setDrawColor(204, 251, 241);
-  doc.roundedRect(14, startY, 182, 16, 2, 2, "FD");
+  doc.roundedRect(10, startY, 128, 12, 1.5, 1.5, "FD");
 
   doc.setTextColor(13, 148, 136);
-  doc.setFontSize(11);
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "bold");
-  doc.text("TOTAL ADVANCE RECEIVED:", 20, startY + 10);
-  doc.setFontSize(13);
-  doc.text(`INR ${amt.toLocaleString()}`, 190, startY + 10, { align: "right" });
+  doc.text("TOTAL AMOUNT RECEIVED:", 14, startY + 7.5);
+  doc.setFontSize(9.5);
+  doc.text(`INR ${amt.toLocaleString()}`, 134, startY + 7.5, { align: "right" });
 
   doc.setTextColor(100, 116, 139);
-  doc.setFontSize(8.5);
+  doc.setFontSize(6.5);
   doc.setFont("helvetica", "italic");
-  doc.text("* Note: This advance is adjustable against course and admission fees during the final enrollment process.", 14, startY + 22);
+  doc.text("* Note: This advance is adjustable against course and admission fees during the final enrollment process.", 10, startY + 16);
 
-  // Signatures
-  const sigY = Math.max(startY + 45, 230);
+  // Footer: System generated notice and Prepared by
+  doc.setDrawColor(226, 232, 240); // Slate 200 divider
+  doc.line(10, 195, 138, 195);
+
+  doc.setTextColor(71, 85, 105); // Slate 600
   doc.setFont("helvetica", "normal");
-  doc.text("Cashier / Accounts Officer", 14, sigY);
-  doc.setDrawColor(203, 213, 225);
-  doc.line(14, sigY + 10, 60, sigY + 10);
+  doc.setFontSize(7.5);
+  doc.text(`Prepared by: ${userName || "System User"}`, 10, 201);
 
-  doc.text("Authorized Signatory", 196, sigY, { align: "right" });
-  doc.text("Verified System Receipt", 196, sigY + 12, { align: "right" });
+  doc.setTextColor(148, 163, 184); // Slate 400
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "italic");
+  doc.text("This is a system generated receipt.", 138, 201, { align: "right" });
 
   return doc;
 };
 
-const printSeatBookingReceipt = (applicant: Applicant) => {
-  const doc = buildSeatBookingReceiptDoc(applicant);
+const printSeatBookingReceipt = (applicant: Applicant, tx?: any, userName?: string) => {
+  const doc = buildSeatBookingReceiptDoc(applicant, tx, userName);
   const pdfBlob = doc.output("blob");
   const blobUrl = URL.createObjectURL(pdfBlob);
   const printWindow = window.open(blobUrl, "_blank");
@@ -302,9 +332,96 @@ const printSeatBookingReceipt = (applicant: Applicant) => {
   }
 };
 
-const downloadSeatBookingPDF = (applicant: Applicant) => {
-  const doc = buildSeatBookingReceiptDoc(applicant);
-  doc.save(`Seat-Booking-Receipt-${applicant.applicationNo || "receipt"}.pdf`);
+const downloadSeatBookingPDF = (applicant: Applicant, tx?: any, userName?: string) => {
+  const doc = buildSeatBookingReceiptDoc(applicant, tx, userName);
+  const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || applicant.applicationNo || "receipt";
+  doc.save(`Receipt-${receiptNo}.pdf`);
+};
+
+export const formatAdmissionReceiptWhatsAppMessage = (applicant: Applicant, tx?: any): string => {
+  const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || "RCP-ADV";
+  const paymentDate = tx?.paymentDate || applicant.seatBookingDate || format(new Date(), "yyyy-MM-dd");
+  const paymentMode = (tx?.paymentMode || applicant.seatBookingPaymentMode || "cash").toUpperCase();
+  const amt = Number(tx?.amount !== undefined && tx?.amount !== null ? tx.amount : applicant.seatBookingAmount || 0);
+  const isAdjusted = applicant.seatBookingStatus === "adjusted";
+
+  const lines: string[] = [];
+  lines.push(`*ACME COLLEGE OF NURSING*`);
+  lines.push(`🎓 *SEAT BOOKING ADVANCE PAYMENT RECEIPT*`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`*Receipt No:* ${receiptNo}`);
+  lines.push(`*Payment Date:* ${paymentDate}`);
+  lines.push(`*Applicant Name:* ${applicant.name || "N/A"}`);
+  lines.push(`*Application No:* ${applicant.applicationNo || "N/A"}`);
+  lines.push(`*Target Program:* ${applicant.courseName || "B.Sc Nursing"} (${applicant.academicYear || "AY"})`);
+  lines.push(`*Payment Mode:* ${paymentMode}`);
+  lines.push(`*Adjustment Status:* ${isAdjusted ? "Adjusted in Final Admission" : "Valid Advance (Unadjusted)"}`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`*TOTAL AMOUNT RECEIVED: ₹${amt.toLocaleString()}*`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`_Note: This advance confirms provisional seat reservation and is adjustable against course and admission fees during the final enrollment process._`);
+  lines.push(``);
+  lines.push(`_Status: Verified Official Receipt_`);
+  lines.push(`Thank you! For assistance, contact ACME College Admissions Office.`);
+
+  return lines.join("\n");
+};
+
+export const openWhatsAppAdmissionReceipt = (phone: string, text: string) => {
+  let clean = (phone || "").replace(/\D/g, "");
+  if (!clean) {
+    toast.error("Please enter a valid recipient phone number.");
+    return false;
+  }
+  if (clean.length === 10) {
+    clean = `91${clean}`;
+  }
+  const url = `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank");
+  return true;
+};
+
+export const shareAdmissionReceiptPDFViaWhatsApp = async (
+  applicant: Applicant,
+  phone: string,
+  tx?: any,
+  userName?: string
+) => {
+  const doc = buildSeatBookingReceiptDoc(applicant, tx, userName);
+  const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || applicant.applicationNo || "receipt";
+  const filename = `Receipt-${receiptNo}.pdf`;
+  const pdfBlob = doc.output("blob");
+  const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
+
+  let cleanPhone = (phone || "").replace(/\D/g, "");
+  if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`;
+
+  const amt = Number(tx?.amount !== undefined && tx?.amount !== null ? tx.amount : applicant.seatBookingAmount || 0);
+  const messageText = `ACME COLLEGE OF NURSING\nSeat Booking Advance Receipt #${receiptNo}\nApplicant: ${applicant.name || "Applicant"}\nProgram: ${applicant.courseName || "Nursing"}\nAmount: ₹${amt.toLocaleString()}\n\nOfficial PDF Receipt attached.`;
+
+  // 1. Try Native Web Share API (attaches actual PDF file directly to WhatsApp on mobile & supported browsers)
+  if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+    try {
+      await navigator.share({
+        files: [pdfFile],
+        title: `Receipt-${receiptNo}`,
+        text: messageText,
+      });
+      toast.success("Receipt PDF shared via WhatsApp!");
+      return true;
+    } catch (err: any) {
+      if (err.name === "AbortError") return false;
+    }
+  }
+
+  // 2. Desktop Fallback: Automatically save the PDF and launch WhatsApp chat
+  doc.save(filename);
+  toast.info("Receipt PDF saved! Opening WhatsApp chat so you can attach it...");
+  const waUrl = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`
+    : `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+  window.open(waUrl, "_blank");
+  return true;
 };
 
 const defaultAcademicHistory: ExamDetail[] = [
@@ -316,10 +433,12 @@ export function ApplicantFormPanels({
   form,
   courses,
   batches = [],
+  referrers = [],
 }: {
   form: any;
   courses: any[];
   batches?: any[];
+  referrers?: any[];
 }) {
   const [sameAddress, setSameAddress] = React.useState(false);
 
@@ -1365,7 +1484,7 @@ export function ApplicantFormPanels({
             5. Academic & Qualifying Examination History (Class 10, 12)
           </CardTitle>
           <CardDescription className="text-xs">
-            Capture Board/University, Passing Year, Multiline Subjects Taken, and Percentage Scored in each subject.
+            Capture Board/University, Passing Year, and Aggregate Percentage (plus Multiline Subjects & Subject-wise Marks for Class 12).
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
@@ -1474,42 +1593,44 @@ export function ApplicantFormPanels({
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <Label>Subjects Taken (Multiline Input)</Label>
-                  <Controller
-                    control={form.control}
-                    name={`academicHistory.${examItem.index}.subjects`}
-                    render={({ field }) => (
-                      <Textarea
-                        placeholder="ENTER SUBJECTS (MULTILINE)&#10;E.G.&#10;ENGLISH&#10;PHYSICS&#10;CHEMISTRY&#10;BIOLOGY&#10;MATHEMATICS"
-                        rows={3}
-                        className="font-mono text-xs resize-none uppercase"
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                      />
-                    )}
-                  />
+              {examItem.index === 1 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <Label>Subjects Taken (Multiline Input)</Label>
+                    <Controller
+                      control={form.control}
+                      name={`academicHistory.${examItem.index}.subjects`}
+                      render={({ field }) => (
+                        <Textarea
+                          placeholder="ENTER SUBJECTS (MULTILINE)&#10;E.G.&#10;ENGLISH&#10;PHYSICS&#10;CHEMISTRY&#10;BIOLOGY&#10;MATHEMATICS"
+                          rows={3}
+                          className="font-mono text-xs resize-none uppercase"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        />
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <Label>Percentage / Marks Scored in Each Subject</Label>
+                    <Controller
+                      control={form.control}
+                      name={`academicHistory.${examItem.index}.subjectScores`}
+                      render={({ field }) => (
+                        <Textarea
+                          placeholder="ENTER SUBJECT-WISE SCORES&#10;E.G.&#10;ENGLISH: 85%&#10;PHYSICS: 90%&#10;CHEMISTRY: 88%&#10;BIOLOGY: 92%"
+                          rows={3}
+                          className="font-mono text-xs resize-none uppercase"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        />
+                      )}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label>Percentage / Marks Scored in Each Subject</Label>
-                  <Controller
-                    control={form.control}
-                    name={`academicHistory.${examItem.index}.subjectScores`}
-                    render={({ field }) => (
-                      <Textarea
-                        placeholder="ENTER SUBJECT-WISE SCORES&#10;E.G.&#10;ENGLISH: 85%&#10;PHYSICS: 90%&#10;CHEMISTRY: 88%&#10;BIOLOGY: 92%"
-                        rows={3}
-                        className="font-mono text-xs resize-none uppercase"
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                      />
-                    )}
-                  />
-                </div>
-              </div>
+              )}
             </div>
           ))}
         </CardContent>
@@ -1540,11 +1661,83 @@ export function ApplicantFormPanels({
           />
         </CardContent>
       </Card>
+
+      {/* Panel 7: Referral Agent & Attribution (Optional) */}
+      <Card className="border shadow-xs border-amber-200 dark:border-amber-900/60">
+        <CardHeader className="py-2.5 px-4 bg-amber-50/50 dark:bg-amber-950/30 border-b">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2 text-foreground">
+            <Users className="h-4 w-4 text-amber-600" />
+            7. Referral Partner / Agent Attribution (Optional)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs font-medium text-foreground block mb-1">
+                Referred By (Master)
+              </Label>
+              <Controller
+                control={form.control}
+                name="referrerId"
+                render={({ field }) => (
+                  <select
+                    className="w-full border border-input rounded-md p-2 bg-background text-sm font-medium transition-colors"
+                    value={field.value || 0}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      field.onChange(val > 0 ? val : null);
+                    }}
+                  >
+                    <option value={0}>-- Direct / No Referral Partner --</option>
+                    {referrers.map((r: any) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} {r.phone ? `(${r.phone})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              />
+            </div>
+
+            <div>
+              <Controller
+                control={form.control}
+                name="referralAmount"
+                render={({ field }) => (
+                  <Field
+                    label="Promised Referral Amount (₹)"
+                    placeholder="e.g. 10000"
+                    {...field}
+                    value={field.value || ""}
+                  />
+                )}
+              />
+            </div>
+
+            <div>
+              <Controller
+                control={form.control}
+                name="referralComments"
+                render={({ field }) => (
+                  <Field
+                    label="Referral Notes / Terms"
+                    placeholder="e.g. Payable on 1st installment clearance"
+                    {...field}
+                    value={field.value || ""}
+                  />
+                )}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
 
 function AdmissionsPage() {
+  const session = authClient.useSession();
+  const currentUserName = session.data?.user?.name || session.data?.user?.email || "System User";
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [courseFilter, setCourseFilter] = React.useState<number>(0);
@@ -1567,6 +1760,20 @@ function AdmissionsPage() {
   const [viewApplicant, setViewApplicant] = React.useState<Applicant | null>(null);
   const [isEditingProfile, setIsEditingProfile] = React.useState(false);
 
+  // WhatsApp Share Dialog state
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = React.useState(false);
+  const [whatsAppApplicant, setWhatsAppApplicant] = React.useState<Applicant | null>(null);
+  const [whatsAppTx, setWhatsAppTx] = React.useState<any | null>(null);
+  const [whatsAppPhone, setWhatsAppPhone] = React.useState<string>("");
+
+  const handleOpenWhatsAppModal = (applicant: Applicant, tx?: any) => {
+    setWhatsAppApplicant(applicant);
+    setWhatsAppTx(tx || null);
+    const defaultNum = applicant.phone || applicant.fatherPhone || applicant.motherPhone || applicant.guardianPhone || "";
+    setWhatsAppPhone(defaultNum);
+    setWhatsAppModalOpen(true);
+  };
+
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
@@ -1588,6 +1795,15 @@ function AdmissionsPage() {
     queryKey: ["nursing", "batches"],
     queryFn: async () => {
       const res = await fetch("/api/nursing/batches");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: referrers = [] } = useQuery<any[]>({
+    queryKey: ["nursing", "referrers"],
+    queryFn: async () => {
+      const res = await fetch("/api/nursing/referrers");
       if (!res.ok) return [];
       return res.json();
     },
@@ -1635,6 +1851,9 @@ function AdmissionsPage() {
     aadharNo: "",
     gender: "Female",
     dob: "",
+    referrerId: null,
+    referralAmount: "",
+    referralComments: "",
     fatherDeceased: false,
     fatherName: "",
     fatherPhone: "",
@@ -1693,6 +1912,9 @@ function AdmissionsPage() {
     guardianOccupation: string;
     guardianOrganization: string;
     guardianAnnualIncome: string;
+    referrerId?: number | null;
+    referralAmount?: string;
+    referralComments?: string;
   }>({
     defaultValues: {
       batchId: 0,
@@ -1705,6 +1927,9 @@ function AdmissionsPage() {
       guardianOccupation: "",
       guardianOrganization: "",
       guardianAnnualIncome: "",
+      referrerId: null,
+      referralAmount: "",
+      referralComments: "",
     },
   });
 
@@ -1899,6 +2124,17 @@ function AdmissionsPage() {
     },
   });
 
+  const { data: applicantTransactions = [] } = useQuery<any[]>({
+    queryKey: ["nursing", "applicant-transactions", viewApplicant?.id],
+    queryFn: async () => {
+      if (!viewApplicant?.id) return [];
+      const res = await fetch(`/api/nursing/applicants/${viewApplicant.id}/transactions`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: Boolean(viewApplicant?.id && profileDialogOpen),
+  });
+
   const recordSeatBookingMutation = useMutation({
     mutationFn: async ({ id, values }: { id: number; values: any }) => {
       const res = await fetch(`/api/nursing/applicants/${id}/seat-booking`, {
@@ -1908,17 +2144,20 @@ function AdmissionsPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || err.message || "Failed to record seat booking payment");
+        throw new Error(err.error || err.message || "Failed to record advance payment");
       }
       return res.json();
     },
     onSuccess: (data) => {
-      const amt = Number(data.applicant?.seatBookingAmount || 0).toLocaleString();
-      toast.success(`Seat booking advance of ₹${amt} recorded! Receipt: ${data.receiptNumber}`);
+      const amt = Number(data.transaction?.amount || data.applicant?.seatBookingAmount || 0).toLocaleString();
+      const rec = data.transaction?.receiptNumber || data.receiptNumber || "";
+      toast.success(`Advance receipt of ₹${amt} recorded! Receipt: ${rec}`);
       queryClient.invalidateQueries({ queryKey: ["nursing", "applicants"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "fees"] });
+      queryClient.invalidateQueries({ queryKey: ["nursing", "students"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       if (viewApplicant && data.applicant && viewApplicant.id === data.applicant.id) {
+        queryClient.invalidateQueries({ queryKey: ["nursing", "applicant-transactions", viewApplicant.id] });
         setViewApplicant((prev) => (prev ? { ...prev, ...data.applicant } : null));
       }
       setSeatBookingModalOpen(false);
@@ -1966,6 +2205,9 @@ function AdmissionsPage() {
       aadharNo: applicant.aadharNo || "",
       gender: applicant.gender || "Female",
       dob: applicant.dob || "",
+      referrerId: applicant.referrerId || null,
+      referralAmount: applicant.referralAmount || "",
+      referralComments: applicant.referralComments || "",
       fatherDeceased: Boolean(applicant.fatherDeceased),
       fatherName: applicant.fatherName || "",
       fatherPhone: applicant.fatherPhone || "",
@@ -2010,6 +2252,8 @@ function AdmissionsPage() {
       "name",
       "academicYear",
       "aadharNo",
+      "referralAmount",
+      "referralComments",
       "fatherName",
       "fatherPhone",
       "fatherAadharNo",
@@ -2040,6 +2284,9 @@ function AdmissionsPage() {
       if (typeof sanitized[k] === "string") {
         sanitized[k] = sanitized[k].trim().toUpperCase();
       }
+    }
+    if (sanitized.referrerId) {
+      sanitized.referrerId = Number(sanitized.referrerId);
     }
     if (Array.isArray(sanitized.academicHistory)) {
       sanitized.academicHistory = sanitized.academicHistory.map((h: any) => ({
@@ -2155,10 +2402,10 @@ function AdmissionsPage() {
     const defaultRelation = hasGuardian && applicant.guardianRelation
       ? applicant.guardianRelation
       : applicant.fatherName
-      ? "Father"
-      : applicant.motherName
-      ? "Mother"
-      : "Parent";
+        ? "Father"
+        : applicant.motherName
+          ? "Mother"
+          : "Parent";
 
     convertForm.reset({
       batchId: matchedBatch ? matchedBatch.id : 0,
@@ -2171,6 +2418,9 @@ function AdmissionsPage() {
       guardianOccupation: applicant.guardianOccupation || "",
       guardianOrganization: applicant.guardianOrganization || "",
       guardianAnnualIncome: applicant.guardianAnnualIncome != null ? String(applicant.guardianAnnualIncome) : "",
+      referrerId: applicant.referrerId || null,
+      referralAmount: applicant.referralAmount || "",
+      referralComments: applicant.referralComments || "",
     });
     setConvertModalOpen(true);
   };
@@ -2279,6 +2529,9 @@ function AdmissionsPage() {
       guardianOccupation: data.guardianOccupation ? data.guardianOccupation.trim().toUpperCase() : undefined,
       guardianOrganization: data.guardianOrganization ? data.guardianOrganization.trim().toUpperCase() : undefined,
       guardianAnnualIncome: data.guardianAnnualIncome ? data.guardianAnnualIncome : undefined,
+      referrerId: data.referrerId ? Number(data.referrerId) : undefined,
+      referralAmount: data.referralAmount ? String(data.referralAmount).trim() : undefined,
+      referralComments: data.referralComments ? data.referralComments.trim() : undefined,
     });
   };
 
@@ -2336,6 +2589,7 @@ function AdmissionsPage() {
                 form={intakeForm}
                 courses={courses}
                 batches={batches}
+                referrers={referrers}
               />
 
               <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xs py-2">
@@ -2490,6 +2744,14 @@ function AdmissionsPage() {
                           <div className="text-xs text-muted-foreground">
                             {[app.email, app.phone].filter(Boolean).join(" • ") || "No contact provided"}
                           </div>
+                          {app.referrerName && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900 mt-0.5"
+                              title={`Referred by ${app.referrerName}${app.referralAmount ? ` (₹${app.referralAmount})` : ""}`}
+                            >
+                              <Users size={10} /> Ref: {app.referrerName} {app.referralAmount ? `(₹${app.referralAmount})` : ""}
+                            </span>
+                          )}
                         </td>
                         <td className="p-3">{app.courseName || "B.Sc Nursing"}</td>
                         <td className="p-3 font-semibold">{app.entranceMeritScore}%</td>
@@ -2533,7 +2795,7 @@ function AdmissionsPage() {
                           >
                             <Eye size={12} /> View
                           </Button>
-                          {Number(app.seatBookingAmount || 0) > 0 && (
+                          {/* {Number(app.seatBookingAmount || 0) > 0 && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -2543,12 +2805,22 @@ function AdmissionsPage() {
                             >
                               <Printer size={12} className="mr-1" /> Receipt
                             </Button>
-                          )}
-                          {(!app.seatBookingAmount || Number(app.seatBookingAmount) <= 0) && app.status !== "rejected" && app.status !== "converted" && (
+                          )} */}
+                          {app.status !== "rejected" && (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-cyan-300 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950 text-xs h-7 px-2 gap-1"
+                              className={cn(
+                                "text-xs h-7 px-2 gap-1",
+                                Number(app.seatBookingAmount || 0) > 0
+                                  ? "border-teal-300 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950"
+                                  : "border-cyan-300 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-950"
+                              )}
+                              title={
+                                Number(app.seatBookingAmount || 0) > 0
+                                  ? "Record additional payment receipt against candidate/student"
+                                  : "Book seat / record advance payment"
+                              }
                               onClick={() => {
                                 setSeatBookingApplicant(app);
                                 seatBookingForm.reset({
@@ -2560,7 +2832,15 @@ function AdmissionsPage() {
                                 setSeatBookingModalOpen(true);
                               }}
                             >
-                              <Tag size={12} /> Book Seat
+                              {Number(app.seatBookingAmount || 0) > 0 ? (
+                                <>
+                                  <Plus size={12} /> Receipt
+                                </>
+                              ) : (
+                                <>
+                                  <Tag size={12} /> Book Seat
+                                </>
+                              )}
                             </Button>
                           )}
                           {(app.status === "approved" || app.status === "pending") && (
@@ -2903,41 +3183,91 @@ function AdmissionsPage() {
                     </div>
                   </div>
 
-                  {/* Seat Booking Advance Section in Profile */}
+                  {/* Referral Attribution Card in Profile */}
+                  {(viewApplicant.referrerId || viewApplicant.referrerName || viewApplicant.referralAmount) && (
+                    <div className="border rounded-md p-4 space-y-2 bg-amber-50/40 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/60">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5 text-amber-600" /> Referral Attribution & Commission
+                      </h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-1">
+                        <div className="p-2.5 rounded bg-background border space-y-0.5">
+                          <span className="text-muted-foreground block text-[11px]">Referred By Partner</span>
+                          <span className="font-semibold text-foreground">
+                            {viewApplicant.referrerName || `Referrer #${viewApplicant.referrerId}`}
+                          </span>
+                          {viewApplicant.referrerPhone && (
+                            <span className="text-[11px] text-muted-foreground block font-mono">
+                              {viewApplicant.referrerPhone}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="p-2.5 rounded bg-background border space-y-0.5">
+                          <span className="text-muted-foreground block text-[11px]">Referral Amount / Incentive</span>
+                          <span className="font-mono font-bold text-amber-700 dark:text-amber-400">
+                            {viewApplicant.referralAmount ? `₹${Number(viewApplicant.referralAmount).toLocaleString()}` : "Not Specified"}
+                          </span>
+                        </div>
+
+                        <div className="p-2.5 rounded bg-background border space-y-0.5 sm:col-span-1">
+                          <span className="text-muted-foreground block text-[11px]">Referral Notes / Terms</span>
+                          <span className="italic text-muted-foreground">
+                            {viewApplicant.referralComments || "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Seat Booking Advance & Fee Receipts Section in Profile */}
                   <div className="border rounded-md p-4 space-y-3 bg-cyan-50/40 dark:bg-cyan-950/20 border-cyan-200 dark:border-cyan-800">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-900 dark:text-cyan-300 flex items-center gap-1.5">
-                        <Tag size={14} className="text-cyan-600" />
-                        Seat Reservation & Advance Payment
-                      </h4>
-                      {Number(viewApplicant.seatBookingAmount || 0) > 0 ? (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs border-cyan-300 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100/60"
-                            onClick={() => printSeatBookingReceipt(viewApplicant)}
-                          >
-                            <Printer size={12} className="mr-1" /> Print Receipt
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 text-xs border-cyan-300 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100/60"
-                            onClick={() => downloadSeatBookingPDF(viewApplicant)}
-                          >
-                            <Download size={12} className="mr-1" /> PDF
-                          </Button>
-                        </div>
-                      ) : (
-                        viewApplicant.status !== "rejected" && viewApplicant.status !== "converted" && (
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-900 dark:text-cyan-300 flex items-center gap-1.5">
+                          <Tag size={14} className="text-cyan-600" />
+                          Seat Reservation & Advance Payment Receipts
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          Record advance seat booking and fee receipts against student/applicant any number of times.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {Number(viewApplicant.seatBookingAmount || 0) > 0 && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-cyan-300 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100/60"
+                              onClick={() => printSeatBookingReceipt(viewApplicant, undefined, currentUserName)}
+                            >
+                              <Printer size={12} className="mr-1" /> Print Latest
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-cyan-300 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-100/60"
+                              onClick={() => downloadSeatBookingPDF(viewApplicant, undefined, currentUserName)}
+                            >
+                              <Download size={12} className="mr-1" /> PDF
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs border-emerald-300 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                              onClick={() => handleOpenWhatsAppModal(viewApplicant)}
+                            >
+                              <MessageCircle size={12} className="mr-1" /> WhatsApp
+                            </Button>
+                          </>
+                        )}
+                        {viewApplicant.status !== "rejected" && (
                           <Button
                             size="sm"
                             className="bg-cyan-600 hover:bg-cyan-700 text-white text-xs h-7 px-2.5 gap-1 self-start sm:self-auto"
                             onClick={() => {
                               setSeatBookingApplicant(viewApplicant);
                               seatBookingForm.reset({
-                                amount: 3000,
+                                amount: 25000,
                                 paymentMode: "cash",
                                 paymentDate: format(new Date(), "yyyy-MM-dd"),
                                 notes: "",
@@ -2945,50 +3275,120 @@ function AdmissionsPage() {
                               setSeatBookingModalOpen(true);
                             }}
                           >
-                            <Tag size={12} /> Record Seat Booking Advance
+                            <Plus size={12} /> {Number(viewApplicant.seatBookingAmount || 0) > 0 ? "Add Another Receipt" : "Record Seat Advance"}
                           </Button>
-                        )
-                      )}
+                        )}
+                      </div>
                     </div>
 
                     {Number(viewApplicant.seatBookingAmount || 0) > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 text-xs">
-                        <div className="p-2.5 rounded bg-background border">
-                          <span className="text-muted-foreground block text-[11px]">Advance Amount</span>
-                          <span className="font-bold text-sm text-cyan-700 dark:text-cyan-300 font-mono">
-                            ₹{Number(viewApplicant.seatBookingAmount).toLocaleString()}
-                          </span>
+                      <div className="space-y-3 pt-1">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                          <div className="p-2.5 rounded bg-background border">
+                            <span className="text-muted-foreground block text-[11px]">Total Advance Amount</span>
+                            <span className="font-bold text-sm text-teal-700 dark:text-teal-300 font-mono">
+                              ₹{Number(viewApplicant.seatBookingAmount).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded bg-background border">
+                            <span className="text-muted-foreground block text-[11px]">Adjustment Status</span>
+                            <span className={cn(
+                              "font-semibold text-xs",
+                              viewApplicant.seatBookingStatus === "adjusted" ? "text-emerald-600 dark:text-emerald-400" : "text-cyan-700 dark:text-cyan-300"
+                            )}>
+                              {viewApplicant.seatBookingStatus === "adjusted" ? "Adjusted in Admission" : "Valid (Unadjusted)"}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded bg-background border">
+                            <span className="text-muted-foreground block text-[11px]">Latest Receipt No</span>
+                            <span className="font-mono font-semibold text-foreground text-xs truncate">
+                              {viewApplicant.seatBookingReceiptNo || "N/A"}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded bg-background border">
+                            <span className="text-muted-foreground block text-[11px]">Receipts Count</span>
+                            <span className="font-semibold text-foreground text-xs">
+                              {applicantTransactions.length > 0 ? `${applicantTransactions.length} receipt(s)` : "1 recorded"}
+                            </span>
+                          </div>
                         </div>
-                        <div className="p-2.5 rounded bg-background border">
-                          <span className="text-muted-foreground block text-[11px]">Advance Status</span>
-                          <span className={cn(
-                            "font-semibold text-xs",
-                            viewApplicant.seatBookingStatus === "adjusted" ? "text-emerald-600 dark:text-emerald-400" : "text-cyan-700 dark:text-cyan-300"
-                          )}>
-                            {viewApplicant.seatBookingStatus === "adjusted" ? "Adjusted in Admission" : "Valid (Unadjusted)"}
-                          </span>
-                        </div>
-                        <div className="p-2.5 rounded bg-background border">
-                          <span className="text-muted-foreground block text-[11px]">Receipt Number</span>
-                          <span className="font-mono font-semibold text-foreground text-xs">
-                            {viewApplicant.seatBookingReceiptNo || "N/A"}
-                          </span>
-                        </div>
-                        <div className="p-2.5 rounded bg-background border">
-                          <span className="text-muted-foreground block text-[11px]">Payment Date / Mode</span>
-                          <span className="font-medium text-foreground text-xs">
-                            {viewApplicant.seatBookingDate || "N/A"} • {(viewApplicant.seatBookingPaymentMode || "CASH").toUpperCase()}
-                          </span>
-                        </div>
-                        {viewApplicant.seatBookingNotes && (
-                          <div className="col-span-1 sm:col-span-2 lg:col-span-4 p-2 rounded bg-background/60 border text-[11px] text-muted-foreground italic">
-                            Notes: {viewApplicant.seatBookingNotes}
+
+                        {/* Multiple Receipts Ledger Table */}
+                        {applicantTransactions.length > 0 && (
+                          <div className="border rounded-md overflow-hidden bg-background">
+                            <div className="bg-muted/40 px-3 py-1.5 text-xs font-semibold text-foreground border-b flex items-center justify-between">
+                              <span>Receipt Transactions History ({applicantTransactions.length})</span>
+                              <span className="text-[10px] text-muted-foreground font-normal">All receipts recorded against this student / applicant</span>
+                            </div>
+                            <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                              <table className="w-full text-xs">
+                                <thead className="bg-muted/20 border-b text-muted-foreground">
+                                  <tr>
+                                    <th className="p-2 text-left">Receipt No</th>
+                                    <th className="p-2 text-left">Date</th>
+                                    <th className="p-2 text-left">Type / Notes</th>
+                                    <th className="p-2 text-left">Mode</th>
+                                    <th className="p-2 text-right">Amount</th>
+                                    <th className="p-2 text-center">Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                  {applicantTransactions.map((tx: any) => (
+                                    <tr key={tx.id} className="hover:bg-muted/10">
+                                      <td className="p-2 font-mono font-medium text-teal-700 dark:text-teal-300">
+                                        {tx.receiptNumber || tx.invoiceNo || `#${tx.id}`}
+                                      </td>
+                                      <td className="p-2 whitespace-nowrap">{tx.paymentDate || "—"}</td>
+                                      <td className="p-2 max-w-37 truncate text-muted-foreground" title={tx.remarks || tx.feeType}>
+                                        {tx.feeType || "Seat Booking Advance"}
+                                      </td>
+                                      <td className="p-2 uppercase">{tx.paymentMode || "cash"}</td>
+                                      <td className="p-2 text-right font-semibold text-foreground">
+                                        ₹{Number(tx.amount || 0).toLocaleString()}
+                                      </td>
+                                      <td className="p-2 text-center space-x-1 whitespace-nowrap">
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 px-1.5 text-teal-600 hover:text-teal-700"
+                                          title="Print this receipt"
+                                          onClick={() => printSeatBookingReceipt(viewApplicant, tx, currentUserName)}
+                                        >
+                                          <Printer size={11} className="mr-0.5" /> Print
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 px-1.5 text-slate-600 hover:text-slate-700"
+                                          title="Download PDF"
+                                          onClick={() => downloadSeatBookingPDF(viewApplicant, tx, currentUserName)}
+                                        >
+                                          <Download size={11} />
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-6 px-1.5 text-emerald-600 hover:text-emerald-700"
+                                          title="Send Receipt via WhatsApp"
+                                          onClick={() => handleOpenWhatsAppModal(viewApplicant, tx)}
+                                        >
+                                          <MessageCircle size={11} className="mr-0.5" /> WhatsApp
+                                        </Button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         )}
                       </div>
                     ) : (
                       <p className="text-xs text-muted-foreground italic">
-                        No seat booking advance payment recorded yet for this applicant.
+                        No seat booking advance payment recorded yet for this applicant. You can record advance receipts any number of times.
                       </p>
                     )}
                   </div>
@@ -3269,20 +3669,22 @@ function AdmissionsPage() {
                                 {h.instituteAddress && <span>Address: <strong>{h.instituteAddress}</strong></span>}
                               </div>
                             )}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                              <div>
-                                <span className="text-muted-foreground block text-[11px] font-semibold">Subjects Taken:</span>
-                                <p className="font-mono text-xs whitespace-pre-wrap bg-background/80 p-2 rounded border mt-0.5">
-                                  {h.subjects || "N/A"}
-                                </p>
+                            {h.exam !== "10th" && (h.subjects || h.subjectScores) && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                                <div>
+                                  <span className="text-muted-foreground block text-[11px] font-semibold">Subjects Taken:</span>
+                                  <p className="font-mono text-xs whitespace-pre-wrap bg-background/80 p-2 rounded border mt-0.5">
+                                    {h.subjects || "N/A"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block text-[11px] font-semibold">Subject-wise Scores:</span>
+                                  <p className="font-mono text-xs whitespace-pre-wrap bg-background/80 p-2 rounded border mt-0.5">
+                                    {h.subjectScores || "N/A"}
+                                  </p>
+                                </div>
                               </div>
-                              <div>
-                                <span className="text-muted-foreground block text-[11px] font-semibold">Subject-wise Scores:</span>
-                                <p className="font-mono text-xs whitespace-pre-wrap bg-background/80 p-2 rounded border mt-0.5">
-                                  {h.subjectScores || "N/A"}
-                                </p>
-                              </div>
-                            </div>
+                            )}
                           </div>
                         ));
                       })()}
@@ -3316,7 +3718,7 @@ function AdmissionsPage() {
                           variant="outline"
                           size="sm"
                           className="text-teal-600 border-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950 flex-1 sm:flex-initial"
-                          onClick={() => printSeatBookingReceipt(viewApplicant)}
+                          onClick={() => printSeatBookingReceipt(viewApplicant, undefined, currentUserName)}
                         >
                           <Printer size={13} className="mr-1" /> Seat Receipt
                         </Button>
@@ -3344,6 +3746,7 @@ function AdmissionsPage() {
                     form={profileForm}
                     courses={courses}
                     batches={batches}
+                    referrers={referrers}
                   />
 
                   <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xs py-2">
@@ -3427,7 +3830,7 @@ function AdmissionsPage() {
                       <SelectTrigger className={cn("w-full", fieldState.error && "border-red-500 bg-red-50/20")}>
                         <SelectValue placeholder="-- Select Academic Batch --" />
                       </SelectTrigger>
-                      <SelectContent className="z-[99999]">
+                      <SelectContent className="z-99999">
                         {batches.map((b) => (
                           <SelectItem key={b.id} value={String(b.id)}>
                             {b.courseName} - {b.academicYear} (Section {b.section})
@@ -3581,6 +3984,74 @@ function AdmissionsPage() {
               </div>
             </div>
 
+            {/* Referrer & Commission Attribution in Conversion */}
+            <div className="p-3 bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/60 rounded-md space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5 text-amber-600" /> Referral Partner & Payout Attribution
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-foreground block mb-1">Referred By Partner</label>
+                  <Controller
+                    control={convertForm.control}
+                    name="referrerId"
+                    render={({ field }) => (
+                      <select
+                        className="w-full border border-input rounded-md p-2 bg-background text-xs font-medium transition-colors"
+                        value={field.value || 0}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          field.onChange(val > 0 ? val : null);
+                        }}
+                      >
+                        <option value={0}>-- Direct / No Referrer --</option>
+                        {referrers.map((r: any) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name} {r.phone ? `(${r.phone})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  />
+                </div>
+
+                <div>
+                  <Controller
+                    control={convertForm.control}
+                    name="referralAmount"
+                    render={({ field }) => (
+                      <Field
+                        label="Referral Amount (₹)"
+                        placeholder="e.g. 10000"
+                        {...field}
+                        value={field.value || ""}
+                        className="h-8 text-xs"
+                      />
+                    )}
+                  />
+                </div>
+
+                <div>
+                  <Controller
+                    control={convertForm.control}
+                    name="referralComments"
+                    render={({ field }) => (
+                      <Field
+                        label="Referral Payout Notes"
+                        placeholder="e.g. Payable on full fee clearance"
+                        {...field}
+                        value={field.value || ""}
+                        className="h-8 text-xs"
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
             <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 border-t">
               <Button type="button" variant="outline" onClick={() => setConvertModalOpen(false)}>
                 Cancel
@@ -3603,10 +4074,10 @@ function AdmissionsPage() {
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-3 space-y-0 gap-2">
             <div>
               <DialogTitle className="flex items-center gap-2 text-cyan-800 dark:text-cyan-300 text-lg font-bold">
-                <Tag className="h-5 w-5 text-cyan-600 shrink-0" /> Record Seat Booking Advance
+                <Tag className="h-5 w-5 text-cyan-600 shrink-0" /> Record Advance Payment / Fee Receipt
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Record seat reservation advance payment for candidate provisional admission.
+                Record seat reservation advance or interim fee receipt against the candidate / student.
               </DialogDescription>
             </div>
             <Button
@@ -3632,7 +4103,7 @@ function AdmissionsPage() {
               className="space-y-4 py-1"
             >
               <div className="p-3 bg-cyan-50/60 dark:bg-cyan-950/40 rounded-lg text-xs space-y-1 border border-cyan-200 dark:border-cyan-800">
-                <div className="font-semibold text-foreground">Candidate Details:</div>
+                <div className="font-semibold text-foreground">Candidate / Student Details:</div>
                 <div>Name: <strong className="text-foreground">{seatBookingApplicant.name}</strong></div>
                 <div>Application No: <span className="font-mono text-cyan-700 dark:text-cyan-300 font-semibold">{seatBookingApplicant.applicationNo}</span></div>
                 <div>Course: <span className="text-foreground">{seatBookingApplicant.courseName || "B.Sc Nursing"}</span></div>
@@ -3642,10 +4113,10 @@ function AdmissionsPage() {
                 <Controller
                   control={seatBookingForm.control}
                   name="amount"
-                  rules={{ required: "Advance amount is required", min: { value: 1, message: "Amount must be greater than 0" } }}
+                  rules={{ required: "Payment amount is required", min: { value: 1, message: "Amount must be greater than 0" } }}
                   render={({ field, fieldState }) => (
                     <Field
-                      label="Seat Booking Advance Amount (₹) *"
+                      label="Payment / Advance Amount (₹) *"
                       type="number"
                       min="1"
                       placeholder="25000"
@@ -3702,7 +4173,7 @@ function AdmissionsPage() {
                               {field.value ? format(selectedDate, "PPP") : <span>Pick date</span>}
                             </Button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 z-[99999]" align="start">
+                          <PopoverContent className="w-auto p-0 z-99999" align="start">
                             <Calendar
                               mode="single"
                               selected={selectedDate}
@@ -3759,6 +4230,166 @@ function AdmissionsPage() {
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Share Modal */}
+      <Dialog open={whatsAppModalOpen} onOpenChange={setWhatsAppModalOpen}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden">
+          <DialogHeader className="p-4 bg-emerald-600 text-white">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+                <MessageCircle className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-base text-white font-bold">
+                  Send Seat Booking Receipt via WhatsApp
+                </DialogTitle>
+                <DialogDescription className="text-xs text-emerald-100">
+                  Directly send official advance payment receipt summary to applicant or parents.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {whatsAppApplicant && (() => {
+            const msg = formatAdmissionReceiptWhatsAppMessage(whatsAppApplicant, whatsAppTx);
+            const applicantPhone = whatsAppApplicant.phone || "";
+            const fatherPhone = whatsAppApplicant.fatherPhone || "";
+            const motherPhone = whatsAppApplicant.motherPhone || "";
+            const guardianPhone = whatsAppApplicant.guardianPhone || "";
+
+            return (
+              <div className="p-4 space-y-4 text-xs">
+                {/* Recipient Phone Selection */}
+                <div className="space-y-2">
+                  <label className="font-semibold text-foreground block text-xs">
+                    Select Recipient Contact:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {applicantPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === applicantPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === applicantPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(applicantPhone)}
+                      >
+                        📱 Applicant ({applicantPhone})
+                      </Button>
+                    )}
+                    {fatherPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === fatherPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === fatherPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(fatherPhone)}
+                      >
+                        👨 Father ({fatherPhone})
+                      </Button>
+                    )}
+                    {motherPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === motherPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === motherPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(motherPhone)}
+                      >
+                        👩 Mother ({motherPhone})
+                      </Button>
+                    )}
+                    {guardianPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === guardianPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === guardianPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(guardianPhone)}
+                      >
+                        🛡️ Guardian ({guardianPhone})
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="text-[11px] text-muted-foreground block mb-1">
+                      Recipient Mobile Number (10 digits / with country code):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="px-2.5 py-1.5 bg-muted rounded-md border text-xs font-semibold text-muted-foreground">
+                        +91
+                      </div>
+                      <input
+                        type="tel"
+                        value={whatsAppPhone}
+                        onChange={(e) => setWhatsAppPhone(e.target.value)}
+                        placeholder="Enter 10-digit mobile number"
+                        className="flex-1 border rounded-md px-3 py-1.5 bg-background text-xs font-mono font-medium focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message Preview */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="font-semibold text-foreground text-xs">
+                      Message Content Preview:
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[11px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-2 gap-1"
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg);
+                        toast.success("Receipt message copied to clipboard!");
+                      }}
+                    >
+                      <Copy size={11} /> Copy Message
+                    </Button>
+                  </div>
+                  <div className="bg-slate-900 text-slate-100 p-3 rounded-lg text-[11px] font-mono whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed border border-slate-800 shadow-inner">
+                    {msg}
+                  </div>
+                </div>
+
+                <DialogFooter className="p-0 pt-2 flex flex-wrap justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setWhatsAppModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 gap-1"
+                    onClick={() => {
+                      const success = openWhatsAppAdmissionReceipt(whatsAppPhone, msg);
+                      if (success) {
+                        setWhatsAppModalOpen(false);
+                      }
+                    }}
+                  >
+                    <MessageCircle size={13} /> Send Text Summary
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold px-4 shadow-xs"
+                    onClick={async () => {
+                      const success = await shareAdmissionReceiptPDFViaWhatsApp(whatsAppApplicant, whatsAppPhone, whatsAppTx, currentUserName);
+                      if (success) {
+                        setWhatsAppModalOpen(false);
+                      }
+                    }}
+                  >
+                    <FileText size={13} /> Send Receipt PDF (WhatsApp)
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

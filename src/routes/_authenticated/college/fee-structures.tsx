@@ -140,9 +140,18 @@ export const DEFAULT_FEE_COMPONENTS: FeeComponent[] = [
   createDefaultComponent("c1", "Course Fee", 100000, "annually", 10, 0, createAllFrequencyRows("annually", 10, 0)),
   createDefaultComponent("c2", "Admission Fee", 10000, "annually", 0, 0),
   createDefaultComponent("c4", "Uniform & Kit Fee", 5000, "annually", 0, 0),
-  createDefaultComponent("c5", "Hostel & Mess Fee", 48000, "monthly", 0, 0),
-  createDefaultComponent("c6", "Examination Fee", 3000, "semester", 0, 0),
-  createDefaultComponent("c7", "Library & Misc Fee", 2000, "annually", 0, 0),
+  createDefaultComponent("c5", "Hostel Fee", 36000, "monthly", 0, 0, [
+    { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
+    { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
+  ]),
+  createDefaultComponent("c6", "Mess Fee", 24000, "monthly", 0, 0, [
+    { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
+    { id: "f-quarterly", key: "quarterly", label: "Quarterly", count: 4, rebatePercent: 0, surchargePercent: 0 },
+    { id: "f-semester", key: "semester", label: "Per-Semester", count: 2, rebatePercent: 0, surchargePercent: 0 },
+    { id: "f-annually", key: "annually", label: "Annually", count: 1, rebatePercent: 0, surchargePercent: 0 },
+  ]),
+  createDefaultComponent("c7", "Examination Fee", 3000, "semester", 0, 0),
+  createDefaultComponent("c8", "Library & Misc Fee", 2000, "annually", 0, 0),
 ];
 
 export interface FeeStructure {
@@ -172,7 +181,24 @@ export const getStructureComponents = (st: FeeStructure): FeeComponent[] => {
   if (st.componentsConfig) {
     try {
       const parsed = JSON.parse(st.componentsConfig);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((comp: FeeComponent) => {
+          const isHostelOnly = comp.name?.toLowerCase().includes("hostel") && !comp.name?.toLowerCase().includes("mess");
+          if (isHostelOnly && Array.isArray(comp.frequencyRows)) {
+            const hasAnnual = comp.frequencyRows.some((r) => r.key === "annually");
+            if (!hasAnnual) {
+              return {
+                ...comp,
+                frequencyRows: [
+                  ...comp.frequencyRows,
+                  { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
+                ],
+              };
+            }
+          }
+          return comp;
+        });
+      }
     } catch (e) {
       // Fallback below
     }
@@ -181,9 +207,18 @@ export const getStructureComponents = (st: FeeStructure): FeeComponent[] => {
     createDefaultComponent("1", "Course Fee", toNum(st.tuitionFee), "annually", toNum(st.oneTimeRebatePercent), 0, createAllFrequencyRows("annually", toNum(st.oneTimeRebatePercent), 0)),
     createDefaultComponent("2", "Admission Fee", toNum(st.admissionFee), "annually", 0, 0),
     createDefaultComponent("4", "Uniform Fee", toNum(st.uniformFee), "annually", 0, 0),
-    createDefaultComponent("5", "Hostel & Mess Fee", toNum(st.hostelMessMonthlyFee) * 12, "monthly", 0, 0),
-    createDefaultComponent("6", "Exam Fee", toNum(st.examFee), "semester", 0, 0),
-    createDefaultComponent("7", "Misc Fee", toNum(st.miscFee), "annually", 0, 0),
+    createDefaultComponent("5", "Hostel Fee", toNum(st.hostelFee) > 0 ? toNum(st.hostelFee) : (toNum(st.hostelMessMonthlyFee) > 0 ? toNum(st.hostelMessMonthlyFee) * 12 * 0.6 : 36000), "monthly", 0, 0, [
+      { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
+      { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
+    ]),
+    createDefaultComponent("6", "Mess Fee", toNum(st.hostelMessMonthlyFee) > 0 ? toNum(st.hostelMessMonthlyFee) * 12 * 0.4 : 24000, "monthly", 0, 0, [
+      { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
+      { id: "f-quarterly", key: "quarterly", label: "Quarterly", count: 4, rebatePercent: 0, surchargePercent: 0 },
+      { id: "f-semester", key: "semester", label: "Per-Semester", count: 2, rebatePercent: 0, surchargePercent: 0 },
+      { id: "f-annually", key: "annually", label: "Annually", count: 1, rebatePercent: 0, surchargePercent: 0 },
+    ]),
+    createDefaultComponent("7", "Exam Fee", toNum(st.examFee), "semester", 0, 0),
+    createDefaultComponent("8", "Misc Fee", toNum(st.miscFee), "annually", 0, 0),
   ].filter((c) => c.amount > 0);
 };
 
@@ -874,8 +909,8 @@ function FeeStructureMasterPage() {
                     admissionFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("admission"))?.amount || 0),
                     securityDeposit: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("security"))?.amount || 0),
                     uniformFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("uniform"))?.amount || 0),
-                    hostelFee: 0,
-                    hostelMessMonthlyFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("hostel") || c.name.toLowerCase().includes("mess"))?.amount || 0) / 12,
+                    hostelFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("hostel") && !c.name.toLowerCase().includes("mess"))?.amount || 0),
+                    hostelMessMonthlyFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("mess") && !c.name.toLowerCase().includes("hostel"))?.amount || 0) / 12,
                     examFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("exam"))?.amount || 0),
                     miscFee: Number(dynamicComponents.find((c) => c.name.toLowerCase().includes("misc") || c.name.toLowerCase().includes("library"))?.amount || 0),
                     oneTimeRebatePercent: Number(dynamicComponents[0]?.frequencyRows.find((r) => r.key === "annually")?.rebatePercent || 0),

@@ -32,6 +32,11 @@ import {
   Filter,
   Info,
   AlertCircle,
+  MessageCircle,
+  Copy,
+  Send,
+  FileText,
+  Share2,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Autocomplete } from "@/ui/autocomplete";
@@ -59,6 +64,7 @@ import {
 } from "./fee-structures";
 
 import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
+import { authClient } from "@/services/auth";
 
 export const Route = createFileRoute("/_authenticated/college/fees")({
   component: () => (
@@ -114,13 +120,23 @@ const billingPeriodToFreqKey = (periodType: string): string => {
 };
 
 const isTuitionFee = (name: string): boolean => name.toLowerCase().includes("course") || name.toLowerCase().includes("tuition");
-const isHostelFee = (name: string): boolean => {
+const isHostelOnlyFee = (name: string): boolean => {
+  const n = (name || "").toLowerCase();
+  return n.includes("hostel") && !n.includes("mess");
+};
+const isMessOnlyFee = (name: string): boolean => {
+  const n = (name || "").toLowerCase();
+  return n.includes("mess") && !n.includes("hostel");
+};
+const isHostelOrMessFee = (name: string): boolean => {
   const n = (name || "").toLowerCase();
   return n.includes("hostel") || n.includes("mess");
 };
+const isAcademicFee = (name: string): boolean => !isHostelOrMessFee(name);
+
 const allowsPeriodMultiplier = (name: string, freqKey?: string): boolean => {
   if (freqKey === "annually" || freqKey === "one_time") return false;
-  return isTuitionFee(name) || isHostelFee(name);
+  return isTuitionFee(name) || isHostelOrMessFee(name);
 };
 
 const getPeriodIntervalLabel = (type: string | null | undefined): string => {
@@ -169,6 +185,7 @@ export interface PaidPeriodInfo {
   paymentDate: string;
   feeType: string;
   isHostel: boolean;
+  isMess: boolean;
   isAcademic: boolean;
   components: string[];
 }
@@ -187,8 +204,13 @@ function extractPaidPeriodsFromTx(
   if (components.length === 0 && feeType) {
     components.push(feeType);
   }
-  const isHostel = isHostelFee(feeType) || items.some((i: any) => isHostelFee(i.name));
-  const isAcademic = !isHostel || items.some((i: any) => !isHostelFee(i.name));
+  const hasHostelOnly = items.some((i: any) => isHostelOnlyFee(i.name)) || isHostelOnlyFee(feeType);
+  const hasMessOnly = items.some((i: any) => isMessOnlyFee(i.name)) || isMessOnlyFee(feeType);
+  const hasCombined = items.some((i: any) => i.name?.toLowerCase().includes("hostel & mess")) || feeType?.toLowerCase().includes("hostel & mess");
+
+  const isHostel = hasHostelOnly || hasCombined;
+  const isMess = hasMessOnly || hasCombined;
+  const isAcademic = items.some((i: any) => isAcademicFee(i.name)) || (components.length === 0 && !isHostelOrMessFee(feeType));
 
   const result: PaidPeriodInfo[] = [];
   const addPeriod = (p: string) => {
@@ -200,6 +222,7 @@ function extractPaidPeriodsFromTx(
         paymentDate,
         feeType,
         isHostel,
+        isMess,
         isAcademic,
         components,
       });
@@ -255,29 +278,63 @@ function extractPaidPeriodsFromTx(
   return result;
 }
 
-const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
-  const doc = new jsPDF();
+const formatDiscountLabel = (rawReason?: string | null): string => {
+  if (!rawReason || !rawReason.trim()) return "Scholarship / Fee Concession:";
+  const trimmed = rawReason.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("scholarship") ||
+    lower.startsWith("merit scholarship") ||
+    lower.startsWith("concession") ||
+    lower.startsWith("fee concession") ||
+    lower.startsWith("rebate") ||
+    lower.startsWith("discount") ||
+    lower.startsWith("waiver") ||
+    lower.startsWith("special")
+  ) {
+    return `${trimmed}:`;
+  }
+  return `Scholarship / Concession (${trimmed}):`;
+};
 
-  // Header Banner
+const buildReceiptPDFDoc = (tx: FeeTransaction, userName?: string): jsPDF => {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a5",
+  });
+
+  // A5 dimensions: 148mm width x 210mm height
   doc.setFillColor(13, 148, 136); // Teal 600
-  doc.rect(0, 0, 210, 26, "F");
+  doc.rect(0, 0, 148, 20, "F");
 
   // Parse itemized breakdown & target period
   const parsed = parseRemarks(tx.remarks);
   const isAdvanceReceipt = parsed?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking");
 
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(15);
+  doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text("ACME COLLEGE OF NURSING", 14, 14);
+  doc.text("ACME COLLEGE OF NURSING", 10, 9);
 
-  doc.setFontSize(9);
+  doc.setFontSize(7.5);
   doc.setFont("helvetica", "normal");
-  doc.text(isAdvanceReceipt ? "SEAT BOOKING ADVANCE PAYMENT RECEIPT" : "OFFICIAL FEE PAYMENT RECEIPT", 14, 21);
+  const feeLabel = isAdvanceReceipt
+    ? "SEAT BOOKING ADVANCE PAYMENT RECEIPT"
+    : tx.feeType
+    ? `${String(tx.feeType).toUpperCase()} RECEIPT`
+    : "OFFICIAL FEE PAYMENT RECEIPT";
+  doc.text(feeLabel, 10, 15);
 
-  doc.setFontSize(9);
-  doc.text(`Receipt No: ${tx.receiptNumber}`, 196, 14, { align: "right" });
-  doc.text(`Payment Date: ${tx.paymentDate}`, 196, 21, { align: "right" });
+  const receiptNo = tx.receiptNumber || "RCP-FEE";
+  const paymentDate = tx.paymentDate || format(new Date(), "yyyy-MM-dd");
+  const paymentMode = (tx.paymentMode || "cash").toUpperCase();
+  const amt = Number(toNum(tx.amount));
+
+  doc.setFontSize(7.5);
+  doc.text(`Receipt No: ${receiptNo}`, 138, 9, { align: "right" });
+  doc.text(`Payment Date: ${paymentDate}`, 138, 15, { align: "right" });
+
   const acadYear = parsed?.academicYear || getAcademicYear(tx.paymentDate);
   const periodType = parsed?.billingPeriodType;
   const periodVal = parsed?.billingPeriodValue;
@@ -305,12 +362,12 @@ const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
 
   // Student & Payment Meta
   doc.setTextColor(30, 41, 59);
-  doc.setFontSize(9.5);
+  doc.setFontSize(8);
 
-  let metaY = 35;
-  const labelX = 14;
-  const valueX = 54;
-  const lineSpacing = 6;
+  let metaY = 26;
+  const labelX = 10;
+  const valueX = 42;
+  const lineSpacing = 4.5;
 
   // Row 1: Student Name
   doc.setFont("helvetica", "bold");
@@ -326,40 +383,44 @@ const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
   doc.text(tx.enrollmentNo || "N/A", valueX, metaY);
   metaY += lineSpacing;
 
-  // Row 3: Target Period (Exact Months / Semester / Academic Year)
+  // Row 3: Target Period / AY (if not advance)
   if (!isAdvanceReceipt) {
     doc.setFont("helvetica", "bold");
     doc.text("Target Period / AY:", labelX, metaY);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(13, 148, 136); // Teal highlight for selected months/term
-    const periodLines = doc.splitTextToSize(fullPeriodDisplay, 140);
+    doc.setTextColor(13, 148, 136); // Teal highlight
+    const periodLines = doc.splitTextToSize(fullPeriodDisplay, 95);
     doc.text(periodLines, valueX, metaY);
     doc.setTextColor(30, 41, 59);
-    metaY += periodLines.length * 5 + 1;
+    metaY += periodLines.length * 3.8 + 0.8;
   }
 
-  // Row 4: Fee Items Paid
+  // Row 4: Fee Category / Items
   doc.setFont("helvetica", "bold");
-  doc.text("Fee Items Paid:", labelX, metaY);
+  doc.text("Fee Category:", labelX, metaY);
   doc.setFont("helvetica", "normal");
-  const feeTypeLines = doc.splitTextToSize(tx.feeType || (isAdvanceReceipt ? "Seat Booking Advance" : "Course Fee"), 140);
+  const feeTypeLines = doc.splitTextToSize(tx.feeType || (isAdvanceReceipt ? "Seat Booking Advance" : "Course Fee"), 95);
   doc.text(feeTypeLines, valueX, metaY);
-  metaY += feeTypeLines.length * 5 + 1;
+  metaY += feeTypeLines.length * 3.8 + 0.8;
 
   // Row 5: Payment Mode
   doc.setFont("helvetica", "bold");
   doc.text("Payment Mode:", labelX, metaY);
   doc.setFont("helvetica", "normal");
-  doc.text((tx.paymentMode || "cash").toUpperCase(), valueX, metaY);
-  metaY += lineSpacing + 2;
+  doc.text(paymentMode, valueX, metaY);
+  metaY += lineSpacing + 1.5;
 
   const items: Array<{ name: string; frequency: string; amount: number; multiplier?: number }> =
     Array.isArray(parsed) ? parsed : parsed?.items || [];
   const gross = Number(parsed?.grossSubtotal || 0);
-  const disc = Number(parsed?.discountAmount || 0);
-  const reason = parsed?.discountReason || "Special Concession";
+  const disc = Number(parsed?.discountAmount || (tx as any)?.discountAmount || 0);
+  const rawReason = parsed?.discountReason || (tx as any)?.discountReason || "Special Concession";
   const advanceAdjusted = Number(parsed?.advanceAdjustedAmount || 0);
   const advanceReceiptNo = parsed?.advanceReceiptNumber;
+
+  const effectiveGross = gross > 0
+    ? gross
+    : (items.length > 0 ? items.reduce((s, it) => s + Number(it.amount || 0), 0) : (amt + disc + advanceAdjusted));
 
   let startY = metaY;
 
@@ -377,120 +438,316 @@ const buildReceiptPDFDoc = (tx: FeeTransaction): jsPDF => {
 
     autoTable(doc, {
       startY: metaY,
+      margin: { left: 10, right: 10 },
       head: [["Fee Component", "Selected Schedule / Period", "Amount"]],
       body: tableData,
       theme: "striped",
-      headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold" },
-      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
+      styles: { fontSize: 7.5, cellPadding: 2 },
       columnStyles: {
-        0: { cellWidth: 92 },
-        1: { cellWidth: 50, halign: "center" },
-        2: { cellWidth: 40, halign: "right" },
+        0: { cellWidth: 64 },
+        1: { cellWidth: 36, halign: "center" },
+        2: { cellWidth: 28, halign: "right" },
       },
     });
 
-    startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 6 : metaY + 40;
+    startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 4 : metaY + 28;
+  } else {
+    // Single row fallback table if items array is empty
+    autoTable(doc, {
+      startY: metaY,
+      margin: { left: 10, right: 10 },
+      head: [["Fee Component / Description", "Billing Schedule", "Amount"]],
+      body: [
+        [
+          tx.feeType || "College Fee",
+          periodDetailText || "Standard",
+          `INR ${amt.toLocaleString()}`,
+        ],
+      ],
+      theme: "striped",
+      headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
+      styles: { fontSize: 7.5, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 64 },
+        1: { cellWidth: 36, halign: "center" },
+        2: { cellWidth: 28, halign: "right" },
+      },
+    });
+
+    startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : metaY + 20;
   }
 
-  // Subtotals, Discounts & Advance Adjustment Section (Right-aligned under table amount columns)
-  if (gross > 0 || disc > 0 || advanceAdjusted > 0) {
-    doc.setFontSize(9);
-    const summaryLabelX = 106; // Aligned with the start of column 1 in table
-    const summaryValueX = 193; // Aligned with right padding of table column 2
+  // Subtotals, Discounts & Advance Adjustment Section (Cleanly aligned with adequate label width and auto-wrapping)
+  if (effectiveGross > amt || disc > 0 || advanceAdjusted > 0) {
+    doc.setFontSize(7.5);
+    const summaryLabelX = 35; // Generous left start to allow long scholarship descriptions without colliding
+    const summaryValueX = 138; // Aligned with the right edge of table
+    const maxLabelWidth = 72; // Maximum width for label before auto-wrapping
 
-    if (gross > 0) {
+    if (effectiveGross > 0 && (disc > 0 || advanceAdjusted > 0)) {
       doc.setFont("helvetica", "bold");
       doc.setTextColor(71, 85, 105);
       doc.text("Gross Component Subtotal:", summaryLabelX, startY);
-      doc.text(`INR ${gross.toLocaleString()}`, summaryValueX, startY, { align: "right" });
-      startY += 5;
+      doc.text(`INR ${effectiveGross.toLocaleString()}`, summaryValueX, startY, { align: "right" });
+      startY += 4.5;
     }
 
     if (disc > 0) {
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(16, 149, 106); // Emerald
-      doc.text(`Concession / Scholarship (${reason}):`, summaryLabelX, startY);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(16, 149, 106); // Emerald 600
+      const discLabel = formatDiscountLabel(rawReason);
+      const labelLines = doc.splitTextToSize(discLabel, maxLabelWidth);
+      doc.text(labelLines, summaryLabelX, startY);
       doc.text(`- INR ${disc.toLocaleString()}`, summaryValueX, startY, { align: "right" });
-      startY += 5;
+      startY += Math.max(labelLines.length * 3.8, 4.5);
     }
 
     if (advanceAdjusted > 0) {
-      doc.setFont("helvetica", "normal");
+      doc.setFont("helvetica", "bold");
       doc.setTextColor(14, 116, 144); // Cyan / Teal
-      const advLabel = advanceReceiptNo ? `Seat Booking Advance (${advanceReceiptNo}):` : "Seat Booking Advance Adjusted:";
-      doc.text(advLabel, summaryLabelX, startY);
+      const advLabel = advanceReceiptNo
+        ? `Seat Booking Advance Adjusted (${advanceReceiptNo}):`
+        : "Seat Booking Advance Adjusted:";
+      const labelLines = doc.splitTextToSize(advLabel, maxLabelWidth);
+      doc.text(labelLines, summaryLabelX, startY);
       doc.text(`- INR ${advanceAdjusted.toLocaleString()}`, summaryValueX, startY, { align: "right" });
-      startY += 5;
+      startY += Math.max(labelLines.length * 3.8, 4.5);
     }
 
-    startY += 2;
+    startY += 2.5;
+  } else {
+    startY += 1;
   }
 
   // Total Box
   doc.setFillColor(240, 253, 250); // Teal 50
   doc.setDrawColor(204, 251, 241); // Teal 100
-  doc.roundedRect(14, startY, 182, 16, 2, 2, "FD");
+  doc.roundedRect(10, startY, 128, 12, 1.5, 1.5, "FD");
 
   doc.setTextColor(13, 148, 136);
-  doc.setFontSize(11);
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "bold");
-  doc.text(advanceAdjusted > 0 ? "NET AMOUNT RECEIVED NOW:" : "TOTAL AMOUNT RECEIVED:", 20, startY + 10);
-  doc.setFontSize(13);
-  doc.text(`INR ${toNum(tx.amount).toLocaleString()}`, 193, startY + 10, { align: "right" });
+  doc.text(
+    (advanceAdjusted > 0 || disc > 0) ? "NET AMOUNT RECEIVED NOW:" : "TOTAL AMOUNT RECEIVED:",
+    14,
+    startY + 7.5
+  );
+  doc.setFontSize(9.5);
+  doc.text(`INR ${amt.toLocaleString()}`, 134, startY + 7.5, { align: "right" });
 
-  // Signatures
-  const sigY = Math.max(startY + 30, 230);
-  doc.setTextColor(100, 116, 139);
-  doc.setFontSize(9);
+  // Optional Note
+  if (parsed?.notes) {
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "italic");
+    doc.text(`* Remarks / Note: ${parsed.notes}`, 10, startY + 16.5);
+  }
+
+  // Footer: System generated notice and Prepared by
+  doc.setDrawColor(226, 232, 240); // Slate 200 divider
+  doc.line(10, 195, 138, 195);
+
+  doc.setTextColor(71, 85, 105); // Slate 600
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.text(`Prepared by: ${userName || "Cashier / Accounts Officer"}`, 10, 201);
 
-  doc.text("Cashier / Accounts Officer", 14, sigY);
-  doc.setDrawColor(203, 213, 225);
-  doc.line(14, sigY + 10, 60, sigY + 10);
-
-  doc.text("Authorized Signatory", 196, sigY, { align: "right" });
-  doc.text("Verified System Receipt", 196, sigY + 12, { align: "right" });
+  doc.setTextColor(148, 163, 184); // Slate 400
+  doc.setFontSize(6.5);
+  doc.setFont("helvetica", "italic");
+  doc.text("This is a system generated receipt.", 138, 201, { align: "right" });
 
   return doc;
 };
 
-const generateReceiptPDF = (tx: FeeTransaction) => {
-  const doc = buildReceiptPDFDoc(tx);
-  doc.save(`Fee_Receipt_${tx.receiptNumber}.pdf`);
+const generateReceiptPDF = (tx: FeeTransaction, userName?: string) => {
+  const doc = buildReceiptPDFDoc(tx, userName);
+  doc.save(`Receipt-${tx.receiptNumber}.pdf`);
 };
 
-const printReceiptPDF = (tx: FeeTransaction) => {
-  const doc = buildReceiptPDFDoc(tx);
-  const pdfBlobUrl = doc.output("bloburl");
+const printReceiptPDF = (tx: FeeTransaction, userName?: string) => {
+  const doc = buildReceiptPDFDoc(tx, userName);
+  const pdfBlob = doc.output("blob");
+  const blobUrl = URL.createObjectURL(pdfBlob);
+  const printWindow = window.open(blobUrl, "_blank");
+  if (printWindow) {
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+  }
+};
 
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-  iframe.src = pdfBlobUrl.toString();
-  document.body.appendChild(iframe);
+export const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: any): string => {
+  const parsed = parseRemarks(tx.remarks);
+  const isAdvanceReceipt = parsed?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking");
+  const receiptTitle = isAdvanceReceipt
+    ? "SEAT BOOKING ADVANCE PAYMENT RECEIPT"
+    : tx.feeType
+    ? `${String(tx.feeType).toUpperCase()} RECEIPT`
+    : "OFFICIAL FEE PAYMENT RECEIPT";
 
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-    } catch (e) {
-      window.open(pdfBlobUrl.toString(), "_blank");
+  const acadYear = parsed?.academicYear || getAcademicYear(tx.paymentDate);
+  const periodType = parsed?.billingPeriodType;
+  const periodVal = parsed?.billingPeriodValue;
+  let periodDetailText = "";
+  if (periodVal) {
+    if (periodType === "month") periodDetailText = `Months: ${periodVal}`;
+    else if (periodType === "semester") periodDetailText = `Semester: ${periodVal}`;
+    else if (periodType === "quarter") periodDetailText = `Quarter: ${periodVal}`;
+    else if (periodType === "academic_year") periodDetailText = "Full Academic Year";
+    else periodDetailText = periodVal;
+  } else if (parsed?.periodLabel) {
+    periodDetailText = parsed.periodLabel;
+  } else {
+    periodDetailText = "Full Academic Year";
+  }
+
+  const periodDisplay = acadYear ? `AY ${acadYear} • ${periodDetailText}` : periodDetailText;
+  const items: Array<{ name: string; frequency: string; amount: number; multiplier?: number }> =
+    Array.isArray(parsed) ? parsed : parsed?.items || [];
+  const gross = Number(parsed?.grossSubtotal || 0);
+  const disc = Number(parsed?.discountAmount || 0);
+  const reason = parsed?.discountReason || "Special Concession";
+  const advanceAdjusted = Number(parsed?.advanceAdjustedAmount || 0);
+  const advanceReceiptNo = parsed?.advanceReceiptNumber;
+
+  const lines: string[] = [];
+  lines.push(`*ACME COLLEGE OF NURSING*`);
+  lines.push(`🧾 *${receiptTitle}*`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`*Receipt No:* ${tx.receiptNumber}`);
+  lines.push(`*Payment Date:* ${tx.paymentDate}`);
+  lines.push(`*Student Name:* ${tx.studentName || student?.name || "Student"}`);
+  lines.push(`*Enrollment No:* ${tx.enrollmentNo || student?.enrollmentNo || "N/A"}`);
+  if (student?.courseName || student?.batchName) {
+    lines.push(`*Program / Batch:* ${student.courseName || student.batchName}`);
+  }
+  if (!isAdvanceReceipt) {
+    lines.push(`*Billing Period:* ${periodDisplay}`);
+  }
+  lines.push(`*Payment Mode:* ${(tx.paymentMode || "cash").toUpperCase()}`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`*FEE BREAKDOWN:*`);
+
+  if (items.length > 0) {
+    items.forEach((it) => {
+      const sch = it.multiplier && it.multiplier > 1 ? ` (${it.frequency} ×${it.multiplier})` : ` (${it.frequency})`;
+      lines.push(`• ${it.name}${sch}: ₹${Number(it.amount || 0).toLocaleString()}`);
+    });
+  } else {
+    lines.push(`• ${tx.feeType || "College Fee"}: ₹${Number(toNum(tx.amount)).toLocaleString()}`);
+  }
+
+  if (gross > 0 || disc > 0 || advanceAdjusted > 0) {
+    lines.push(`┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈`);
+    if (gross > 0) lines.push(`*Gross Subtotal:* ₹${gross.toLocaleString()}`);
+    if (disc > 0) {
+      const discTitle = formatDiscountLabel(reason).replace(/:$/, "");
+      lines.push(`*Less ${discTitle}:* -₹${disc.toLocaleString()}`);
     }
-  };
+    if (advanceAdjusted > 0) {
+      const advLabel = advanceReceiptNo ? `*Advance Adjusted (#${advanceReceiptNo}):*` : `*Advance Adjusted:*`;
+      lines.push(`${advLabel} -₹${advanceAdjusted.toLocaleString()}`);
+    }
+  }
+
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+  lines.push(`*TOTAL AMOUNT PAID: ₹${Number(toNum(tx.amount)).toLocaleString()}*`);
+  lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
+
+  if (parsed?.notes) {
+    lines.push(`_Remarks / Notes: ${parsed.notes}_`);
+  }
+  lines.push(`_Status: Verified Official College Receipt_`);
+  lines.push(``);
+  lines.push(`Thank you! For queries, contact College Accounts.`);
+
+  return lines.join("\n");
+};
+
+export const openWhatsAppReceipt = (phone: string, text: string) => {
+  let clean = (phone || "").replace(/\D/g, "");
+  if (!clean) {
+    toast.error("Please enter a valid recipient phone number.");
+    return false;
+  }
+  if (clean.length === 10) {
+    clean = `91${clean}`;
+  }
+  const url = `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
+  window.open(url, "_blank");
+  return true;
+};
+
+export const shareReceiptPDFViaWhatsApp = async (
+  tx: FeeTransaction,
+  phone: string,
+  userName?: string
+) => {
+  const doc = buildReceiptPDFDoc(tx, userName);
+  const filename = `Receipt-${tx.receiptNumber}.pdf`;
+  const pdfBlob = doc.output("blob");
+  const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
+
+  let cleanPhone = (phone || "").replace(/\D/g, "");
+  if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`;
+
+  const messageText = `ACME COLLEGE OF NURSING\nOfficial Payment Receipt #${tx.receiptNumber}\nStudent: ${tx.studentName || "Student"}\nAmount: ₹${Number(toNum(tx.amount)).toLocaleString()}\n\nOfficial PDF Receipt attached.`;
+
+  // 1. Try Native Web Share API (attaches actual PDF file directly to WhatsApp on mobile & supported browsers)
+  if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+    try {
+      await navigator.share({
+        files: [pdfFile],
+        title: `Receipt-${tx.receiptNumber}`,
+        text: messageText,
+      });
+      toast.success("Receipt PDF shared via WhatsApp!");
+      return true;
+    } catch (err: any) {
+      if (err.name === "AbortError") return false;
+    }
+  }
+
+  // 2. Desktop Fallback: Automatically save the PDF and launch WhatsApp chat
+  doc.save(filename);
+  toast.info("Receipt PDF saved! Opening WhatsApp chat so you can attach it...");
+  const waUrl = cleanPhone
+    ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(messageText)}`
+    : `https://wa.me/?text=${encodeURIComponent(messageText)}`;
+  window.open(waUrl, "_blank");
+  return true;
 };
 
 function FeeManagementPage() {
   const queryClient = useQueryClient();
+  const session = authClient.useSession();
+  const currentUserName = session.data?.user?.name || session.data?.user?.email || "Cashier / Accounts Officer";
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false);
   const [pendingPayload, setPendingPayload] = React.useState<any>(null);
   const [collectItems, setCollectItems] = React.useState<CollectFeeItem[]>([]);
   const [receiptTx, setReceiptTx] = React.useState<FeeTransaction | null>(null);
   const [receiptModalOpen, setReceiptModalOpen] = React.useState(false);
+  const [whatsAppModalOpen, setWhatsAppModalOpen] = React.useState(false);
+  const [whatsAppTx, setWhatsAppTx] = React.useState<FeeTransaction | null>(null);
+  const [whatsAppStudent, setWhatsAppStudent] = React.useState<any | null>(null);
+  const [whatsAppPhone, setWhatsAppPhone] = React.useState<string>("");
+
+  // Scholarship Rebate percentage on Course Fee state
+  const [scholarshipPercent, setScholarshipPercent] = React.useState<number | "">("");
+  const [discountMode, setDiscountMode] = React.useState<"scholarship_percent" | "fixed_amount">("scholarship_percent");
+
+  const handleOpenWhatsAppModal = (tx: FeeTransaction) => {
+    const st = students.find((s) => s.id === tx.studentId || s.enrollmentNo === tx.enrollmentNo);
+    setWhatsAppTx(tx);
+    setWhatsAppStudent(st || null);
+    const defaultNum = st?.phone || st?.fatherPhone || st?.motherPhone || st?.guardianPhone || "";
+    setWhatsAppPhone(defaultNum);
+    setWhatsAppModalOpen(true);
+  };
   const [currentPage, setCurrentPage] = React.useState<number>(1);
   const [pageSize, setPageSize] = React.useState<number>(10);
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -793,11 +1050,18 @@ function FeeManagementPage() {
       const list = paidPeriodsMap.get(opt.toLowerCase()) || [];
       if (list.length === 0) return null;
 
-      const hasHostel = collectItems.some((i) => i.selected && isHostelFee(i.name));
-      const hasAcademic = collectItems.some((i) => i.selected && !isHostelFee(i.name));
+      const hasHostel = collectItems.some((i) => i.selected && isHostelOnlyFee(i.name));
+      const hasMess = collectItems.some((i) => i.selected && isMessOnlyFee(i.name));
+      const hasAcademic = collectItems.some((i) => i.selected && isAcademicFee(i.name));
 
-      if (hasHostel) {
+      if (hasHostel && !hasMess && !hasAcademic) {
         return list.find((x) => x.isHostel) || null;
+      }
+      if (hasMess && !hasHostel && !hasAcademic) {
+        return list.find((x) => x.isMess) || null;
+      }
+      if (hasHostel && hasMess) {
+        return list.find((x) => x.isHostel || x.isMess) || null;
       }
       if (hasAcademic) {
         return list.find((x) => x.isAcademic) || null;
@@ -840,27 +1104,44 @@ function FeeManagementPage() {
     return null;
   }, [priorCoursePaymentsInYear]);
 
-  const isHostelFeeSelected = collectItems.some((i) => i.selected && isHostelFee(i.name));
+  const isHostelFeeSelected = collectItems.some((i) => i.selected && isHostelOnlyFee(i.name));
+  const isMessFeeSelected = collectItems.some((i) => i.selected && isMessOnlyFee(i.name));
   const watchFeeType = collectForm.watch("feeType");
-  const isHostelFeeType = isHostelFee(watchFeeType || "");
-  const isHostelActive = isHostelFeeSelected || isHostelFeeType;
+  const isHostelFeeType = isHostelOrMessFee(watchFeeType || "");
+  const isHostelOrMessActive = isHostelFeeSelected || isMessFeeSelected || isHostelFeeType;
+
+  // Selected hostel fee item (if any)
+  const selectedHostelItem = collectItems.find((i) => i.selected && isHostelOnlyFee(i.name));
+  const isHostelAnnual = selectedHostelItem?.selectedFrequencyKey === "annually";
 
   // Check if Course Fee is currently selected (or if no specific items are populated yet)
   const isCourseFeeActive = collectItems.length === 0 || collectItems.some((i) => i.selected && isTuitionFee(i.name));
 
-  // Determine if period interval schedule is locked (Hostel is locked to monthly; Course Fee is locked if prior Course Fee payment exists)
-  const isPeriodIntervalLocked = isHostelActive || (isCourseFeeActive && !!lockedPeriodIntervalType);
+  // Determine if period interval schedule is locked
+  const isPeriodIntervalLocked =
+    (isHostelFeeSelected && isHostelAnnual) ||
+    (isHostelFeeSelected && !isHostelAnnual) ||
+    (isMessFeeSelected && !isHostelFeeSelected) ||
+    (isCourseFeeActive && !isHostelOrMessActive && !!lockedPeriodIntervalType);
 
   const [selectedPeriods, setSelectedPeriods] = React.useState<string[]>(["Semester 1"]);
 
   // Keep selectedPeriods in sync with period type changes and avoid preselecting already paid periods
   const handlePeriodTypeChange = (newType: string) => {
-    if (isHostelActive && newType !== "month") {
-      toast.error("Hostel & Mess Fee is strictly billed on a monthly schedule.");
+    if (isHostelFeeSelected && !isHostelAnnual && newType !== "month") {
+      toast.error("Monthly Hostel Fee is strictly billed on a monthly schedule.");
+      return;
+    }
+    if (isHostelFeeSelected && isHostelAnnual && newType !== "academic_year") {
+      toast.error("Annual Hostel Fee is billed on a full academic year schedule.");
+      return;
+    }
+    if (isMessFeeSelected && !isHostelFeeSelected && newType !== "month") {
+      toast.error("Mess Fee is billed on a monthly schedule.");
       return;
     }
 
-    if (!isHostelActive && isCourseFeeActive && lockedPeriodIntervalType && newType !== lockedPeriodIntervalType) {
+    if (!isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && newType !== lockedPeriodIntervalType) {
       toast.error(
         `Period interval type cannot be changed from ${getPeriodIntervalLabel(lockedPeriodIntervalType)} because prior payments were made in AY ${watchTargetAcademicYear}.`
       );
@@ -919,14 +1200,18 @@ function FeeManagementPage() {
     );
   };
 
-  // Automatically synchronize period interval type to monthly if Hostel & Mess fee is active, or to prior Course Fee payment locked type
+  // Automatically synchronize period interval type
   React.useEffect(() => {
-    if (isHostelActive && watchBillingPeriodType !== "month") {
+    if (isHostelFeeSelected && isHostelAnnual && watchBillingPeriodType !== "academic_year") {
+      handlePeriodTypeChange("academic_year");
+    } else if (isHostelFeeSelected && !isHostelAnnual && watchBillingPeriodType !== "month") {
       handlePeriodTypeChange("month");
-    } else if (!isHostelActive && isCourseFeeActive && lockedPeriodIntervalType && watchBillingPeriodType !== lockedPeriodIntervalType) {
+    } else if (isMessFeeSelected && !isHostelFeeSelected && watchBillingPeriodType !== "month") {
+      handlePeriodTypeChange("month");
+    } else if (!isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && watchBillingPeriodType !== lockedPeriodIntervalType) {
       handlePeriodTypeChange(lockedPeriodIntervalType);
     }
-  }, [isHostelActive, isCourseFeeActive, lockedPeriodIntervalType, watchBillingPeriodType]);
+  }, [isHostelFeeSelected, isHostelAnnual, isMessFeeSelected, isHostelOrMessActive, isCourseFeeActive, lockedPeriodIntervalType, watchBillingPeriodType]);
 
   const togglePeriodSelection = (periodStr: string) => {
     const paidInfo = getPaidInfoForPeriod(periodStr);
@@ -1068,6 +1353,33 @@ function FeeManagementPage() {
       .reduce((sum, item) => sum + Number(item.amount || 0), 0);
   }, [collectItems]);
 
+  const selectedCourseFeeTotal = React.useMemo(() => {
+    return collectItems
+      .filter((item) => item.selected && isTuitionFee(item.name))
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  }, [collectItems]);
+
+  // Synchronize scholarship rebate percentage on Course Fee
+  React.useEffect(() => {
+    if (discountMode === "scholarship_percent") {
+      if (typeof scholarshipPercent === "number" && scholarshipPercent > 0) {
+        const baseForRebate = selectedCourseFeeTotal > 0 ? selectedCourseFeeTotal : grossCollectSubtotal;
+        const rebateAmt = Math.round((baseForRebate * scholarshipPercent) / 100);
+        collectForm.setValue("discountAmount", rebateAmt);
+        const currentReason = collectForm.getValues("discountReason") || "";
+        if (!currentReason || currentReason.startsWith("Scholarship Rebate") || currentReason.startsWith("Merit Scholarship")) {
+          collectForm.setValue("discountReason", `Scholarship Rebate (${scholarshipPercent}% on Course Fee)`);
+        }
+      } else if (scholarshipPercent === 0 || scholarshipPercent === "") {
+        const currentReason = collectForm.getValues("discountReason") || "";
+        if (currentReason.startsWith("Scholarship Rebate")) {
+          collectForm.setValue("discountAmount", 0);
+          collectForm.setValue("discountReason", "");
+        }
+      }
+    }
+  }, [scholarshipPercent, selectedCourseFeeTotal, discountMode, grossCollectSubtotal, collectForm]);
+
   const remainingAfterDiscount = React.useMemo(() => {
     return Math.max(0, grossCollectSubtotal - watchDiscountAmount);
   }, [grossCollectSubtotal, watchDiscountAmount]);
@@ -1141,10 +1453,36 @@ function FeeManagementPage() {
         createDefaultComponent("1", "Course Fee", toNum(fs.tuitionFee), "annually", toNum(fs.oneTimeRebatePercent), 0),
         createDefaultComponent("2", "Admission Fee", toNum(fs.admissionFee), "annually", 0, 0),
         createDefaultComponent("4", "Uniform Fee", toNum(fs.uniformFee), "annually", 0, 0),
-        createDefaultComponent("5", "Hostel & Mess Fee", toNum(fs.hostelMessMonthlyFee) * 12, "monthly", 0, 5),
-        createDefaultComponent("6", "Exam Fee", toNum(fs.examFee), "semester", 0, 0),
-        createDefaultComponent("7", "Misc Fee", toNum(fs.miscFee), "annually", 0, 0),
+        createDefaultComponent("5", "Hostel Fee", toNum(fs.hostelFee) > 0 ? toNum(fs.hostelFee) : (toNum(fs.hostelMessMonthlyFee) > 0 ? toNum(fs.hostelMessMonthlyFee) * 12 * 0.6 : 36000), "monthly", 0, 0, [
+          { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
+          { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
+        ]),
+        createDefaultComponent("6", "Mess Fee", toNum(fs.hostelMessMonthlyFee) > 0 ? toNum(fs.hostelMessMonthlyFee) * 12 * 0.4 : 24000, "monthly", 0, 0, [
+          { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
+          { id: "f-quarterly", key: "quarterly", label: "Quarterly", count: 4, rebatePercent: 0, surchargePercent: 0 },
+          { id: "f-semester", key: "semester", label: "Per-Semester", count: 2, rebatePercent: 0, surchargePercent: 0 },
+          { id: "f-annually", key: "annually", label: "Annually", count: 1, rebatePercent: 0, surchargePercent: 0 },
+        ]),
+        createDefaultComponent("7", "Exam Fee", toNum(fs.examFee), "semester", 0, 0),
+        createDefaultComponent("8", "Misc Fee", toNum(fs.miscFee), "annually", 0, 0),
       ].filter((c) => c.amount > 0);
+    } else {
+      comps = comps.map((comp) => {
+        const isHostelOnly = comp.name?.toLowerCase().includes("hostel") && !comp.name?.toLowerCase().includes("mess");
+        if (isHostelOnly && Array.isArray(comp.frequencyRows)) {
+          const hasAnnual = comp.frequencyRows.some((r) => r.key === "annually");
+          if (!hasAnnual) {
+            return {
+              ...comp,
+              frequencyRows: [
+                ...comp.frequencyRows,
+                { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
+              ],
+            };
+          }
+        }
+        return comp;
+      });
     }
 
     // Ensure Security Deposit (Refundable) is always available as an optional item in collection form
@@ -1254,25 +1592,30 @@ function FeeManagementPage() {
       const willSelect = !target.selected;
 
       if (willSelect) {
-        if (isHostelFee(target.name)) {
-          // Target is Hostel & Mess fee. Deselect all other non-hostel components and switch interval to monthly.
-          const hadOtherSelected = prev.some((item) => item.componentId !== compId && item.selected);
-          if (hadOtherSelected) {
-            toast.info("Hostel & Mess Fee must be paid separately. Other fee components have been deselected.");
+        if (isHostelOrMessFee(target.name)) {
+          // Target is Hostel or Mess fee. Deselect all academic components.
+          const hadAcademicSelected = prev.some((item) => item.componentId !== compId && item.selected && !isHostelOrMessFee(item.name));
+          if (hadAcademicSelected) {
+            toast.info("Hostel & Mess fees must be paid separately from Academic fees. Academic fee components have been deselected.");
           }
-          handlePeriodTypeChange("month");
-          return prev.map((item) => ({
-            ...item,
-            selected: item.componentId === compId,
-          }));
-        } else {
-          // Target is academic / other fee. Deselect any hostel fee components.
-          const hadHostelSelected = prev.some((item) => isHostelFee(item.name) && item.selected);
-          if (hadHostelSelected) {
-            toast.info("Hostel & Mess Fee cannot be clubbed with other fees. Hostel fee has been deselected.");
+          if (isHostelOnlyFee(target.name) && target.selectedFrequencyKey === "annually") {
+            handlePeriodTypeChange("academic_year");
+          } else {
+            handlePeriodTypeChange("month");
           }
           return prev.map((item) => {
-            if (isHostelFee(item.name)) return { ...item, selected: false };
+            if (!isHostelOrMessFee(item.name)) return { ...item, selected: false };
+            if (item.componentId === compId) return { ...item, selected: true };
+            return item;
+          });
+        } else {
+          // Target is academic / other fee. Deselect any hostel/mess fee components.
+          const hadHostelOrMessSelected = prev.some((item) => isHostelOrMessFee(item.name) && item.selected);
+          if (hadHostelOrMessSelected) {
+            toast.info("Hostel & Mess fees cannot be clubbed with Academic fees. Hostel/Mess fee has been deselected.");
+          }
+          return prev.map((item) => {
+            if (isHostelOrMessFee(item.name)) return { ...item, selected: false };
             if (item.componentId === compId) return { ...item, selected: true };
             return item;
           });
@@ -1290,7 +1633,8 @@ function FeeManagementPage() {
         const targetRow =
           item.availableFrequencies.find((r) => r.key === newFreqKey) || item.availableFrequencies[0];
         const newUnitAmt = calcInstallmentAmount(item.baseAmount, targetRow);
-        const mult = allowsPeriodMultiplier(item.name, newFreqKey) ? selectedPeriods.length : 1;
+        const isAnnualOrOneTime = newFreqKey === "annually" || newFreqKey === "one_time";
+        const mult = isAnnualOrOneTime ? 1 : (allowsPeriodMultiplier(item.name, newFreqKey) ? selectedPeriods.length : 1);
         const isOneTime = newFreqKey === "one_time" || item.name.toLowerCase().includes("security deposit");
         const paidInfo = isOneTime ? paidOneTimeMap.get(item.name.trim().toLowerCase()) : null;
         const isOneTimePaid = !!paidInfo;
@@ -1307,6 +1651,17 @@ function FeeManagementPage() {
         };
       })
     );
+
+    const changedItem = collectItems.find((i) => i.componentId === compId);
+    if (changedItem && isHostelOnlyFee(changedItem.name)) {
+      if (newFreqKey === "annually") {
+        toast.info("Hostel Fee schedule set to Annual (5% rebate applied).");
+        handlePeriodTypeChange("academic_year");
+      } else if (newFreqKey === "monthly") {
+        toast.info("Hostel Fee schedule set to Monthly.");
+        handlePeriodTypeChange("month");
+      }
+    }
   };
 
 
@@ -1448,10 +1803,10 @@ function FeeManagementPage() {
                     return;
                   }
 
-                  const hasHostel = selectedPaidItems.some((i) => isHostelFee(i.name));
-                  const hasNonHostel = selectedPaidItems.some((i) => !isHostelFee(i.name));
-                  if (hasHostel && hasNonHostel) {
-                    toast.error("Hostel & Mess Fee cannot be clubbed with any other fee payment. Please collect it as a separate transaction.");
+                  const hasHostelOrMess = selectedPaidItems.some((i) => isHostelOrMessFee(i.name));
+                  const hasAcademic = selectedPaidItems.some((i) => isAcademicFee(i.name));
+                  if (hasHostelOrMess && hasAcademic) {
+                    toast.error("Hostel & Mess fees cannot be clubbed with Academic fees (Course, Admission, Uniform, etc.). Please collect them as separate transactions.");
                     return;
                   }
 
@@ -1648,9 +2003,17 @@ function FeeManagementPage() {
                         <label className="text-xs font-medium block text-foreground flex items-center gap-1">
                           Period Interval Type *
                         </label>
-                        {isHostelActive ? (
+                        {isHostelFeeSelected && isHostelAnnual ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.5 rounded font-semibold border border-purple-300 dark:border-purple-800">
+                            <Lock size={10} /> Read-Only (Annual - Hostel Fee 5% Rebate)
+                          </span>
+                        ) : isHostelFeeSelected && !isHostelAnnual ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.5 rounded font-semibold border border-purple-300 dark:border-purple-800">
                             <Lock size={10} /> Read-Only (Monthly - Hostel Fee)
+                          </span>
+                        ) : isMessFeeSelected && !isHostelFeeSelected ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.5 rounded font-semibold border border-indigo-300 dark:border-indigo-800">
+                            <Lock size={10} /> Read-Only (Monthly - Mess Fee)
                           </span>
                         ) : isPeriodIntervalLocked ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded font-semibold border border-amber-300 dark:border-amber-800">
@@ -1670,13 +2033,13 @@ function FeeManagementPage() {
                             <SelectTrigger className={cn(
                               "w-full h-8 text-xs font-medium",
                               isPeriodIntervalLocked
-                                ? isHostelActive
+                                ? isHostelOrMessActive
                                   ? "bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-300 dark:border-purple-800 cursor-not-allowed"
                                   : "bg-muted/80 text-muted-foreground border-amber-300 dark:border-amber-800 cursor-not-allowed"
                                 : "bg-background"
                             )}>
                               <div className="flex items-center gap-1 truncate">
-                                {isPeriodIntervalLocked && <Lock size={11} className={cn("shrink-0", isHostelActive ? "text-purple-600 dark:text-purple-400" : "text-amber-600 dark:text-amber-400")} />}
+                                {isPeriodIntervalLocked && <Lock size={11} className={cn("shrink-0", isHostelOrMessActive ? "text-purple-600 dark:text-purple-400" : "text-amber-600 dark:text-amber-400")} />}
                                 <SelectValue placeholder="Period Type" />
                               </div>
                             </SelectTrigger>
@@ -1689,9 +2052,17 @@ function FeeManagementPage() {
                           </Select>
                         )}
                       />
-                      {isHostelActive ? (
+                      {isHostelFeeSelected && isHostelAnnual ? (
                         <p className="text-[10px] text-purple-700 dark:text-purple-400 mt-1 flex items-center gap-1 font-medium">
-                          <Lock size={9} className="shrink-0" /> Hostel & Mess Fee is strictly billed on a monthly schedule and cannot be changed.
+                          <Lock size={9} className="shrink-0" /> Annual Hostel Fee (5% rebate) covers the entire academic year.
+                        </p>
+                      ) : isHostelFeeSelected && !isHostelAnnual ? (
+                        <p className="text-[10px] text-purple-700 dark:text-purple-400 mt-1 flex items-center gap-1 font-medium">
+                          <Lock size={9} className="shrink-0" /> Monthly Hostel Fee is billed on a monthly schedule.
+                        </p>
+                      ) : isMessFeeSelected && !isHostelFeeSelected ? (
+                        <p className="text-[10px] text-indigo-700 dark:text-indigo-400 mt-1 flex items-center gap-1 font-medium">
+                          <Lock size={9} className="shrink-0" /> Mess Fee is billed on a monthly schedule.
                         </p>
                       ) : (isCourseFeeActive && isPeriodIntervalLocked) ? (
                         <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
@@ -1886,10 +2257,18 @@ function FeeManagementPage() {
                       </div>
                     )}
 
-                    {collectItems.some((i) => i.selected && isHostelFee(i.name)) && (
+                    {collectItems.some((i) => i.selected && isHostelOrMessFee(i.name)) && (
                       <div className="flex items-center gap-2 text-[11px] bg-purple-50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 px-2.5 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 font-medium">
                         <Info size={13} className="shrink-0 text-purple-600 dark:text-purple-400" />
-                        <span>Hostel & Mess Fee is selected as a standalone payment. It cannot be clubbed with Course, Admission, or other college fees.</span>
+                        <span>
+                          {isHostelFeeSelected && !isMessFeeSelected
+                            ? isHostelAnnual
+                              ? "Hostel Fee is selected with Annual 5% rebate. It cannot be clubbed with Academic fees."
+                              : "Hostel Fee is selected on Monthly schedule (can also be paid Annually with 5% rebate). It cannot be clubbed with Academic fees."
+                            : isMessFeeSelected && !isHostelFeeSelected
+                            ? "Mess Fee is selected as a standalone fee. It cannot be clubbed with Academic fees."
+                            : "Hostel & Mess fees are selected. They cannot be clubbed with Course, Admission, or other Academic college fees."}
+                        </span>
                       </div>
                     )}
 
@@ -1899,7 +2278,7 @@ function FeeManagementPage() {
                         <button
                           type="button"
                           className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline font-medium"
-                          onClick={() => setCollectItems((prev) => prev.map((i) => ({ ...i, selected: !isHostelFee(i.name) && !i.isOneTimePaid })))}
+                          onClick={() => setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isAcademicFee(i.name) && !i.isOneTimePaid })))}
                         >
                           Select Academic Fees
                         </button>
@@ -1908,14 +2287,38 @@ function FeeManagementPage() {
                           type="button"
                           className="text-[11px] text-purple-700 dark:text-purple-300 hover:underline font-semibold"
                           onClick={() => {
-                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelFee(i.name) && !i.isOneTimePaid })));
-                            if (watchBillingPeriodType !== "month") {
-                                toast.warning("Period type forced to Monthly for Hostel/Mess fees.");
-                                handlePeriodTypeChange("month");
+                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelOnlyFee(i.name) && !i.isOneTimePaid })));
+                            const hostelItem = collectItems.find((i) => isHostelOnlyFee(i.name));
+                            if (hostelItem?.selectedFrequencyKey === "annually") {
+                              handlePeriodTypeChange("academic_year");
+                            } else {
+                              handlePeriodTypeChange("month");
                             }
                           }}
                         >
                           Select Hostel Only
+                        </button>
+                        <span className="text-muted-foreground">•</span>
+                        <button
+                          type="button"
+                          className="text-[11px] text-indigo-700 dark:text-indigo-300 hover:underline font-semibold"
+                          onClick={() => {
+                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isMessOnlyFee(i.name) && !i.isOneTimePaid })));
+                            handlePeriodTypeChange("month");
+                          }}
+                        >
+                          Select Mess Only
+                        </button>
+                        <span className="text-muted-foreground">•</span>
+                        <button
+                          type="button"
+                          className="text-[11px] text-violet-700 dark:text-violet-300 hover:underline font-semibold"
+                          onClick={() => {
+                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelOrMessFee(i.name) && !i.isOneTimePaid })));
+                            handlePeriodTypeChange("month");
+                          }}
+                        >
+                          Select Hostel & Mess
                         </button>
                         <span className="text-muted-foreground">•</span>
                         <button
@@ -1933,7 +2336,9 @@ function FeeManagementPage() {
 
                     <div className="space-y-2">
                       {collectItems.map((item) => {
-                        const isHostel = isHostelFee(item.name);
+                        const isHostel = isHostelOnlyFee(item.name);
+                        const isMess = isMessOnlyFee(item.name);
+                        const isCombined = item.name.toLowerCase().includes("hostel & mess");
                         return (
                           <div
                             key={item.componentId}
@@ -1942,7 +2347,7 @@ function FeeManagementPage() {
                               item.isOneTimePaid
                                 ? "bg-slate-100/70 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800 opacity-80"
                                 : item.selected
-                                ? isHostel
+                                ? (isHostel || isMess || isCombined)
                                   ? "bg-purple-50/70 dark:bg-purple-950/40 border-purple-300 dark:border-purple-800 shadow-xs"
                                   : "bg-card border-teal-300 dark:border-teal-800 shadow-xs"
                                 : "bg-muted/40 opacity-60"
@@ -1978,7 +2383,17 @@ function FeeManagementPage() {
                                 )}
                                 {isHostel && (
                                   <span className="text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.2 rounded font-medium border border-purple-200 dark:border-purple-800">
-                                    Standalone Fee
+                                    Hostel Fee (Annual 5% Rebate / Monthly)
+                                  </span>
+                                )}
+                                {isMess && (
+                                  <span className="text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.2 rounded font-medium border border-indigo-200 dark:border-indigo-800">
+                                    Mess Fee
+                                  </span>
+                                )}
+                                {isCombined && (
+                                  <span className="text-[10px] text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-950/80 px-1.5 py-0.2 rounded font-medium border border-violet-200 dark:border-violet-800">
+                                    Hostel & Mess Fee
                                   </span>
                                 )}
                                 {item.isFrequencyLocked && !item.isOneTimePaid && (
@@ -2036,50 +2451,192 @@ function FeeManagementPage() {
                         </div>
                       );
                     })}
+                  </div>
+                </div>
+              )}
+
+                {/* Gross Subtotal & Scholarship Rebate / Concession Controls */}
+                <div className="border rounded-xl p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 space-y-3.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 dark:border-emerald-900/60 pb-2 text-xs font-semibold">
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5 font-bold">
+                        <Percent size={14} className="text-emerald-600 dark:text-emerald-400" />
+                        Course Fee Scholarship Rebate & Concession
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs">
+                      {selectedCourseFeeTotal > 0 && (
+                        <span className="text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded font-medium border border-emerald-200 dark:border-emerald-800">
+                          Course Fee Selected: <strong>₹{selectedCourseFeeTotal.toLocaleString()}</strong>
+                        </span>
+                      )}
+                      <span className="text-muted-foreground">
+                        Gross Subtotal: <strong className="text-foreground">₹{grossCollectSubtotal.toLocaleString()}</strong>
+                      </span>
                     </div>
                   </div>
-                )}
 
-                {/* Gross Subtotal & Discretionary Discount Controls */}
-                <div className="border rounded-xl p-3 bg-emerald-50/40 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 space-y-3">
-                  <div className="flex justify-between items-center border-b border-emerald-200/60 pb-1.5 text-xs font-semibold">
-                    <span className="text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
-                      <Percent size={14} /> Fee Subtotal & Concession / Discount
-                    </span>
-                    <span className="text-muted-foreground">Gross Component Subtotal: <strong className="text-foreground">₹{grossCollectSubtotal.toLocaleString()}</strong></span>
+                  {/* Mode Toggle Tabs */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-lg font-medium transition-all border",
+                        discountMode === "scholarship_percent"
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                          : "bg-background text-muted-foreground hover:text-foreground border-input"
+                      )}
+                      onClick={() => setDiscountMode("scholarship_percent")}
+                    >
+                      🎓 Scholarship Rebate (%) on Course Fee
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "text-xs px-3 py-1.5 rounded-lg font-medium transition-all border",
+                        discountMode === "fixed_amount"
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                          : "bg-background text-muted-foreground hover:text-foreground border-input"
+                      )}
+                      onClick={() => {
+                        setDiscountMode("fixed_amount");
+                        setScholarshipPercent("");
+                      }}
+                    >
+                      ₹ Fixed Concession Amount
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <Controller
-                      control={collectForm.control}
-                      name="discountAmount"
-                      render={({ field, fieldState }) => (
-                        <Field
-                          label="Discount / Concession Amount (₹)"
-                          type="number"
-                          min="0"
-                          max={grossCollectSubtotal}
-                          placeholder="0"
-                          {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
-                          error={fieldState.error?.message}
-                        />
-                      )}
-                    />
+                  {discountMode === "scholarship_percent" ? (
+                    <div className="space-y-3 bg-card p-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/50">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            Scholarship Rebate Percentage (%) *
+                          </label>
+                          {typeof scholarshipPercent === "number" && scholarshipPercent > 0 && (
+                            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
+                              Calculated Rebate: -₹{watchDiscountAmount.toLocaleString()} ({scholarshipPercent}%)
+                            </span>
+                          )}
+                        </div>
 
-                    <Controller
-                      control={collectForm.control}
-                      name="discountReason"
-                      render={({ field, fieldState }) => (
-                        <Field
-                          label={watchDiscountAmount > 0 ? "Reason for Discount *" : "Reason for Discount"}
-                          placeholder="e.g. Merit Scholarship, Financial Aid, Concession"
-                          {...field}
-                          error={fieldState.error?.message}
-                        />
-                      )}
-                    />
-                  </div>
+                        {/* Quick Percentage Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap mb-2">
+                          <span className="text-[11px] text-muted-foreground font-medium mr-1">Quick Presets:</span>
+                          {[5, 10, 15, 20, 25, 50, 100].map((pct) => (
+                            <Button
+                              key={pct}
+                              type="button"
+                              size="sm"
+                              variant={scholarshipPercent === pct ? "default" : "outline"}
+                              className={cn(
+                                "h-6 text-[11px] px-2 font-semibold",
+                                scholarshipPercent === pct
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  : "hover:bg-emerald-50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+                              )}
+                              onClick={() => {
+                                setScholarshipPercent(pct);
+                              }}
+                            >
+                              {pct}%
+                            </Button>
+                          ))}
+                          {scholarshipPercent !== "" && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-[11px] px-1.5 text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setScholarshipPercent("");
+                                collectForm.setValue("discountAmount", 0);
+                                collectForm.setValue("discountReason", "");
+                              }}
+                            >
+                              <X size={12} className="mr-0.5" /> Clear
+                            </Button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[11px] text-muted-foreground font-medium">Custom Rebate Percentage (0 - 100%):</label>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.5"
+                                value={scholarshipPercent}
+                                placeholder="e.g. 10"
+                                onChange={(e) => {
+                                  const val = e.target.value === "" ? "" : Math.min(100, Math.max(0, Number(e.target.value)));
+                                  setScholarshipPercent(val);
+                                }}
+                                className="w-full border rounded-md px-3 py-1.5 bg-background text-sm font-semibold focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                              />
+                              <span className="p-1.5 bg-muted rounded-md border text-xs font-bold text-muted-foreground px-2.5">
+                                %
+                              </span>
+                            </div>
+                            {selectedCourseFeeTotal <= 0 && (
+                              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
+                                Note: Course Fee component is not selected above. Rebate will apply against total selected fee subtotal.
+                              </p>
+                            )}
+                          </div>
+
+                          <Controller
+                            control={collectForm.control}
+                            name="discountReason"
+                            render={({ field, fieldState }) => (
+                              <Field
+                                label="Scholarship / Rebate Reason / Type"
+                                placeholder="e.g. Merit Scholarship, Sports Quota, Sibling Concession"
+                                {...field}
+                                error={fieldState.error?.message}
+                              />
+                            )}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4 bg-card p-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/50">
+                      <Controller
+                        control={collectForm.control}
+                        name="discountAmount"
+                        render={({ field, fieldState }) => (
+                          <Field
+                            label="Discount / Concession Amount (₹)"
+                            type="number"
+                            min="0"
+                            max={grossCollectSubtotal}
+                            placeholder="0"
+                            {...field}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            error={fieldState.error?.message}
+                          />
+                        )}
+                      />
+
+                      <Controller
+                        control={collectForm.control}
+                        name="discountReason"
+                        render={({ field, fieldState }) => (
+                          <Field
+                            label={watchDiscountAmount > 0 ? "Reason for Discount *" : "Reason for Discount"}
+                            placeholder="e.g. Special Concession, Financial Assistance"
+                            {...field}
+                            error={fieldState.error?.message}
+                          />
+                        )}
+                      />
+                    </div>
+                  )}
+                </div>
 
                   {/* Seat Booking Advance Adjustment Card */}
                   {studentAdvanceInfo?.hasAdvance && (
@@ -2154,7 +2711,6 @@ function FeeManagementPage() {
                       <span className="text-lg text-teal-700 dark:text-teal-300">₹{finalNetPayable.toLocaleString()}</span>
                     </div>
                   </div>
-                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -2664,6 +3220,15 @@ function FeeManagementPage() {
                               >
                                 <Printer size={13} className="mr-1" /> View
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                title="Send Receipt via WhatsApp"
+                                onClick={() => handleOpenWhatsAppModal(tx)}
+                              >
+                                <MessageCircle size={13} className="mr-1" /> WhatsApp
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -2888,7 +3453,7 @@ function FeeManagementPage() {
 
                     {disc > 0 && (
                       <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-semibold">
-                        <span>Less Concession / Discount ({reason || "Special Waiver"}):</span>
+                        <span>Less {formatDiscountLabel(reason).replace(/:$/, "")}:</span>
                         <span>-₹{disc.toLocaleString()}</span>
                       </div>
                     )}
@@ -2941,7 +3506,7 @@ function FeeManagementPage() {
             </div>
           </div>
 
-          <DialogFooter className="p-4 bg-muted/40 border-t flex justify-end gap-2">
+          <DialogFooter className="p-4 bg-muted/40 border-t flex justify-end gap-2 flex-wrap">
             <Button variant="outline" onClick={() => setReceiptModalOpen(false)}>
               Close
             </Button>
@@ -2949,20 +3514,188 @@ function FeeManagementPage() {
               variant="outline"
               className="border-emerald-600 text-emerald-700 hover:bg-emerald-50"
               onClick={() => {
-                if (receiptTx) generateReceiptPDF(receiptTx);
+                if (receiptTx) generateReceiptPDF(receiptTx, currentUserName);
               }}
             >
               <Download size={15} className="mr-1.5" /> Download PDF
             </Button>
             <Button
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => {
+                if (receiptTx) handleOpenWhatsAppModal(receiptTx);
+              }}
+            >
+              <MessageCircle size={15} className="mr-1.5" /> WhatsApp
+            </Button>
+            <Button
               className="bg-teal-600 text-white"
               onClick={() => {
-                if (receiptTx) printReceiptPDF(receiptTx);
+                if (receiptTx) printReceiptPDF(receiptTx, currentUserName);
               }}
             >
               <Printer size={15} className="mr-1.5" /> Print Receipt (PDF)
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp Share Modal */}
+      <Dialog open={whatsAppModalOpen} onOpenChange={setWhatsAppModalOpen}>
+        <DialogContent className="max-w-lg p-0 overflow-hidden">
+          <DialogHeader className="p-4 bg-emerald-600 text-white">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
+                <MessageCircle className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-base text-white font-bold">
+                  Send Receipt via WhatsApp
+                </DialogTitle>
+                <DialogDescription className="text-xs text-emerald-100">
+                  Directly send official fee receipt summary to student or parents.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {whatsAppTx && (() => {
+            const msg = formatFeeReceiptWhatsAppMessage(whatsAppTx, whatsAppStudent);
+            const studentPhone = whatsAppStudent?.phone || "";
+            const fatherPhone = whatsAppStudent?.fatherPhone || "";
+            const motherPhone = whatsAppStudent?.motherPhone || "";
+            const guardianPhone = whatsAppStudent?.guardianPhone || "";
+
+            return (
+              <div className="p-4 space-y-4 text-xs">
+                {/* Recipient Phone Selection */}
+                <div className="space-y-2">
+                  <label className="font-semibold text-foreground block text-xs">
+                    Select Recipient Contact:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {studentPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === studentPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === studentPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(studentPhone)}
+                      >
+                        📱 Student ({studentPhone})
+                      </Button>
+                    )}
+                    {fatherPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === fatherPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === fatherPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(fatherPhone)}
+                      >
+                        👨 Father ({fatherPhone})
+                      </Button>
+                    )}
+                    {motherPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === motherPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === motherPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(motherPhone)}
+                      >
+                        👩 Mother ({motherPhone})
+                      </Button>
+                    )}
+                    {guardianPhone && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={whatsAppPhone === guardianPhone ? "default" : "outline"}
+                        className={cn("h-7 text-xs", whatsAppPhone === guardianPhone && "bg-emerald-600 hover:bg-emerald-700 text-white")}
+                        onClick={() => setWhatsAppPhone(guardianPhone)}
+                      >
+                        🛡️ Guardian ({guardianPhone})
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="pt-1">
+                    <label className="text-[11px] text-muted-foreground block mb-1">
+                      Recipient Mobile Number (10 digits / with country code):
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="px-2.5 py-1.5 bg-muted rounded-md border text-xs font-semibold text-muted-foreground">
+                        +91
+                      </div>
+                      <input
+                        type="tel"
+                        value={whatsAppPhone}
+                        onChange={(e) => setWhatsAppPhone(e.target.value)}
+                        placeholder="Enter 10-digit mobile number"
+                        className="flex-1 border rounded-md px-3 py-1.5 bg-background text-xs font-mono font-medium focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Message Preview */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <label className="font-semibold text-foreground text-xs">
+                      Message Content Preview:
+                    </label>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-[11px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-2 gap-1"
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg);
+                        toast.success("Receipt message copied to clipboard!");
+                      }}
+                    >
+                      <Copy size={11} /> Copy Message
+                    </Button>
+                  </div>
+                  <div className="bg-slate-900 text-slate-100 p-3 rounded-lg text-[11px] font-mono whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed border border-slate-800 shadow-inner">
+                    {msg}
+                  </div>
+                </div>
+
+                <DialogFooter className="p-0 pt-2 flex flex-wrap justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setWhatsAppModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 gap-1"
+                    onClick={() => {
+                      const success = openWhatsAppReceipt(whatsAppPhone, msg);
+                      if (success) {
+                        setWhatsAppModalOpen(false);
+                      }
+                    }}
+                  >
+                    <MessageCircle size={13} /> Send Text Summary
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 font-semibold px-4 shadow-xs"
+                    onClick={async () => {
+                      const success = await shareReceiptPDFViaWhatsApp(whatsAppTx, whatsAppPhone, currentUserName);
+                      if (success) {
+                        setWhatsAppModalOpen(false);
+                      }
+                    }}
+                  >
+                    <FileText size={13} /> Send Receipt PDF (WhatsApp)
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

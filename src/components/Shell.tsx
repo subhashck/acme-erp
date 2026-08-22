@@ -201,6 +201,9 @@ const getBreadcrumbs = (pathname: string) => {
     } else if (sub === "fee-structures") {
       items.push({ label: "Masters", to: "/college/fee-structures" });
       items.push({ label: "Fee Structures Master", to: "/college/fee-structures" });
+    } else if (sub === "referrers") {
+      items.push({ label: "Masters", to: "/college/referrers" });
+      items.push({ label: "Referral Partners Master", to: "/college/referrers" });
     } else if (sub === "students" || sub.startsWith("students/")) {
       items.push({ label: "Masters", to: "/college/students" });
       items.push({ label: "Student Master List", to: "/college/students" });
@@ -211,10 +214,22 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Admissions Pipeline", to: "/college/admissions" });
     } else if (sub === "fees") {
       items.push({ label: "Fee Ledger & Collection", to: "/college/fees" });
+    } else if (sub === "general-receipts") {
+      items.push({ label: "General & Misc Receipts", to: "/college/general-receipts" });
     } else if (sub === "fee-dues") {
       items.push({ label: "Student Fee Due Tracking", to: "/college/fee-dues" });
     } else if (sub === "attendance") {
       items.push({ label: "Attendance Marking", to: "/college/attendance" });
+    } else if (sub.startsWith("reports/")) {
+      items.push({ label: "Reports", to: "/college/reports/daily-income-expenses" });
+      const repSub = sub.replace("reports/", "");
+      if (repSub === "daily-income-expenses") {
+        items.push({ label: "Daily Income & Expenses", to: "/college/reports/daily-income-expenses" });
+      } else if (repSub === "due-student-wise") {
+        items.push({ label: "Due Report Student wise", to: "/college/reports/due-student-wise" });
+      } else if (repSub === "due-monthly-wise") {
+        items.push({ label: "Due Report (Periodic)", to: "/college/reports/due-monthly-wise" });
+      }
     }
     return items;
   }
@@ -230,6 +245,7 @@ export function Shell() {
   const hospital = useHospitalSettings();
   const [collegeOpen, setCollegeOpen] = React.useState(false);
   const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
+  const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
   // const [clinicalOpen, setClinicalOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
@@ -245,6 +261,7 @@ export function Shell() {
 
   React.useEffect(() => {
     if (location.pathname.startsWith("/college")) setCollegeOpen(true);
+    if (location.pathname.startsWith("/college/reports")) setCollegeReportsOpen(true);
     if (
       location.pathname.startsWith("/college/courses") ||
       location.pathname.startsWith("/college/academic-schedules") ||
@@ -437,6 +454,13 @@ export function Shell() {
                         Fee Ledger & Collection
                       </Link>
                       <Link
+                        to={"/college/general-receipts" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        General Receipts
+                      </Link>
+                      <Link
                         to={"/college/fee-dues" as any}
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
@@ -450,6 +474,48 @@ export function Shell() {
                       >
                         Attendance Marking
                       </Link>
+
+                      {/* Collapsible Reports subgroup */}
+                      <div className="flex flex-col mt-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCollegeReportsOpen(!collegeReportsOpen);
+                          }}
+                          className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <FileBarChart size={13} className="text-teal-600 dark:text-teal-400" />
+                            <span>Reports</span>
+                          </span>
+                          {collegeReportsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {collegeReportsOpen && (
+                          <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
+                            <Link
+                              to={"/college/reports/daily-income-expenses" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Daily Income & Expenses
+                            </Link>
+                            <Link
+                              to={"/college/reports/due-student-wise" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Due Report Student wise
+                            </Link>
+                            <Link
+                              to={"/college/reports/due-monthly-wise" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Due Report (Periodic)
+                            </Link>
+                          </div>
+                        )}
+                      </div>
 
                       {/* Collapsible College Masters subgroup */}
                       <div className="flex flex-col mt-1">
@@ -502,6 +568,13 @@ export function Shell() {
                               activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                             >
                               Fee Structures Master
+                            </Link>
+                            <Link
+                              to={"/college/referrers" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Referral Partners
                             </Link>
                           </div>
                         )}
