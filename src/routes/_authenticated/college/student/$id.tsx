@@ -20,6 +20,9 @@ import {
   Pencil,
   Tag,
   Download,
+  Eye,
+  Trash2,
+  Paperclip,
   Phone,
   Mail,
   CreditCard,
@@ -243,29 +246,65 @@ function StudentProfilePage() {
     enabled: Boolean(studentId && !isNaN(studentId) && studentId > 0),
   });
 
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const [fileError, setFileError] = React.useState<string | null>(null);
+
   const docForm = useForm({
     defaultValues: {
       documentType: "certificate",
       title: "",
-      fileUrl: "",
     },
   });
 
   const addDocMutation = useMutation({
     mutationFn: async (values: any) => {
+      if (!selectedFile) {
+        throw new Error("Please select a file to upload");
+      }
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("documentType", values.documentType);
+      if (values.title) {
+        formData.append("title", values.title);
+      }
+
       const res = await fetch(`/api/nursing/students/${studentId}/documents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: formData,
       });
-      if (!res.ok) throw new Error("Failed to attach document");
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error || "Failed to upload document");
+      }
       return res.json();
     },
     onSuccess: () => {
-      toast.success("Document attached successfully");
+      toast.success("Document uploaded to MinIO successfully");
       queryClient.invalidateQueries({ queryKey: ["nursing", "student", studentId] });
       setDocModalOpen(false);
       docForm.reset();
+      setSelectedFile(null);
+      setFileError(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Upload failed");
+    },
+  });
+
+  const deleteDocMutation = useMutation({
+    mutationFn: async (docId: number) => {
+      const res = await fetch(`/api/nursing/documents/${docId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete document");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("Document deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["nursing", "student", studentId] });
+    },
+    onError: () => {
+      toast.error("Failed to delete document");
     },
   });
 
@@ -861,66 +900,154 @@ function StudentProfilePage() {
         </div>
       )}
 
-      {/* Tab 2: Document Verification */}
+      {/* Tab 2: Document Verification & MinIO Repository */}
       {activeTab === "docs" && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-base font-semibold">Student Document Repository</CardTitle>
-              <CardDescription>Upload and verify certificates, ID proof, and medical fitness records</CardDescription>
+              <CardDescription>Upload and verify certificates, ID proof, and medical records stored securely in MinIO</CardDescription>
             </div>
-            <Dialog open={docModalOpen} onOpenChange={setDocModalOpen}>
+            <Dialog
+              open={docModalOpen}
+              onOpenChange={(open) => {
+                setDocModalOpen(open);
+                if (!open) {
+                  setSelectedFile(null);
+                  setFileError(null);
+                  docForm.reset();
+                }
+              }}
+            >
               <DialogTrigger asChild>
-                <Button size="sm" className="bg-teal-600 text-white flex items-center gap-1">
-                  <Upload size={14} /> Attach Document
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 shadow-sm">
+                  <Upload size={14} /> Upload Document
                 </Button>
               </DialogTrigger>
               <DialogContent
-                className="sm:max-w-[400px]"
+                className="sm:max-w-[450px]"
                 onInteractOutside={(e) => e.preventDefault()}
                 onEscapeKeyDown={(e) => e.preventDefault()}
               >
                 <DialogHeader>
-                  <DialogTitle>Attach Document</DialogTitle>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Upload className="h-5 w-5 text-teal-600" />
+                    Upload Student Document
+                  </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={docForm.handleSubmit((data) => addDocMutation.mutate(data))} className="space-y-3 py-2">
+                <form
+                  onSubmit={docForm.handleSubmit((data) => {
+                    if (!selectedFile) {
+                      setFileError("Please select a file to upload");
+                      return;
+                    }
+                    addDocMutation.mutate(data);
+                  })}
+                  className="space-y-4 py-2"
+                >
                   <div>
-                    <label className="text-sm font-medium text-foreground block mb-1">Document Type</label>
+                    <label className="text-sm font-medium text-foreground block mb-1.5">Document Type *</label>
                     <Controller
                       control={docForm.control}
                       name="documentType"
                       render={({ field }) => (
-                        <select className="w-full border rounded-md p-2 bg-background text-sm" {...field}>
+                        <select className="w-full border border-input rounded-lg p-2.5 bg-background text-sm focus:ring-2 focus:ring-teal-500/20" {...field}>
                           <option value="certificate">Secondary / Higher Secondary Certificate</option>
                           <option value="medical_fitness">Medical Fitness Certificate</option>
                           <option value="id_proof">Aadhar / National ID</option>
                           <option value="mark_sheet">Mark Sheet (10th / 12th)</option>
                           <option value="transfer_certificate">Transfer Certificate (TC)</option>
                           <option value="conduct_certificate">Conduct / Character Certificate</option>
+                          <option value="caste_certificate">Caste / Category Certificate</option>
+                          <option value="income_certificate">Income Certificate</option>
+                          <option value="other">Other Document</option>
                         </select>
                       )}
                     />
                   </div>
+
                   <Controller
                     control={docForm.control}
                     name="title"
                     render={({ field, fieldState }) => (
-                      <Field label="Document Title *" placeholder="e.g. 10+2 Mark Sheet" {...field} error={fieldState.error?.message} />
+                      <Field
+                        label="Document Title (Optional)"
+                        placeholder="e.g. 10+2 Mark Sheet"
+                        {...field}
+                        error={fieldState.error?.message}
+                      />
                     )}
                   />
-                  <Controller
-                    control={docForm.control}
-                    name="fileUrl"
-                    render={({ field, fieldState }) => (
-                      <Field label="File Reference / URL *" placeholder="https://..." {...field} error={fieldState.error?.message} />
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-foreground block">
+                      Select Document File *
+                    </label>
+                    <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-teal-500 transition-colors bg-muted/10 cursor-pointer relative">
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            if (f.size > 15 * 1024 * 1024) {
+                              setFileError("File size exceeds 15MB limit");
+                              setSelectedFile(null);
+                            } else {
+                              setFileError(null);
+                              setSelectedFile(f);
+                              if (!docForm.getValues("title")) {
+                                docForm.setValue("title", f.name.replace(/\.[^/.]+$/, ""));
+                              }
+                            }
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div className="flex flex-col items-center justify-center gap-1.5 pointer-events-none">
+                        <Upload className="h-7 w-7 text-teal-600/70" />
+                        <p className="text-xs font-semibold text-foreground">
+                          {selectedFile ? selectedFile.name : "Click or drag file to upload"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {selectedFile
+                            ? `${(selectedFile.size / 1024).toFixed(1)} KB`
+                            : "PDF, PNG, JPG, WEBP up to 15MB"}
+                        </p>
+                      </div>
+                    </div>
+                    {selectedFile && (
+                      <div className="flex items-center justify-between text-xs text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1.5 rounded-md border border-emerald-200 dark:border-emerald-900">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <Paperclip size={13} /> {selectedFile.name}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedFile(null);
+                            setFileError(null);
+                          }}
+                          className="text-rose-600 hover:text-rose-700 font-semibold ml-2 cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     )}
-                  />
-                  <DialogFooter>
+                    {fileError && (
+                      <p className="text-xs text-rose-500 font-semibold">{fileError}</p>
+                    )}
+                  </div>
+
+                  <DialogFooter className="pt-2">
                     <Button type="button" variant="outline" onClick={() => setDocModalOpen(false)}>
                       Cancel
                     </Button>
-                    <Button type="submit" className="bg-teal-600 text-white" disabled={addDocMutation.isPending}>
-                      Save Document
+                    <Button
+                      type="submit"
+                      className="bg-teal-600 hover:bg-teal-700 text-white"
+                      disabled={addDocMutation.isPending || !selectedFile}
+                    >
+                      {addDocMutation.isPending ? "Uploading to MinIO..." : "Upload Document"}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -929,42 +1056,92 @@ function StudentProfilePage() {
           </CardHeader>
           <CardContent>
             {student.documents?.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">No documents attached yet.</div>
+              <div className="py-8 text-center text-sm text-muted-foreground">No documents uploaded yet.</div>
             ) : (
-              <div className="divide-y border rounded-md">
+              <div className="divide-y border rounded-lg bg-card overflow-hidden">
                 {student.documents?.map((doc: any) => (
-                  <div key={doc.id} className="p-3 flex items-center justify-between hover:bg-muted/30">
-                    <div>
-                      <div className="font-semibold text-sm">{doc.title}</div>
-                      <div className="text-xs text-muted-foreground uppercase">{doc.documentType?.replace("_", " ")}</div>
+                  <div key={doc.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-muted/30 transition-colors">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <FileText size={16} className="text-teal-600 shrink-0" />
+                        <span className="font-semibold text-sm text-foreground">{doc.title}</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                          {doc.documentType?.replace("_", " ")}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-3">
+                        {doc.createdAt && (
+                          <span>Uploaded: {format(new Date(doc.createdAt), "yyyy-MM-dd HH:mm")}</span>
+                        )}
+                        {doc.verifiedAt && (
+                          <span>Verified: {format(new Date(doc.verifiedAt), "yyyy-MM-dd")}</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
+
+                    <div className="flex flex-wrap items-center gap-2">
                       {doc.verificationStatus === "verified" && (
-                        <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
-                          <CheckCircle2 size={12} /> Verified
+                        <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 px-2.5 py-1 rounded-full">
+                          <CheckCircle2 size={13} /> Verified
                         </span>
                       )}
                       {doc.verificationStatus === "rejected" && (
-                        <span className="flex items-center gap-1 text-xs font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950 px-2 py-0.5 rounded-full">
-                          <XCircle size={12} /> Rejected
+                        <span className="flex items-center gap-1 text-xs font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900 px-2.5 py-1 rounded-full">
+                          <XCircle size={13} /> Rejected
                         </span>
                       )}
                       {doc.verificationStatus === "pending" && (
-                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950 px-2 py-0.5 rounded-full">
+                        <span className="text-xs font-semibold text-amber-600 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 px-2.5 py-1 rounded-full">
                           Pending Verification
                         </span>
                       )}
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800 hover:bg-teal-50 dark:hover:bg-teal-950/40 flex items-center gap-1"
+                        asChild
+                      >
+                        <a href={`/api/nursing/documents/${doc.id}/file`} target="_blank" rel="noreferrer">
+                          <Eye size={13} /> View
+                        </a>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs flex items-center gap-1"
+                        asChild
+                      >
+                        <a href={`/api/nursing/documents/${doc.id}/file?download=1`} download>
+                          <Download size={13} /> Download
+                        </a>
+                      </Button>
 
                       {doc.verificationStatus !== "verified" && (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-7 text-xs text-emerald-600 hover:text-emerald-700"
+                          className="h-8 text-xs text-emerald-600 hover:text-emerald-700 border-emerald-200 dark:border-emerald-800 flex items-center gap-1"
                           onClick={() => verifyDocMutation.mutate({ docId: doc.id, verificationStatus: "verified" })}
                         >
-                          Verify
+                          <ShieldCheck size={13} /> Verify
                         </Button>
                       )}
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        onClick={() => {
+                          if (confirm(`Are you sure you want to delete "${doc.title}"?`)) {
+                            deleteDocMutation.mutate(doc.id);
+                          }
+                        }}
+                        title="Delete document"
+                      >
+                        <Trash2 size={14} />
+                      </Button>
                     </div>
                   </div>
                 ))}

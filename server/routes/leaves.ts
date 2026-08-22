@@ -1,7 +1,4 @@
 import { aliasedTable, desc, eq, sql, and, lte, gte, ne, like } from "drizzle-orm";
-import { createReadStream, existsSync } from "node:fs";
-import { lookup as mimeLookup } from "mime-types";
-import path from "node:path";
 import { Hono } from "hono";
 import { auth } from "../auth.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -19,7 +16,7 @@ import {
   rosters,
 } from "../db/schema.ts";
 import { sendNotification } from "../utils/notifier.ts";
-import { saveLeaveDocument, resolveUploadPath } from "../utils/upload.ts";
+import { saveLeaveDocument, getLeaveDocumentStream } from "../utils/upload.ts";
 import {
   code,
   getCurrentStaff,
@@ -576,25 +573,20 @@ export const leavesRoutes = new Hono<AuthEnv>()
       return c.json({ error: "No supporting document attached" }, 404);
     }
 
-    const absPath = resolveUploadPath(leaveRequest.supportingDocument);
-    if (!existsSync(absPath)) {
-      return c.json({ error: "Document file not found on server" }, 404);
+    const docResult = await getLeaveDocumentStream(leaveRequest.supportingDocument);
+    if (!docResult) {
+      return c.json({ error: "Document file not found on storage" }, 404);
     }
 
-    const ext = path.extname(absPath).toLowerCase();
-    const mimeType = (mimeLookup(ext) as string | false) || "application/octet-stream";
-    const filename = path.basename(absPath);
     const isDownload = c.req.query("download") === "1";
-
-    const stream = createReadStream(absPath);
     const headers: Record<string, string> = {
-      "Content-Type": mimeType,
+      "Content-Type": docResult.mimeType,
       "Content-Disposition": isDownload
-        ? `attachment; filename="${filename}"`
-        : `inline; filename="${filename}"`,
+        ? `attachment; filename="${docResult.filename}"`
+        : `inline; filename="${docResult.filename}"`,
     };
 
-    return new Response(stream as any, { headers });
+    return new Response(docResult.stream as any, { headers });
   })
   // -------------------------------------------------------------------------
   // POST /hr/leaves/:id/approve
