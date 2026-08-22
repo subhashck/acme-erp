@@ -1,35 +1,76 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-
-const UPLOAD_DIR = path.resolve("uploads/leave-docs");
-
-/** Ensure the upload directory exists. */
-async function ensureUploadDir() {
-  await mkdir(UPLOAD_DIR, { recursive: true });
-}
+import { lookup as mimeLookup } from "mime-types";
+import { uploadToMinio, getFromMinio, deleteFromMinio } from "./minio.ts";
 
 /**
- * Save an uploaded File blob to disk.
- * Returns the relative path stored in the DB (e.g. `uploads/leave-docs/LV-ABC12-report.pdf`).
+ * Save an uploaded leave supporting document file to MinIO.
+ * Returns the object key stored in the DB (e.g. `leave-docs/LV-20260222-document.pdf`).
  */
 export async function saveLeaveDocument(file: File, requestNo: string): Promise<string> {
-  await ensureUploadDir();
-
-  // Sanitise filename: strip path separators, keep extension
+  // Sanitise filename: strip path separators and unusual characters, keep extension
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const filename = `${requestNo}-${safeName}`;
-  const fullPath = path.join(UPLOAD_DIR, filename);
+  const objectKey = `leave-docs/${requestNo}-${safeName}`;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(fullPath, buffer);
-
-  // Return a relative path so it stays portable
-  return `uploads/leave-docs/${filename}`;
+  await uploadToMinio(file, objectKey, file.type);
+  return objectKey;
 }
 
 /**
- * Resolve a stored relative path to an absolute filesystem path.
+ * Save an uploaded student document to MinIO.
+ * Returns the object key stored in the DB (e.g. `student-docs/STU-12-certificate-mark_sheet.pdf`).
  */
-export function resolveUploadPath(relativePath: string): string {
-  return path.resolve(relativePath);
+export async function saveStudentDocument(
+  file: File,
+  studentId: number | string,
+  docType: string
+): Promise<string> {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeDocType = docType.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const timestamp = Date.now();
+  const objectKey = `student-docs/STU-${studentId}-${safeDocType}-${timestamp}-${safeName}`;
+
+  await uploadToMinio(file, objectKey, file.type);
+  return objectKey;
 }
+
+/**
+ * Retrieve a readable stream for any stored document directly from MinIO.
+ */
+export async function getDocumentStream(objectKey: string): Promise<{
+  stream: NodeJS.ReadableStream;
+  mimeType: string;
+  filename: string;
+} | null> {
+  const filename = path.basename(objectKey);
+  const ext = path.extname(filename).toLowerCase();
+  const mimeType = (mimeLookup(ext) as string | false) || "application/octet-stream";
+
+  try {
+    const minioStream = await getFromMinio(objectKey);
+    return {
+      stream: minioStream,
+      mimeType,
+      filename,
+    };
+  } catch (err: any) {
+    console.error(`[MinIO] Failed to retrieve document "${objectKey}":`, err);
+    return null;
+  }
+}
+
+/**
+ * Alias for retrieving leave document stream.
+ */
+export const getLeaveDocumentStream = getDocumentStream;
+
+/**
+ * Delete a document from MinIO.
+ */
+export async function deleteDocument(objectKey: string): Promise<void> {
+  await deleteFromMinio(objectKey);
+}
+
+/**
+ * Alias for deleting leave document.
+ */
+export const deleteLeaveDocument = deleteDocument;

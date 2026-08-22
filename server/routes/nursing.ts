@@ -25,6 +25,7 @@ import {
   user,
 } from "../db/schema.ts";
 import { jsonBody, idParam, code, requireCollegeAccess } from "./shared.ts";
+import { saveStudentDocument, getDocumentStream, deleteDocument } from "../utils/upload.ts";
 
 function toNum(v: unknown): number {
   const n = typeof v === "string" ? parseFloat(v) : (v as number);
@@ -1646,9 +1647,47 @@ export const nursingRoutes = new Hono<AuthEnv>()
     return c.json(updated);
   })
 
-  // Documents Endpoint
+  // Documents Endpoints (MinIO Powered)
   .post("/nursing/students/:id/documents", async (c) => {
     const studentId = Number(c.req.param("id"));
+    const contentType = c.req.header("content-type") || "";
+
+    if (contentType.includes("multipart/form-data")) {
+      const body = await c.req.parseBody();
+      const fileEntry = body["file"] || body["document"];
+      const documentType = String(body["documentType"] || "certificate");
+      let title = String(body["title"] || "").trim();
+
+      if (!fileEntry || !(fileEntry instanceof File) || fileEntry.size === 0) {
+        return c.json({ error: "No document file provided" }, 400);
+      }
+
+      if (!title) {
+        title = fileEntry.name;
+      }
+
+      try {
+        const fileUrl = await saveStudentDocument(fileEntry, studentId, documentType);
+        const [doc] = await db
+          .insert(nursingStudentDocuments)
+          .values({
+            studentId,
+            documentType,
+            title,
+            fileUrl,
+            verificationStatus: "pending",
+          })
+          .returning()
+          .execute();
+
+        return c.json(doc, 201);
+      } catch (err: any) {
+        console.error("[MinIO] Failed to upload student document:", err);
+        return c.json({ error: "Failed to upload document to storage" }, 500);
+      }
+    }
+
+    // JSON fallback
     const input = await jsonBody(
       c,
       z.object({
@@ -1669,6 +1708,68 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .execute();
 
     return c.json(doc, 201);
+  })
+
+  .get("/nursing/documents/:id/file", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [doc] = await db
+      .select()
+      .from(nursingStudentDocuments)
+      .where(eq(nursingStudentDocuments.id, id))
+      .limit(1)
+      .execute();
+
+    if (!doc || !doc.fileUrl) {
+      return c.json({ error: "Document not found" }, 404);
+    }
+
+    if (doc.fileUrl.startsWith("http://") || doc.fileUrl.startsWith("https://")) {
+      return c.redirect(doc.fileUrl);
+    }
+
+    const docStream = await getDocumentStream(doc.fileUrl);
+    if (!docStream) {
+      return c.json({ error: "Document file not found in storage" }, 404);
+    }
+
+    const isDownload = c.req.query("download") === "1";
+    const headers: Record<string, string> = {
+      "Content-Type": docStream.mimeType,
+      "Content-Disposition": isDownload
+        ? `attachment; filename="${docStream.filename}"`
+        : `inline; filename="${docStream.filename}"`,
+    };
+
+    return new Response(docStream.stream as any, { headers });
+  })
+
+  .delete("/nursing/documents/:id", async (c) => {
+    const id = Number(c.req.param("id"));
+    const [doc] = await db
+      .select()
+      .from(nursingStudentDocuments)
+      .where(eq(nursingStudentDocuments.id, id))
+      .limit(1)
+      .execute();
+
+    if (!doc) {
+      return c.json({ error: "Document not found" }, 404);
+    }
+
+    if (doc.fileUrl && !doc.fileUrl.startsWith("http://") && !doc.fileUrl.startsWith("https://")) {
+      try {
+        await deleteDocument(doc.fileUrl);
+      } catch (err) {
+        console.error("Failed to delete document from MinIO:", err);
+      }
+    }
+
+    await db
+      .delete(nursingStudentDocuments)
+      .where(eq(nursingStudentDocuments.id, id))
+      .execute();
+
+    return c.json({ success: true });
   })
 
   .patch("/nursing/documents/:id/verify", async (c) => {
