@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { db, pool } from "./client.ts";
+import { db, pool } from "../client.ts";
 
 async function main() {
   console.log("Casting columns to jsonb...");

@@ -1,0 +1,108 @@
+# Phase 1, Phase 2, Phase 3 & Phase 4 Walkthrough — Inventory & POS Subsystem
+
+## Overview
+
+Phases 1 through 4 of the ACME ERP Inventory Subsystem are fully implemented, integrated, and verified against PostgreSQL.
+
+---
+
+## Phase 1 Accomplishments: Core Multi-Store & Stock Ledger Engine
+
+1. **Dedicated PostgreSQL `inventory` Schema**:
+   - [`server/db/schema-inventory.ts`](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts)
+   - Created `pgSchema("inventory")` with 9 domain enums and 16 domain tables.
+
+2. **Master Schema Extensions**:
+   - Extended `public.items` with enterprise pharma fields (`hsnCode`, `barcode`, `reorderLevel`, `reorderQty`, `drugSchedule`, `storageCondition`, `taxCategory`, `isNarcotic`, `allowFractional`).
+   - Extended `public.grns` with `storeId` and `public.grn_items` with `batchId`.
+
+3. **Transactional Sequence Generator & Stock Engine**:
+   - [`server/services/sequence.ts`](file:///d:/dev/acme/acme-erp/server/services/sequence.ts)
+   - [`server/services/stock-engine.ts`](file:///d:/dev/acme/acme-erp/server/services/stock-engine.ts)
+   - Atomic document generator (`REQ`, `TRN`, `INV`, `RET`, `GRN`) and pessimistic row-locked (`SELECT ... FOR UPDATE`) stock movement logger.
+
+---
+
+## Phase 2 Accomplishments: UI & Navigation Integration
+
+1. **Store & Warehouse Master UI**:
+   - [`src/routes/_authenticated/inventory/stores.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stores.tsx)
+   - Store directory listing with type badges, location, default main store indicator, and CRUD dialogs.
+
+2. **Live Stock Inquiry Screen**:
+   - [`src/routes/_authenticated/inventory/stock.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stock.tsx)
+   - Live batch-level inventory table with expiry date color-coding (red/amber/green).
+
+3. **Immutable Stock Ledger Viewer**:
+   - [`src/routes/_authenticated/inventory/ledger.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/ledger.tsx)
+   - Complete audit trail viewer displaying timestamp, store, item, batch number, movement type badges, and recording user.
+
+4. **GRN Store Selection**:
+   - Updated GRN forms to mandate dynamic receiving store selection.
+
+---
+
+## Phase 3 Accomplishments: Requisitions & Inter-Store Transfers
+
+1. **Backend Requisition & Two-Phase Transfer Service**:
+   - [`server/routes/transfers.ts`](file:///d:/dev/acme/acme-erp/server/routes/transfers.ts) mounted in [`server/routes.ts`](file:///d:/dev/acme/acme-erp/server/routes.ts).
+   - Requisition lifecycle endpoints (`POST`, `GET`, `PATCH /approve`, `PATCH /reject`).
+   - Two-Phase Transfer lifecycle endpoints (`POST`, `GET`, `PATCH /dispatch`, `PATCH /receive`, `PATCH /cancel`).
+
+2. **Store Indents (Requisitions) UI**:
+   - [`src/routes/_authenticated/inventory/requisitions/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/requisitions/index.tsx)
+   - Filterable list of store indents with status and priority badges, plus compose modal.
+
+3. **Stock Transfers UI**:
+   - [`src/routes/_authenticated/inventory/transfers/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/transfers/index.tsx)
+   - Two-phase transfer queue with batch stock picker, Dispatch (Stock Out), and Receive (Stock In) actions.
+
+---
+
+## Phase 4 Accomplishments: FEFO Allocation, GST Calculation & POS Billing
+
+1. **FEFO (First-Expiry, First-Out) Engine**:
+   - [`server/services/fefo.ts`](file:///d:/dev/acme/acme-erp/server/services/fefo.ts)
+   - Greedily allocates items from earliest-expiring active batches in the selected store.
+   - Prevents stock overselling and guarantees strict expiration priority.
+
+2. **GST Calculation Service**:
+   - [`server/services/gst.ts`](file:///d:/dev/acme/acme-erp/server/services/gst.ts)
+   - Computes per-line taxable amount, discount deductions, split CGST/SGST (intrastate) or IGST (interstate), round-off calculation, and net invoice totals.
+
+3. **Backend POS Routes**:
+   - [`server/routes/pos.ts`](file:///d:/dev/acme/acme-erp/server/routes/pos.ts) mounted in [`server/routes.ts`](file:///d:/dev/acme/acme-erp/server/routes.ts).
+   - `GET /inventory/pos/item-search` — High-speed live stock search across batches.
+   - `POST /inventory/pos/invoices` — Atomically generates invoice `INV/...`, logs negative `SALE` stock movement per batch, and inserts tax lines.
+   - `GET /inventory/pos/invoices` & `GET /inventory/pos/invoices/:id` — Sales invoice query and detail endpoints.
+   - `POST /inventory/pos/returns` — Processes sales returns (`RET/...`) and conditionally restocks via `POS_RETURN` movement.
+
+4. **Frontend POS Terminal**:
+   - [`src/routes/_authenticated/inventory/pos.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/pos.tsx)
+   - Marg ERP–inspired workspace featuring keyboard shortcuts (`F2` search, `F9` checkout, `Esc` clear), customer & doctor metadata entry, live item autocomplete dropdown with batch/expiry/rate info, inline qty & discount adjustments, live tax summary, multi-payment mode tender selector (Cash, Card, UPI, Credit), and printable receipt dialog.
+
+5. **Sales Invoices Directory**:
+   - [`src/routes/_authenticated/inventory/invoices/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/invoices/index.tsx)
+   - Invoices ledger with customer details, payment badges, net totals, and printable Tax Invoice modal.
+
+6. **Sidebar Navigation Update**:
+   - Added links for **POS Billing Terminal** (`/inventory/pos`) and **Sales Invoices** (`/inventory/invoices`) under "Inventory & Store" in [`Shell.tsx`](file:///d:/dev/acme/acme-erp/src/components/Shell.tsx).
+
+---
+
+## Verification Matrix
+
+| Verification Step | Result | Output Detail |
+|---|---|---|
+| **TypeScript Compilation** | `pnpm typecheck` $\rightarrow$ **PASS** | Exit code 0, 0 errors. |
+| **PostgreSQL Schema Push** | `pnpm db:push` $\rightarrow$ **PASS** | Applied `inventory` schema & tables. |
+| **Database Seeding** | `pnpm tsx server/db/seed-inventory.ts` $\rightarrow$ **PASS** | Created Central Warehouse and FY 26-27 sequences. |
+
+---
+
+## Ready for Phase 5
+
+Phases 1 through 4 are complete. Phase 5 will focus on:
+- Physical Stock Take & Variance Reconciliation (`inventory.physical_stock_takes`, `inventory.stock_adjustments`)
+- Damaged & Expired Goods Write-off / Returns (`inventory.damaged_expired_goods`)
+- Inventory Analytics & Reorder Level Warnings

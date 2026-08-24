@@ -1,0 +1,80 @@
+# Phase 1 & Phase 2 Walkthrough — Inventory & Store Management Subsystem
+
+## Overview
+
+Phases 1 and 2 of the ACME ERP Inventory Subsystem are fully implemented, integrated, and verified against PostgreSQL.
+
+---
+
+## Phase 1 Accomplishments: Core Multi-Store & Stock Ledger Engine
+
+1. **Dedicated PostgreSQL `inventory` Schema**:
+   - [`server/db/schema-inventory.ts`](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts)
+   - Created `pgSchema("inventory")` with 9 domain enums and 16 tables (`inventory.stores`, `inventory.item_batches`, `inventory.store_batch_stock`, `inventory.stock_ledger`, `inventory.document_sequences`, `inventory.store_staff_assignments`, etc.).
+   - Integrated into [`drizzle.config.ts`](file:///d:/dev/acme/acme-erp/drizzle.config.ts) and [`server/db/client.ts`](file:///d:/dev/acme/acme-erp/server/db/client.ts).
+
+2. **Master Schema Extensions**:
+   - Extended `public.items` with enterprise pharma fields (`hsnCode`, `barcode`, `reorderLevel`, `reorderQty`, `drugSchedule`, `storageCondition`, `taxCategory`, `isNarcotic`, `allowFractional`).
+   - Extended `public.grns` with `storeId`.
+   - Extended `public.grn_items` with `batchId`.
+
+3. **Transactional Sequence Generator**:
+   - [`server/services/sequence.ts`](file:///d:/dev/acme/acme-erp/server/services/sequence.ts)
+   - Atomic document sequence engine generating numbers like `GRN/26-27/00001` and `PO/26-27/00001`.
+
+4. **Stock Engine Service**:
+   - [`server/services/stock-engine.ts`](file:///d:/dev/acme/acme-erp/server/services/stock-engine.ts)
+   - `findOrCreateBatch(tx, ...)` and `recordStockMovement(tx, ...)`.
+   - Row-level pessimistic locking (`SELECT ... FOR UPDATE`), negative stock prevention, and immutable append to `inventory.stock_ledger`.
+
+5. **GRN Posting Integration**:
+   - [`server/routes/purchases.ts`](file:///d:/dev/acme/acme-erp/server/routes/purchases.ts)
+   - When GRNs transition to `'posted'`, automatically creates/links batches, records positive stock entries into the immutable stock ledger, increments live batch balance, and locks posted GRNs against editing/deletion.
+
+---
+
+## Phase 2 Accomplishments: UI & Navigation Integration
+
+1. **Store & Warehouse Master UI**:
+   - [`src/routes/_authenticated/inventory/stores.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stores.tsx)
+   - Store directory listing with code, type badges, default store indicator, and location.
+   - Interactive dialog modal to create and edit stores (Central Warehouse, Retail Pharmacy, Ward Sub-store, College Dispensary, Laboratory Store).
+
+2. **Live Stock Inquiry Page**:
+   - [`src/routes/_authenticated/inventory/stock.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stock.tsx)
+   - Live batch-level balance grid showing store location, item name, batch number, MRP, cost rate, on hand qty, and available qty.
+   - **Expiry Color-Coding**:
+     - Red badge: Expired or expiring within 30 days.
+     - Amber badge: Expiring within 30–90 days.
+     - Green badge: Healthy expiry date (>90 days).
+   - Multi-field search and store filter dropdown.
+
+3. **Immutable Stock Ledger Viewer**:
+   - [`src/routes/_authenticated/inventory/ledger.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/ledger.tsx)
+   - Complete audit trail viewer displaying timestamp, store, item, batch number, movement type badge (GRN Inward, POS Sale, Transfer In/Out, Adjustments), reference ID, quantity change (+ / -), balance after, and recording user.
+
+4. **Sidebar Navigation & Authorization**:
+   - [`src/components/Shell.tsx`](file:///d:/dev/acme/acme-erp/src/components/Shell.tsx)
+   - Added "Inventory & Store" collapsible navigation section with links to Stores Master, Live Stock Inquiry, and Stock Ledger.
+   - Extended permissions in [`src/lib/permissions.ts`](file:///d:/dev/acme/acme-erp/src/lib/permissions.ts) (`canViewInventory`, `canManageStores`) and backend guards in [`server/routes/shared.ts`](file:///d:/dev/acme/acme-erp/server/routes/shared.ts).
+
+5. **GRN Store Selection Integration**:
+   - Updated [`$id_.grn.new.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/purchases/purchase-orders/$id_.grn.new.tsx) and [`$grnId_.edit.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/purchases/grns/$grnId_.edit.tsx) with a required "Receiving Store" selector populated dynamically from active stores.
+
+---
+
+## Verification Matrix
+
+| Verification Step | Result | Output Detail |
+|---|---|---|
+| **TypeScript Compilation** | `pnpm typecheck` $\rightarrow$ **PASS** | Exit code 0, 0 errors. |
+| **PostgreSQL Schema Push** | `pnpm db:push` $\rightarrow$ **PASS** | `inventory` schema & tables applied. |
+| **Database Seeding** | `pnpm tsx server/db/seed-inventory.ts` $\rightarrow$ **PASS** | Created Central Warehouse (`MAIN-WH`) and FY 26-27 sequences. |
+
+---
+
+## Ready for Phase 3
+
+Phase 1 and Phase 2 are complete. Phase 3 will focus on:
+- Store Requisitions / Indents (`stock_requisitions` & `stock_requisition_items`)
+- Inter-Store Two-Phase Transfers (Dispatch $\rightarrow$ In-Transit $\rightarrow$ Receive)

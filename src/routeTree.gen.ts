@@ -31,6 +31,10 @@ import { Route as AuthenticatedMastersManagementApproversRouteImport } from './r
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
 import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
+import { Route as AuthenticatedInventoryStoresRouteImport } from './routes/_authenticated/inventory/stores'
+import { Route as AuthenticatedInventoryStockRouteImport } from './routes/_authenticated/inventory/stock'
+import { Route as AuthenticatedInventoryPosRouteImport } from './routes/_authenticated/inventory/pos'
+import { Route as AuthenticatedInventoryLedgerRouteImport } from './routes/_authenticated/inventory/ledger'
 import { Route as AuthenticatedHrViewStaffRouteImport } from './routes/_authenticated/hr/view-staff'
 import { Route as AuthenticatedHrViewPayslipRouteImport } from './routes/_authenticated/hr/view-payslip'
 import { Route as AuthenticatedHrStaffListRouteImport } from './routes/_authenticated/hr/staff-list'
@@ -64,12 +68,20 @@ import { Route as AuthenticatedAccountsBankExpensesRouteImport } from './routes/
 import { Route as AuthenticatedAccountsBankAccountsRouteImport } from './routes/_authenticated/accounts/bank-accounts'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIndexRouteImport } from './routes/_authenticated/purchases/purchase-orders/index'
 import { Route as AuthenticatedPurchasesGrnsIndexRouteImport } from './routes/_authenticated/purchases/grns/index'
+import { Route as AuthenticatedInventoryTransfersIndexRouteImport } from './routes/_authenticated/inventory/transfers/index'
+import { Route as AuthenticatedInventoryRequisitionsIndexRouteImport } from './routes/_authenticated/inventory/requisitions/index'
+import { Route as AuthenticatedInventoryReportsIndexRouteImport } from './routes/_authenticated/inventory/reports/index'
+import { Route as AuthenticatedInventoryPurchaseInvoicesIndexRouteImport } from './routes/_authenticated/inventory/purchase-invoices/index'
+import { Route as AuthenticatedInventoryInvoicesIndexRouteImport } from './routes/_authenticated/inventory/invoices/index'
+import { Route as AuthenticatedInventoryAdjustmentsIndexRouteImport } from './routes/_authenticated/inventory/adjustments/index'
 import { Route as AuthenticatedCollegeReportsIndexRouteImport } from './routes/_authenticated/college/reports/index'
 import { Route as AuthenticatedAccountsReportsIndexRouteImport } from './routes/_authenticated/accounts/reports/index'
 import { Route as AuthenticatedPurchasesPurchaseOrdersNewRouteImport } from './routes/_authenticated/purchases/purchase-orders/new'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIdRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id'
 import { Route as AuthenticatedPurchasesGrnsNewRouteImport } from './routes/_authenticated/purchases/grns/new'
 import { Route as AuthenticatedPurchasesGrnsGrnIdRouteImport } from './routes/_authenticated/purchases/grns/$grnId'
+import { Route as AuthenticatedInventoryPurchaseInvoicesNewRouteImport } from './routes/_authenticated/inventory/purchase-invoices/new'
+import { Route as AuthenticatedInventoryPurchaseInvoicesIdRouteImport } from './routes/_authenticated/inventory/purchase-invoices/$id'
 import { Route as AuthenticatedCollegeStudentIdRouteImport } from './routes/_authenticated/college/student/$id'
 import { Route as AuthenticatedCollegeReportsDueStudentWiseRouteImport } from './routes/_authenticated/college/reports/due-student-wise'
 import { Route as AuthenticatedCollegeReportsDueMonthlyWiseRouteImport } from './routes/_authenticated/college/reports/due-monthly-wise'
@@ -204,6 +216,30 @@ const AuthenticatedMastersBanksRoute =
   AuthenticatedMastersBanksRouteImport.update({
     id: '/masters/banks',
     path: '/masters/banks',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryStoresRoute =
+  AuthenticatedInventoryStoresRouteImport.update({
+    id: '/inventory/stores',
+    path: '/inventory/stores',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryStockRoute =
+  AuthenticatedInventoryStockRouteImport.update({
+    id: '/inventory/stock',
+    path: '/inventory/stock',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPosRoute =
+  AuthenticatedInventoryPosRouteImport.update({
+    id: '/inventory/pos',
+    path: '/inventory/pos',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryLedgerRoute =
+  AuthenticatedInventoryLedgerRouteImport.update({
+    id: '/inventory/ledger',
+    path: '/inventory/ledger',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedHrViewStaffRoute =
@@ -399,6 +435,42 @@ const AuthenticatedPurchasesGrnsIndexRoute =
     path: '/purchases/grns/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedInventoryTransfersIndexRoute =
+  AuthenticatedInventoryTransfersIndexRouteImport.update({
+    id: '/inventory/transfers/',
+    path: '/inventory/transfers/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryRequisitionsIndexRoute =
+  AuthenticatedInventoryRequisitionsIndexRouteImport.update({
+    id: '/inventory/requisitions/',
+    path: '/inventory/requisitions/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryReportsIndexRoute =
+  AuthenticatedInventoryReportsIndexRouteImport.update({
+    id: '/inventory/reports/',
+    path: '/inventory/reports/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPurchaseInvoicesIndexRoute =
+  AuthenticatedInventoryPurchaseInvoicesIndexRouteImport.update({
+    id: '/inventory/purchase-invoices/',
+    path: '/inventory/purchase-invoices/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryInvoicesIndexRoute =
+  AuthenticatedInventoryInvoicesIndexRouteImport.update({
+    id: '/inventory/invoices/',
+    path: '/inventory/invoices/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryAdjustmentsIndexRoute =
+  AuthenticatedInventoryAdjustmentsIndexRouteImport.update({
+    id: '/inventory/adjustments/',
+    path: '/inventory/adjustments/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedCollegeReportsIndexRoute =
   AuthenticatedCollegeReportsIndexRouteImport.update({
     id: '/college/reports/',
@@ -433,6 +505,18 @@ const AuthenticatedPurchasesGrnsGrnIdRoute =
   AuthenticatedPurchasesGrnsGrnIdRouteImport.update({
     id: '/purchases/grns/$grnId',
     path: '/purchases/grns/$grnId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPurchaseInvoicesNewRoute =
+  AuthenticatedInventoryPurchaseInvoicesNewRouteImport.update({
+    id: '/inventory/purchase-invoices/new',
+    path: '/inventory/purchase-invoices/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPurchaseInvoicesIdRoute =
+  AuthenticatedInventoryPurchaseInvoicesIdRouteImport.update({
+    id: '/inventory/purchase-invoices/$id',
+    path: '/inventory/purchase-invoices/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedCollegeStudentIdRoute =
@@ -533,6 +617,10 @@ export interface FileRoutesByFullPath {
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/inventory/ledger': typeof AuthenticatedInventoryLedgerRoute
+  '/inventory/pos': typeof AuthenticatedInventoryPosRoute
+  '/inventory/stock': typeof AuthenticatedInventoryStockRoute
+  '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -555,12 +643,20 @@ export interface FileRoutesByFullPath {
   '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   '/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
   '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
+  '/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  '/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
   '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
   '/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
   '/college/reports/': typeof AuthenticatedCollegeReportsIndexRoute
+  '/inventory/adjustments/': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/inventory/invoices/': typeof AuthenticatedInventoryInvoicesIndexRoute
+  '/inventory/purchase-invoices/': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  '/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
+  '/inventory/requisitions/': typeof AuthenticatedInventoryRequisitionsIndexRoute
+  '/inventory/transfers/': typeof AuthenticatedInventoryTransfersIndexRoute
   '/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
   '/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
@@ -605,6 +701,10 @@ export interface FileRoutesByTo {
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/inventory/ledger': typeof AuthenticatedInventoryLedgerRoute
+  '/inventory/pos': typeof AuthenticatedInventoryPosRoute
+  '/inventory/stock': typeof AuthenticatedInventoryStockRoute
+  '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -626,12 +726,20 @@ export interface FileRoutesByTo {
   '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   '/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
   '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
+  '/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  '/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
   '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
   '/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/accounts/reports': typeof AuthenticatedAccountsReportsIndexRoute
   '/college/reports': typeof AuthenticatedCollegeReportsIndexRoute
+  '/inventory/adjustments': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/inventory/invoices': typeof AuthenticatedInventoryInvoicesIndexRoute
+  '/inventory/purchase-invoices': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  '/inventory/reports': typeof AuthenticatedInventoryReportsIndexRoute
+  '/inventory/requisitions': typeof AuthenticatedInventoryRequisitionsIndexRoute
+  '/inventory/transfers': typeof AuthenticatedInventoryTransfersIndexRoute
   '/purchases/grns': typeof AuthenticatedPurchasesGrnsIndexRoute
   '/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
@@ -678,6 +786,10 @@ export interface FileRoutesById {
   '/_authenticated/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/_authenticated/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/_authenticated/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/_authenticated/inventory/ledger': typeof AuthenticatedInventoryLedgerRoute
+  '/_authenticated/inventory/pos': typeof AuthenticatedInventoryPosRoute
+  '/_authenticated/inventory/stock': typeof AuthenticatedInventoryStockRoute
+  '/_authenticated/inventory/stores': typeof AuthenticatedInventoryStoresRoute
   '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -700,12 +812,20 @@ export interface FileRoutesById {
   '/_authenticated/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   '/_authenticated/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
   '/_authenticated/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
+  '/_authenticated/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  '/_authenticated/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
   '/_authenticated/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/_authenticated/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/_authenticated/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
   '/_authenticated/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/_authenticated/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
   '/_authenticated/college/reports/': typeof AuthenticatedCollegeReportsIndexRoute
+  '/_authenticated/inventory/adjustments/': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/_authenticated/inventory/invoices/': typeof AuthenticatedInventoryInvoicesIndexRoute
+  '/_authenticated/inventory/purchase-invoices/': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  '/_authenticated/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
+  '/_authenticated/inventory/requisitions/': typeof AuthenticatedInventoryRequisitionsIndexRoute
+  '/_authenticated/inventory/transfers/': typeof AuthenticatedInventoryTransfersIndexRoute
   '/_authenticated/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
   '/_authenticated/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/_authenticated/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
@@ -752,6 +872,10 @@ export interface FileRouteTypes {
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
+    | '/inventory/ledger'
+    | '/inventory/pos'
+    | '/inventory/stock'
+    | '/inventory/stores'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -774,12 +898,20 @@ export interface FileRouteTypes {
     | '/college/reports/due-monthly-wise'
     | '/college/reports/due-student-wise'
     | '/college/student/$id'
+    | '/inventory/purchase-invoices/$id'
+    | '/inventory/purchase-invoices/new'
     | '/purchases/grns/$grnId'
     | '/purchases/grns/new'
     | '/purchases/purchase-orders/$id'
     | '/purchases/purchase-orders/new'
     | '/accounts/reports/'
     | '/college/reports/'
+    | '/inventory/adjustments/'
+    | '/inventory/invoices/'
+    | '/inventory/purchase-invoices/'
+    | '/inventory/reports/'
+    | '/inventory/requisitions/'
+    | '/inventory/transfers/'
     | '/purchases/grns/'
     | '/purchases/purchase-orders/'
     | '/accounts/reports/edit/$id'
@@ -824,6 +956,10 @@ export interface FileRouteTypes {
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
+    | '/inventory/ledger'
+    | '/inventory/pos'
+    | '/inventory/stock'
+    | '/inventory/stores'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -845,12 +981,20 @@ export interface FileRouteTypes {
     | '/college/reports/due-monthly-wise'
     | '/college/reports/due-student-wise'
     | '/college/student/$id'
+    | '/inventory/purchase-invoices/$id'
+    | '/inventory/purchase-invoices/new'
     | '/purchases/grns/$grnId'
     | '/purchases/grns/new'
     | '/purchases/purchase-orders/$id'
     | '/purchases/purchase-orders/new'
     | '/accounts/reports'
     | '/college/reports'
+    | '/inventory/adjustments'
+    | '/inventory/invoices'
+    | '/inventory/purchase-invoices'
+    | '/inventory/reports'
+    | '/inventory/requisitions'
+    | '/inventory/transfers'
     | '/purchases/grns'
     | '/purchases/purchase-orders'
     | '/accounts/reports/edit/$id'
@@ -896,6 +1040,10 @@ export interface FileRouteTypes {
     | '/_authenticated/hr/staff-list'
     | '/_authenticated/hr/view-payslip'
     | '/_authenticated/hr/view-staff'
+    | '/_authenticated/inventory/ledger'
+    | '/_authenticated/inventory/pos'
+    | '/_authenticated/inventory/stock'
+    | '/_authenticated/inventory/stores'
     | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
@@ -918,12 +1066,20 @@ export interface FileRouteTypes {
     | '/_authenticated/college/reports/due-monthly-wise'
     | '/_authenticated/college/reports/due-student-wise'
     | '/_authenticated/college/student/$id'
+    | '/_authenticated/inventory/purchase-invoices/$id'
+    | '/_authenticated/inventory/purchase-invoices/new'
     | '/_authenticated/purchases/grns/$grnId'
     | '/_authenticated/purchases/grns/new'
     | '/_authenticated/purchases/purchase-orders/$id'
     | '/_authenticated/purchases/purchase-orders/new'
     | '/_authenticated/accounts/reports/'
     | '/_authenticated/college/reports/'
+    | '/_authenticated/inventory/adjustments/'
+    | '/_authenticated/inventory/invoices/'
+    | '/_authenticated/inventory/purchase-invoices/'
+    | '/_authenticated/inventory/reports/'
+    | '/_authenticated/inventory/requisitions/'
+    | '/_authenticated/inventory/transfers/'
     | '/_authenticated/purchases/grns/'
     | '/_authenticated/purchases/purchase-orders/'
     | '/_authenticated/accounts/reports/edit/$id'
@@ -1093,6 +1249,34 @@ declare module '@tanstack/react-router' {
       path: '/masters/banks'
       fullPath: '/masters/banks'
       preLoaderRoute: typeof AuthenticatedMastersBanksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/stores': {
+      id: '/_authenticated/inventory/stores'
+      path: '/inventory/stores'
+      fullPath: '/inventory/stores'
+      preLoaderRoute: typeof AuthenticatedInventoryStoresRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/stock': {
+      id: '/_authenticated/inventory/stock'
+      path: '/inventory/stock'
+      fullPath: '/inventory/stock'
+      preLoaderRoute: typeof AuthenticatedInventoryStockRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/pos': {
+      id: '/_authenticated/inventory/pos'
+      path: '/inventory/pos'
+      fullPath: '/inventory/pos'
+      preLoaderRoute: typeof AuthenticatedInventoryPosRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/ledger': {
+      id: '/_authenticated/inventory/ledger'
+      path: '/inventory/ledger'
+      fullPath: '/inventory/ledger'
+      preLoaderRoute: typeof AuthenticatedInventoryLedgerRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/hr/view-staff': {
@@ -1326,6 +1510,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPurchasesGrnsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/inventory/transfers/': {
+      id: '/_authenticated/inventory/transfers/'
+      path: '/inventory/transfers'
+      fullPath: '/inventory/transfers/'
+      preLoaderRoute: typeof AuthenticatedInventoryTransfersIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/requisitions/': {
+      id: '/_authenticated/inventory/requisitions/'
+      path: '/inventory/requisitions'
+      fullPath: '/inventory/requisitions/'
+      preLoaderRoute: typeof AuthenticatedInventoryRequisitionsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/reports/': {
+      id: '/_authenticated/inventory/reports/'
+      path: '/inventory/reports'
+      fullPath: '/inventory/reports/'
+      preLoaderRoute: typeof AuthenticatedInventoryReportsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/purchase-invoices/': {
+      id: '/_authenticated/inventory/purchase-invoices/'
+      path: '/inventory/purchase-invoices'
+      fullPath: '/inventory/purchase-invoices/'
+      preLoaderRoute: typeof AuthenticatedInventoryPurchaseInvoicesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/invoices/': {
+      id: '/_authenticated/inventory/invoices/'
+      path: '/inventory/invoices'
+      fullPath: '/inventory/invoices/'
+      preLoaderRoute: typeof AuthenticatedInventoryInvoicesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/adjustments/': {
+      id: '/_authenticated/inventory/adjustments/'
+      path: '/inventory/adjustments'
+      fullPath: '/inventory/adjustments/'
+      preLoaderRoute: typeof AuthenticatedInventoryAdjustmentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/college/reports/': {
       id: '/_authenticated/college/reports/'
       path: '/college/reports'
@@ -1366,6 +1592,20 @@ declare module '@tanstack/react-router' {
       path: '/purchases/grns/$grnId'
       fullPath: '/purchases/grns/$grnId'
       preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/purchase-invoices/new': {
+      id: '/_authenticated/inventory/purchase-invoices/new'
+      path: '/inventory/purchase-invoices/new'
+      fullPath: '/inventory/purchase-invoices/new'
+      preLoaderRoute: typeof AuthenticatedInventoryPurchaseInvoicesNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/purchase-invoices/$id': {
+      id: '/_authenticated/inventory/purchase-invoices/$id'
+      path: '/inventory/purchase-invoices/$id'
+      fullPath: '/inventory/purchase-invoices/$id'
+      preLoaderRoute: typeof AuthenticatedInventoryPurchaseInvoicesIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/college/student/$id': {
@@ -1503,6 +1743,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHrStaffListRoute: typeof AuthenticatedHrStaffListRoute
   AuthenticatedHrViewPayslipRoute: typeof AuthenticatedHrViewPayslipRoute
   AuthenticatedHrViewStaffRoute: typeof AuthenticatedHrViewStaffRoute
+  AuthenticatedInventoryLedgerRoute: typeof AuthenticatedInventoryLedgerRoute
+  AuthenticatedInventoryPosRoute: typeof AuthenticatedInventoryPosRoute
+  AuthenticatedInventoryStockRoute: typeof AuthenticatedInventoryStockRoute
+  AuthenticatedInventoryStoresRoute: typeof AuthenticatedInventoryStoresRoute
   AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
@@ -1524,10 +1768,18 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCollegeReportsDueMonthlyWiseRoute: typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   AuthenticatedCollegeReportsDueStudentWiseRoute: typeof AuthenticatedCollegeReportsDueStudentWiseRoute
   AuthenticatedCollegeStudentIdRoute: typeof AuthenticatedCollegeStudentIdRoute
+  AuthenticatedInventoryPurchaseInvoicesIdRoute: typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  AuthenticatedInventoryPurchaseInvoicesNewRoute: typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
   AuthenticatedPurchasesGrnsGrnIdRoute: typeof AuthenticatedPurchasesGrnsGrnIdRoute
   AuthenticatedPurchasesGrnsNewRoute: typeof AuthenticatedPurchasesGrnsNewRoute
   AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
   AuthenticatedCollegeReportsIndexRoute: typeof AuthenticatedCollegeReportsIndexRoute
+  AuthenticatedInventoryAdjustmentsIndexRoute: typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  AuthenticatedInventoryInvoicesIndexRoute: typeof AuthenticatedInventoryInvoicesIndexRoute
+  AuthenticatedInventoryPurchaseInvoicesIndexRoute: typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  AuthenticatedInventoryReportsIndexRoute: typeof AuthenticatedInventoryReportsIndexRoute
+  AuthenticatedInventoryRequisitionsIndexRoute: typeof AuthenticatedInventoryRequisitionsIndexRoute
+  AuthenticatedInventoryTransfersIndexRoute: typeof AuthenticatedInventoryTransfersIndexRoute
   AuthenticatedPurchasesGrnsIndexRoute: typeof AuthenticatedPurchasesGrnsIndexRoute
   AuthenticatedAccountsReportsEditIdRoute: typeof AuthenticatedAccountsReportsEditIdRoute
   AuthenticatedPurchasesGrnsGrnIdEditRoute: typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
@@ -1577,6 +1829,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHrStaffListRoute: AuthenticatedHrStaffListRoute,
   AuthenticatedHrViewPayslipRoute: AuthenticatedHrViewPayslipRoute,
   AuthenticatedHrViewStaffRoute: AuthenticatedHrViewStaffRoute,
+  AuthenticatedInventoryLedgerRoute: AuthenticatedInventoryLedgerRoute,
+  AuthenticatedInventoryPosRoute: AuthenticatedInventoryPosRoute,
+  AuthenticatedInventoryStockRoute: AuthenticatedInventoryStockRoute,
+  AuthenticatedInventoryStoresRoute: AuthenticatedInventoryStoresRoute,
   AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
@@ -1605,11 +1861,27 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCollegeReportsDueStudentWiseRoute:
     AuthenticatedCollegeReportsDueStudentWiseRoute,
   AuthenticatedCollegeStudentIdRoute: AuthenticatedCollegeStudentIdRoute,
+  AuthenticatedInventoryPurchaseInvoicesIdRoute:
+    AuthenticatedInventoryPurchaseInvoicesIdRoute,
+  AuthenticatedInventoryPurchaseInvoicesNewRoute:
+    AuthenticatedInventoryPurchaseInvoicesNewRoute,
   AuthenticatedPurchasesGrnsGrnIdRoute: AuthenticatedPurchasesGrnsGrnIdRoute,
   AuthenticatedPurchasesGrnsNewRoute: AuthenticatedPurchasesGrnsNewRoute,
   AuthenticatedAccountsReportsIndexRoute:
     AuthenticatedAccountsReportsIndexRoute,
   AuthenticatedCollegeReportsIndexRoute: AuthenticatedCollegeReportsIndexRoute,
+  AuthenticatedInventoryAdjustmentsIndexRoute:
+    AuthenticatedInventoryAdjustmentsIndexRoute,
+  AuthenticatedInventoryInvoicesIndexRoute:
+    AuthenticatedInventoryInvoicesIndexRoute,
+  AuthenticatedInventoryPurchaseInvoicesIndexRoute:
+    AuthenticatedInventoryPurchaseInvoicesIndexRoute,
+  AuthenticatedInventoryReportsIndexRoute:
+    AuthenticatedInventoryReportsIndexRoute,
+  AuthenticatedInventoryRequisitionsIndexRoute:
+    AuthenticatedInventoryRequisitionsIndexRoute,
+  AuthenticatedInventoryTransfersIndexRoute:
+    AuthenticatedInventoryTransfersIndexRoute,
   AuthenticatedPurchasesGrnsIndexRoute: AuthenticatedPurchasesGrnsIndexRoute,
   AuthenticatedAccountsReportsEditIdRoute:
     AuthenticatedAccountsReportsEditIdRoute,

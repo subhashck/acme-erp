@@ -65,6 +65,7 @@ const grnItemFormSchema = z.object({
 
 const grnFormSchema = z.object({
   vendorId: z.coerce.number().positive("Vendor is required").optional().nullable(),
+  storeId: z.coerce.number().positive("Receiving store is required").optional().nullable(),
   grnNo: z.string().optional().nullable(),
   grnDate: z.string().min(1, "GRN Date is required"),
   dateOfDelivery: z.string().optional().nullable(),
@@ -153,6 +154,12 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
   const { data: vendors = [] } = useRpcQuery<any[]>(
     ["vendors"],
     () => client.vendors.$get()
+  );
+
+  // Fetch inventory stores
+  const { data: storesList = [] } = useRpcQuery<any[]>(
+    ["inventory-stores"],
+    () => client.inventory.stores.$get()
   );
 
   const vendorOptions = React.useMemo(() => {
@@ -314,6 +321,7 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
     // Prepare payload matching server's Zod schema (grnInput)
     const payload = {
       vendorId: values.vendorId || po.vendorId || null,
+      storeId: values.storeId || null,
       grnNo: values.grnNo || null,
       grnDate: values.grnDate,
       dateOfDelivery: values.dateOfDelivery || null,
@@ -452,6 +460,34 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
                 disabled
                 className="bg-muted text-muted-foreground cursor-not-allowed h-9 text-xs"
               />
+            )}
+          </div>
+
+          {/* Receiving Store */}
+          <div className="flex flex-col space-y-1.5">
+            <Label>Receiving Store <span className="text-destructive">*</span></Label>
+            <Controller
+              control={form.control}
+              name="storeId"
+              render={({ field, fieldState }) => (
+                <select
+                  value={field.value ? String(field.value) : ""}
+                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="">-- Select Receiving Store --</option>
+                  {storesList.filter((s: any) => s.active !== false).map((store: any) => (
+                    <option key={store.id} value={String(store.id)}>
+                      {store.name} ({store.code}) {store.isDefault ? "[Default]" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+            {form.formState.errors.storeId && (
+              <span className="text-[0.8rem] font-medium text-destructive">
+                {form.formState.errors.storeId.message}
+              </span>
             )}
           </div>
 

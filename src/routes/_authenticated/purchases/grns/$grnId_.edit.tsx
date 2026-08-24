@@ -59,6 +59,7 @@ const grnItemFormSchema = z.object({
 });
 
 const grnFormSchema = z.object({
+  storeId: z.coerce.number().positive("Receiving store is required").optional().nullable(),
   grnNo: z.string().optional().nullable(),
   grnDate: z.string().min(1, "GRN Date is required"),
   dateOfDelivery: z.string().optional().nullable(),
@@ -153,6 +154,11 @@ interface GRNFormProps {
 function GRNForm({ po, grnId, poId }: GRNFormProps) {
   const navigate = useNavigate();
 
+  const { data: storesList = [] } = useRpcQuery<any[]>(
+    ["inventory-stores"],
+    () => client.inventory.stores.$get()
+  );
+
   const grn = po.grns?.find((g: any) => g.id === grnId);
   if (!grn) {
     return <div className="text-destructive p-4">GRN not found in PO data.</div>;
@@ -165,6 +171,7 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
     // @ts-ignore
     resolver: zodResolver(grnFormSchema),
     defaultValues: {
+      storeId: grn.storeId || storesList.find((s: any) => s.isDefault)?.id || storesList[0]?.id || null,
       grnNo: grn.grnNo || "",
       grnDate: grn.grnDate,
       dateOfDelivery: grn.dateOfDelivery || "",
@@ -265,6 +272,7 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
 
     // Prepare payload matching server's Zod schema (grnInput)
     const payload = {
+      storeId: values.storeId || null,
       grnNo: values.grnNo || null,
       grnDate: values.grnDate,
       dateOfDelivery: values.dateOfDelivery || null,
@@ -369,6 +377,35 @@ function GRNForm({ po, grnId, poId }: GRNFormProps) {
             {...form.register("grnNo")}
             error={form.formState.errors.grnNo?.message}
           />
+
+          {/* Receiving Store */}
+          <div className="flex flex-col space-y-1.5">
+            <Label>Receiving Store <span className="text-destructive">*</span></Label>
+            <Controller
+              control={form.control}
+              name="storeId"
+              render={({ field, fieldState }) => (
+                <select
+                  value={field.value ? String(field.value) : ""}
+                  onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : null)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  disabled={!isDraft}
+                >
+                  <option value="">-- Select Receiving Store --</option>
+                  {storesList.filter((s: any) => s.active !== false).map((store: any) => (
+                    <option key={store.id} value={String(store.id)}>
+                      {store.name} ({store.code}) {store.isDefault ? "[Default]" : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+            {form.formState.errors.storeId && (
+              <span className="text-[0.8rem] font-medium text-destructive">
+                {form.formState.errors.storeId.message}
+              </span>
+            )}
+          </div>
 
           {/* GRN Date */}
           <div className="flex flex-col space-y-1.5">

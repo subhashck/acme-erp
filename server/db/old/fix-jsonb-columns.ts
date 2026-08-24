@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { db, pool } from "./client.ts";
+import { db, pool } from "../client.ts";
 
 async function fixSchema() {
   console.log("Synchronizing staff_hr_profiles columns...");
@@ -9,7 +9,7 @@ async function fixSchema() {
     for (const col of cols) {
       try {
         await pool.query(`ALTER TABLE staff_hr_profiles ALTER COLUMN "${col}" DROP DEFAULT;`);
-      } catch (e) {}
+      } catch (e) { }
       await pool.query(`
         ALTER TABLE staff_hr_profiles 
         ALTER COLUMN "${col}" TYPE jsonb USING (
