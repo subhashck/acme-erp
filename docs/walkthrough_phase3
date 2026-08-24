@@ -1,0 +1,89 @@
+# Phase 1, Phase 2 & Phase 3 Walkthrough — Inventory Subsystem
+
+## Overview
+
+Phases 1, 2, and 3 of the ACME ERP Inventory Subsystem are fully implemented, integrated, and verified against PostgreSQL.
+
+---
+
+## Phase 1 Accomplishments: Core Multi-Store & Stock Ledger Engine
+
+1. **Dedicated PostgreSQL `inventory` Schema**:
+   - [`server/db/schema-inventory.ts`](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts)
+   - Created `pgSchema("inventory")` with 9 domain enums and 16 tables (`inventory.stores`, `inventory.item_batches`, `inventory.store_batch_stock`, `inventory.stock_ledger`, `inventory.document_sequences`, `inventory.store_staff_assignments`, `inventory.stock_requisitions`, `inventory.stock_transfers`, etc.).
+
+2. **Master Schema Extensions**:
+   - Extended `public.items` with enterprise pharma fields (`hsnCode`, `barcode`, `reorderLevel`, `reorderQty`, `drugSchedule`, `storageCondition`, `taxCategory`, `isNarcotic`, `allowFractional`).
+   - Extended `public.grns` with `storeId` and `public.grn_items` with `batchId`.
+
+3. **Transactional Sequence Generator & Stock Engine**:
+   - [`server/services/sequence.ts`](file:///d:/dev/acme/acme-erp/server/services/sequence.ts)
+   - [`server/services/stock-engine.ts`](file:///d:/dev/acme/acme-erp/server/services/stock-engine.ts)
+   - Atomic document generator (`REQ`, `TRN`, `GRN`) and pessimistic row-locked (`SELECT ... FOR UPDATE`) stock movement logger.
+
+---
+
+## Phase 2 Accomplishments: UI & Navigation Integration
+
+1. **Store & Warehouse Master UI**:
+   - [`src/routes/_authenticated/inventory/stores.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stores.tsx)
+   - Store directory listing with type badges, location, default main store indicator, and CRUD dialogs.
+
+2. **Live Stock Inquiry Screen**:
+   - [`src/routes/_authenticated/inventory/stock.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stock.tsx)
+   - Live batch-level inventory table with expiry date color-coding (red/amber/green).
+
+3. **Immutable Stock Ledger Viewer**:
+   - [`src/routes/_authenticated/inventory/ledger.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/ledger.tsx)
+   - Complete audit trail viewer displaying timestamp, store, item, batch number, movement type badges, and recording user.
+
+4. **GRN Store Selection**:
+   - Updated GRN forms ([`$id_.grn.new.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/purchases/purchase-orders/$id_.grn.new.tsx) and [`$grnId_.edit.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/purchases/grns/$grnId_.edit.tsx)) to mandate dynamic receiving store selection.
+
+---
+
+## Phase 3 Accomplishments: Requisitions & Inter-Store Transfers
+
+1. **Backend Requisition & Transfer Endpoints**:
+   - [`server/routes/transfers.ts`](file:///d:/dev/acme/acme-erp/server/routes/transfers.ts)
+   - Mounted in [`server/routes.ts`](file:///d:/dev/acme/acme-erp/server/routes.ts).
+   - Requisition lifecycle endpoints: `POST /inventory/requisitions`, `GET /inventory/requisitions`, `GET /inventory/requisitions/:id`, `PATCH /inventory/requisitions/:id/approve`, `PATCH /inventory/requisitions/:id/reject`.
+   - Two-Phase Transfer lifecycle endpoints: `POST /inventory/transfers`, `GET /inventory/transfers`, `GET /inventory/transfers/:id`, `PATCH /inventory/transfers/:id/dispatch`, `PATCH /inventory/transfers/:id/receive`, `PATCH /inventory/transfers/:id/cancel`.
+
+2. **Two-Phase Transfer Mechanics**:
+   - **Phase 1 (Dispatch)**: Reduces batch stock in source store via `TRANSFER_OUT` movement log, sets transfer status to `in_transit`, and records dispatch timestamp & user.
+   - **Phase 2 (Receive)**: Increases batch stock in destination store via `TRANSFER_IN` movement log, sets status to `received`, and updates linked requisition item fulfilled quantities.
+
+3. **Store Indents (Requisitions) UI**:
+   - [`src/routes/_authenticated/inventory/requisitions/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/requisitions/index.tsx)
+   - Filterable list of store indents with status badges (`Submitted`, `Approved`, `Partially Fulfilled`, `Fulfilled`, `Rejected`).
+   - Interactive modal to submit new store indents and approve/reject pending requests.
+
+4. **Stock Transfers UI**:
+   - [`src/routes/_authenticated/inventory/transfers/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/transfers/index.tsx)
+   - Transfer queue showing Source Store, Destination Store, status badges, and action buttons.
+   - Transfer creation modal with live batch stock picker for the selected source store.
+   - One-click Dispatch and Receive verification dialogs.
+
+5. **Sidebar Navigation Update**:
+   - [`src/components/Shell.tsx`](file:///d:/dev/acme/acme-erp/src/components/Shell.tsx)
+   - Added links for **Store Indents** (`/inventory/requisitions`) and **Stock Transfers** (`/inventory/transfers`) under "Inventory & Store".
+
+---
+
+## Verification Matrix
+
+| Verification Step | Result | Output Detail |
+|---|---|---|
+| **TypeScript Compilation** | `pnpm typecheck` $\rightarrow$ **PASS** | Exit code 0, 0 errors. |
+| **PostgreSQL Schema Push** | `pnpm db:push` $\rightarrow$ **PASS** | Applied `inventory` schema & tables. |
+| **Database Seeding** | `pnpm tsx server/db/seed-inventory.ts` $\rightarrow$ **PASS** | Created Central Warehouse (`MAIN-WH`) and sequences. |
+
+---
+
+## Ready for Phase 4
+
+Phase 3 is complete. Phase 4 will focus on:
+- Physical Stock Counts / Adjustments (`inventory.physical_stock_takes`, `inventory.stock_adjustments`)
+- Expiry & Damaged Goods Return Workflows (`inventory.damaged_expired_goods`)
+- Batch Price & MRP Revaluation

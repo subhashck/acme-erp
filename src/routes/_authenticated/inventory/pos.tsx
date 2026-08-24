@@ -1,0 +1,1212 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { ModuleLayout } from "@/components/ModuleLayout";
+import { useRpcQuery, queryClient } from "@/lib/query";
+import { client } from "@/services/rpc";
+import { useMutation } from "@tanstack/react-query";
+import { Card, CardContent } from "@/ui/card";
+import { Button } from "@/ui/button";
+import { Input } from "@/ui/input";
+import { Label } from "@/ui/label";
+import { Badge } from "@/ui/badge";
+import { toast } from "sonner";
+import { 
+  ShoppingCart, 
+  Search, 
+  Trash2, 
+  Plus, 
+  Minus, 
+  Printer, 
+  CreditCard, 
+  Receipt, 
+  Loader2, 
+  CheckCircle,
+  Warehouse,
+  User,
+  Phone,
+  Stethoscope,
+  Sparkles,
+  Download,
+  History,
+  FileText,
+  Clock,
+  X
+} from "lucide-react";
+import * as React from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/utils/cn";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { format } from "date-fns";
+import { useHospitalSettings, type HospitalSettings } from "@/lib/settings";
+import { authClient } from "@/services/auth";
+
+export const Route = createFileRoute("/_authenticated/inventory/pos")({
+  component: PosTerminal,
+});
+
+interface CartItem {
+  itemId: number;
+  batchId?: number;
+  itemName: string;
+  batchNumber?: string;
+  expiryDate?: string;
+  quantity: number;
+  availableQty: number;
+  unit: string;
+  unitRate: number;
+  mrp: number;
+  discountPercent: number;
+  gstPercent: number;
+}
+
+// Convert numbers into Indian Currency words
+function numberToIndianWords(num: number): string {
+  const a = [
+    "", "One ", "Two ", "Three ", "Four ", "Five ", "Six ", "Seven ", "Eight ", "Nine ",
+    "Ten ", "Eleven ", "Twelve ", "Thirteen ", "Fourteen ", "Fifteen ", "Sixteen ",
+    "Seventeen ", "Eighteen ", "Nineteen "
+  ];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  const n = Math.floor(Math.abs(num));
+  if (n === 0) return "Zero Rupees Only";
+
+  function convertTwoDigits(val: number): string {
+    if (val < 20) return a[val];
+    return b[Math.floor(val / 10)] + (val % 10 !== 0 ? " " + a[val % 10] : " ");
+  }
+
+  function convertThreeDigits(val: number): string {
+    const hundred = Math.floor(val / 100);
+    const rest = val % 100;
+    let res = "";
+    if (hundred > 0) res += a[hundred] + "Hundred ";
+    if (rest > 0) res += convertTwoDigits(rest);
+    return res;
+  }
+
+  let str = "";
+  const crore = Math.floor(n / 10000000);
+  const lakh = Math.floor((n % 10000000) / 100000);
+  const thousand = Math.floor((n % 100000) / 1000);
+  const remainder = n % 1000;
+
+  if (crore > 0) str += convertThreeDigits(crore) + "Crore ";
+  if (lakh > 0) str += convertThreeDigits(lakh) + "Lakh ";
+  if (thousand > 0) str += convertThreeDigits(thousand) + "Thousand ";
+  if (remainder > 0) str += convertThreeDigits(remainder);
+
+  return `Rupees ${str.trim()} Only`;
+}
+
+// Build standardized POS Invoice jsPDF Document (A5 Portrait)
+export function buildPosReceiptPDF(
+  invoice: any,
+  hospitalSettings?: HospitalSettings,
+  currentStore?: any,
+  cashierName?: string
+) {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a5", // 148 x 210 mm
+  });
+
+  const pageWidth = 148;
+  const margin = 6;
+  const contentWidth = pageWidth - margin * 2; // 136 mm
+  let currentY = 8;
+
+  // 1. Hospital / Pharmacy Header
+  const orgName = hospitalSettings?.name || "ACME HOSPITAL PHARMACY";
+  const orgAddress = hospitalSettings?.address || "Medical District, Healthcare Ave";
+  const orgPhone = hospitalSettings?.phone || "+91 98765 43210";
+  const orgEmail = hospitalSettings?.email || "pharmacy@acmehospital.com";
+  const storeName = currentStore?.name || invoice?.store?.name || "Main Retail Pharmacy";
+  const storeCode = currentStore?.code || invoice?.store?.code || "";
+
+  // Title
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(15, 23, 42); // slate-900
+  doc.text(orgName.toUpperCase(), pageWidth / 2, currentY, { align: "center" });
+  currentY += 4.2;
+
+  // Subtitle / Address & Contact
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7.5);
+  doc.setTextColor(71, 85, 105); // slate-600
+  const subText = `${storeName}${storeCode ? ` (${storeCode})` : ""} • ${orgAddress}`;
+  doc.text(subText, pageWidth / 2, currentY, { align: "center" });
+  currentY += 3.6;
+
+  const contactText = `Phone: ${orgPhone} | Email: ${orgEmail}`;
+  doc.text(contactText, pageWidth / 2, currentY, { align: "center" });
+  currentY += 4.2;
+
+  // Banner: TAX INVOICE / RETAIL BILL
+  doc.setFillColor(15, 23, 42); // slate-900
+  doc.roundedRect(margin, currentY, contentWidth, 5.5, 1, 1, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text("TAX INVOICE / RETAIL CASH MEMO", pageWidth / 2, currentY + 3.8, { align: "center" });
+  currentY += 7.2;
+
+  // 2. Metadata Box
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.setDrawColor(226, 232, 240); // slate-200
+  doc.roundedRect(margin, currentY, contentWidth, 18, 1, 1, "FD");
+
+  const leftColX = margin + 3;
+  const leftValX = margin + 22;
+  const rightColX = margin + 68;
+  const rightValX = margin + 88;
+
+  const invDate = invoice.invoiceDate || invoice.createdAt || new Date();
+  let formattedDate = "";
+  try {
+    formattedDate = format(new Date(invDate), "dd/MM/yyyy hh:mm a");
+  } catch {
+    formattedDate = String(invDate);
+  }
+  const cashier = invoice.cashier?.name || cashierName || "Cashier";
+
+  doc.setFontSize(7.5);
+  // Left col
+  doc.setTextColor(100, 116, 139); // slate-500
+  doc.setFont("helvetica", "bold");
+  doc.text("Invoice No:", leftColX, currentY + 4.5);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.text(invoice.invoiceNo || "-", leftValX, currentY + 4.5);
+
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "bold");
+  doc.text("Date & Time:", leftColX, currentY + 9);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "normal");
+  doc.text(formattedDate, leftValX, currentY + 9);
+
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "bold");
+  doc.text("Cashier:", leftColX, currentY + 13.5);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "normal");
+  doc.text(cashier, leftValX, currentY + 13.5);
+
+  // Right col
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "bold");
+  doc.text("Customer:", rightColX, currentY + 4.5);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "normal");
+  doc.text(invoice.customerName || "Walk-in Customer", rightValX, currentY + 4.5);
+
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "bold");
+  doc.text("Phone / Doc:", rightColX, currentY + 9);
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "normal");
+  const phoneDoc = [invoice.customerPhone, invoice.doctorName ? `Dr. ${invoice.doctorName}` : ""]
+    .filter(Boolean)
+    .join(" | ") || "-";
+  doc.text(phoneDoc, rightValX, currentY + 9);
+
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "bold");
+  doc.text("Pay Mode:", rightColX, currentY + 13.5);
+  doc.setTextColor(16, 185, 129); // emerald-600
+  doc.setFont("helvetica", "bold");
+  doc.text((invoice.paymentMode || "CASH").toUpperCase(), rightValX, currentY + 13.5);
+
+  currentY += 20;
+
+  // 3. Line Items Table (Batch & Exp nested under Item Name to optimize space)
+  const items = invoice.items || [];
+  const tableData = items.map((item: any, idx: number) => {
+    const itemName = item.item?.name || item.itemName || "Item";
+    const batchNo = item.batch?.batchNumber || item.batchNumber || "-";
+    const exp = item.batch?.expiryDate || item.expiryDate || "-";
+    
+    const batchExpDetails = [
+      batchNo && batchNo !== "-" ? `Batch: ${batchNo}` : null,
+      exp && exp !== "-" ? `Exp: ${exp}` : null,
+    ].filter(Boolean).join("   |   ");
+
+    const itemDescription = batchExpDetails ? `${itemName}\n${batchExpDetails}` : itemName;
+
+    const qty = `${item.quantity} ${item.unit || "Unit"}`;
+    const rate = Number(item.unitRate || 0).toFixed(2);
+    const disc = Number(item.discountPercent || 0) > 0 ? `${item.discountPercent}%` : "-";
+    const gst = Number(item.gstPercent || 0) > 0 ? `${item.gstPercent}%` : "-";
+    const total = Number(item.totalAmount || (item.quantity * item.unitRate)).toFixed(2);
+
+    return [
+      String(idx + 1),
+      itemDescription,
+      qty,
+      rate,
+      disc,
+      gst,
+      total,
+    ];
+  });
+
+  autoTable(doc, {
+    startY: currentY,
+    margin: { left: margin, right: margin },
+    head: [["#", "Item Description / Batch & Exp", "Qty", "Rate", "Disc", "GST", "Amount"]],
+    body: tableData.length > 0 ? tableData : [["-", "No items", "-", "-", "-", "-", "-"]],
+    theme: "striped",
+    headStyles: {
+      fillColor: [30, 41, 59], // slate-800
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      fontSize: 7.2,
+      halign: "center",
+      cellPadding: 2,
+    },
+    styles: {
+      fontSize: 7,
+      cellPadding: 2,
+      textColor: [30, 41, 59],
+      valign: "middle",
+    },
+    columnStyles: {
+      0: { cellWidth: 6, halign: "center" },
+      1: { cellWidth: 64, halign: "left" },
+      2: { cellWidth: 16, halign: "center" },
+      3: { cellWidth: 13, halign: "right" },
+      4: { cellWidth: 10, halign: "center" },
+      5: { cellWidth: 11, halign: "center" },
+      6: { cellWidth: 16, halign: "right", fontStyle: "bold" },
+    },
+    willDrawCell: (data) => {
+      // Suppress default text rendering for Item Description column to draw custom sized and colored lines
+      if (data.section === "body" && data.column.index === 1) {
+        data.cell.text = [];
+      }
+    },
+    didDrawCell: (data) => {
+      if (data.section === "body" && data.column.index === 1) {
+        const item = items[data.row.index];
+        if (!item) return;
+        const itemName = item.item?.name || item.itemName || "Item";
+        const batchNo = item.batch?.batchNumber || item.batchNumber || "-";
+        const exp = item.batch?.expiryDate || item.expiryDate || "-";
+
+        const batchExpDetails = [
+          batchNo && batchNo !== "-" ? `Batch: ${batchNo}` : null,
+          exp && exp !== "-" ? `Exp: ${exp}` : null,
+        ].filter(Boolean).join("   |   ");
+
+        const padLeft = typeof data.cell.padding === "function" ? data.cell.padding("left") : 2;
+        const padTop = typeof data.cell.padding === "function" ? data.cell.padding("top") : 2;
+        const padRight = typeof data.cell.padding === "function" ? data.cell.padding("right") : 2;
+
+        const cellX = data.cell.x + padLeft;
+        const topY = data.cell.y + padTop;
+        const maxTextWidth = data.cell.width - (padLeft + padRight);
+
+        // 1. Item Name: larger font (7.8pt), bold, dark slate
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.8);
+        doc.setTextColor(15, 23, 42); // slate-900
+        const nameLines = doc.splitTextToSize(itemName, maxTextWidth);
+        doc.text(nameLines, cellX, topY + 2.7);
+
+        // 2. Batch & Exp: smaller font (5.3pt), normal, muted slate-500
+        if (batchExpDetails) {
+          const lineOffset = (nameLines.length - 1) * 3.2;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(5.3);
+          doc.setTextColor(100, 116, 139); // slate-500 muted
+          doc.text(batchExpDetails, cellX, topY + 2.7 + lineOffset + 3.4);
+        }
+      }
+    },
+  });
+
+  const finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 4 : currentY + 30;
+  let summaryY = finalY;
+
+  // 4. Financial Summary & Amount in Words
+  const subtotal = Number(invoice.subtotal || 0);
+  const discountAmount = Number(invoice.discountAmount || 0);
+  const taxableAmount = Number(invoice.taxableAmount || 0);
+  const cgstAmount = Number(invoice.cgstAmount || 0);
+  const sgstAmount = Number(invoice.sgstAmount || 0);
+  const roundOff = Number(invoice.roundOff || 0);
+  const netAmount = Number(invoice.netAmount || 0);
+
+  // Left: Amount in Words box & Remarks
+  const wordsBoxWidth = 62;
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(margin, summaryY, wordsBoxWidth, 24, 1, 1, "FD");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("AMOUNT IN WORDS:", margin + 2, summaryY + 4);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(15, 23, 42);
+  const words = numberToIndianWords(netAmount);
+  const wordLines = doc.splitTextToSize(words, wordsBoxWidth - 4);
+  doc.text(wordLines, margin + 2, summaryY + 8);
+
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(6);
+  doc.setTextColor(100, 116, 139);
+  doc.text("* Returns accepted within 7 days with original invoice.", margin + 2, summaryY + 17);
+  doc.text("* Keep medicines stored in cool & dry place.", margin + 2, summaryY + 21);
+
+  // Right: Numerical Breakdown
+  const sumLabelX = margin + wordsBoxWidth + 4;
+  const sumValX = pageWidth - margin - 3;
+  const sumRowH = 3.8;
+  let rY = summaryY + 3.5;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(71, 85, 105);
+
+  doc.text("Gross Subtotal:", sumLabelX, rY);
+  doc.text(subtotal.toFixed(2), sumValX, rY, { align: "right" });
+  rY += sumRowH;
+
+  if (discountAmount > 0) {
+    doc.setTextColor(217, 119, 6); // amber-600
+    doc.text("Total Discount:", sumLabelX, rY);
+    doc.text(`-${discountAmount.toFixed(2)}`, sumValX, rY, { align: "right" });
+    rY += sumRowH;
+  }
+
+  doc.setTextColor(71, 85, 105);
+  doc.text("Taxable Value:", sumLabelX, rY);
+  doc.text(taxableAmount.toFixed(2), sumValX, rY, { align: "right" });
+  rY += sumRowH;
+
+  if (cgstAmount > 0 || sgstAmount > 0) {
+    doc.text("CGST / SGST:", sumLabelX, rY);
+    doc.text(`${cgstAmount.toFixed(2)} + ${sgstAmount.toFixed(2)}`, sumValX, rY, { align: "right" });
+    rY += sumRowH;
+  }
+
+  if (roundOff !== 0) {
+    doc.text("Round Off:", sumLabelX, rY);
+    doc.text(`${roundOff >= 0 ? "+" : ""}${roundOff.toFixed(2)}`, sumValX, rY, { align: "right" });
+    rY += sumRowH;
+  }
+
+  // Net Total Highlight Box
+  rY += 1;
+  const netBoxW = contentWidth - wordsBoxWidth - 3;
+  doc.setFillColor(16, 185, 129); // emerald-500
+  doc.roundedRect(sumLabelX - 2, rY - 3, netBoxW, 7.5, 1, 1, "F");
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(255, 255, 255);
+  doc.text("NET AMOUNT:", sumLabelX + 1, rY + 1.8);
+  doc.setFontSize(9);
+  doc.text(`Rs. ${netAmount.toFixed(2)}`, sumValX, rY + 1.8, { align: "right" });
+
+  // 5. Footer (Authorized Signatory removed as requested)
+  const footerY = 198;
+  doc.setDrawColor(226, 232, 240);
+  doc.line(margin, footerY, pageWidth - margin, footerY);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text("Thank you for your visit! Wishing you good health.", margin, footerY + 4);
+  doc.text("Computer Generated Invoice • No signature required", margin, footerY + 7.5);
+
+  return doc;
+}
+
+export function printPosReceiptPDF(
+  invoice: any,
+  hospitalSettings?: HospitalSettings,
+  currentStore?: any,
+  cashierName?: string
+) {
+  const doc = buildPosReceiptPDF(invoice, hospitalSettings, currentStore, cashierName);
+  const pdfBlob = doc.output("blob");
+  const blobUrl = URL.createObjectURL(pdfBlob);
+  const printWindow = window.open(blobUrl, "_blank");
+  if (printWindow) {
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+    };
+  }
+}
+
+export function downloadPosReceiptPDF(
+  invoice: any,
+  hospitalSettings?: HospitalSettings,
+  currentStore?: any,
+  cashierName?: string
+) {
+  const doc = buildPosReceiptPDF(invoice, hospitalSettings, currentStore, cashierName);
+  doc.save(`Invoice-${invoice.invoiceNo || "POS"}.pdf`);
+}
+
+function PosTerminal() {
+  const [storeId, setStoreId] = React.useState<number>(0);
+  const [customerName, setCustomerName] = React.useState("");
+  const [customerPhone, setCustomerPhone] = React.useState("");
+  const [doctorName, setDoctorName] = React.useState("");
+  const [paymentMode, setPaymentMode] = React.useState<"cash" | "card" | "upi" | "credit">("cash");
+
+  const [searchTerm, setSearchTerm] = React.useState("");
+  const [cart, setCart] = React.useState<CartItem[]>([]);
+  const [completedInvoice, setCompletedInvoice] = React.useState<any | null>(null);
+  const [showRecentInvoices, setShowRecentInvoices] = React.useState(false);
+  const [recentSearch, setRecentSearch] = React.useState("");
+
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  const hospitalSettings = useHospitalSettings();
+  const session = authClient.useSession();
+  const currentUserName = session?.data?.user?.name || "Cashier";
+
+  // Fetch stores
+  const { data: storesList = [] } = useRpcQuery<any[]>(
+    ["inventory-stores"],
+    () => client.inventory.stores.$get()
+  );
+
+  const currentStore = React.useMemo(() => {
+    return storesList.find((s: any) => s.id === storeId);
+  }, [storesList, storeId]);
+
+  React.useEffect(() => {
+    if (storesList.length > 0 && !storeId) {
+      const def = storesList.find((s: any) => s.isDefault) || storesList[0];
+      setStoreId(def.id);
+    }
+  }, [storesList, storeId]);
+
+  // Fast item search
+  const { data: searchResults = [], isFetching: isSearching } = useRpcQuery<any[]>(
+    ["pos-item-search", storeId, searchTerm],
+    () =>
+      client.inventory.pos["item-search"].$get({
+        query: {
+          storeId: storeId ? String(storeId) : undefined,
+          search: searchTerm || undefined,
+        },
+      }),
+    { enabled: !!storeId && searchTerm.length >= 1 }
+  );
+
+  // Recent invoices query
+  const { data: recentInvoicesData, isFetching: isLoadingRecent } = useRpcQuery<any>(
+    ["pos-recent-invoices", storeId, recentSearch],
+    () =>
+      client.inventory.pos.invoices.$get({
+        query: {
+          storeId: storeId ? String(storeId) : undefined,
+          search: recentSearch || undefined,
+          page: "1",
+          limit: "25",
+        },
+      }),
+    { enabled: showRecentInvoices }
+  );
+
+  // Keyboard Shortcuts (F2 = search, F9 = checkout, Esc = clear)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F2") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === "F9") {
+        e.preventDefault();
+        if (cart.length > 0) {
+          handleCheckout();
+        }
+      } else if (e.key === "Escape") {
+        setSearchTerm("");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cart]);
+
+  const addToCart = (stockItem: any) => {
+    const existing = cart.find(
+      (ci) => ci.itemId === stockItem.itemId && ci.batchId === stockItem.batchId
+    );
+
+    if (existing) {
+      if (existing.quantity >= Number(stockItem.availableQty)) {
+        toast.error(`Cannot add more than available stock (${stockItem.availableQty} ${stockItem.unit})`);
+        return;
+      }
+      setCart((prev) =>
+        prev.map((item) =>
+          item.itemId === stockItem.itemId && item.batchId === stockItem.batchId
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      );
+    } else {
+      setCart((prev) => [
+        ...prev,
+        {
+          itemId: stockItem.itemId,
+          batchId: stockItem.batchId,
+          itemName: stockItem.itemName,
+          batchNumber: stockItem.batchNumber,
+          expiryDate: stockItem.expiryDate,
+          quantity: 1,
+          availableQty: Number(stockItem.availableQty),
+          unit: stockItem.unit || "Unit",
+          unitRate: Number(stockItem.saleRate || stockItem.mrp || 0),
+          mrp: Number(stockItem.mrp || 0),
+          discountPercent: 0,
+          gstPercent: Number(stockItem.gstPercent || 0),
+        },
+      ]);
+    }
+
+    setSearchTerm("");
+    searchInputRef.current?.focus();
+    toast.success(`Added ${stockItem.itemName} to bill`);
+  };
+
+  const updateQuantity = (index: number, newQty: number) => {
+    if (newQty <= 0) {
+      removeFromCart(index);
+      return;
+    }
+    const target = cart[index];
+    if (newQty > target.availableQty) {
+      toast.error(`Max available quantity is ${target.availableQty}`);
+      return;
+    }
+    setCart((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, quantity: newQty } : item))
+    );
+  };
+
+  const updateDiscount = (index: number, discountPct: number) => {
+    setCart((prev) =>
+      prev.map((item, idx) =>
+        idx === index ? { ...item, discountPercent: Math.max(0, Math.min(100, discountPct)) } : item
+      )
+    );
+  };
+
+  const removeFromCart = (index: number) => {
+    setCart((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  // Calculations
+  const calculatedLines = cart.map((item) => {
+    const gross = Number((item.quantity * item.unitRate).toFixed(2));
+    const discount = Number(((gross * item.discountPercent) / 100).toFixed(2));
+    const taxable = gross - discount;
+    const gstAmt = Number(((taxable * item.gstPercent) / 100).toFixed(2));
+    const lineTotal = Number((taxable + gstAmt).toFixed(2));
+    return { gross, discount, taxable, gstAmt, lineTotal };
+  });
+
+  const subtotal = calculatedLines.reduce((acc, l) => acc + l.gross, 0);
+  const totalDiscount = calculatedLines.reduce((acc, l) => acc + l.discount, 0);
+  const totalTaxable = calculatedLines.reduce((acc, l) => acc + l.taxable, 0);
+  const totalGst = calculatedLines.reduce((acc, l) => acc + l.gstAmt, 0);
+  const cgstAmount = Number((totalGst / 2).toFixed(2));
+  const sgstAmount = Number((totalGst / 2).toFixed(2));
+  const rawTotal = totalTaxable + totalGst;
+  const netAmount = Math.round(rawTotal);
+  const roundOff = Number((netAmount - rawTotal).toFixed(2));
+
+  const invoiceMutation = useMutation({
+    mutationFn: async () => {
+      const res = await client.inventory.pos.invoices.$post({
+        json: {
+          storeId,
+          customerName: customerName || null,
+          customerPhone: customerPhone || null,
+          doctorName: doctorName || null,
+          paymentMode,
+          isInterState: false,
+          items: cart.map((item) => ({
+            itemId: item.itemId,
+            batchId: item.batchId,
+            quantity: item.quantity,
+            unit: item.unit,
+            unitRate: item.unitRate,
+            mrp: item.mrp,
+            discountPercent: item.discountPercent,
+            gstPercent: item.gstPercent,
+          })),
+        },
+      });
+      if (!res.ok) {
+        const err: any = await res.json();
+        throw new Error(err.error || "Failed to process sale");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast.success(`Invoice #${data.invoiceNo} generated successfully!`);
+      // If data doesn't have items populated, attach cart items for instant printing
+      const completeData = {
+        ...data,
+        items: data.items && data.items.length > 0 ? data.items : cart.map((c) => ({
+          ...c,
+          totalAmount: (c.quantity * c.unitRate) - ((c.quantity * c.unitRate * c.discountPercent) / 100),
+          item: { name: c.itemName },
+          batch: { batchNumber: c.batchNumber, expiryDate: c.expiryDate },
+        })),
+        store: currentStore,
+        cashier: { name: currentUserName },
+      };
+      setCompletedInvoice(completeData);
+      setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setDoctorName("");
+      queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
+      queryClient.invalidateQueries({ queryKey: ["pos-invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["pos-recent-invoices"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleCheckout = () => {
+    if (cart.length === 0) {
+      toast.error("Cart is empty");
+      return;
+    }
+    invoiceMutation.mutate();
+  };
+
+  const handlePrint = (invToPrint?: any) => {
+    const inv = invToPrint || completedInvoice;
+    if (!inv) return;
+    printPosReceiptPDF(inv, hospitalSettings, currentStore, currentUserName);
+  };
+
+  const handleDownload = (invToDownload?: any) => {
+    const inv = invToDownload || completedInvoice;
+    if (!inv) return;
+    downloadPosReceiptPDF(inv, hospitalSettings, currentStore, currentUserName);
+  };
+
+  return (
+    <ModuleLayout
+      title="POS Billing Terminal"
+      description="Marg ERP–inspired high-speed retail pharmacy and dispensing billing counter"
+      action={
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowRecentInvoices(true)}
+            className="h-8 text-xs font-semibold"
+          >
+            <History className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+            Recent Bills / Reprint
+          </Button>
+          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+            [F2] Search Item
+          </Badge>
+          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+            [F9] Complete Bill
+          </Badge>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Cols: Customer Bar, Item Search, Cart Grid */}
+        <div className="lg:col-span-2 space-y-4">
+          {/* Header Customer Metadata */}
+          <Card>
+            <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div>
+                <Label className="text-xs">Billing Store</Label>
+                <div className="mt-1">
+                  <Select
+                    value={storeId ? String(storeId) : ""}
+                    onValueChange={(val) => {
+                      setStoreId(Number(val));
+                      setCart([]);
+                    }}
+                  >
+                    <SelectTrigger className="w-full h-9 text-xs">
+                      <SelectValue placeholder="Select Store" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {storesList.map((st: any) => (
+                        <SelectItem key={st.id} value={String(st.id)}>
+                          {st.name} ({st.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Customer Name</Label>
+                <div className="relative mt-1">
+                  <User className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Walk-in Customer"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="pl-8 h-9 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Mobile Phone</Label>
+                <div className="relative mt-1">
+                  <Phone className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                  <Input
+                    placeholder="e.g. 9876543210"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="pl-8 h-9 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs">Doctor / Consultant</Label>
+                <div className="relative mt-1">
+                  <Stethoscope className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Dr. Name"
+                    value={doctorName}
+                    onChange={(e) => setDoctorName(e.target.value)}
+                    className="pl-8 h-9 text-xs"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Fast Item Search Bar */}
+          <div className="relative">
+            <div className="relative">
+              <Search className="w-5 h-5 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
+              <Input
+                ref={searchInputRef}
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Type item name, code, or scan barcode... (Press F2 to focus)"
+                className="pl-10 pr-10 h-11 border-2 border-emerald-500/40 text-sm font-medium focus-visible:ring-emerald-500 shadow-sm"
+              />
+              {isSearching && (
+                <Loader2 className="w-4 h-4 absolute right-3 top-3.5 animate-spin text-emerald-600" />
+              )}
+            </div>
+
+            {/* Live Search Suggestions Dropdown */}
+            {searchTerm.trim().length > 0 && (
+              <div className="absolute left-0 right-0 top-12 z-50 bg-popover text-popover-foreground rounded-lg border shadow-xl max-h-72 overflow-y-auto divide-y">
+                {searchResults.length === 0 && !isSearching ? (
+                  <div className="p-4 text-center text-xs text-muted-foreground">
+                    No matching batches available in this store.
+                  </div>
+                ) : (
+                  searchResults.map((result: any) => (
+                    <div
+                      key={`${result.itemId}-${result.batchId}`}
+                      onClick={() => addToCart(result)}
+                      className="p-3 hover:bg-muted/50 cursor-pointer transition-colors flex items-center justify-between"
+                    >
+                      <div>
+                        <div className="font-semibold text-sm">{result.itemName}</div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                          <span>Batch: <strong>{result.batchNumber}</strong></span>
+                          <span>Exp: <strong>{result.expiryDate}</strong></span>
+                          <span>GST: <strong>{result.gstPercent}%</strong></span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono font-bold text-sm text-emerald-600">₹{Number(result.saleRate || result.mrp || 0).toFixed(2)}</div>
+                        <div className="text-xs text-muted-foreground">Avail: <strong>{result.availableQty} {result.unit}</strong></div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Cart Table */}
+          <Card>
+            <CardContent className="p-0 overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/50 border-b">
+                  <tr>
+                    <th className="py-2.5 px-3">#</th>
+                    <th className="py-2.5 px-3">Item Name</th>
+                    <th className="py-2.5 px-3">Batch / Exp</th>
+                    <th className="py-2.5 px-3 w-28 text-center">Qty</th>
+                    <th className="py-2.5 px-3 text-right">Rate</th>
+                    <th className="py-2.5 px-3 w-16 text-center">Disc %</th>
+                    <th className="py-2.5 px-3 text-right">GST</th>
+                    <th className="py-2.5 px-3 text-right">Total</th>
+                    <th className="py-2.5 px-3 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {cart.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-muted-foreground">
+                        <ShoppingCart className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                        <p className="font-medium">Billing cart is empty</p>
+                        <p className="text-[11px]">Scan barcode or search items above (F2) to add</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    cart.map((item, index) => {
+                      const line = calculatedLines[index];
+                      return (
+                        <tr key={`${item.itemId}-${item.batchId}`} className="hover:bg-muted/30">
+                          <td className="py-2.5 px-3 text-muted-foreground">{index + 1}</td>
+                          <td className="py-2.5 px-3 font-semibold">{item.itemName}</td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-mono">{item.batchNumber}</span>
+                            <span className="text-[10px] text-muted-foreground block">{item.expiryDate}</span>
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => updateQuantity(index, item.quantity - 1)}
+                                className="w-6 h-6 rounded"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </Button>
+                              <Input
+                                type="number"
+                                step="1"
+                                value={item.quantity}
+                                onChange={(e) => updateQuantity(index, Number(e.target.value))}
+                                className="w-14 h-6 text-center font-mono font-bold text-xs p-1"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => updateQuantity(index, item.quantity + 1)}
+                                className="w-6 h-6 rounded"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-medium">₹{item.unitRate.toFixed(2)}</td>
+                          <td className="py-2.5 px-3 text-center">
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={item.discountPercent}
+                              onChange={(e) => updateDiscount(index, Number(e.target.value))}
+                              className="w-14 h-6 text-center font-mono text-xs p-1"
+                            />
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono">
+                            ₹{line.gstAmt.toFixed(2)}
+                            <span className="text-[10px] text-muted-foreground block">({item.gstPercent}%)</span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-bold">
+                            ₹{line.lineTotal.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeFromCart(index)}
+                              className="w-6 h-6 text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right 1 Col: Summary Card & Tender Workspace */}
+        <div className="space-y-4">
+          <Card className="bg-slate-900 text-white shadow-xl">
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Payable</span>
+                <span className="text-3xl font-black font-mono text-emerald-400">
+                  ₹{netAmount.toFixed(2)}
+                </span>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-300">
+                <div className="flex justify-between">
+                  <span>Gross Subtotal</span>
+                  <span className="font-mono">₹{subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-amber-400">
+                  <span>Discount Total</span>
+                  <span className="font-mono">-₹{totalDiscount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Taxable Amount</span>
+                  <span className="font-mono">₹{totalTaxable.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>CGST (Central Tax)</span>
+                  <span className="font-mono">₹{cgstAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>SGST (State Tax)</span>
+                  <span className="font-mono">₹{sgstAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-slate-500">
+                  <span>Round Off</span>
+                  <span className="font-mono">{roundOff >= 0 ? `+₹${roundOff}` : `-₹${Math.abs(roundOff)}`}</span>
+                </div>
+              </div>
+
+              {/* Payment Mode Selector */}
+              <div className="pt-3 border-t border-slate-800 space-y-2">
+                <Label className="text-xs text-slate-400">Payment Mode</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["cash", "upi", "card", "credit"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setPaymentMode(mode)}
+                      className={cn(
+                        "py-2 px-3 rounded-md text-xs font-bold uppercase transition-colors cursor-pointer border",
+                        paymentMode === mode
+                          ? "bg-emerald-600 border-emerald-500 text-white"
+                          : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                onClick={handleCheckout}
+                disabled={cart.length === 0 || invoiceMutation.isPending}
+                className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-base shadow-lg cursor-pointer"
+              >
+                {invoiceMutation.isPending ? (
+                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                ) : (
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                )}
+                Complete Sale (F9)
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Invoice Success & jsPDF Print Dialog */}
+      {completedInvoice && (
+        <Dialog open={!!completedInvoice} onOpenChange={() => setCompletedInvoice(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-emerald-600">
+                <CheckCircle className="w-5 h-5" /> Sale Completed
+              </DialogTitle>
+              <DialogDescription>
+                Invoice #{completedInvoice.invoiceNo} has been generated and stock updated.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4 text-center">
+              <div className="p-4 rounded-lg border bg-slate-50 dark:bg-slate-900/50">
+                <p className="text-xs text-muted-foreground">Net Amount Paid</p>
+                <p className="text-3xl font-bold font-mono mt-1 text-emerald-600">
+                  ₹{Number(completedInvoice.netAmount).toFixed(2)}
+                </p>
+                <Badge variant="outline" className="mt-2 capitalize bg-emerald-50 text-emerald-700 border-emerald-200">
+                  Paid via {completedInvoice.paymentMode}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <Button 
+                  onClick={() => handlePrint(completedInvoice)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Receipt
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => handleDownload(completedInvoice)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download PDF
+                </Button>
+              </div>
+
+              <Button 
+                variant="ghost" 
+                className="w-full text-xs text-muted-foreground" 
+                onClick={() => setCompletedInvoice(null)}
+              >
+                Close & New Bill
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Recent Invoices / Reprint Dialog */}
+      <Dialog open={showRecentInvoices} onOpenChange={setShowRecentInvoices}>
+        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="w-5 h-5 text-emerald-600" />
+              Recent POS Invoices & Reprint
+            </DialogTitle>
+            <DialogDescription>
+              Search past bills, view details, and instantly generate or print receipts with jsPDF.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
+              <Input
+                placeholder="Search by invoice #, customer name or phone..."
+                value={recentSearch}
+                onChange={(e) => setRecentSearch(e.target.value)}
+                className="pl-9 h-9 text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto min-h-[300px] border rounded-lg">
+            {isLoadingRecent ? (
+              <div className="flex items-center justify-center py-20 text-muted-foreground text-xs">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading recent sales...
+              </div>
+            ) : !recentInvoicesData?.data || recentInvoicesData.data.length === 0 ? (
+              <div className="py-20 text-center text-muted-foreground text-xs">
+                No recent invoices found for this store.
+              </div>
+            ) : (
+              <table className="w-full text-xs text-left">
+                <thead className="bg-muted/60 sticky top-0 border-b">
+                  <tr>
+                    <th className="py-2.5 px-3">Invoice #</th>
+                    <th className="py-2.5 px-3">Date & Time</th>
+                    <th className="py-2.5 px-3">Customer</th>
+                    <th className="py-2.5 px-3 text-right">Net Amount</th>
+                    <th className="py-2.5 px-3 text-center">Mode</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {recentInvoicesData.data.map((inv: any) => {
+                    let formattedDate = "";
+                    try {
+                      formattedDate = format(new Date(inv.invoiceDate || inv.createdAt), "dd/MM/yy hh:mm a");
+                    } catch {
+                      formattedDate = String(inv.invoiceDate || "");
+                    }
+
+                    return (
+                      <tr key={inv.id} className="hover:bg-muted/40 transition-colors">
+                        <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200">
+                          {inv.invoiceNo}
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
+                          {formattedDate}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="font-medium">{inv.customerName || "Walk-in"}</div>
+                          {inv.customerPhone && (
+                            <div className="text-[10px] text-muted-foreground">{inv.customerPhone}</div>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600">
+                          ₹{Number(inv.netAmount).toFixed(2)}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Badge variant="outline" className="text-[10px] uppercase">
+                            {inv.paymentMode}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePrint(inv)}
+                              className="h-7 px-2 text-[11px] font-medium"
+                              title="Print Receipt"
+                            >
+                              <Printer className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                              Print
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDownload(inv)}
+                              className="h-7 w-7 p-0"
+                              title="Download PDF"
+                            >
+                              <Download className="w-3.5 h-3.5 text-slate-600" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </ModuleLayout>
+  );
+}

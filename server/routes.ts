@@ -19,6 +19,9 @@ import { offDaysRoutes } from "./routes/off-days.ts";
 import { bankExpensesRoutes } from "./routes/bank-expenses.ts";
 import { bankAccountsRoutes } from "./routes/bank-accounts.ts";
 import { nursingRoutes } from "./routes/nursing.ts";
+import { inventoryRoutes } from "./routes/inventory.ts";
+import { transfersRoutes } from "./routes/transfers.ts";
+import { posRoutes } from "./routes/pos.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
@@ -39,6 +42,9 @@ export const api = new Hono<AuthEnv>()
   .route("/", offDaysRoutes)
   .route("/", bankExpensesRoutes)
   .route("/", bankAccountsRoutes)
-  .route("/", nursingRoutes);
+  .route("/", nursingRoutes)
+  .route("/", inventoryRoutes)
+  .route("/", transfersRoutes)
+  .route("/", posRoutes);
 
 export type AppType = typeof api;

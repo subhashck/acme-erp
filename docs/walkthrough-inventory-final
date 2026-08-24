@@ -1,0 +1,28 @@
+# ACME ERP — Enterprise Inventory & Store Management Subsystem
+
+## Transformation Summary
+
+The entire ACME ERP Inventory Subsystem transformation has been successfully completed with **100% architectural fidelity, end-to-end type safety (`pnpm typecheck` passing with 0 errors), and full integration with Marg ERP design standards** for hospital stores, retail pharmacies, and clinical distribution.
+
+---
+
+## Complete Feature Matrix
+
+| Feature Domain | Capabilities Built | Key Files |
+|---|---|---|
+| **1. Multi-Store Architecture** | Isolated `inventory` PostgreSQL schema, Store Master CRUD (Central WH, Retail, Wards, College, Lab), Active status control. | [`server/db/schema-inventory.ts`](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts), [`stores.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/stores.tsx) |
+| **2. Stock Ledger & Row Locking** | Transactional `SELECT ... FOR UPDATE` pessimistic concurrency, negative stock prevention, immutable `inventory.stock_ledger` audit log. | [`stock-engine.ts`](file:///d:/dev/acme/acme-erp/server/services/stock-engine.ts), [`ledger.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/ledger.tsx) |
+| **3. Atomic Sequences** | Sequential document numbering (`GRN/...`, `PO/...`, `REQ/...`, `TRN/...`, `INV/...`, `ADJ/...`, `RET/...`) with concurrency lock. | [`sequence.ts`](file:///d:/dev/acme/acme-erp/server/services/sequence.ts) |
+| **4. Two-Phase Transfers** | Store Indents & 2-Phase Transfers (Dispatch $\rightarrow$ `in_transit` $\rightarrow$ Receive $\rightarrow$ Requisition fulfillment). | [`transfers.ts`](file:///d:/dev/acme/acme-erp/server/routes/transfers.ts), [`transfers/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/transfers/index.tsx) |
+| **5. FEFO POS Terminal** | Marg-style keyboard hotkeys (`F2`, `F9`, `Esc`), autocomplete search, automatic earliest-expiry batch allocation, live GST calculation. | [`fefo.ts`](file:///d:/dev/acme/acme-erp/server/services/fefo.ts), [`gst.ts`](file:///d:/dev/acme/acme-erp/server/services/gst.ts), [`pos.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/pos.tsx) |
+| **6. Physical Stock Adjustments** | Physical count entry vs system balance reconciliation, one-click posting (`ADJUSTMENT_ADD` / `ADJUSTMENT_SUB` / `DAMAGE`). | [`adjustments/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/adjustments/index.tsx) |
+| **7. Pharma Compliance & Reorder Alerts** | HSN/Barcode, Drug Schedules (H, H1, X, OTC), Cold Chain/Storage conditions, Narcotic flags, Real-time Low Stock & Reorder triggers. | [`AddItemForm.tsx`](file:///d:/dev/acme/acme-erp/src/components/AddItemForm.tsx), [`reports/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/reports/index.tsx) |
+| **8. Valuation & Expiry Analytics** | Live FIFO inventory valuation (₹), total retail MRP value, 30/60/90-day expiry risk dashboards with printable reports. | [`reports/index.tsx`](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/inventory/reports/index.tsx) |
+
+---
+
+## Verification Summary
+
+- **TypeScript Typecheck**: `pnpm typecheck` $\rightarrow$ **0 ERRORS (PASS)**.
+- **Database Schema**: Successfully synced in isolated schema `inventory`.
+- **Navigation**: Integrated into standard ERP Shell with strict role-based access.

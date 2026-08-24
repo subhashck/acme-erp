@@ -1,0 +1,700 @@
+# ACME ERP — Inventory Subsystem Implementation Plan
+
+> Governed by [inventory_implementation_contract.md](file:///d:/dev/acme/acme-erp/docs/inventory_implementation_contract.md)
+
+---
+
+## Overview
+
+Implement a production-grade, multi-store, batch-tracked, FEFO-driven inventory engine with an immutable stock ledger, inter-store transfers, store requisitions, purchase invoice matching, POS billing, and GST compliance — all within a dedicated PostgreSQL `inventory` schema.
+
+The implementation follows 5 sequential phases. Each phase is self-contained and results in a deployable, testable increment.
+
+---
+
+## Phase 1: Core Foundation — Schema, Services, GRN Integration
+
+> **Goal**: Establish the `inventory` PostgreSQL schema, core tables, the `StockEngineService`, the `SequenceNumberService`, and wire GRN posting to create live inventory.
+
+### 1.1 Create Inventory Schema File
+
+#### [NEW] [schema-inventory.ts](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts)
+
+Create a new dedicated schema file for all inventory tables:
+
+- Declare `export const inventorySchema = pgSchema("inventory")`.
+- Define all 8 enums:
+  - `stock_movement_type` (`GRN`, `SALE`, `POS_RETURN`, `TRANSFER_IN`, `TRANSFER_OUT`, `ADJUSTMENT_ADD`, `ADJUSTMENT_SUB`, `DAMAGE`)
+  - `purchase_invoice_status` (`draft`, `verified`, `approved`, `paid`, `partially_paid`, `cancelled`)
+  - `requisition_status` (`draft`, `submitted`, `approved`, `partially_fulfilled`, `fulfilled`, `rejected`)
+  - `requisition_priority` (`normal`, `urgent`, `emergency`)
+  - `transfer_status` (`draft`, `in_transit`, `received`, `cancelled`)
+  - `adjustment_status` (`draft`, `posted`)
+  - `adjustment_type` (`gain`, `loss`, `expired`, `damaged`)
+  - `invoice_payment_mode` (`cash`, `upi`, `card`, `credit`, `mixed`)
+  - `invoice_status` (`completed`, `cancelled`, `refunded`)
+  - `refund_mode` (`cash`, `upi`, `credit_note`)
+- Define **Phase 1 tables** (remaining tables declared but can be empty shells until their phase):
+  - `inventory.stores`
+  - `inventory.store_staff_assignments`
+  - `inventory.item_batches` (unique constraint on `itemId + batchNumber`)
+  - `inventory.store_batch_stock` (unique constraint on `storeId + batchId`)
+  - `inventory.stock_ledger` (append-only, no update/delete)
+  - `inventory.document_sequences` (unique constraint on `code + financialYear`)
+  - `inventory.purchase_invoices` (vendor bills matched against GRNs)
+  - `inventory.purchase_invoice_items` (line-level GST breakdown)
+- Define Drizzle `relations()` for all Phase 1 tables.
+- Cross-schema foreign keys reference `public` tables (e.g., `items.id`, `vendors.id`, `user.id`, `departments.id`).
+
+---
+
+### 1.2 Update Database Configuration
+
+#### [MODIFY] [drizzle.config.ts](file:///d:/dev/acme/acme-erp/drizzle.config.ts)
+
+- Change `schema` from single file to array: `schema: ["./server/db/schema.ts", "./server/db/schema-inventory.ts"]`.
+
+#### [MODIFY] [client.ts](file:///d:/dev/acme/acme-erp/server/db/client.ts)
+
+- Import and spread inventory schema into the Drizzle client:
+  ```typescript
+  import * as schema from "./schema.ts";
+  import * as inventorySchema from "./schema-inventory.ts";
+  export const db = drizzle(pool, { schema: { ...schema, ...inventorySchema } });
+  ```
+
+---
+
+### 1.3 Migrate Unit Columns from Free-Text to FK References
+
+#### [MODIFY] [schema.ts](file:///d:/dev/acme/acme-erp/server/db/schema.ts)
+
+**Problem**: Currently `items.unit`, `items.purchaseUnit`, `items.saleUnit`, `poItems.unit`, `grnItems.unit`, and `itemUnitPrices.unit` store unit names/symbols as free-text strings (e.g., `"box"`, `"pcs"`). This prevents reliable unit conversion lookups and creates data integrity issues (typos, inconsistent casing).
+
+1. **Add new FK columns**:
+   - `items`: `baseUnitId: integer("base_unit_id").notNull().references(() => unitTypes.id)`, `purchaseUnitId: integer("purchase_unit_id").notNull().references(() => unitTypes.id)`, `saleUnitId: integer("sale_unit_id").notNull().references(() => unitTypes.id)`
+   - `poItems`: `unitId: integer("unit_id").notNull().references(() => unitTypes.id)`
+   - `grnItems`: `unitId: integer("unit_id").notNull().references(() => unitTypes.id)`
+   - `itemUnitPrices`: `unitId: integer("unit_id").notNull().references(() => unitTypes.id)`
+
+2. **Data migration script**: Write a migration script that matches existing text values against `unitTypes.symbol` and `unitTypes.name` (case-insensitive) to populate the new FK columns. If any unmatched text unit is found, auto-create a new `unitTypes` record with category `'Count/Quantity'`.
+
+3. **Drop legacy text columns**: Once the migration script verifies all records have valid FK IDs, drop the old text columns (`items.unit`, `items.purchase_unit`, `items.sale_unit`, `po_items.unit`, `grn_items.unit`, `item_unit_prices.unit`).
+
+4. **All new inventory tables** (`stock_requisition_items`, `stock_transfer_items`, `sales_invoice_items`, `purchase_invoice_items`) use `unitId: integer("unit_id").notNull().references(() => unitTypes.id)` from day one — zero free-text unit columns.
+
+> [!IMPORTANT]
+> The database schema and models are updated cleanly to use `unitId` / `purchaseUnitId` / `saleUnitId` FKs. Legacy text unit columns will be completely removed during the migration.
+
+---
+
+### 1.4 Extend Existing `public` Schema Tables
+
+#### [MODIFY] [schema.ts](file:///d:/dev/acme/acme-erp/server/db/schema.ts)
+
+Add new columns to the existing `items` table:
+- `hsnCode: text("hsn_code")`
+- `barcode: text("barcode")`
+- `reorderLevel: numeric("reorder_level", { precision: 12, scale: 3, mode: "number" }).default(0)`
+- `reorderQty: numeric("reorder_qty", { precision: 12, scale: 3, mode: "number" }).default(0)`
+- `drugSchedule: text("drug_schedule")` — values: `H`, `H1`, `X`, `G`, `General`
+- `storageCondition: text("storage_condition")` — values: `Room Temp`, `Cold Chain`, `Frozen`
+- `taxCategory: text("tax_category").default("taxable")` — values: `taxable`, `nil`, `exempt`
+- `isNarcotic: boolean("is_narcotic").default(false)`
+- `allowFractional: boolean("allow_fractional").default(false)`
+- *(FK unit columns added in Step 1.3 above)*
+
+Add new column to the existing `grns` table:
+- `storeId: integer("store_id")` — nullable initially for backward compatibility; becomes required when stores are set up.
+
+Add new column to the existing `grnItems` table:
+- `batchId: integer("batch_id")` — populated by `StockEngineService` when GRN is posted.
+- `unitId: integer("unit_id").references(() => unitTypes.id)` — FK replacing text `unit` column.
+
+> [!IMPORTANT]
+> All new columns are nullable to maintain backward compatibility with existing data. No existing data is at risk.
+
+---
+
+### 1.5 Build Sequence Number Service
+
+#### [NEW] [sequence.ts](file:///d:/dev/acme/acme-erp/server/services/sequence.ts)
+
+Create `server/services/` directory and implement:
+
+```typescript
+export async function generateDocNumber(
+  tx: DrizzleTransaction,
+  code: string,         // e.g. 'GRN', 'INV', 'TRN', 'REQ', 'ADJ'
+  financialYear?: string // auto-computed from current date if omitted
+): Promise<string>
+```
+
+**Algorithm**:
+1. Compute `financialYear` from current date (Indian FY: Apr–Mar, e.g., `"26-27"`).
+2. Execute atomic `UPDATE ... SET current_val = current_val + 1 ... RETURNING *` within the same `tx`.
+3. If no row exists for `(code, financialYear)`, insert a seed row with `currentVal = 1`.
+4. Return formatted string: `{prefix}/{financialYear}/{paddedNumber}` (e.g., `GRN/26-27/00001`).
+
+**Concurrency guarantee**: The `UPDATE ... RETURNING` pattern serializes concurrent calls within the same transaction, eliminating duplicate numbers.
+
+---
+
+### 1.6 Build Stock Engine Service
+
+#### [NEW] [stock-engine.ts](file:///d:/dev/acme/acme-erp/server/services/stock-engine.ts)
+
+Core inventory engine with two public functions:
+
+**`findOrCreateBatch(tx, { itemId, batchNumber, expiryDate, mrp, purchaseRate, saleRate, supplierId, mfgDate, barcode })`**:
+1. Query `inventory.item_batches` for existing match on `(itemId, batchNumber)`.
+2. If found, return existing batch (optionally update prices if changed).
+3. If not found, insert and return new batch row.
+
+**`recordStockMovement(tx, { storeId, itemId, batchId, movementType, referenceType, referenceId, quantityChange, costPrice, salePrice, userId })`**:
+1. Lock target `store_batch_stock` row with `FOR UPDATE`:
+   ```sql
+   SELECT * FROM inventory.store_batch_stock 
+   WHERE store_id = $1 AND batch_id = $2 FOR UPDATE
+   ```
+2. If no row exists and `quantityChange > 0`, create initial row.
+3. Compute `newBalance = currentQtyOnHand + quantityChange`.
+4. **If `quantityChange < 0` and `newBalance < 0`**: throw `400 "Insufficient stock for batch"`.
+5. Update `store_batch_stock`: set `quantityOnHand = newBalance`, `availableQty = newBalance - allocatedQty`.
+6. Insert **immutable** row into `inventory.stock_ledger` with `balanceAfter = newBalance`.
+7. Return the ledger entry.
+
+> [!CAUTION]
+> This function MUST ONLY be called from within an active `db.transaction()`. It does NOT create its own transaction.
+
+---
+
+### 1.7 Integrate GRN Posting with Stock Engine
+
+#### [MODIFY] [purchases.ts](file:///d:/dev/acme/acme-erp/server/routes/purchases.ts)
+
+Modify all three GRN save endpoints (`.post("/purchase-orders/:id/grns")`, `.patch("/purchase-orders/:id/grns/:grnId")`, `.post("/grns")`, `.patch("/grns/:grnId")`) to detect when `status` transitions to `'posted'`:
+
+**On GRN Post (`status === 'posted'`)**:
+1. Require `storeId` on the GRN (return 400 if missing).
+2. For each `grnItem` where `receivedQty > 0`:
+   a. Call `findOrCreateBatch(tx, { itemId, batchNumber: item.batch, expiryDate: item.expiryDate, mrp: item.salePrice, purchaseRate: item.unitRate, saleRate: item.salePrice, supplierId: grn.vendorId })`.
+   b. Write `batchId` back to the `grnItems` row.
+   c. Call `recordStockMovement(tx, { storeId, itemId, batchId, movementType: 'GRN', referenceType: 'GRN', referenceId: grn.id, quantityChange: item.receivedQty + item.freeQty, costPrice: item.unitRate, salePrice: item.salePrice, userId })`.
+3. **Lock posted GRNs**: Add guard at start of PATCH/DELETE handlers — if existing GRN status is `'posted'`, return `400 "Posted GRNs cannot be modified. Use a stock adjustment or purchase return."`.
+
+> [!IMPORTANT]
+> Existing `draft` GRN behavior remains **completely unchanged**. The stock engine only activates on the `draft → posted` transition.
+
+---
+
+### 1.8 Purchase Invoice (Vendor Bill) Schema & Backend
+
+#### Tables defined in [schema-inventory.ts](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts)
+
+**`inventory.purchase_invoices`** — The vendor's bill against one or more GRNs:
+- `id: serial primaryKey`
+- `invoiceNo: text notNull` — The vendor's invoice/bill number (not auto-generated, entered by accounts staff)
+- `invoiceDate: date notNull`
+- `vendorId: integer notNull references public.vendors.id`
+- `grnId: integer references public.grns.id` — Primary GRN this invoice covers (nullable for multi-GRN invoices)
+- `poId: integer references public.purchase_orders.id` — Linked PO if applicable
+- `status: purchase_invoice_status default 'draft'` — (`draft`, `verified`, `approved`, `paid`, `partially_paid`, `cancelled`)
+- `subtotal: numeric(12, 2) notNull default 0`
+- `discountAmount: numeric(12, 2) notNull default 0`
+- `taxableAmount: numeric(12, 2) notNull default 0`
+- `cgstAmount: numeric(12, 2) notNull default 0`
+- `sgstAmount: numeric(12, 2) notNull default 0`
+- `igstAmount: numeric(12, 2) notNull default 0`
+- `tdsAmount: numeric(12, 2) notNull default 0` — TDS deducted at source
+- `roundOff: numeric(12, 2) notNull default 0`
+- `netAmount: numeric(12, 2) notNull default 0` — Final payable after GST + TDS + round-off
+- `creditDays: integer default 0` — Payment terms from vendor
+- `dueDate: date` — Auto-computed as `invoiceDate + creditDays`
+- `paidAmount: numeric(12, 2) notNull default 0` — Running total of payments made
+- `remarks: text`
+- `verifiedBy: text references public.user.id`
+- `approvedBy: text references public.user.id`
+- `createdBy: text references public.user.id`
+- `createdAt, updatedAt`
+
+**`inventory.purchase_invoice_items`** — Line-level detail with GST breakdown:
+- `id: serial primaryKey`
+- `invoiceId: integer notNull references inventory.purchase_invoices.id onDelete cascade`
+- `itemId: integer notNull references public.items.id`
+- `grnItemId: integer references public.grn_items.id` — Links to specific GRN line for 3-way matching
+- `quantity: numeric(12, 3) notNull`
+- `unitId: integer references public.unit_types.id` — FK to unit master
+- `unitRate: numeric(12, 2) notNull`
+- `discountPercent: numeric(5, 2) default 0`
+- `discountAmount: numeric(12, 2) default 0`
+- `taxableAmount: numeric(12, 2) notNull`
+- `hsnCode: text`
+- `gstPercent: numeric(5, 2) notNull default 0`
+- `cgstAmount: numeric(12, 2) notNull default 0`
+- `sgstAmount: numeric(12, 2) notNull default 0`
+- `igstAmount: numeric(12, 2) notNull default 0`
+- `totalAmount: numeric(12, 2) notNull`
+
+**`inventory.purchase_invoice_payments`** — Payment tracking against vendor invoices:
+- `id: serial primaryKey`
+- `invoiceId: integer notNull references inventory.purchase_invoices.id onDelete cascade`
+- `paymentDate: date notNull`
+- `amount: numeric(12, 2) notNull`
+- `paymentMode: payment_mode notNull` — (`cash`, `upi`, `rtgs`, `cheque`, `card`, `other`)
+- `referenceNo: text` — Cheque/UTR/transaction reference
+- `remarks: text`
+- `createdBy: text references public.user.id`
+- `createdAt`
+
+#### Backend Endpoints (in `server/routes/inventory.ts`)
+
+Purchase invoice routes are integrated directly into the `inventory.ts` router under `/inventory/purchase-invoices`:
+
+- `POST /inventory/purchase-invoices` — Create draft invoice (link to vendor, GRN, PO; add line items)
+- `GET /inventory/purchase-invoices` — List with filters (`?vendorId=&status=&dateFrom=&dateTo=&page=&pageSize=`)
+- `GET /inventory/purchase-invoices/:id` — Detail with items and payment history
+- `PATCH /inventory/purchase-invoices/:id` — Update draft invoice
+- `PATCH /inventory/purchase-invoices/:id/verify` — Mark as verified (3-way match: PO qty vs GRN qty vs invoice qty)
+- `PATCH /inventory/purchase-invoices/:id/approve` — Approve for payment
+- `POST /inventory/purchase-invoices/:id/payments` — Record payment against invoice
+- `DELETE /inventory/purchase-invoices/:id` — Delete (only if `draft`)
+- `GET /inventory/purchase-invoices/pending` — List invoices due/overdue for payment
+
+**3-Way Matching Logic** (on verify):
+1. For each invoice line item, compare `invoiceQty` against `grnItem.receivedQty` and `poItem.orderedQty`.
+2. Flag mismatches (over-billed, under-billed) but allow verification with remarks.
+3. Auto-populate invoice items from GRN items when creating from a GRN.
+
+> [!IMPORTANT]
+> **Decoupled from Accounts Module**: Purchase Invoices and invoice payments remain contained strictly within the Inventory/Purchasing workflow (for 3-way matching, vendor liability tracking, and purchase auditing). They do **NOT** generate entries in `bankExpenses`, `expenditures`, or daily financial closing reports.
+
+---
+
+### 1.9 Update Frontend Forms for Unit FK Migration
+
+#### [MODIFY] [AddItemForm.tsx](file:///d:/dev/acme/acme-erp/src/components/AddItemForm.tsx)
+
+- Change `purchaseUnit` and `saleUnit` form fields from storing text symbols to storing `unitTypes.id` (integer FK).
+- Update the `<Select>` options to use `[String(u.id), \`${u.name} (${u.symbol})\`]` instead of `[u.symbol, ...]`.
+- Update the `purToSaleFactor` calculation to look up conversions by `unitTypes.id` directly (no more fuzzy symbol/name matching).
+- Backend POST/PATCH endpoints for items write `purchaseUnitId`, `saleUnitId`, `baseUnitId` to the new FK columns.
+
+#### [MODIFY] [POForm.tsx](file:///d:/dev/acme/acme-erp/src/components/POForm.tsx)
+
+- Change PO item `unit` field to store `unitId` (FK to `unitTypes.id`).
+- Display unit name/symbol via joined data.
+
+#### [MODIFY] GRN form components
+
+- Change GRN item `unit` field to store `unitId` (FK to `unitTypes.id`).
+- Display unit name/symbol via joined data.
+
+---
+
+### 1.10 Backend Inventory Routes (Phase 1 Endpoints)
+
+#### [NEW] [inventory.ts](file:///d:/dev/acme/acme-erp/server/routes/inventory.ts)
+
+Create a new Hono sub-router with the following Phase 1 endpoints:
+
+**Stores CRUD**:
+- `GET /inventory/stores` — List all stores (with optional `?active=true` filter)
+- `POST /inventory/stores` — Create store (Zod: `{ name, code, type, departmentId?, location?, isDefault? }`)
+- `PATCH /inventory/stores/:id` — Update store
+- `DELETE /inventory/stores/:id` — Soft-delete (set `active = false`)
+
+**Store Staff Assignments**:
+- `GET /inventory/stores/:storeId/staff` — List assigned staff for a store
+- `POST /inventory/stores/:storeId/staff` — Assign staff to store
+- `PATCH /inventory/store-staff/:id` — Update assignment permissions
+- `DELETE /inventory/store-staff/:id` — Remove assignment
+
+**Stock Inquiry**:
+- `GET /inventory/stock` — Query current stock with filters: `?storeId=&itemId=&search=&page=&pageSize=&expiringBefore=`
+  - Joins `store_batch_stock` → `item_batches` → `items` → `item_types`
+  - Returns batch-level detail: item name, batch number, expiry date, MRP, qty on hand, available qty
+- `GET /inventory/stock/summary` — Aggregated store-level item stock (sum across batches)
+- `GET /inventory/ledger` — Query immutable ledger with filters: `?storeId=&itemId=&batchId=&movementType=&dateFrom=&dateTo=&page=&pageSize=`
+
+#### [MODIFY] [routes.ts](file:///d:/dev/acme/acme-erp/server/routes.ts)
+
+- Import `inventoryRoutes` from `./routes/inventory.ts`.
+- Mount: `.route("/", inventoryRoutes)`.
+
+---
+
+### 1.11 Seed Document Sequences
+
+#### [NEW] [seed-inventory.ts](file:///d:/dev/acme/acme-erp/server/db/seed-inventory.ts)
+
+Script to seed initial document sequence rows for the current financial year:
+
+```
+GRN  | GRN  | 26-27 | 0 | 5
+INV  | INV  | 26-27 | 0 | 5
+TRN  | TRN  | 26-27 | 0 | 5
+REQ  | REQ  | 26-27 | 0 | 5
+ADJ  | ADJ  | 26-27 | 0 | 5
+RET  | RET  | 26-27 | 0 | 5
+PIN  | PIN  | 26-27 | 0 | 5   (Purchase Invoice internal reference)
+```
+
+---
+
+### Phase 1 Verification
+
+- [ ] Run `drizzle-kit push` — verify `inventory` schema and all Phase 1 tables are created without errors.
+- [ ] Verify new FK unit columns (`purchaseUnitId`, `saleUnitId`, `baseUnitId`, `unitId`) exist alongside old text columns.
+- [ ] Run unit migration script — verify existing items' text unit values are matched to `unitTypes` FK IDs.
+- [ ] Create a new item via AddItemForm — verify `purchaseUnitId` and `saleUnitId` are saved as integer FKs.
+- [ ] Create a Store via `POST /inventory/stores`.
+- [ ] Create a PO → Create a GRN in `draft` status → Edit freely → Post GRN (`status: 'posted'`) → Verify:
+  - `inventory.item_batches` rows created.
+  - `inventory.store_batch_stock` rows created with correct quantities.
+  - `inventory.stock_ledger` rows created with `movementType = 'GRN'` and correct `balanceAfter`.
+- [ ] Attempt to edit/delete a posted GRN → Verify 400 error returned.
+- [ ] Create a direct GRN (no PO) with `status: 'posted'` → Verify stock created.
+- [ ] Verify sequence numbers are unique and gap-free under concurrent requests.
+- [ ] Create a Purchase Invoice linked to a posted GRN → verify line items auto-populate from GRN items.
+- [ ] Verify 3-way match (PO qty vs GRN qty vs Invoice qty) flags mismatches.
+- [ ] Record a payment against the invoice → verify `paidAmount` updates and status changes to `paid`/`partially_paid`.
+
+---
+
+## Phase 2: Stock Inquiry UI & Store Management
+
+> **Goal**: Build the frontend Store Master management screens and live stock inquiry dashboard.
+
+### 2.1 Frontend Route Structure
+
+#### [NEW] Frontend files under `src/routes/_authenticated/inventory/`:
+
+- `stores.tsx` — Store master list + create/edit dialog
+- `stock.tsx` — Live stock inquiry (search, filter by store/item/type, batch-level detail, expiry highlighting)
+- `ledger.tsx` — Immutable stock ledger viewer (filterable, read-only)
+
+### 2.2 Shell Navigation
+
+#### [MODIFY] [Shell.tsx](file:///d:/dev/acme/acme-erp/src/components/Shell.tsx)
+
+- Add "Inventory" collapsible section to sidebar navigation:
+  - Stores
+  - Live Stock
+  - Stock Ledger
+  - Purchase Invoices
+  - (Placeholders for future phases: Requisitions, Transfers, Adjustments, POS)
+
+### 2.3 Permissions Extension
+
+#### [MODIFY] [permissions.ts](file:///d:/dev/acme/acme-erp/src/lib/permissions.ts)
+
+- Add `canViewInventory` (admin or staff assigned to any store).
+- Add `canManageStores` (admin only for now).
+
+#### [MODIFY] [shared.ts](file:///d:/dev/acme/acme-erp/server/routes/shared.ts)
+
+- Add `hasInventoryAccess(c)` — check if user is admin or has an active `store_staff_assignments` row.
+- Add `requireInventoryAccess` middleware.
+- Add `hasStoreAccess(c, storeId)` — verify user has assignment on specific store.
+
+### 2.4 GRN Form Enhancement
+
+#### [MODIFY] GRN form components (`src/routes/_authenticated/purchases/grns/new.tsx`, `$grnId_.edit.tsx`)
+
+- Add `storeId` dropdown (populated from `GET /inventory/stores?active=true`) to the GRN form.
+- Make `storeId` required when posting (status = `posted`).
+- Show posted GRNs as read-only (no edit button).
+
+### 2.5 Purchase Invoice UI
+
+#### [NEW] Frontend files under `src/routes/_authenticated/inventory/purchase-invoices/`:
+
+- `src/routes/_authenticated/inventory/purchase-invoices/index.tsx` — List of vendor invoices with status badges, filtering by vendor/status/date range, overdue highlighting.
+- `src/routes/_authenticated/inventory/purchase-invoices/new.tsx` — Create invoice form:
+  - Select vendor → auto-suggest unmatched GRNs for that vendor.
+  - "Import from GRN" button to auto-populate line items (qty, unit, rate, GST) from GRN items.
+  - Manual entry of vendor's invoice number, invoice date, credit terms.
+  - Line-item GST editing (CGST/SGST/IGST) with HSN codes.
+  - 3-way match summary panel: PO ordered qty ↔ GRN received qty ↔ Invoice billed qty with mismatch indicators.
+  - TDS deduction field.
+- `src/routes/_authenticated/inventory/purchase-invoices/$id.tsx` — Invoice detail view:
+  - Invoice header with vendor details, linked PO/GRN references.
+  - Line items table with GST breakdown.
+  - Payment history tab with "Record Payment" dialog.
+  - Status timeline (Draft → Verified → Approved → Paid).
+  - Print/PDF export for vendor invoice copy.
+
+### Phase 2 Verification
+
+- [ ] Stores CRUD works from UI (create, edit, soft-delete).
+- [ ] Live Stock page shows batch-level inventory with expiry date color coding (green > 6mo, yellow 3-6mo, red < 3mo).
+- [ ] Ledger page shows complete audit trail for any item/store.
+- [ ] GRN form includes store selector; posting requires store selection.
+- [ ] Navigation sidebar shows Inventory section.
+- [ ] Purchase Invoice list page shows vendor invoices with status, amounts, due dates.
+- [ ] Create invoice from GRN → verify auto-population of items, 3-way match display.
+- [ ] Record payment against invoice → verify status transitions.
+- [ ] Overdue invoices highlighted correctly.
+
+---
+
+## Phase 3: Requisitions & Inter-Store Transfers
+
+> **Goal**: Implement department indents and two-phase stock transfers.
+
+### 3.1 Schema Activation
+
+Activate the following tables in `schema-inventory.ts` (defined in Phase 1 as stubs):
+- `inventory.stock_requisitions`
+- `inventory.stock_requisition_items`
+- `inventory.stock_transfers`
+- `inventory.stock_transfer_items`
+
+### 3.2 Backend Routes
+
+#### [NEW] `server/routes/transfers.ts` (or extend `inventory.ts`)
+
+**Requisitions**:
+- `POST /inventory/requisitions` — Create indent (requesting store → fulfilling store)
+- `GET /inventory/requisitions` — List with filters (`?status=&storeId=&page=`)
+- `GET /inventory/requisitions/:id` — Detail with items
+- `PATCH /inventory/requisitions/:id/approve` — Approve with quantities
+- `PATCH /inventory/requisitions/:id/reject` — Reject
+
+**Transfers**:
+- `POST /inventory/transfers` — Create transfer (optionally linked to requisition)
+- `GET /inventory/transfers` — List with filters
+- `GET /inventory/transfers/:id` — Detail with items
+- `PATCH /inventory/transfers/:id/dispatch` — Dispatch:
+  - For each transfer item, call `recordStockMovement(tx, { storeId: fromStoreId, ..., movementType: 'TRANSFER_OUT', quantityChange: -qty })`.
+  - Set status to `in_transit`, record `dispatchedAt`.
+- `PATCH /inventory/transfers/:id/receive` — Receive:
+  - For each transfer item, call `recordStockMovement(tx, { storeId: toStoreId, ..., movementType: 'TRANSFER_IN', quantityChange: +qty })`.
+  - Set status to `received`, record `receivedAt`.
+  - Update requisition fulfillment quantities if linked.
+- `PATCH /inventory/transfers/:id/cancel` — Cancel (only if `draft`)
+
+### 3.3 Frontend Pages
+
+- `src/routes/_authenticated/inventory/requisitions/index.tsx` — List
+- `src/routes/_authenticated/inventory/requisitions/new.tsx` — Create indent form
+- `src/routes/_authenticated/inventory/requisitions/$id.tsx` — Detail + approve/reject
+- `src/routes/_authenticated/inventory/transfers/index.tsx` — List
+- `src/routes/_authenticated/inventory/transfers/new.tsx` — Create transfer (pick items + batches from source store)
+- `src/routes/_authenticated/inventory/transfers/$id.tsx` — Detail + dispatch/receive actions
+
+### Phase 3 Verification
+
+- [ ] Create requisition from Ward Store → Central Store.
+- [ ] Approve requisition with adjusted quantities.
+- [ ] Create transfer linked to requisition, selecting specific batches.
+- [ ] Dispatch transfer → verify `TRANSFER_OUT` ledger entries, source stock decremented.
+- [ ] Receive transfer → verify `TRANSFER_IN` ledger entries, destination stock incremented.
+- [ ] Verify stock cannot go negative during dispatch (block if insufficient).
+- [ ] Verify cancelled transfers do not create ledger entries.
+
+---
+
+## Phase 4: POS Billing, FEFO & GST
+
+> **Goal**: Build Marg ERP–style fast POS terminal with automatic FEFO batch selection and GST invoice generation.
+
+### 4.1 FEFO Allocation Service
+
+#### [NEW] [fefo.ts](file:///d:/dev/acme/acme-erp/server/services/fefo.ts)
+
+```typescript
+export async function allocateBatchesFefo(
+  tx: DrizzleTransaction,
+  storeId: number,
+  itemId: number,
+  requiredQty: number
+): Promise<{ batchId: number; quantity: number; unitRate: number; mrp: number; expiryDate: string }[]>
+```
+
+**Algorithm**:
+1. Query `store_batch_stock` JOIN `item_batches` WHERE `storeId = ?` AND `itemId = ?` AND `availableQty > 0` AND `expiryDate > today`.
+2. ORDER BY `expiryDate ASC, item_batches.id ASC` (FEFO).
+3. Iterate and allocate from earliest-expiring batches first until `requiredQty` is satisfied.
+4. If total available < required, throw `400 "Insufficient stock"`.
+5. Return allocation breakdown array.
+
+### 4.2 GST Calculation Service
+
+#### [NEW] [gst.ts](file:///d:/dev/acme/acme-erp/server/services/gst.ts)
+
+- Compute per-line: `taxableAmount = (qty × unitRate) - discountAmount`.
+- Split GST: `cgst = taxableAmount × (gstPercent / 2) / 100`, `sgst = same` (intrastate).
+- Invoice-level: sum all lines, compute `roundOff` to nearest rupee.
+
+### 4.3 Schema Activation
+
+Activate:
+- `inventory.sales_invoices`
+- `inventory.sales_invoice_items`
+- `inventory.sales_returns`
+- `inventory.sales_return_items`
+
+### 4.4 Backend POS Routes
+
+#### [NEW] `server/routes/pos.ts`
+
+- `POST /inventory/pos/invoices` — Create sale invoice:
+  1. For each item, call `allocateBatchesFefo()` to determine batch allocation.
+  2. Compute GST per line via `GstCalculationService`.
+  3. For each allocated batch, call `recordStockMovement(tx, { movementType: 'SALE', quantityChange: -qty })`.
+  4. Insert invoice header + items.
+  5. Generate invoice number via `generateDocNumber(tx, 'INV')`.
+- `GET /inventory/pos/invoices` — List invoices with pagination and filters
+- `GET /inventory/pos/invoices/:id` — Invoice detail
+- `POST /inventory/pos/returns` — Process return:
+  1. For each return item, call `recordStockMovement(tx, { movementType: 'POS_RETURN', quantityChange: +qty })`.
+  2. Generate return number via `generateDocNumber(tx, 'RET')`.
+- `GET /inventory/pos/item-search` — Fast item search endpoint (by name, barcode, or code) returning available stock per store with batch details.
+
+### 4.5 Frontend POS Terminal
+
+#### [NEW] `src/routes/_authenticated/inventory/pos.tsx`
+
+Marg ERP–inspired design:
+- **Header**: Store selector, invoice date, customer name/phone (optional), doctor name.
+- **Fast item entry**: Text input with instant search (debounced 200ms). Barcode scan auto-populates.
+- **Item grid**: Item name, batch (auto-selected FEFO), qty, unit, rate, disc%, GST%, amount.
+- **Keyboard shortcuts**: `F2` = new item search, `Enter` = add to cart, `Esc` = clear, `F9` = tender/save.
+- **Tender modal**: Payment mode selector, amount tendered, change calculation.
+- **Invoice footer**: Subtotal, Discount, CGST, SGST, Round Off, Net Amount.
+- **Print**: CSS `@media print` layout for 80mm thermal receipt and A4 GST invoice.
+
+### Phase 4 Verification
+
+- [ ] FEFO correctly picks earliest-expiring batch first.
+- [ ] Selling more than available stock throws an error.
+- [ ] GST splits correctly into CGST + SGST at item level.
+- [ ] Invoice number generated sequentially without gaps.
+- [ ] Return adds stock back to correct batch.
+- [ ] POS keyboard shortcuts work (F2, Enter, Esc, F9).
+- [ ] Print preview renders correctly for thermal and A4.
+
+---
+
+## Phase 5: Stock Adjustments, Physical Verification & Reports
+
+> **Goal**: Physical stock counting, variance write-offs, and inventory analytics.
+
+### 5.1 Schema Activation
+
+Activate:
+- `inventory.stock_adjustments`
+- `inventory.stock_adjustment_items`
+
+### 5.2 Backend Endpoints
+
+Extend `server/routes/inventory.ts`:
+- `POST /inventory/adjustments` — Create draft adjustment for a store.
+- `GET /inventory/adjustments` — List adjustments.
+- `GET /inventory/adjustments/:id` — Detail with items.
+- `PATCH /inventory/adjustments/:id` — Update items (only in `draft`).
+- `POST /inventory/adjustments/:id/post` — Post adjustment:
+  - For each item where `differenceQty !== 0`:
+    - If `differenceQty > 0` → `recordStockMovement(tx, { movementType: 'ADJUSTMENT_ADD' })`
+    - If `differenceQty < 0` → `recordStockMovement(tx, { movementType: 'ADJUSTMENT_SUB' })`
+
+### 5.3 Frontend Pages
+
+- `src/routes/_authenticated/inventory/adjustments/index.tsx` — List
+- `src/routes/_authenticated/inventory/adjustments/new.tsx` — Create (select store, scan/add items, enter physical counts)
+- `src/routes/_authenticated/inventory/adjustments/$id.tsx` — Detail + post action
+
+### 5.4 Reports
+
+- `GET /inventory/reports/stock-valuation` — Current stock value (qty × cost price) grouped by item/store.
+- `GET /inventory/reports/expiry-alert` — Items expiring within N days.
+- `GET /inventory/reports/movement-summary` — Period movement summary (inward vs outward).
+- `GET /inventory/reports/fast-slow-moving` — ABC analysis by movement velocity.
+
+### Phase 5 Verification
+
+- [ ] Physical verification captures system vs physical quantities.
+- [ ] Posting adjustment creates correct ledger entries.
+- [ ] Reports return accurate aggregated data.
+- [ ] Expiry alert correctly identifies at-risk batches.
+
+---
+
+## Cross-Cutting Concerns (All Phases)
+
+### Files Modified Across Multiple Phases
+
+| File | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
+|---|---|---|---|---|---|
+| `server/db/schema-inventory.ts` | Create (incl. purchase invoices) | — | — | — | — |
+| `server/db/schema.ts` | Add columns + unit FK migration | — | — | — | — |
+| `server/db/client.ts` | Add schema import | — | — | — | — |
+| `drizzle.config.ts` | Add schema path | — | — | — | — |
+| `server/routes.ts` | Mount inventory + invoices | Mount POS | — | — | — |
+| `server/routes/purchases.ts` | GRN posting | — | — | — | — |
+| `server/routes/shared.ts` | — | Add guards | — | — | — |
+| `src/lib/permissions.ts` | — | Add perms | — | — | — |
+| `src/components/Shell.tsx` | — | Add nav | — | — | — |
+| `src/components/AddItemForm.tsx` | Unit FK migration | — | — | — | — |
+| `src/components/POForm.tsx` | Unit FK migration | — | — | — | — |
+| GRN form components | Unit FK migration | Store selector | — | — | — |
+
+### Do NOT Touch
+
+- `server/auth.ts`
+- `src/services/auth.ts`
+- `server/routes/nursing.ts` and all nursing/college frontend
+- `server/routes/payroll.ts`, `staff.ts`, `leaves.ts`, `attendance.ts`, `roster.ts`
+- `server/routes/daily-closing.ts`, `monthly-report.ts`
+- All `src/routes/_authenticated/college/`, `hr/`, `accounts/`, `admin/`, `masters/`
+- `server/db/seed.ts` (existing seed data)
+
+> [!NOTE]
+> The unit conversion engine tables (`unitTypes`, `unitConversions`) and their UI (`unit-types.tsx`) are **not being rewritten** — they remain as-is. However, consuming code (item forms, PO forms, GRN forms) is updated to reference `unitTypes.id` via FK columns instead of free-text unit strings.
+
+---
+
+## Open Questions
+
+> [!IMPORTANT]
+> **Q1: Item Master Columns — Additive or Breaking?**
+> The plan adds 9 new nullable columns to `public.items`. This is purely additive and won't break existing item create/edit flows. The existing items form should be extended in Phase 2 to expose these fields. **Confirm this approach is acceptable.**
+
+> [!IMPORTANT]
+> **Q2: Store Selection on GRN — Default Store?**
+> When posting a GRN, should the system auto-select a "default" store if only one exists, or always require explicit selection? The plan currently requires explicit selection.
+
+> [!IMPORTANT]
+> **Q3: Existing GRN Numbering Migration**
+> The contract calls for `inventory.document_sequences` for new document numbers. Existing GRN numbers (`GRN00001-26`) use a different format. Should existing GRN numbering be migrated to the new format (`GRN/26-27/00001`), or keep the old format for existing records and only apply the new format to future GRNs?
+
+> [!IMPORTANT]
+> **Q4: POS Phase — Dedicated Route File?**
+> Phase 4 POS routes are proposed as `server/routes/pos.ts` (separate from `inventory.ts`). Alternatively, they could live inside `inventory.ts`. **Confirm preference for separate file for clarity.**
+
+> [!NOTE]
+> **Resolved Decisions**:
+> - **Unit FK Migration**: Legacy text unit columns will be dropped during migration after converting existing values to FK IDs (auto-creating any missing units in `unitTypes`).
+> - **Purchase Invoices Location**: Placed in `server/routes/inventory.ts` on backend and `src/routes/_authenticated/inventory/purchase-invoices/` on frontend under the Inventory navigation.
+> - **Accounts Separation**: Purchase Invoices are completely isolated from Accounts / daily closing reports.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Verify Phase 1 with targeted test scripts:
+  ```bash
+  pnpm tsx server/tests/stock-engine.test.ts   # Concurrent stock movement test
+  pnpm tsx server/tests/sequence.test.ts        # Concurrent sequence generation test
+  ```
+
+### Manual Verification
+- After each phase: run `pnpm dev`, navigate to Inventory module, and manually verify:
+  - Phase 1: Post GRN → check `inventory.*` tables via Drizzle Studio (`pnpm db:studio`)
+  - Phase 2: Full UI walkthrough of Stores, Stock, Ledger
+  - Phase 3: End-to-end requisition → transfer → receive flow
+  - Phase 4: POS billing with FEFO allocation, print verification
+  - Phase 5: Physical count → adjustment → ledger verification

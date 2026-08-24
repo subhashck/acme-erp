@@ -12,7 +12,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { db } from "./client.ts";
+import { db } from "../client.ts";
 
 interface OldRosterRow {
   id: number;
@@ -143,8 +143,7 @@ async function migrate() {
         const batch = expanded.slice(i, i + BATCH_SIZE);
         const valueParts = batch.map(
           (r) =>
-            `(${r.staffId}, ${r.departmentId}, ${r.shiftId}, '${r.date}', ${
-              r.notes ? `'${r.notes.replace(/'/g, "''")}'` : "NULL"
+            `(${r.staffId}, ${r.departmentId}, ${r.shiftId}, '${r.date}', ${r.notes ? `'${r.notes.replace(/'/g, "''")}'` : "NULL"
             }, '${r.createdAt}', '${r.updatedAt}')`
         );
 

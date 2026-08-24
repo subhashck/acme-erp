@@ -1,4 +1,4 @@
-import { pool } from "./client.ts";
+import { pool } from "../client.ts";
 
 async function migrate() {
   console.log("Applying database migration for father_deceased and mother_deceased...");

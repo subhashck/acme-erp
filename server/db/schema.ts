@@ -976,12 +976,21 @@ export const items = sqliteTable("items", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   itemTypeId: integer("item_type_id").notNull().references(() => itemTypes.id),
-  unit: text("unit").notNull(),
-  purchaseUnit: text("purchase_unit"),
-  saleUnit: text("sale_unit"),
+  baseUnitId: integer("base_unit_id").notNull().references(() => unitTypes.id),
+  purchaseUnitId: integer("purchase_unit_id").notNull().references(() => unitTypes.id),
+  saleUnitId: integer("sale_unit_id").notNull().references(() => unitTypes.id),
   rate: numeric("rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  hsnCode: text("hsn_code"),
+  barcode: text("barcode"),
+  reorderLevel: numeric("reorder_level", { precision: 12, scale: 3, mode: "number" }).default(0),
+  reorderQty: numeric("reorder_qty", { precision: 12, scale: 3, mode: "number" }).default(0),
+  drugSchedule: text("drug_schedule"),
+  storageCondition: text("storage_condition"),
+  taxCategory: text("tax_category").default("taxable"),
+  isNarcotic: boolean("is_narcotic").default(false),
+  allowFractional: boolean("allow_fractional").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
 });
@@ -989,7 +998,7 @@ export const items = sqliteTable("items", {
 export const itemUnitPrices = sqliteTable("item_unit_prices", {
   id: serial("id").primaryKey(),
   itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
-  unit: text("unit").notNull(),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
   costPrice: numeric("cost_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   conversionFactor: numeric("conversion_factor", { precision: 12, scale: 6, mode: "number" }).notNull().default(1),
@@ -1004,11 +1013,15 @@ export const itemTypesRelations = relations(itemTypes, ({ many }) => ({
 
 export const itemsRelations = relations(items, ({ one, many }) => ({
   itemType: one(itemTypes, { fields: [items.itemTypeId], references: [itemTypes.id] }),
+  baseUnit: one(unitTypes, { fields: [items.baseUnitId], references: [unitTypes.id], relationName: "baseUnit" }),
+  purchaseUnit: one(unitTypes, { fields: [items.purchaseUnitId], references: [unitTypes.id], relationName: "purchaseUnit" }),
+  saleUnit: one(unitTypes, { fields: [items.saleUnitId], references: [unitTypes.id], relationName: "saleUnit" }),
   unitPrices: many(itemUnitPrices),
 }));
 
 export const itemUnitPricesRelations = relations(itemUnitPrices, ({ one }) => ({
   item: one(items, { fields: [itemUnitPrices.itemId], references: [items.id] }),
+  unit: one(unitTypes, { fields: [itemUnitPrices.unitId], references: [unitTypes.id] }),
 }));
 
 
@@ -1054,7 +1067,7 @@ export const poItems = sqliteTable("po_items", {
   poId: integer("po_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
   itemName: text("item_name").notNull(),
   category: text("category"),
-  unit: text("unit"),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
   orderedQty: numeric("ordered_qty", { precision: 12, scale: 2, mode: "number" }).notNull(),
   unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }).notNull(),
   gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
@@ -1068,6 +1081,7 @@ export const grns = sqliteTable("grns", {
   id: serial("id").primaryKey(),
   poId: integer("po_id").references(() => purchaseOrders.id),
   vendorId: integer("vendor_id").references(() => vendors.id),
+  storeId: integer("store_id"),
   noPoReason: text("no_po_reason"),
   grnNo: text("grn_no").unique().notNull(),
   grnDate: date("grn_date").notNull(),
@@ -1083,8 +1097,9 @@ export const grnItems = sqliteTable("grn_items", {
   grnId: integer("grn_id").notNull().references(() => grns.id, { onDelete: "cascade" }),
   poItemId: integer("po_item_id").references(() => poItems.id),
   itemId: integer("item_id").references(() => items.id),
+  batchId: integer("batch_id"),
   itemName: text("item_name"),
-  unit: text("unit"),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
   receivedQty: numeric("received_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   freeQty: numeric("free_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }),
@@ -1123,6 +1138,7 @@ export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many })
 
 export const poItemsRelations = relations(poItems, ({ one, many }) => ({
   purchaseOrder: one(purchaseOrders, { fields: [poItems.poId], references: [purchaseOrders.id] }),
+  unit: one(unitTypes, { fields: [poItems.unitId], references: [unitTypes.id] }),
   grnItems: many(grnItems),
 }));
 
@@ -1137,6 +1153,7 @@ export const grnItemsRelations = relations(grnItems, ({ one }) => ({
   grn: one(grns, { fields: [grnItems.grnId], references: [grns.id] }),
   poItem: one(poItems, { fields: [grnItems.poItemId], references: [poItems.id] }),
   item: one(items, { fields: [grnItems.itemId], references: [items.id] }),
+  unit: one(unitTypes, { fields: [grnItems.unitId], references: [unitTypes.id] }),
 }));
 
 export const poPaymentsRelations = relations(poPayments, ({ one }) => ({

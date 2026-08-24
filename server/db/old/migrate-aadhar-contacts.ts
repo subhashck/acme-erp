@@ -1,4 +1,4 @@
-import { pool } from "./client.ts";
+import { pool } from "../client.ts";
 
 async function migrate() {
   console.log("Applying database migration for Aadhar and Contact Numbers in nursing_applicants and nursing_students...");

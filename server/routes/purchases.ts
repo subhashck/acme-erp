@@ -16,11 +16,129 @@ import {
   unitConversions,
   itemUnitPrices,
 } from "../db/schema.ts";
+import { stores } from "../db/schema-inventory.ts";
+import { generateDocNumber } from "../services/sequence.ts";
+import { findOrCreateBatch, recordStockMovement } from "../services/stock-engine.ts";
 import { idParam, jsonBody, requireAdmin } from "./shared.ts";
 import { z } from "zod";
 import { recalculatePoStatus, toNum } from "../utils/poStatus.ts";
 
 const app = new Hono<AuthEnv>();
+
+// Helper to resolve unitId from either numeric FK or string symbol/name
+async function resolveUnitId(tx: any, unitId?: number | null, unitStr?: string | null): Promise<number> {
+  if (unitId && typeof unitId === "number" && unitId > 0) return unitId;
+  if (unitStr && typeof unitStr === "string" && unitStr.trim()) {
+    const clean = unitStr.trim();
+    const [found] = await tx
+      .select({ id: unitTypes.id })
+      .from(unitTypes)
+      .where(sql`lower(${unitTypes.symbol}) = lower(${clean}) or lower(${unitTypes.name}) = lower(${clean})`)
+      .limit(1);
+    if (found) return found.id;
+  }
+  const [first] = await tx.select({ id: unitTypes.id }).from(unitTypes).limit(1);
+  return first?.id || 1;
+}
+
+// Helper for processing stock updates when a GRN is posted
+async function processGrnPosting(
+  tx: any,
+  grnId: number,
+  inputStoreId: number | null | undefined,
+  vendorId: number | null | undefined,
+  itemsInput: any[],
+  userId: string | null | undefined
+) {
+  let targetStoreId = inputStoreId;
+  if (!targetStoreId) {
+    const defaultStore = await tx
+      .select({ id: stores.id })
+      .from(stores)
+      .where(eq(stores.isDefault, true))
+      .limit(1)
+      .then((r: any) => r[0]?.id);
+    const anyStore = defaultStore || await tx
+      .select({ id: stores.id })
+      .from(stores)
+      .limit(1)
+      .then((r: any) => r[0]?.id);
+    targetStoreId = anyStore;
+  }
+
+  if (!targetStoreId) {
+    throw new Error("Target store is required to post a GRN. Please create a store first.");
+  }
+
+  for (const item of itemsInput) {
+    let resolvedItemId = item.itemId;
+
+    if (!resolvedItemId && item.poItemId) {
+      const [poItem] = await tx.select({ itemName: poItems.itemName }).from(poItems).where(eq(poItems.id, item.poItemId));
+      if (poItem) {
+        const [matchedItem] = await tx.select({ id: items.id }).from(items).where(eq(items.name, poItem.itemName));
+        if (matchedItem) resolvedItemId = matchedItem.id;
+      }
+    }
+
+    if (!resolvedItemId && item.itemName) {
+      const [matchedItem] = await tx.select({ id: items.id }).from(items).where(eq(items.name, item.itemName));
+      if (matchedItem) resolvedItemId = matchedItem.id;
+    }
+
+    const totalQty = (item.receivedQty || 0) + (item.freeQty || 0);
+
+    let batchId: number | null = null;
+    if (resolvedItemId && item.batch && item.expiryDate && totalQty > 0) {
+      const batchRecord = await findOrCreateBatch(tx, {
+        itemId: resolvedItemId,
+        batchNumber: item.batch,
+        expiryDate: item.expiryDate,
+        mrp: item.salePrice || 0,
+        purchaseRate: item.unitRate || 0,
+        saleRate: item.salePrice || 0,
+        supplierId: vendorId || null,
+      });
+
+      batchId = batchRecord.id;
+
+      await recordStockMovement(tx, {
+        storeId: targetStoreId,
+        itemId: resolvedItemId,
+        batchId: batchRecord.id,
+        movementType: "GRN",
+        referenceType: "GRN",
+        referenceId: grnId,
+        quantityChange: totalQty,
+        costPrice: item.unitRate || 0,
+        salePrice: item.salePrice || 0,
+        userId: userId || null,
+      });
+    }
+
+    const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+
+    await tx.insert(grnItems).values({
+      grnId,
+      poItemId: item.poItemId ?? null,
+      itemId: resolvedItemId ?? null,
+      batchId,
+      itemName: item.itemName ?? null,
+      unitId: resolvedUnitId,
+      receivedQty: item.receivedQty,
+      freeQty: item.freeQty,
+      unitRate: item.unitRate ?? 0,
+      salePrice: item.salePrice ?? 0,
+      gstPercent: item.gstPercent ?? 0,
+      lineValue: item.unitRate ? item.unitRate * item.receivedQty : 0,
+      batch: item.batch,
+      expiryDate: item.expiryDate,
+      notes: item.notes,
+    });
+  }
+
+  return targetStoreId;
+}
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -42,6 +160,7 @@ const poItemInput = z.object({
   id: z.number().optional(), // For updates
   itemName: z.string().min(2),
   category: z.string().optional().nullable(),
+  unitId: z.coerce.number().positive().optional(),
   unit: z.string().optional().nullable(),
   orderedQty: z.coerce.number().min(0.01),
   unitRate: z.coerce.number().min(0),
@@ -61,6 +180,7 @@ const grnItemInput = z.object({
   poItemId: z.number().int().positive().optional().nullable(),
   itemId: z.number().int().positive().optional().nullable(),
   itemName: z.string().optional().nullable(),
+  unitId: z.coerce.number().positive().optional(),
   unit: z.string().optional().nullable(),
   receivedQty: z.coerce.number().min(0),
   freeQty: z.coerce.number().min(0).default(0),
@@ -92,6 +212,7 @@ const grnItemInput = z.object({
 const grnInput = z.object({
   poId: z.number().int().positive().optional().nullable(),
   vendorId: z.number().int().positive().optional().nullable(),
+  storeId: z.number().int().positive().optional().nullable(),
   noPoReason: z.string().optional().nullable(),
   grnNo: z.string().optional().nullable(),
   grnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -376,7 +497,9 @@ export const purchasesRoutes = app
     poId: poItems.poId,
     itemName: poItems.itemName,
     category: poItems.category,
-    unit: poItems.unit,
+    unitId: poItems.unitId,
+    unit: unitTypes.symbol,
+    unitName: unitTypes.name,
     orderedQty: poItems.orderedQty,
     unitRate: poItems.unitRate,
     gstPercent: poItems.gstPercent,
@@ -385,10 +508,11 @@ export const purchasesRoutes = app
     receivedQty: sql<number>`coalesce(sum(case when ${grns.status} != 'draft' then ${grnItems.receivedQty} + ${grnItems.freeQty} else 0 end), 0)`
   })
   .from(poItems)
+  .leftJoin(unitTypes, eq(poItems.unitId, unitTypes.id))
   .leftJoin(grnItems, eq(grnItems.poItemId, poItems.id))
   .leftJoin(grns, eq(grns.id, grnItems.grnId))
   .where(eq(poItems.poId, id))
-  .groupBy(poItems.id);
+  .groupBy(poItems.id, unitTypes.symbol, unitTypes.name);
   
   const allGrns = await db.select().from(grns).where(eq(grns.poId, id));
   for (const grn of allGrns) {
@@ -426,13 +550,7 @@ export const purchasesRoutes = app
         }
       } else {
         // Auto-generate PO Number if left blank
-        const year = new Date().getFullYear().toString().slice(-2);
-        const [countResult] = await tx
-          .select({ count: sql<number>`count(*)` })
-          .from(purchaseOrders);
-        
-        const seq = Number(countResult.count) + 1;
-        poNo = `PO${seq.toString().padStart(5, '0')}-${year}`;
+        poNo = await generateDocNumber(tx, "PO");
       }
 
       // Compute total value
@@ -592,14 +710,7 @@ export const purchasesRoutes = app
           throw new Error("GRN number already exists");
         }
       } else {
-        // Auto-generate GRN Number
-        const year = new Date().getFullYear().toString().slice(-2);
-        const [countResult] = await tx
-          .select({ count: sql<number>`count(*)` })
-          .from(grns);
-        
-        const seq = Number(countResult.count) + 1;
-        grnNo = `GRN${seq.toString().padStart(5, '0')}-${year}`;
+        grnNo = await generateDocNumber(tx, "GRN");
       }
 
       const [po] = await tx.select().from(purchaseOrders).where(eq(purchaseOrders.id, poId));
@@ -610,6 +721,7 @@ export const purchasesRoutes = app
       const [grn] = await tx.insert(grns).values({
         poId,
         vendorId: selectedVendorId,
+        storeId: input.storeId || null,
         grnNo,
         grnDate: input.grnDate,
         dateOfDelivery: input.dateOfDelivery,
@@ -618,25 +730,32 @@ export const purchasesRoutes = app
         createdBy: userId,
       }).returning();
 
-      if (input.items.length > 0) {
-        await tx.insert(grnItems).values(
-          input.items.map(item => ({
-            grnId: grn.id,
-            poItemId: item.poItemId ?? null,
-            itemId: item.itemId ?? null,
-            itemName: item.itemName ?? null,
-            unit: item.unit ?? null,
-            receivedQty: item.receivedQty,
-            freeQty: item.freeQty,
-            unitRate: item.unitRate ?? 0,
-            salePrice: item.salePrice ?? 0,
-            gstPercent: item.gstPercent ?? 0,
-            lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-            batch: item.batch,
-            expiryDate: item.expiryDate,
-            notes: item.notes,
-          }))
-        );
+      if (input.status === "posted") {
+        const usedStoreId = await processGrnPosting(tx, grn.id, input.storeId, selectedVendorId, input.items, userId);
+        if (!grn.storeId) {
+          await tx.update(grns).set({ storeId: usedStoreId }).where(eq(grns.id, grn.id));
+        }
+      } else {
+        if (input.items.length > 0) {
+          await tx.insert(grnItems).values(
+            input.items.map(item => ({
+              grnId: grn.id,
+              poItemId: item.poItemId ?? null,
+              itemId: item.itemId ?? null,
+              itemName: item.itemName ?? null,
+              unit: item.unit ?? null,
+              receivedQty: item.receivedQty,
+              freeQty: item.freeQty,
+              unitRate: item.unitRate ?? 0,
+              salePrice: item.salePrice ?? 0,
+              gstPercent: item.gstPercent ?? 0,
+              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
+              batch: item.batch,
+              expiryDate: item.expiryDate,
+              notes: item.notes,
+            }))
+          );
+        }
       }
 
       await recalculatePoStatus(tx, poId);
@@ -652,6 +771,8 @@ export const purchasesRoutes = app
   .patch("/purchase-orders/:id/grns/:grnId", async (c) => {
   const { id: poId, grnId } = z.object({ id: z.coerce.number(), grnId: z.coerce.number() }).parse(c.req.param());
   const input = await jsonBody(c, grnInput);
+  const session = await c.get("session");
+  const userId = session?.user?.id;
 
   const [existingGrn] = await db.select().from(grns).where(eq(grns.id, grnId));
   if (!existingGrn) return c.json({ error: "GRN not found" }, 404);
@@ -671,6 +792,7 @@ export const purchasesRoutes = app
       }
 
       const [grn] = await tx.update(grns).set({
+        storeId: input.storeId || existingGrn.storeId,
         grnNo,
         grnDate: input.grnDate,
         dateOfDelivery: input.dateOfDelivery,
@@ -678,28 +800,34 @@ export const purchasesRoutes = app
         status: input.status as any,
       }).where(eq(grns.id, grnId)).returning();
 
-      // Simple update: delete and re-insert items
       await tx.delete(grnItems).where(eq(grnItems.grnId, grnId));
 
-      if (input.items.length > 0) {
-        await tx.insert(grnItems).values(
-          input.items.map(item => ({
-            grnId: grnId,
-            poItemId: item.poItemId ?? null,
-            itemId: item.itemId ?? null,
-            itemName: item.itemName ?? null,
-            unit: item.unit ?? null,
-            receivedQty: item.receivedQty,
-            freeQty: item.freeQty,
-            unitRate: item.unitRate ?? 0,
-            salePrice: item.salePrice ?? 0,
-            gstPercent: item.gstPercent ?? 0,
-            lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-            batch: item.batch,
-            expiryDate: item.expiryDate,
-            notes: item.notes,
-          }))
-        );
+      if (input.status === "posted") {
+        const usedStoreId = await processGrnPosting(tx, grnId, input.storeId || existingGrn.storeId, existingGrn.vendorId, input.items, userId);
+        if (!grn.storeId) {
+          await tx.update(grns).set({ storeId: usedStoreId }).where(eq(grns.id, grnId));
+        }
+      } else {
+        if (input.items.length > 0) {
+          await tx.insert(grnItems).values(
+            input.items.map(item => ({
+              grnId: grnId,
+              poItemId: item.poItemId ?? null,
+              itemId: item.itemId ?? null,
+              itemName: item.itemName ?? null,
+              unit: item.unit ?? null,
+              receivedQty: item.receivedQty,
+              freeQty: item.freeQty,
+              unitRate: item.unitRate ?? 0,
+              salePrice: item.salePrice ?? 0,
+              gstPercent: item.gstPercent ?? 0,
+              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
+              batch: item.batch,
+              expiryDate: item.expiryDate,
+              notes: item.notes,
+            }))
+          );
+        }
       }
 
       await recalculatePoStatus(tx, poId);
@@ -811,15 +939,13 @@ export const purchasesRoutes = app
         const [existingGrn] = await tx.select().from(grns).where(eq(grns.grnNo, grnNo));
         if (existingGrn) throw new Error("GRN number already exists");
       } else {
-        const year = new Date().getFullYear().toString().slice(-2);
-        const [countResult] = await tx.select({ count: sql<number>`count(*)` }).from(grns);
-        const seq = Number(countResult.count) + 1;
-        grnNo = input.poId ? `GRN${seq.toString().padStart(5, '0')}-${year}` : `DIRECT-GRN${seq.toString().padStart(5, '0')}-${year}`;
+        grnNo = await generateDocNumber(tx, "GRN");
       }
 
       const [grn] = await tx.insert(grns).values({
         poId: input.poId || null,
         vendorId: input.vendorId || null,
+        storeId: input.storeId || null,
         noPoReason: input.noPoReason || null,
         grnNo,
         grnDate: input.grnDate,
@@ -829,25 +955,32 @@ export const purchasesRoutes = app
         createdBy: userId,
       }).returning();
 
-      if (input.items.length > 0) {
-        await tx.insert(grnItems).values(
-          input.items.map(item => ({
-            grnId: grn.id,
-            poItemId: item.poItemId ?? null,
-            itemId: item.itemId ?? null,
-            itemName: item.itemName ?? null,
-            unit: item.unit ?? null,
-            receivedQty: item.receivedQty,
-            freeQty: item.freeQty,
-            unitRate: item.unitRate ?? 0,
-            salePrice: item.salePrice ?? 0,
-            gstPercent: item.gstPercent ?? 0,
-            lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-            batch: item.batch,
-            expiryDate: item.expiryDate,
-            notes: item.notes,
-          }))
-        );
+      if (input.status === "posted") {
+        const usedStoreId = await processGrnPosting(tx, grn.id, input.storeId, input.vendorId, input.items, userId);
+        if (!grn.storeId) {
+          await tx.update(grns).set({ storeId: usedStoreId }).where(eq(grns.id, grn.id));
+        }
+      } else {
+        if (input.items.length > 0) {
+          await tx.insert(grnItems).values(
+            input.items.map(item => ({
+              grnId: grn.id,
+              poItemId: item.poItemId ?? null,
+              itemId: item.itemId ?? null,
+              itemName: item.itemName ?? null,
+              unit: item.unit ?? null,
+              receivedQty: item.receivedQty,
+              freeQty: item.freeQty,
+              unitRate: item.unitRate ?? 0,
+              salePrice: item.salePrice ?? 0,
+              gstPercent: item.gstPercent ?? 0,
+              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
+              batch: item.batch,
+              expiryDate: item.expiryDate,
+              notes: item.notes,
+            }))
+          );
+        }
       }
 
       if (input.poId) {
@@ -884,6 +1017,8 @@ export const purchasesRoutes = app
   .patch("/grns/:grnId", async (c) => {
   const { id: grnId } = idParam.parse({ id: parseInt(c.req.param('grnId') as string) });
   const input = await jsonBody(c, grnInput);
+  const session = await c.get("session");
+  const userId = session?.user?.id;
 
   const [existingGrn] = await db.select().from(grns).where(eq(grns.id, grnId));
   if (!existingGrn) return c.json({ error: "GRN not found" }, 404);
@@ -902,6 +1037,7 @@ export const purchasesRoutes = app
 
       const [grn] = await tx.update(grns).set({
         vendorId: input.vendorId || existingGrn.vendorId,
+        storeId: input.storeId || existingGrn.storeId,
         noPoReason: input.noPoReason || existingGrn.noPoReason,
         grnNo,
         grnDate: input.grnDate,
@@ -912,25 +1048,32 @@ export const purchasesRoutes = app
 
       await tx.delete(grnItems).where(eq(grnItems.grnId, grnId));
 
-      if (input.items.length > 0) {
-        await tx.insert(grnItems).values(
-          input.items.map(item => ({
-            grnId: grnId,
-            poItemId: item.poItemId ?? null,
-            itemId: item.itemId ?? null,
-            itemName: item.itemName ?? null,
-            unit: item.unit ?? null,
-            receivedQty: item.receivedQty,
-            freeQty: item.freeQty,
-            unitRate: item.unitRate ?? 0,
-            salePrice: item.salePrice ?? 0,
-            gstPercent: item.gstPercent ?? 0,
-            lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-            batch: item.batch,
-            expiryDate: item.expiryDate,
-            notes: item.notes,
-          }))
-        );
+      if (input.status === "posted") {
+        const usedStoreId = await processGrnPosting(tx, grnId, input.storeId || existingGrn.storeId, input.vendorId || existingGrn.vendorId, input.items, userId);
+        if (!grn.storeId) {
+          await tx.update(grns).set({ storeId: usedStoreId }).where(eq(grns.id, grnId));
+        }
+      } else {
+        if (input.items.length > 0) {
+          await tx.insert(grnItems).values(
+            input.items.map(item => ({
+              grnId: grnId,
+              poItemId: item.poItemId ?? null,
+              itemId: item.itemId ?? null,
+              itemName: item.itemName ?? null,
+              unit: item.unit ?? null,
+              receivedQty: item.receivedQty,
+              freeQty: item.freeQty,
+              unitRate: item.unitRate ?? 0,
+              salePrice: item.salePrice ?? 0,
+              gstPercent: item.gstPercent ?? 0,
+              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
+              batch: item.batch,
+              expiryDate: item.expiryDate,
+              notes: item.notes,
+            }))
+          );
+        }
       }
 
       if (existingGrn.poId) {
@@ -1125,6 +1268,7 @@ export const purchasesRoutes = app
     return c.json({ success: true });
   })
 
+  // Items CRUD
   .get("/items", async (c) => {
     const query = c.req.query();
     const page = query.page ? parseInt(query.page, 10) : undefined;
@@ -1139,10 +1283,7 @@ export const purchasesRoutes = app
       conditions.push(eq(items.itemTypeId, parseInt(query.itemTypeId, 10)));
     }
 
-    // Get total count
-    let countQuery = db
-      .select({ count: sql<number>`count(*)` })
-      .from(items);
+    let countQuery = db.select({ count: sql<number>`count(*)` }).from(items);
 
     if (conditions.length > 0) {
       countQuery = countQuery.where(and(...conditions)) as any;
@@ -1150,23 +1291,45 @@ export const purchasesRoutes = app
     const [countResult] = await countQuery;
     const total = countResult?.count || 0;
 
+    const baseUnitAlias = alias(unitTypes, "base_unit_t");
+    const purchaseUnitAlias = alias(unitTypes, "pur_unit_t");
+    const saleUnitAlias = alias(unitTypes, "sale_unit_t");
+
     let baseQuery = db
       .select({
         id: items.id,
         name: items.name,
         itemTypeId: items.itemTypeId,
         itemTypeName: itemTypes.name,
-        unit: items.unit,
-        purchaseUnit: items.purchaseUnit,
-        saleUnit: items.saleUnit,
+        baseUnitId: items.baseUnitId,
+        purchaseUnitId: items.purchaseUnitId,
+        saleUnitId: items.saleUnitId,
+        unit: baseUnitAlias.symbol,
+        baseUnitName: baseUnitAlias.name,
+        purchaseUnit: purchaseUnitAlias.symbol,
+        purchaseUnitName: purchaseUnitAlias.name,
+        saleUnit: saleUnitAlias.symbol,
+        saleUnitName: saleUnitAlias.name,
         rate: items.rate,
         salePrice: items.salePrice,
         gstPercent: items.gstPercent,
+        hsnCode: items.hsnCode,
+        barcode: items.barcode,
+        reorderLevel: items.reorderLevel,
+        reorderQty: items.reorderQty,
+        drugSchedule: items.drugSchedule,
+        storageCondition: items.storageCondition,
+        taxCategory: items.taxCategory,
+        isNarcotic: items.isNarcotic,
+        allowFractional: items.allowFractional,
         createdAt: items.createdAt,
         updatedAt: items.updatedAt,
       })
       .from(items)
-      .leftJoin(itemTypes, eq(items.itemTypeId, itemTypes.id));
+      .leftJoin(itemTypes, eq(items.itemTypeId, itemTypes.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(purchaseUnitAlias, eq(items.purchaseUnitId, purchaseUnitAlias.id))
+      .leftJoin(saleUnitAlias, eq(items.saleUnitId, saleUnitAlias.id));
 
     if (conditions.length > 0) {
       baseQuery = baseQuery.where(and(...conditions)) as any;
@@ -1180,17 +1343,28 @@ export const purchasesRoutes = app
 
     const rows = await finalQuery.execute();
 
-    // Fetch unit prices for returned items
     const itemIds = rows.map((r: any) => r.id);
     let allUnitPrices: any[] = [];
     if (itemIds.length > 0) {
-      allUnitPrices = await db.select().from(itemUnitPrices).where(inArray(itemUnitPrices.itemId, itemIds));
+      allUnitPrices = await db
+        .select({
+          id: itemUnitPrices.id,
+          itemId: itemUnitPrices.itemId,
+          unitId: itemUnitPrices.unitId,
+          unit: unitTypes.symbol,
+          unitName: unitTypes.name,
+          costPrice: itemUnitPrices.costPrice,
+          salePrice: itemUnitPrices.salePrice,
+          conversionFactor: itemUnitPrices.conversionFactor,
+          isDefault: itemUnitPrices.isDefault,
+        })
+        .from(itemUnitPrices)
+        .leftJoin(unitTypes, eq(itemUnitPrices.unitId, unitTypes.id))
+        .where(inArray(itemUnitPrices.itemId, itemIds));
     }
 
     const itemsWithPrices = rows.map((item: any) => ({
       ...item,
-      purchaseUnit: item.purchaseUnit || item.unit,
-      saleUnit: item.saleUnit || item.unit,
       unitPrices: allUnitPrices.filter((up) => up.itemId === item.id),
     }));
 
@@ -1201,77 +1375,142 @@ export const purchasesRoutes = app
         total,
         page: page ?? 1,
         limit: activeLimit,
-        totalPages: Math.ceil(total / activeLimit)
+        totalPages: Math.ceil(total / activeLimit),
       });
     }
 
     return c.json(itemsWithPrices);
   })
   .post("/items", async (c) => {
-    const input = await jsonBody(c, z.object({
-      name: z.string().min(2),
-      itemTypeId: z.number().int().positive(),
-      unit: z.string().min(1),
-      purchaseUnit: z.string().optional(),
-      saleUnit: z.string().optional(),
-      rate: z.coerce.number().min(0),
-      salePrice: z.coerce.number().min(0).optional().default(0),
-      gstPercent: z.coerce.number().min(0).optional().default(0),
-      unitPrices: z.array(z.object({
-        unit: z.string().min(1),
-        costPrice: z.coerce.number().min(0),
-        salePrice: z.coerce.number().min(0),
-        conversionFactor: z.coerce.number().positive().optional().default(1),
-        isDefault: z.boolean().optional().default(false),
-      })).optional(),
-    }));
+    const input = await jsonBody(
+      c,
+      z.object({
+        name: z.string().min(2),
+        itemTypeId: z.number().int().positive(),
+        baseUnitId: z.coerce.number().positive().optional(),
+        purchaseUnitId: z.coerce.number().positive().optional(),
+        saleUnitId: z.coerce.number().positive().optional(),
+        unit: z.string().optional(),
+        purchaseUnit: z.string().optional(),
+        saleUnit: z.string().optional(),
+        rate: z.coerce.number().min(0),
+        salePrice: z.coerce.number().min(0).optional().default(0),
+        gstPercent: z.coerce.number().min(0).optional().default(0),
+        hsnCode: z.string().optional().nullable(),
+        barcode: z.string().optional().nullable(),
+        reorderLevel: z.coerce.number().min(0).optional().default(0),
+        reorderQty: z.coerce.number().min(0).optional().default(0),
+        drugSchedule: z.string().optional().nullable(),
+        storageCondition: z.string().optional().nullable(),
+        taxCategory: z.string().optional().default("taxable"),
+        isNarcotic: z.boolean().optional().default(false),
+        allowFractional: z.boolean().optional().default(false),
+        unitPrices: z
+          .array(
+            z.object({
+              unitId: z.coerce.number().positive().optional(),
+              unit: z.string().optional(),
+              costPrice: z.coerce.number().min(0),
+              salePrice: z.coerce.number().min(0),
+              conversionFactor: z.coerce.number().positive().optional().default(1),
+              isDefault: z.boolean().optional().default(false),
+            })
+          )
+          .optional(),
+      })
+    );
 
-    const { unitPrices, ...itemValues } = input;
-    if (!itemValues.purchaseUnit) itemValues.purchaseUnit = itemValues.unit;
-    if (!itemValues.saleUnit) itemValues.saleUnit = itemValues.unit;
+    const { unitPrices, unit, purchaseUnit, saleUnit, ...itemValues } = input;
 
-    const [row] = await db.insert(items).values(itemValues).returning();
+    const baseUnitId = await resolveUnitId(db, itemValues.baseUnitId, unit);
+    const purchaseUnitId = await resolveUnitId(db, itemValues.purchaseUnitId, purchaseUnit || unit);
+    const saleUnitId = await resolveUnitId(db, itemValues.saleUnitId, saleUnit || unit);
+
+    const [row] = await db
+      .insert(items)
+      .values({
+        ...itemValues,
+        baseUnitId,
+        purchaseUnitId,
+        saleUnitId,
+      })
+      .returning();
 
     let savedUnitPrices: any[] = [];
     if (unitPrices && unitPrices.length > 0) {
-      savedUnitPrices = await db.insert(itemUnitPrices).values(
-        unitPrices.map((up) => ({
+      const upToInsert = [];
+      for (const up of unitPrices) {
+        const uId = await resolveUnitId(db, up.unitId, up.unit);
+        upToInsert.push({
           itemId: row.id,
-          unit: up.unit,
+          unitId: uId,
           costPrice: up.costPrice,
           salePrice: up.salePrice,
           conversionFactor: up.conversionFactor ?? 1,
           isDefault: up.isDefault ?? false,
-        }))
-      ).returning();
+        });
+      }
+      savedUnitPrices = await db.insert(itemUnitPrices).values(upToInsert).returning();
     }
 
     return c.json({ ...row, unitPrices: savedUnitPrices }, 201);
   })
   .patch("/items/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
-    const input = await jsonBody(c, z.object({
-      name: z.string().min(2).optional(),
-      itemTypeId: z.number().int().positive().optional(),
-      unit: z.string().min(1).optional(),
-      purchaseUnit: z.string().optional(),
-      saleUnit: z.string().optional(),
-      rate: z.coerce.number().min(0).optional(),
-      salePrice: z.coerce.number().min(0).optional(),
-      gstPercent: z.coerce.number().min(0).optional(),
-      unitPrices: z.array(z.object({
-        unit: z.string().min(1),
-        costPrice: z.coerce.number().min(0),
-        salePrice: z.coerce.number().min(0),
-        conversionFactor: z.coerce.number().positive().optional().default(1),
-        isDefault: z.boolean().optional().default(false),
-      })).optional(),
-    }));
+    const input = await jsonBody(
+      c,
+      z.object({
+        name: z.string().min(2).optional(),
+        itemTypeId: z.number().int().positive().optional(),
+        baseUnitId: z.coerce.number().positive().optional(),
+        purchaseUnitId: z.coerce.number().positive().optional(),
+        saleUnitId: z.coerce.number().positive().optional(),
+        unit: z.string().optional(),
+        purchaseUnit: z.string().optional(),
+        saleUnit: z.string().optional(),
+        rate: z.coerce.number().min(0).optional(),
+        salePrice: z.coerce.number().min(0).optional(),
+        gstPercent: z.coerce.number().min(0).optional(),
+        hsnCode: z.string().optional().nullable(),
+        barcode: z.string().optional().nullable(),
+        reorderLevel: z.coerce.number().min(0).optional(),
+        reorderQty: z.coerce.number().min(0).optional(),
+        drugSchedule: z.string().optional().nullable(),
+        storageCondition: z.string().optional().nullable(),
+        taxCategory: z.string().optional(),
+        isNarcotic: z.boolean().optional(),
+        allowFractional: z.boolean().optional(),
+        unitPrices: z
+          .array(
+            z.object({
+              unitId: z.coerce.number().positive().optional(),
+              unit: z.string().optional(),
+              costPrice: z.coerce.number().min(0),
+              salePrice: z.coerce.number().min(0),
+              conversionFactor: z.coerce.number().positive().optional().default(1),
+              isDefault: z.boolean().optional().default(false),
+            })
+          )
+          .optional(),
+      })
+    );
 
-    const { unitPrices, ...itemValues } = input;
+    const { unitPrices, unit, purchaseUnit, saleUnit, ...itemValues } = input;
+    const updatePayload: any = { ...itemValues };
+
+    if (itemValues.baseUnitId !== undefined || unit !== undefined) {
+      updatePayload.baseUnitId = await resolveUnitId(db, itemValues.baseUnitId, unit);
+    }
+    if (itemValues.purchaseUnitId !== undefined || purchaseUnit !== undefined) {
+      updatePayload.purchaseUnitId = await resolveUnitId(db, itemValues.purchaseUnitId, purchaseUnit);
+    }
+    if (itemValues.saleUnitId !== undefined || saleUnit !== undefined) {
+      updatePayload.saleUnitId = await resolveUnitId(db, itemValues.saleUnitId, saleUnit);
+    }
+
     let row: any = null;
-    if (Object.keys(itemValues).length > 0) {
-      const [updated] = await db.update(items).set(itemValues).where(eq(items.id, id)).returning();
+    if (Object.keys(updatePayload).length > 0) {
+      const [updated] = await db.update(items).set(updatePayload).where(eq(items.id, id)).returning();
       row = updated;
     } else {
       const [existing] = await db.select().from(items).where(eq(items.id, id));
@@ -1284,16 +1523,19 @@ export const purchasesRoutes = app
     if (unitPrices !== undefined) {
       await db.delete(itemUnitPrices).where(eq(itemUnitPrices.itemId, id));
       if (unitPrices.length > 0) {
-        savedUnitPrices = await db.insert(itemUnitPrices).values(
-          unitPrices.map((up) => ({
+        const upToInsert = [];
+        for (const up of unitPrices) {
+          const uId = await resolveUnitId(db, up.unitId, up.unit);
+          upToInsert.push({
             itemId: id,
-            unit: up.unit,
+            unitId: uId,
             costPrice: up.costPrice,
             salePrice: up.salePrice,
             conversionFactor: up.conversionFactor ?? 1,
             isDefault: up.isDefault ?? false,
-          }))
-        ).returning();
+          });
+        }
+        savedUnitPrices = await db.insert(itemUnitPrices).values(upToInsert).returning();
       }
     } else {
       savedUnitPrices = await db.select().from(itemUnitPrices).where(eq(itemUnitPrices.itemId, id));

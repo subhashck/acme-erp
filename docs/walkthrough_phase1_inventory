@@ -1,0 +1,86 @@
+# Phase 1 Walkthrough — Core Multi-Store & Stock Ledger Foundation
+
+## Overview of Phase 1 Accomplishments
+
+Phase 1 of the ACME ERP Inventory Subsystem has been fully implemented, verified, and integrated into the codebase with **100% type safety** (`tsc -b` passed with 0 errors) and successful database migrations.
+
+---
+
+## Key Components Implemented
+
+### 1. Dedicated PostgreSQL `inventory` Schema
+- **File**: [`server/db/schema-inventory.ts`](file:///d:/dev/acme/acme-erp/server/db/schema-inventory.ts)
+- Declared `export const inventorySchema = pgSchema("inventory")`.
+- Defined all enums and 16 inventory domain tables:
+  - `inventory.stores`
+  - `inventory.store_staff_assignments`
+  - `inventory.item_batches`
+  - `inventory.store_batch_stock`
+  - `inventory.stock_ledger`
+  - `inventory.document_sequences`
+  - Requisitions, transfers, adjustments, POS invoices, and returns tables.
+- Integrated into `drizzle.config.ts` and `server/db/client.ts`.
+
+### 2. Enterprise Columns on `public` Master Tables
+- **File**: [`server/db/schema.ts`](file:///d:/dev/acme/acme-erp/server/db/schema.ts)
+- Extended `items` table with enterprise pharma attributes: `hsnCode`, `barcode`, `reorderLevel`, `reorderQty`, `drugSchedule`, `storageCondition`, `taxCategory`, `isNarcotic`, `allowFractional`.
+- Extended `grns` table with `storeId`.
+- Extended `grnItems` table with `batchId`.
+
+### 3. Transactional Sequence Number Service
+- **File**: [`server/services/sequence.ts`](file:///d:/dev/acme/acme-erp/server/services/sequence.ts)
+- Concurrency-safe atomic number generator using `UPDATE inventory.document_sequences SET current_val = current_val + 1 WHERE code = $1 AND financial_year = $2 RETURNING *`.
+- Generates formatted numbers: `{PREFIX}/{FY}/{PADDED_NUMBER}` (e.g. `GRN/26-27/00001`, `PO/26-27/00001`).
+
+### 4. Stock Engine Service
+- **File**: [`server/services/stock-engine.ts`](file:///d:/dev/acme/acme-erp/server/services/stock-engine.ts)
+- **`findOrCreateBatch(tx, ...)`**: Resolves or creates item batches in `inventory.item_batches`.
+- **`recordStockMovement(tx, ...)`**:
+  - Row-locks target batch stock using `SELECT ... FOR UPDATE`.
+  - Prevents negative stock (throws error if requested reduction exceeds available balance).
+  - Updates `inventory.store_batch_stock` (on hand and available balance).
+  - Appends an immutable record to `inventory.stock_ledger` with `balanceAfter`.
+
+### 5. GRN Posting Integration
+- **File**: [`server/routes/purchases.ts`](file:///d:/dev/acme/acme-erp/server/routes/purchases.ts)
+- Extended `grnInput` Zod schema to accept `storeId`.
+- When GRN status is set to `'posted'`:
+  - Resolves target store ID.
+  - Automatically resolves/creates item batches.
+  - Inserts positive stock movements (`movementType: 'GRN'`) into the immutable stock ledger and increments live batch balance.
+  - Sets `batchId` on `grn_items`.
+  - Prevents post-facto editing or deletion of posted GRNs.
+
+### 6. Backend Inventory API Routes
+- **File**: [`server/routes/inventory.ts`](file:///d:/dev/acme/acme-erp/server/routes/inventory.ts)
+- Mounted in [`server/routes.ts`](file:///d:/dev/acme/acme-erp/server/routes.ts).
+- Endpoints:
+  - `GET/POST/PATCH/DELETE /inventory/stores` (Stores CRUD)
+  - `GET/POST/PATCH/DELETE /inventory/stores/:storeId/staff` (Staff store access assignments)
+  - `GET /inventory/stock` (Live stock inquiry with pagination & batch details)
+  - `GET /inventory/stock/summary` (Aggregated store item stock)
+  - `GET /inventory/ledger` (Immutable stock ledger audit trail)
+
+### 7. Database Setup & Seed Scripts
+- **Files**: [`server/db/setup-inventory-db.ts`](file:///d:/dev/acme/acme-erp/server/db/setup-inventory-db.ts), [`server/db/seed-inventory.ts`](file:///d:/dev/acme/acme-erp/server/db/seed-inventory.ts)
+- Verified PostgreSQL schema creation, default Central Warehouse store (`MAIN-WH`), and document sequences for FY 26-27.
+
+---
+
+## Verification Results
+
+| Check | Result | Detail |
+|---|---|---|
+| **TypeScript Compilation** | `pnpm typecheck` $\rightarrow$ **PASS** | Exit code 0, 0 errors. |
+| **Database Schema Push** | `pnpm db:push` $\rightarrow$ **PASS** | Schema `inventory` and tables created in PostgreSQL. |
+| **Database Seeding** | `pnpm tsx server/db/seed-inventory.ts` $\rightarrow$ **PASS** | Created Central Warehouse store and FY 26-27 document sequences. |
+
+---
+
+## Ready for Phase 2
+
+Phase 1 foundation is complete. Phase 2 will focus on:
+- Store Master Management UI (`src/routes/_authenticated/inventory/stores.tsx`)
+- Live Stock Inquiry Page (`src/routes/_authenticated/inventory/stock.tsx`)
+- Immutable Stock Ledger Viewer (`src/routes/_authenticated/inventory/ledger.tsx`)
+- Navigation sidebar integration in [`Shell.tsx`](file:///d:/dev/acme/acme-erp/src/components/Shell.tsx)

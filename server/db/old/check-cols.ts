@@ -1,4 +1,4 @@
-import { pool } from "./client.ts";
+import { pool } from "../client.ts";
 
 async function run() {
   try {

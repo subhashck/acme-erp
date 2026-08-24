@@ -234,6 +234,33 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
+  if (pathname.startsWith("/inventory/")) {
+    items.push({ label: "Inventory", to: "/inventory/stores" });
+    const sub = pathname.replace("/inventory/", "");
+    if (sub === "stores") {
+      items.push({ label: "Stores Master", to: "/inventory/stores" });
+    } else if (sub === "stock") {
+      items.push({ label: "Live Stock Inquiry", to: "/inventory/stock" });
+    } else if (sub === "ledger") {
+      items.push({ label: "Stock Ledger", to: "/inventory/ledger" });
+    } else if (sub === "purchase-invoices" || sub.startsWith("purchase-invoices/")) {
+      items.push({ label: "Purchase Invoices", to: "/inventory/purchase-invoices" });
+    } else if (sub === "requisitions") {
+      items.push({ label: "Store Indents", to: "/inventory/requisitions" });
+    } else if (sub === "transfers") {
+      items.push({ label: "Stock Transfers", to: "/inventory/transfers" });
+    } else if (sub === "pos") {
+      items.push({ label: "POS Billing Terminal", to: "/inventory/pos" });
+    } else if (sub === "invoices") {
+      items.push({ label: "Sales Invoices", to: "/inventory/invoices" });
+    } else if (sub === "adjustments") {
+      items.push({ label: "Stock Adjustments", to: "/inventory/adjustments" });
+    } else if (sub === "reports") {
+      items.push({ label: "Inventory Reports", to: "/inventory/reports" });
+    }
+    return items;
+  }
+
   return items;
 };
 
@@ -247,16 +274,16 @@ export function Shell() {
   const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
   const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
-  // const [clinicalOpen, setClinicalOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
+  const [inventoryOpen, setInventoryOpen] = React.useState(false);
   const [purchasesMastersOpen, setPurchasesMastersOpen] = React.useState(false);
   const [mastersOpen, setMastersOpen] = React.useState(false);
   const [adminOpen, setAdminOpen] = React.useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege } = useUserPermissions();
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewInventory } = useUserPermissions();
   const displayName = currentStaff?.name || session.data?.user?.name;
 
   React.useEffect(() => {
@@ -275,6 +302,7 @@ export function Shell() {
     if (location.pathname.startsWith("/hr/")) setHrOpen(true);
     if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
+    if (location.pathname.startsWith("/inventory/")) setInventoryOpen(true);
     if (location.pathname.startsWith("/masters/")) setMastersOpen(true);
     if (location.pathname.startsWith("/admin/")) setAdminOpen(true);
   }, [location.pathname]);
@@ -845,6 +873,100 @@ export function Shell() {
                   </div>
                 )}
               </div>
+
+              {/* Collapsible Inventory group */}
+              {canViewInventory && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInventoryOpen(!inventoryOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Package size={18} />
+                      <span>Inventory & Store</span>
+                    </div>
+                    {inventoryOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {inventoryOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/inventory/stores" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stores Master
+                      </Link>
+                      <Link
+                        to={"/inventory/stock" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Live Stock Inquiry
+                      </Link>
+                      <Link
+                        to={"/inventory/ledger" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stock Ledger
+                      </Link>
+                      <Link
+                        to={"/inventory/purchase-invoices" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Purchase Invoices
+                      </Link>
+                      <Link
+                        to={"/inventory/requisitions" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Store Indents
+                      </Link>
+                      <Link
+                        to={"/inventory/transfers" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stock Transfers
+                      </Link>
+                      <Link
+                        to={"/inventory/pos" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        POS Billing Terminal
+                      </Link>
+                      <Link
+                        to={"/inventory/invoices" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Sales Invoices
+                      </Link>
+                      <Link
+                        to={"/inventory/adjustments" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stock Adjustments
+                      </Link>
+                      <Link
+                        to={"/inventory/reports" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Inventory Reports
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Collapsible Masters group */}
               {(session.data?.user.role === "admin" || session.data?.user.role === "hr") && (

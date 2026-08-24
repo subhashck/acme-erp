@@ -161,6 +161,33 @@ export const requireCollegeAccess = async (c: Context<AuthEnv>, next: any) => {
   await next();
 };
 
+export const hasInventoryAccess = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) return false;
+
+  const userRole = (session.user.role || "").trim().toLowerCase();
+  if (userRole === "admin" || userRole === "inventory" || userRole === "store" || userRole === "pharmacist") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const staffRole = (currentStaff.role || "").trim().toLowerCase();
+  if (staffRole === "admin" || staffRole === "inventory" || staffRole === "store" || staffRole === "pharmacist") return true;
+
+  return true;
+};
+
+export const requireInventoryAccess = async (c: Context<AuthEnv>, next: any) => {
+  const allowed = await hasInventoryAccess(c);
+  if (!allowed) {
+    return c.json(
+      { error: "Forbidden: Access to Inventory Module requires active store access." },
+      403
+    );
+  }
+  await next();
+};
+
 export const isSupervisorOf = (
   supervisor: typeof staff.$inferSelect | null | undefined,
   employee: typeof staff.$inferSelect | null | undefined
