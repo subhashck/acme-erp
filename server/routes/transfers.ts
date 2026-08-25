@@ -1,4 +1,4 @@
-import { eq, sql, and, desc, ilike, inArray, gte, lte } from "drizzle-orm";
+import { eq, sql, and, desc, ilike, inArray, gte, lte, or } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -14,7 +14,7 @@ import {
 import { items, user } from "../db/schema.ts";
 import { generateDocNumber } from "../services/sequence.ts";
 import { recordStockMovement } from "../services/stock-engine.ts";
-import { idParam, jsonBody, requireAdmin } from "./shared.ts";
+import { idParam, jsonBody, requireAdmin, resolveUnitId } from "./shared.ts";
 import { z } from "zod";
 
 const app = new Hono<AuthEnv>();
@@ -24,14 +24,15 @@ const app = new Hono<AuthEnv>();
 // ---------------------------------------------------------------------------
 
 const requisitionItemInput = z.object({
-  itemId: z.number().int().positive("Item is required"),
+  itemId: z.coerce.number().int().positive("Item is required"),
   requestedQty: z.coerce.number().positive("Quantity must be > 0"),
   unit: z.string().min(1, "Unit is required"),
+  unitId: z.coerce.number().int().positive().optional().nullable(),
 });
 
 const requisitionInput = z.object({
-  requestingStoreId: z.number().int().positive("Requesting store is required"),
-  fulfillingStoreId: z.number().int().positive("Fulfilling store is required"),
+  requestingStoreId: z.coerce.number().int().positive("Requesting store is required"),
+  fulfillingStoreId: z.coerce.number().int().positive("Fulfilling store is required"),
   priority: z.enum(["normal", "urgent", "emergency"]).default("normal"),
   remarks: z.string().optional().nullable(),
   items: z.array(requisitionItemInput).min(1, "At least one item is required"),
@@ -65,14 +66,33 @@ export const transfersRoutes = app
     const offset = (page - 1) * limit;
 
     const conditions = [];
-    if (query.status) {
+    if (query.status && query.status !== "all") {
       conditions.push(eq(stockRequisitions.status, query.status as any));
     }
-    if (query.requestingStoreId) {
+    if (query.priority && query.priority !== "all") {
+      conditions.push(eq(stockRequisitions.priority, query.priority as any));
+    }
+    if (query.requestingStoreId && query.requestingStoreId !== "all") {
       conditions.push(eq(stockRequisitions.requestingStoreId, parseInt(query.requestingStoreId, 10)));
     }
-    if (query.fulfillingStoreId) {
+    if (query.fulfillingStoreId && query.fulfillingStoreId !== "all") {
       conditions.push(eq(stockRequisitions.fulfillingStoreId, parseInt(query.fulfillingStoreId, 10)));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(stockRequisitions.requisitionNo, `%${query.search}%`),
+          ilike(stockRequisitions.remarks, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(stockRequisitions.createdAt, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockRequisitions.createdAt, end));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -97,6 +117,7 @@ export const transfersRoutes = app
         items: {
           with: {
             item: true,
+            unit: true,
           },
         },
       },
@@ -108,7 +129,7 @@ export const transfersRoutes = app
         page,
         pageSize: limit,
         totalRecords: total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   })
@@ -125,6 +146,7 @@ export const transfersRoutes = app
         items: {
           with: {
             item: true,
+            unit: true,
           },
         },
       },
@@ -159,16 +181,18 @@ export const transfersRoutes = app
           })
           .returning();
 
-        await tx.insert(stockRequisitionItems).values(
-          input.items.map((item) => ({
+        const reqItemsToInsert = await Promise.all(
+          input.items.map(async (item) => ({
             requisitionId: req.id,
             itemId: item.itemId,
             requestedQty: item.requestedQty,
             approvedQty: item.requestedQty, // Default approved = requested
             fulfilledQty: 0,
-            unit: item.unit,
+            unitId: await resolveUnitId(tx, (item as any).unitId, item.unit),
           }))
         );
+
+        await tx.insert(stockRequisitionItems).values(reqItemsToInsert);
 
         return req;
       });
@@ -251,14 +275,33 @@ export const transfersRoutes = app
     const offset = (page - 1) * limit;
 
     const conditions = [];
-    if (query.status) {
+    if (query.status && query.status !== "all") {
       conditions.push(eq(stockTransfers.status, query.status as any));
     }
-    if (query.fromStoreId) {
+    if (query.fromStoreId && query.fromStoreId !== "all") {
       conditions.push(eq(stockTransfers.fromStoreId, parseInt(query.fromStoreId, 10)));
     }
-    if (query.toStoreId) {
+    if (query.toStoreId && query.toStoreId !== "all") {
       conditions.push(eq(stockTransfers.toStoreId, parseInt(query.toStoreId, 10)));
+    }
+    if (query.requisitionId && query.requisitionId !== "all") {
+      conditions.push(eq(stockTransfers.requisitionId, parseInt(query.requisitionId, 10)));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(stockTransfers.transferNo, `%${query.search}%`),
+          ilike(stockTransfers.remarks, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(stockTransfers.createdAt, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockTransfers.createdAt, end));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -285,6 +328,7 @@ export const transfersRoutes = app
           with: {
             item: true,
             batch: true,
+            unit: true,
           },
         },
       },
@@ -296,7 +340,7 @@ export const transfersRoutes = app
         page,
         pageSize: limit,
         totalRecords: total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   })
@@ -315,6 +359,7 @@ export const transfersRoutes = app
           with: {
             item: true,
             batch: true,
+            unit: true,
           },
         },
       },
@@ -346,16 +391,18 @@ export const transfersRoutes = app
           })
           .returning();
 
-        await tx.insert(stockTransferItems).values(
-          input.items.map((item) => ({
+        const transferItemsToInsert = await Promise.all(
+          input.items.map(async (item) => ({
             transferId: transfer.id,
             itemId: item.itemId,
             batchId: item.batchId,
             quantity: item.quantity,
-            unit: item.unit,
+            unitId: await resolveUnitId(tx, (item as any).unitId, item.unit),
             unitRate: item.unitRate ?? 0,
           }))
         );
+
+        await tx.insert(stockTransferItems).values(transferItemsToInsert);
 
         return transfer;
       });

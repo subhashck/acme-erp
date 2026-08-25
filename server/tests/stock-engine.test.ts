@@ -3,7 +3,7 @@ import { findOrCreateBatch, recordStockMovement } from "../services/stock-engine
 import { allocateBatchesFefo } from "../services/fefo.ts";
 import { calculateLineTax, calculateInvoiceSummary } from "../services/gst.ts";
 import { stores, itemBatches, storeBatchStock, stockLedger } from "../db/schema-inventory.ts";
-import { items, itemTypes } from "../db/schema.ts";
+import { items, itemTypes, unitTypes } from "../db/schema.ts";
 import { eq } from "drizzle-orm";
 
 async function runStockEngineTests() {
@@ -24,6 +24,18 @@ async function runStockEngineTests() {
         .returning();
     }
 
+    let [testUnit] = await db.select().from(unitTypes).limit(1);
+    if (!testUnit) {
+      [testUnit] = await db
+        .insert(unitTypes)
+        .values({
+          name: "Strip",
+          symbol: "STRIP",
+          isBaseUnit: true,
+        })
+        .returning();
+    }
+
     let [testItemType] = await db.select().from(itemTypes).limit(1);
     if (!testItemType) {
       [testItemType] = await db
@@ -39,7 +51,9 @@ async function runStockEngineTests() {
       .values({
         name: `Test Medicine ${Date.now()}`,
         itemTypeId: testItemType.id,
-        unit: "strip",
+        baseUnitId: testUnit.id,
+        purchaseUnitId: testUnit.id,
+        saleUnitId: testUnit.id,
         rate: 50,
         salePrice: 100,
         gstPercent: 12,

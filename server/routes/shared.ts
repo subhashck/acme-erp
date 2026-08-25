@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { db } from "../db/client.ts";
 import { auth, type AuthEnv } from "../auth.ts";
-import { staff, patients, managementApprovers, departments, staffDepartments } from "../db/schema.ts";
+import { staff, patients, managementApprovers, departments, staffDepartments, unitTypes } from "../db/schema.ts";
 
 // ---------------------------------------------------------------------------
 // Simple helpers
@@ -14,6 +14,36 @@ export const idParam = z.object({ id: z.coerce.number().int().positive() });
 
 export const code = (prefix: string) =>
   `${prefix}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
+
+// Helper to resolve unitId from either numeric FK or string symbol/name
+export async function resolveUnitId(tx: any, unitId?: number | null, unitStr?: string | null): Promise<number> {
+  if (unitId && typeof unitId === "number" && unitId > 0) {
+    const [exists] = await tx
+      .select({ id: unitTypes.id })
+      .from(unitTypes)
+      .where(eq(unitTypes.id, unitId))
+      .limit(1);
+    if (exists) return exists.id;
+  }
+  if (unitStr && typeof unitStr === "string" && unitStr.trim()) {
+    const clean = unitStr.trim();
+    const [found] = await tx
+      .select({ id: unitTypes.id })
+      .from(unitTypes)
+      .where(sql`lower(${unitTypes.symbol}) = lower(${clean}) or lower(${unitTypes.name}) = lower(${clean})`)
+      .limit(1);
+    if (found) return found.id;
+  }
+  const [first] = await tx.select({ id: unitTypes.id }).from(unitTypes).limit(1);
+  if (!first) {
+    const [created] = await tx
+      .insert(unitTypes)
+      .values({ name: unitStr?.trim() || "Unit", symbol: unitStr?.trim() || "unit" })
+      .returning({ id: unitTypes.id });
+    return created.id;
+  }
+  return first.id;
+}
 
 export const jsonBody = async <T extends z.ZodTypeAny>(c: Context, schema: T) => {
   try {

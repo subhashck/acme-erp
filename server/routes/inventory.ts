@@ -1,4 +1,4 @@
-import { eq, sql, and, desc, asc, ilike, inArray, gte, lte } from "drizzle-orm";
+import { eq, sql, and, desc, asc, ilike, inArray, gte, lte, or, gt, lt } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
@@ -73,44 +73,68 @@ const adjustmentInput = z.object({
   items: z.array(adjustmentItemInput).min(1, "At least one adjustment item is required"),
 });
 
-const purchaseInvoiceItemInput = z.object({
-  id: z.number().optional(),
-  itemId: z.number().int().positive("Item is required"),
-  grnItemId: z.number().int().positive().optional().nullable(),
-  quantity: z.coerce.number().min(0.001, "Quantity must be > 0"),
-  unitId: z.number().int().positive("Unit is required"),
-  unitRate: z.coerce.number().min(0, "Unit rate must be >= 0"),
-  discountPercent: z.coerce.number().min(0).default(0),
-  discountAmount: z.coerce.number().min(0).default(0),
-  taxableAmount: z.coerce.number().min(0),
-  hsnCode: z.string().optional().nullable(),
-  gstPercent: z.coerce.number().min(0).default(0),
-  cgstAmount: z.coerce.number().min(0).default(0),
-  sgstAmount: z.coerce.number().min(0).default(0),
-  igstAmount: z.coerce.number().min(0).default(0),
-  totalAmount: z.coerce.number().min(0),
-});
+const purchaseInvoiceItemInput = z
+  .object({
+    id: z.coerce.number().optional(),
+    itemId: z.coerce.number().int().positive("Item is required"),
+    grnItemId: z.coerce.number().int().positive().optional().nullable(),
+    quantity: z.coerce.number().min(0.001, "Quantity must be > 0").optional(),
+    billedQty: z.coerce.number().min(0.001).optional(),
+    unitId: z.coerce.number().int().positive("Unit is required"),
+    unitRate: z.coerce.number().min(0, "Unit rate must be >= 0"),
+    discountPercent: z.coerce.number().min(0).default(0),
+    discountAmount: z.coerce.number().min(0).default(0),
+    taxableAmount: z.coerce.number().min(0),
+    hsnCode: z.string().optional().nullable(),
+    gstPercent: z.coerce.number().min(0).default(0),
+    cgstAmount: z.coerce.number().min(0).default(0),
+    sgstAmount: z.coerce.number().min(0).default(0),
+    igstAmount: z.coerce.number().min(0).default(0),
+    totalAmount: z.coerce.number().min(0),
+  })
+  .transform((data) => ({
+    ...data,
+    quantity: data.quantity ?? data.billedQty ?? 0,
+    grnItemId: data.grnItemId || null,
+  }));
 
-const purchaseInvoiceInput = z.object({
-  invoiceNo: z.string().min(1, "Invoice number is required"),
-  invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
-  vendorId: z.number().int().positive("Vendor is required"),
-  grnId: z.number().int().positive().optional().nullable(),
-  poId: z.number().int().positive().optional().nullable(),
-  subtotal: z.coerce.number().min(0).default(0),
-  discountAmount: z.coerce.number().min(0).default(0),
-  taxableAmount: z.coerce.number().min(0).default(0),
-  cgstAmount: z.coerce.number().min(0).default(0),
-  sgstAmount: z.coerce.number().min(0).default(0),
-  igstAmount: z.coerce.number().min(0).default(0),
-  tdsAmount: z.coerce.number().min(0).default(0),
-  roundOff: z.coerce.number().default(0),
-  netAmount: z.coerce.number().min(0),
-  creditDays: z.coerce.number().min(0).default(0),
-  dueDate: z.string().optional().nullable(),
-  remarks: z.string().optional().nullable(),
-  items: z.array(purchaseInvoiceItemInput).min(1, "At least one line item is required"),
-});
+const purchaseInvoiceInput = z
+  .object({
+    invoiceNo: z.string().optional(),
+    vendorInvoiceNo: z.string().optional(),
+    invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+    vendorId: z.coerce.number().int().positive("Vendor is required"),
+    grnId: z.coerce.number().int().positive().optional().nullable(),
+    poId: z.coerce.number().int().positive().optional().nullable(),
+    subtotal: z.coerce.number().min(0).default(0),
+    discountAmount: z.coerce.number().min(0).default(0),
+    taxableAmount: z.coerce.number().min(0).default(0),
+    cgstAmount: z.coerce.number().min(0).default(0),
+    sgstAmount: z.coerce.number().min(0).default(0),
+    igstAmount: z.coerce.number().min(0).default(0),
+    tdsAmount: z.coerce.number().min(0).default(0),
+    roundOff: z.coerce.number().default(0),
+    netAmount: z.coerce.number().min(0),
+    creditDays: z.coerce.number().min(0).optional(),
+    paymentTermsDays: z.coerce.number().min(0).optional(),
+    dueDate: z.string().optional().nullable(),
+    remarks: z.string().optional().nullable(),
+    items: z.array(purchaseInvoiceItemInput).min(1, "At least one line item is required"),
+  })
+  .transform((data) => {
+    const invNo = (data.invoiceNo || data.vendorInvoiceNo || "").trim();
+    if (!invNo) {
+      throw new Error("Invoice number is required");
+    }
+    return {
+      ...data,
+      invoiceNo: invNo,
+      creditDays: data.creditDays ?? data.paymentTermsDays ?? 0,
+      dueDate: data.dueDate && data.dueDate.trim() !== "" ? data.dueDate : null,
+      grnId: data.grnId || null,
+      poId: data.poId || null,
+    };
+  });
 
 const purchaseInvoicePaymentInput = z.object({
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
@@ -271,23 +295,57 @@ export const inventoryRoutes = app
   // ---------------------------------------------------------------------------
   .get("/inventory/stock", async (c) => {
     const query = c.req.query();
-    const page = query.page ? parseInt(query.page, 10) : 1;
-    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const page = query.page ? Math.max(1, parseInt(query.page, 10)) : 1;
+    const limit = query.limit ? Math.max(1, parseInt(query.limit, 10)) : (query.pageSize ? Math.max(1, parseInt(query.pageSize, 10)) : 20);
     const offset = (page - 1) * limit;
 
     const conditions = [];
 
-    if (query.storeId) {
+    if (query.storeId && query.storeId !== "all") {
       conditions.push(eq(storeBatchStock.storeId, parseInt(query.storeId, 10)));
     }
-    if (query.itemId) {
+    if (query.itemId && query.itemId !== "all") {
       conditions.push(eq(storeBatchStock.itemId, parseInt(query.itemId, 10)));
     }
-    if (query.search) {
-      conditions.push(ilike(items.name, `%${query.search}%`));
+    if (query.itemTypeId && query.itemTypeId !== "all") {
+      conditions.push(eq(items.itemTypeId, parseInt(query.itemTypeId, 10)));
+    }
+    if (query.search && query.search.trim()) {
+      const s = `%${query.search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(items.name, s),
+          ilike(itemBatches.batchNumber, s),
+          ilike(items.barcode, s),
+          ilike(items.hsnCode, s),
+          ilike(itemBatches.barcode, s)
+        )
+      );
     }
     if (query.expiringBefore) {
       conditions.push(lte(itemBatches.expiryDate, query.expiringBefore));
+    }
+    if (query.stockStatus === "in_stock") {
+      conditions.push(gt(storeBatchStock.quantityOnHand, 0));
+    } else if (query.stockStatus === "out_of_stock") {
+      conditions.push(lte(storeBatchStock.quantityOnHand, 0));
+    } else if (query.stockStatus === "low_stock") {
+      conditions.push(
+        and(
+          gt(storeBatchStock.quantityOnHand, 0),
+          lte(storeBatchStock.quantityOnHand, sql`COALESCE(${items.reorderLevel}, 0)`)
+        )
+      );
+    } else if (query.stockStatus === "expired") {
+      conditions.push(sql`${itemBatches.expiryDate} <= CURRENT_DATE`);
+    } else if (query.stockStatus === "expiring_soon_30") {
+      conditions.push(
+        sql`${itemBatches.expiryDate} > CURRENT_DATE AND ${itemBatches.expiryDate} <= CURRENT_DATE + INTERVAL '30 days'`
+      );
+    } else if (query.stockStatus === "expiring_soon_90") {
+      conditions.push(
+        sql`${itemBatches.expiryDate} > CURRENT_DATE AND ${itemBatches.expiryDate} <= CURRENT_DATE + INTERVAL '90 days'`
+      );
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -295,11 +353,49 @@ export const inventoryRoutes = app
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(storeBatchStock)
+      .leftJoin(stores, eq(storeBatchStock.storeId, stores.id))
       .leftJoin(items, eq(storeBatchStock.itemId, items.id))
       .leftJoin(itemBatches, eq(storeBatchStock.batchId, itemBatches.id))
       .where(whereClause);
 
     const total = Number(countResult?.count || 0);
+
+    // Sorting
+    let orderByClause;
+    const isDesc = query.sortOrder === "desc";
+    const sortFn = isDesc ? desc : asc;
+
+    switch (query.sortBy) {
+      case "storeName":
+        orderByClause = [sortFn(stores.name), asc(items.name)];
+        break;
+      case "batchNumber":
+        orderByClause = [sortFn(itemBatches.batchNumber)];
+        break;
+      case "expiryDate":
+        orderByClause = [sortFn(itemBatches.expiryDate), asc(items.name)];
+        break;
+      case "quantityOnHand":
+        orderByClause = [sortFn(storeBatchStock.quantityOnHand)];
+        break;
+      case "availableQty":
+        orderByClause = [sortFn(storeBatchStock.availableQty)];
+        break;
+      case "purchaseRate":
+        orderByClause = [sortFn(itemBatches.purchaseRate)];
+        break;
+      case "mrp":
+        orderByClause = [sortFn(itemBatches.mrp)];
+        break;
+      case "itemName":
+      default:
+        orderByClause = [sortFn(items.name), asc(itemBatches.expiryDate)];
+        break;
+    }
+
+    const baseUnitAlias = alias(unitTypes, "base_unit_t");
+    const purchaseUnitAlias = alias(unitTypes, "pur_unit_t");
+    const saleUnitAlias = alias(unitTypes, "sale_unit_t");
 
     const rows = await db
       .select({
@@ -309,11 +405,22 @@ export const inventoryRoutes = app
         storeCode: stores.code,
         itemId: storeBatchStock.itemId,
         itemName: items.name,
-        unit: unitTypes.symbol,
-        unitName: unitTypes.name,
+        itemBarcode: items.barcode,
+        hsnCode: items.hsnCode,
+        reorderLevel: items.reorderLevel,
+        unit: baseUnitAlias.symbol,
+        unitName: baseUnitAlias.name,
+        baseUnit: baseUnitAlias.symbol,
+        baseUnitName: baseUnitAlias.name,
+        purchaseUnit: purchaseUnitAlias.symbol,
+        purchaseUnitName: purchaseUnitAlias.name,
+        saleUnit: saleUnitAlias.symbol,
+        saleUnitName: saleUnitAlias.name,
+        itemTypeId: items.itemTypeId,
         itemTypeName: itemTypes.name,
         batchId: storeBatchStock.batchId,
         batchNumber: itemBatches.batchNumber,
+        batchBarcode: itemBatches.barcode,
         expiryDate: itemBatches.expiryDate,
         mrp: itemBatches.mrp,
         purchaseRate: itemBatches.purchaseRate,
@@ -326,11 +433,13 @@ export const inventoryRoutes = app
       .from(storeBatchStock)
       .leftJoin(stores, eq(storeBatchStock.storeId, stores.id))
       .leftJoin(items, eq(storeBatchStock.itemId, items.id))
-      .leftJoin(unitTypes, eq(items.baseUnitId, unitTypes.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(purchaseUnitAlias, eq(items.purchaseUnitId, purchaseUnitAlias.id))
+      .leftJoin(saleUnitAlias, eq(items.saleUnitId, saleUnitAlias.id))
       .leftJoin(itemTypes, eq(items.itemTypeId, itemTypes.id))
       .leftJoin(itemBatches, eq(storeBatchStock.batchId, itemBatches.id))
       .where(whereClause)
-      .orderBy(items.name, itemBatches.expiryDate)
+      .orderBy(...orderByClause)
       .limit(limit)
       .offset(offset);
 
@@ -340,7 +449,7 @@ export const inventoryRoutes = app
         page,
         pageSize: limit,
         totalRecords: total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   })
@@ -384,29 +493,42 @@ export const inventoryRoutes = app
   // ---------------------------------------------------------------------------
   .get("/inventory/ledger", async (c) => {
     const query = c.req.query();
-    const page = query.page ? parseInt(query.page, 10) : 1;
-    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const page = query.page ? Math.max(1, parseInt(query.page, 10)) : 1;
+    const limit = query.limit ? Math.max(1, parseInt(query.limit, 10)) : (query.pageSize ? Math.max(1, parseInt(query.pageSize, 10)) : 20);
     const offset = (page - 1) * limit;
 
     const conditions = [];
 
-    if (query.storeId) {
+    if (query.storeId && query.storeId !== "all") {
       conditions.push(eq(stockLedger.storeId, parseInt(query.storeId, 10)));
     }
-    if (query.itemId) {
+    if (query.itemId && query.itemId !== "all") {
       conditions.push(eq(stockLedger.itemId, parseInt(query.itemId, 10)));
     }
-    if (query.batchId) {
+    if (query.batchId && query.batchId !== "all") {
       conditions.push(eq(stockLedger.batchId, parseInt(query.batchId, 10)));
     }
-    if (query.movementType) {
+    if (query.movementType && query.movementType !== "all") {
       conditions.push(eq(stockLedger.movementType, query.movementType as any));
+    }
+    if (query.search && query.search.trim()) {
+      const s = `%${query.search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(items.name, s),
+          ilike(itemBatches.batchNumber, s),
+          ilike(stockLedger.referenceType, s),
+          ilike(stockLedger.referenceId, s)
+        )
+      );
     }
     if (query.dateFrom) {
       conditions.push(gte(stockLedger.transactionDate, new Date(query.dateFrom)));
     }
     if (query.dateTo) {
-      conditions.push(lte(stockLedger.transactionDate, new Date(query.dateTo)));
+      const toDate = new Date(query.dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockLedger.transactionDate, toDate));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -414,9 +536,15 @@ export const inventoryRoutes = app
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(stockLedger)
+      .leftJoin(items, eq(stockLedger.itemId, items.id))
+      .leftJoin(itemBatches, eq(stockLedger.batchId, itemBatches.id))
       .where(whereClause);
 
     const total = Number(countResult?.count || 0);
+
+    const baseUnitAlias = alias(unitTypes, "base_unit_ledger_t");
+    const purchaseUnitAlias = alias(unitTypes, "pur_unit_ledger_t");
+    const saleUnitAlias = alias(unitTypes, "sale_unit_ledger_t");
 
     const rows = await db
       .select({
@@ -426,7 +554,11 @@ export const inventoryRoutes = app
         storeName: stores.name,
         itemId: stockLedger.itemId,
         itemName: items.name,
-        unit: unitTypes.symbol,
+        unit: baseUnitAlias.symbol,
+        unitName: baseUnitAlias.name,
+        baseUnit: baseUnitAlias.symbol,
+        purchaseUnit: purchaseUnitAlias.symbol,
+        saleUnit: saleUnitAlias.symbol,
         batchId: stockLedger.batchId,
         batchNumber: itemBatches.batchNumber,
         expiryDate: itemBatches.expiryDate,
@@ -443,7 +575,9 @@ export const inventoryRoutes = app
       .from(stockLedger)
       .leftJoin(stores, eq(stockLedger.storeId, stores.id))
       .leftJoin(items, eq(stockLedger.itemId, items.id))
-      .leftJoin(unitTypes, eq(items.baseUnitId, unitTypes.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(purchaseUnitAlias, eq(items.purchaseUnitId, purchaseUnitAlias.id))
+      .leftJoin(saleUnitAlias, eq(items.saleUnitId, saleUnitAlias.id))
       .leftJoin(itemBatches, eq(stockLedger.batchId, itemBatches.id))
       .leftJoin(user, eq(stockLedger.createdBy, user.id))
       .where(whereClause)
@@ -472,11 +606,27 @@ export const inventoryRoutes = app
     const offset = (page - 1) * limit;
 
     const conditions = [];
-    if (query.storeId) {
+    if (query.storeId && query.storeId !== "all") {
       conditions.push(eq(stockAdjustments.storeId, parseInt(query.storeId, 10)));
     }
-    if (query.status) {
+    if (query.status && query.status !== "all") {
       conditions.push(eq(stockAdjustments.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(stockAdjustments.adjustmentNo, `%${query.search}%`),
+          ilike(stockAdjustments.reason, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(stockAdjustments.createdAt, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockAdjustments.createdAt, end));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -514,7 +664,7 @@ export const inventoryRoutes = app
         page,
         pageSize: limit,
         totalRecords: total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   })
@@ -674,14 +824,21 @@ export const inventoryRoutes = app
     const offset = (page - 1) * limit;
 
     const conditions = [];
-    if (query.vendorId) {
+    if (query.vendorId && query.vendorId !== "all") {
       conditions.push(eq(purchaseInvoices.vendorId, parseInt(query.vendorId, 10)));
     }
-    if (query.status) {
+    if (query.status && query.status !== "all") {
       conditions.push(eq(purchaseInvoices.status, query.status as any));
     }
     if (query.search) {
-      conditions.push(ilike(purchaseInvoices.invoiceNo, `%${query.search}%`));
+      conditions.push(
+        or(
+          ilike(purchaseInvoices.invoiceNo, `%${query.search}%`),
+          ilike(vendors.name, `%${query.search}%`),
+          ilike(grns.grnNo, `%${query.search}%`),
+          ilike(purchaseOrders.poNo, `%${query.search}%`)
+        )
+      );
     }
     if (query.dateFrom) {
       conditions.push(gte(purchaseInvoices.invoiceDate, query.dateFrom));
@@ -695,6 +852,9 @@ export const inventoryRoutes = app
     const [countResult] = await db
       .select({ count: sql<number>`count(*)` })
       .from(purchaseInvoices)
+      .leftJoin(vendors, eq(purchaseInvoices.vendorId, vendors.id))
+      .leftJoin(grns, eq(purchaseInvoices.grnId, grns.id))
+      .leftJoin(purchaseOrders, eq(purchaseInvoices.poId, purchaseOrders.id))
       .where(whereClause);
 
     const total = Number(countResult?.count || 0);
@@ -742,9 +902,102 @@ export const inventoryRoutes = app
         page,
         pageSize: limit,
         totalRecords: total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
+  })
+  .get("/inventory/purchase-invoices/unbilled-grns", async (c) => {
+    const query = c.req.query();
+    const vendorId = query.vendorId ? parseInt(query.vendorId, 10) : undefined;
+
+    // Subquery: all grnIds already billed in an active purchase invoice
+    const billedGrnsSubquery = db
+      .select({ grnId: purchaseInvoices.grnId })
+      .from(purchaseInvoices)
+      .where(
+        and(
+          sql`${purchaseInvoices.grnId} IS NOT NULL`,
+          sql`${purchaseInvoices.status} != 'cancelled'`
+        )
+      );
+
+    const conditions = [
+      eq(grns.status, "posted"),
+      sql`${grns.id} NOT IN (${billedGrnsSubquery})`,
+    ];
+
+    if (vendorId && !isNaN(vendorId)) {
+      conditions.push(eq(grns.vendorId, vendorId));
+    }
+
+    const availableGrns = await db
+      .select({
+        id: grns.id,
+        grnNo: grns.grnNo,
+        grnDate: grns.grnDate,
+        dateOfDelivery: grns.dateOfDelivery,
+        poId: grns.poId,
+        poNo: purchaseOrders.poNo,
+        vendorId: grns.vendorId,
+        vendorName: vendors.name,
+        status: grns.status,
+        remarks: grns.remarks,
+        createdAt: grns.createdAt,
+      })
+      .from(grns)
+      .leftJoin(vendors, eq(grns.vendorId, vendors.id))
+      .leftJoin(purchaseOrders, eq(grns.poId, purchaseOrders.id))
+      .where(and(...conditions))
+      .orderBy(desc(grns.grnDate), desc(grns.id));
+
+    const grnIds = availableGrns.map((g) => g.id);
+    if (grnIds.length === 0) {
+      return c.json([]);
+    }
+
+    const itemsRows = await db
+      .select({
+        id: grnItems.id,
+        grnId: grnItems.grnId,
+        poItemId: grnItems.poItemId,
+        itemId: grnItems.itemId,
+        itemName: sql<string>`coalesce(${grnItems.itemName}, ${items.name})`,
+        batchId: grnItems.batchId,
+        batch: grnItems.batch,
+        expiryDate: grnItems.expiryDate,
+        unitId: grnItems.unitId,
+        unitSymbol: unitTypes.symbol,
+        unitName: unitTypes.name,
+        receivedQty: grnItems.receivedQty,
+        freeQty: grnItems.freeQty,
+        unitRate: sql<number>`coalesce(${grnItems.unitRate}, ${poItems.unitRate}, ${items.rate}, 0)`,
+        gstPercent: sql<number>`coalesce(${grnItems.gstPercent}, ${poItems.gstPercent}, ${items.gstPercent}, 0)`,
+        poOrderedQty: sql<number>`coalesce(${poItems.orderedQty}, ${grnItems.receivedQty}, 0)`,
+        notes: grnItems.notes,
+      })
+      .from(grnItems)
+      .leftJoin(items, eq(grnItems.itemId, items.id))
+      .leftJoin(unitTypes, eq(grnItems.unitId, unitTypes.id))
+      .leftJoin(poItems, eq(grnItems.poItemId, poItems.id))
+      .where(inArray(grnItems.grnId, grnIds));
+
+    const itemsByGrnId = new Map<number, any[]>();
+    for (const item of itemsRows) {
+      if (!itemsByGrnId.has(item.grnId)) {
+        itemsByGrnId.set(item.grnId, []);
+      }
+      itemsByGrnId.get(item.grnId)!.push({
+        ...item,
+        unit: item.unitSymbol || item.unitName || "unit",
+      });
+    }
+
+    const result = availableGrns.map((grn) => ({
+      ...grn,
+      items: itemsByGrnId.get(grn.id) || [],
+    }));
+
+    return c.json(result);
   })
   .get("/inventory/purchase-invoices/pending", async (c) => {
     const rows = await db

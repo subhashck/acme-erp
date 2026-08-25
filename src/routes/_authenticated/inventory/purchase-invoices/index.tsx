@@ -6,7 +6,6 @@ import { ModuleLayout } from "@/components/ModuleLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
-import { Select } from "@/ui/select";
 import {
   FileText,
   Plus,
@@ -20,17 +19,20 @@ import {
   RefreshCw,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   ShieldCheck,
   CreditCard,
+  X,
 } from "lucide-react";
 import { z } from "zod";
 
 const searchSchema = z.object({
-  page: z.coerce.number().optional().default(1),
-  limit: z.coerce.number().optional().default(20),
-  search: z.string().optional().default(""),
-  status: z.string().optional().default("all"),
-  vendorId: z.string().optional().default("all"),
+  page: z.coerce.number().optional().catch(1),
+  limit: z.coerce.number().optional().catch(20),
+  search: z.string().optional().catch(""),
+  status: z.string().optional().catch("all"),
+  vendorId: z.string().optional().catch("all"),
 });
 
 export const Route = createFileRoute("/_authenticated/inventory/purchase-invoices/")({
@@ -84,6 +86,13 @@ function PurchaseInvoicesList() {
 
   const invoices = response?.data || [];
   const pagination = response?.pagination || { page: 1, pageSize: 20, totalRecords: 0, totalPages: 1 };
+  const startRecord = pagination.totalRecords === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const endRecord = Math.min(pagination.page * pagination.pageSize, pagination.totalRecords);
+  const hasActiveFilters = Boolean(
+    searchParams.search ||
+    (searchParams.status && searchParams.status !== "all") ||
+    (searchParams.vendorId && searchParams.vendorId !== "all")
+  );
 
   // Calculate summary KPI metrics
   const totalBilled = invoices.reduce((acc: number, inv: any) => acc + Number(inv.netAmount || 0), 0);
@@ -97,7 +106,7 @@ function PurchaseInvoicesList() {
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearch !== searchParams.search) {
+      if (localSearch !== (searchParams.search || "")) {
         navigate({
           search: (prev: any) => ({
             ...prev,
@@ -108,7 +117,7 @@ function PurchaseInvoicesList() {
       }
     }, 400);
     return () => clearTimeout(timer);
-  }, [localSearch]);
+  }, [localSearch, searchParams.search, navigate]);
 
   const handleStatusFilter = (val: string) => {
     navigate({
@@ -225,35 +234,112 @@ function PurchaseInvoicesList() {
         </div>
 
         {/* Filter and Search Bar */}
-        <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-card p-4 rounded-xl border shadow-xs">
-          <div className="relative w-full md:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search by vendor, invoice no, ref..."
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+        <Card className="shadow-xs border-slate-200/80">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-[240px]">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search by vendor, invoice no, ref..."
+                    value={localSearch}
+                    onChange={(e) => setLocalSearch(e.target.value)}
+                    className="w-full pl-9 pr-8 h-9 text-xs rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  {localSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalSearch("");
+                        navigate({
+                          search: (prev: any) => ({ ...prev, search: undefined, page: 1 }),
+                        });
+                      }}
+                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            <div className="w-44">
-              <Select
-                value={searchParams.status || "all"}
-                onChange={(e) => handleStatusFilter(e.target.value)}
-                options={statusOptions}
-              />
+              <div className="w-[160px]">
+                <select
+                  value={searchParams.status || "all"}
+                  onChange={(e) => handleStatusFilter(e.target.value)}
+                  className="w-full h-9 text-xs rounded-md border bg-background px-2.5 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  {statusOptions.map(([val, label]) => (
+                    <option key={val} value={val}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="w-[200px]">
+                <select
+                  value={searchParams.vendorId || "all"}
+                  onChange={(e) => handleVendorFilter(e.target.value)}
+                  className="w-full h-9 text-xs rounded-md border bg-background px-2.5 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  {vendorOptions.map(([val, label]) => (
+                    <option key={val} value={val}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="w-[110px]">
+                <select
+                  value={String(searchParams.limit || 20)}
+                  onChange={(e) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        limit: Number(e.target.value),
+                        page: 1,
+                      }),
+                    })
+                  }
+                  className="w-full h-9 text-xs rounded-md border bg-background px-2.5 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <option value="10">10 / page</option>
+                  <option value="20">20 / page</option>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                </select>
+              </div>
+
+              {hasActiveFilters && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setLocalSearch("");
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        page: 1,
+                        limit: 20,
+                        search: "",
+                        status: "all",
+                        vendorId: "all",
+                      }),
+                    });
+                  }}
+                  className="h-9 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5 mr-1" />
+                  Reset Filters
+                </Button>
+              )}
             </div>
-            <div className="w-48">
-              <Select
-                value={searchParams.vendorId || "all"}
-                onChange={(e) => handleVendorFilter(e.target.value)}
-                options={vendorOptions}
-              />
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Invoices Master Table */}
         <Card className="shadow-xs overflow-hidden">
@@ -297,7 +383,7 @@ function PurchaseInvoicesList() {
                       <tr key={inv.id} className="hover:bg-muted/20 transition-colors">
                         <td className="px-4 py-3 font-mono font-bold text-primary">
                           <Link
-                            to={"/inventory/purchase-invoices/$id" as any}
+                            to="/inventory/purchase-invoices/$id"
                             params={{ id: String(inv.id) }}
                             className="hover:underline"
                           >
@@ -339,7 +425,7 @@ function PurchaseInvoicesList() {
                         <td className="px-4 py-3 text-center">{getStatusBadge(inv.status)}</td>
                         <td className="px-4 py-3 text-right">
                           <Link
-                            to={"/inventory/purchase-invoices/$id" as any}
+                            to="/inventory/purchase-invoices/$id"
                             params={{ id: String(inv.id) }}
                           >
                             <Button variant="outline" size="sm" className="h-7 text-xs px-2.5">
@@ -356,13 +442,29 @@ function PurchaseInvoicesList() {
           </div>
 
           {/* Pagination Controls */}
-          {pagination.totalPages > 1 && (
-            <div className="px-4 py-3 border-t flex items-center justify-between bg-muted/10">
-              <span className="text-xs text-muted-foreground">
-                Showing page <strong className="text-foreground">{pagination.page}</strong> of{" "}
-                <strong className="text-foreground">{pagination.totalPages}</strong> ({pagination.totalRecords} total)
-              </span>
+          {!isLoading && pagination.totalRecords > 0 && (
+            <div className="px-4 py-3 border-t flex flex-wrap items-center justify-between gap-3 bg-muted/10 text-xs">
+              <div className="text-muted-foreground">
+                Showing <strong className="text-foreground font-semibold">{startRecord}</strong> to{" "}
+                <strong className="text-foreground font-semibold">{endRecord}</strong> of{" "}
+                <strong className="text-foreground font-semibold">{pagination.totalRecords}</strong> purchase invoices
+              </div>
+
               <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -376,9 +478,15 @@ function PurchaseInvoicesList() {
                     })
                   }
                   className="h-8 px-2"
+                  title="Previous Page"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
+
+                <div className="px-2 font-medium">
+                  Page {pagination.page} of {pagination.totalPages}
+                </div>
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -392,8 +500,26 @@ function PurchaseInvoicesList() {
                     })
                   }
                   className="h-8 px-2"
+                  title="Next Page"
                 >
                   <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        page: pagination.totalPages,
+                      }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="h-4 w-4" />
                 </Button>
               </div>
             </div>

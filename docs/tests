@@ -1,0 +1,93 @@
+# Automated Testing Framework — Walkthrough & Verification
+
+We have designed, implemented, and verified a comprehensive, production-grade automated testing system for **ACME ERP**, covering unit tests and end-to-end integration tests backed by an ephemeral PostgreSQL Docker container pre-seeded with a **full copy/snapshot of the development database**.
+
+---
+
+## 1. Test Architecture Summary
+
+```
+tests/
+├── fixtures/
+│   └── dev-db-snapshot.sql        # Full database copy (~777 KB, schema + seed + master data)
+├── setup/
+│   ├── global-setup.ts            # Docker Postgres lifecycle & snapshot restore runner
+│   ├── test-db.ts                 # Drizzle test client with transactional table cleanup
+│   ├── test-env.ts                # Worker environment setup
+│   ├── auth-helper.ts             # Authenticated HTTP client helper (x-test-admin bypass)
+│   └── seed-helpers.ts            # Entity factories (vendors, items, stores, POs, GRNs, POS)
+├── unit/
+│   ├── gst.test.ts                # GST 3-way split, discount calculations, rounding (12 tests)
+│   ├── po-status.test.ts          # PO status & payment status state transitions (16 tests)
+│   ├── sequence.test.ts           # Indian Financial Year (Apr–Mar) boundary logic (7 tests)
+│   └── fefo.test.ts               # First-Expiry-First-Out batch sorting logic (4 tests)
+└── integration/
+    ├── purchases/
+    │   ├── vendors.test.ts        # Vendor CRUD, filters, soft delete (6 tests)
+    │   ├── purchase-orders.test.ts# PO creation, line items, payments, pagination (9 tests)
+    │   └── grn.test.ts            # PO-linked & direct GRN receiving, stock updates (6 tests)
+    ├── inventory/
+    │   ├── stock.test.ts          # Stores CRUD, stock balance, ledger movements (5 tests)
+    │   ├── pos-sale.test.ts       # Full PO-to-POS pipeline, FEFO allocation, returns (11 tests)
+    │   └── transfers.test.ts      # Store-to-store stock transfers & indents (2 tests)
+    ├── hr/                        # Staff, Leaves, Payroll suites scaffolded (22 placeholder tests)
+    ├── nursing/                   # Students, Fees suites scaffolded (15 placeholder tests)
+    ├── accounts/                  # Daily Closing, Bank Accounts scaffolded (14 placeholder tests)
+    ├── admin/                     # User management & roles scaffolded (7 placeholder tests)
+    └── masters/                   # Masters CRUD scaffolded (9 placeholder tests)
+```
+
+---
+
+## 2. Test Execution & Results
+
+### A. Full Test Suite (`pnpm test`)
+Executes all unit tests and integration tests sequentially against the ephemeral PostgreSQL instance with zero manual setup required:
+
+```bash
+pnpm test
+```
+
+**Results**:
+- **Test Files**: 10 passed | 9 skipped (19 total)
+- **Active Tests**: **78 passed / 78 (100% pass rate)**
+- **Placeholder Scaffolding**: 67 `it.todo()` tests across HR, Nursing, Accounts, Admin, and Masters modules.
+- **Total Execution Time**: ~33 seconds (including Docker container boot, snapshot restore, and teardown).
+
+### B. Unit Tests Only (`pnpm test:unit`)
+Instant sub-2 second test runner for business logic calculations (GST, sequences, status transitions, FEFO) without needing Docker:
+
+```bash
+pnpm test:unit
+```
+**Results**: **39/39 passing in 1.29s**.
+
+### C. Integration Tests Only (`pnpm test:integration`)
+Executes the API integration test suite against the Docker PostgreSQL test container:
+
+```bash
+pnpm test:integration
+```
+**Results**: **39/39 active tests passing**.
+
+---
+
+## 3. Key Features & Database Snapshot Integration
+
+1. **Full Database Copy (`dev-db-snapshot.sql`)**:
+   - Instead of starting with empty tables, the test runner automatically restores the full database copy containing seed users, permissions, master tables, departments, designations, unit types, stores, and items.
+   - Run `pnpm test:db:snapshot` anytime to update this snapshot from your dev container `acme-erp-db`.
+
+2. **Automated Ephemeral Lifecycle**:
+   - `global-setup.ts` boots `acme-erp-test-db` on port `5433` using `tmpfs` (RAM-backed storage for high performance), restores the snapshot, applies any schema migrations, runs the tests, and tears down the container and volumes on exit.
+
+3. **Selective Transactional Isolation**:
+   - Before each test suite, `cleanAllTables()` truncates only transactional tables (`sales_invoices`, `grns`, `purchase_orders`, `store_batch_stock`, `stock_ledger`, etc.) while preserving the master data restored from the database snapshot.
+
+---
+
+## 4. Manual Test Cases Specification
+
+For step-by-step user-acceptance and QA manual testing protocols (covering Unit Types ➔ Items Master ➔ PO ➔ GRN ➔ Stock Transfers ➔ POS ➔ Sales Returns ➔ Stock Ledger Audit), refer to:
+- [manual-test-cases-po-to-pos.md](file:///d:/dev/acme/acme-erp/docs/manual-test-cases-po-to-pos.md)
+

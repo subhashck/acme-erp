@@ -13,7 +13,15 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx server/db/seed.ts",
     "db:studio": "drizzle-kit studio",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "pnpm test:unit && pnpm test:integration",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit/",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:coverage": "vitest run --coverage",
+    "test:db:up": "docker compose -f docker-compose.test.yml up -d --wait",
+    "test:db:down": "docker compose -f docker-compose.test.yml down -v",
+    "test:db:snapshot": "docker exec acme-erp-db pg_dump -U postgres -d acme_erp --clean --if-exists --no-owner --no-privileges > tests/fixtures/dev-db-snapshot.sql"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.9",
@@ -71,8 +79,10 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31.10",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.11"
   }
 }

@@ -1,4 +1,4 @@
-import { eq, sql, and, desc, ilike, or } from "drizzle-orm";
+import { eq, sql, and, desc, ilike, or, gte, lte } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -86,14 +86,15 @@ export const posRoutes = app
     }
 
     if (search) {
-      conditions.push(
-        or(
-          ilike(items.name, `%${search}%`),
-          ilike(items.barcode, `%${search}%`),
-          ilike(items.hsnCode, `%${search}%`),
-          ilike(itemBatches.batchNumber, `%${search}%`)
-        )
+      const searchCond = or(
+        ilike(items.name, `%${search}%`),
+        ilike(items.barcode, `%${search}%`),
+        ilike(items.hsnCode, `%${search}%`),
+        ilike(itemBatches.batchNumber, `%${search}%`)
       );
+      if (searchCond) {
+        conditions.push(searchCond);
+      }
     }
 
     const availableStock = await db
@@ -302,17 +303,32 @@ export const posRoutes = app
     const offset = (page - 1) * limit;
 
     const conditions = [];
-    if (query.storeId) {
+    if (query.storeId && query.storeId !== "all") {
       conditions.push(eq(salesInvoices.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(salesInvoices.status, query.status as any));
+    }
+    if (query.paymentMode && query.paymentMode !== "all") {
+      conditions.push(eq(salesInvoices.paymentMode, query.paymentMode as any));
     }
     if (query.search) {
       conditions.push(
         or(
           ilike(salesInvoices.invoiceNo, `%${query.search}%`),
           ilike(salesInvoices.customerName, `%${query.search}%`),
-          ilike(salesInvoices.customerPhone, `%${query.search}%`)
+          ilike(salesInvoices.customerPhone, `%${query.search}%`),
+          ilike(salesInvoices.doctorName, `%${query.search}%`)
         )
       );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(salesInvoices.invoiceDate, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(salesInvoices.invoiceDate, end));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -347,7 +363,7 @@ export const posRoutes = app
         page,
         pageSize: limit,
         totalRecords: total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     });
   })

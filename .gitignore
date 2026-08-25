@@ -4,3 +4,4 @@ dist
 .tanstack/
 uploads/
 .env
+coverage/
