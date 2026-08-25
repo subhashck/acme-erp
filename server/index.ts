@@ -5,7 +5,11 @@ import { logger } from "hono/logger";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import { eq } from "drizzle-orm";
 import { auth, type AuthEnv } from "./auth.ts";
+import { db } from "./db/client.ts";
+import { user } from "./db/schema.ts";
+import { createInventorySchemaAndTables } from "./db/setup-inventory-db.ts";
 import { api } from "./routes.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -58,6 +62,32 @@ app.use("/api/*", async (c, next) => {
   if (c.req.path.startsWith("/api/public/")) {
     return next();
   }
+  // Test environment: resolve test admin session when x-test-admin header is provided
+  if (process.env.NODE_ENV === "test" && c.req.header("x-test-admin") === "true") {
+    const [adminUser] = await db.select().from(user).where(eq(user.role, "admin")).limit(1);
+    if (adminUser) {
+      c.set("session", {
+        session: {
+          id: "test-admin-session-id",
+          userId: adminUser.id,
+          expiresAt: new Date(Date.now() + 86400000),
+          token: "test-admin-token",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        user: {
+          ...adminUser,
+          role: "admin",
+          banned: false,
+          banReason: null,
+          banExpires: null,
+          mustChangePassword: false,
+        },
+      } as any);
+      return next();
+    }
+  }
+
   const session = await auth.api.getSession({
     headers: c.req.raw.headers
   });
@@ -94,8 +124,14 @@ app.use(
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 8787;
 
-serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
-  console.log(`Hono API listening on http://localhost:${info.port}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  createInventorySchemaAndTables().catch((err) => {
+    console.error("Failed to initialize inventory tables:", err);
+  });
+
+  serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
+    console.log(`Hono API listening on http://localhost:${info.port}`);
+  });
+}
 
 export type { AppType } from "./routes.ts";

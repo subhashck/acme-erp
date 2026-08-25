@@ -13,6 +13,7 @@ import {
   Calendar as CalendarIcon,
   Plus,
   Trash2,
+  Send,
 } from "lucide-react";
 import { Button } from "../../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../../ui/card";
@@ -218,6 +219,7 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
     resolver: zodResolver(grnFormSchema),
     defaultValues: {
       vendorId: po?.vendorId || null,
+      storeId: storesList.find((s: any) => s.isDefault)?.id || storesList[0]?.id || null,
       grnNo: "",
       grnDate: defaultGrnDate,
       dateOfDelivery: defaultGrnDate,
@@ -248,6 +250,15 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
     },
   });
 
+  React.useEffect(() => {
+    if (storesList.length > 0 && !form.getValues("storeId")) {
+      const def = storesList.find((s: any) => s.isDefault)?.id || storesList[0]?.id;
+      if (def) {
+        form.setValue("storeId", def);
+      }
+    }
+  }, [storesList, form]);
+
   const { fields, append, insert, remove } = useFieldArray({
     control: form.control,
     name: "items",
@@ -277,7 +288,18 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
     },
   });
 
-  const onSubmit = (values: GRNFormValues) => {
+  const onSubmit = (values: GRNFormValues, targetStatus: string = "draft") => {
+    if (targetStatus === "posted") {
+      if (!values.storeId) {
+        toast.error("Please select a receiving store before posting GRN.");
+        return;
+      }
+      const confirmedPost = window.confirm(
+        "Are you sure you want to POST this GRN? This action will update inventory stock and cannot be undone directly."
+      );
+      if (!confirmedPost) return;
+    }
+
     // Group received quantities by poItemId to check tolerance across multiple batches
     const receivedSumByPoItem: Record<number, number> = {};
     for (const item of values.items) {
@@ -326,7 +348,7 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
       grnDate: values.grnDate,
       dateOfDelivery: values.dateOfDelivery || null,
       remarks: values.remarks || null,
-      status: "draft",
+      status: targetStatus,
       items: values.items.map(item => ({
         poItemId: item.poItemId || null,
         itemId: item.itemId || null,
@@ -405,7 +427,7 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
   };
 
   return (
-    <form onSubmit={form.handleSubmit(onSubmit as any, onFormError)} className="space-y-6">
+    <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
       {/* Validation Error Banner */}
       {Object.keys(form.formState.errors).length > 0 && (
         <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs space-y-1">
@@ -856,8 +878,26 @@ function GRNForm({ po, defaultGrnDate, poId }: GRNFormProps) {
             Cancel
           </Button>
         </Link>
-        <Button type="submit" disabled={mutation.isPending}>
-          <Save className="h-4 w-4 mr-2" /> Receive Goods
+        <Button
+          type="button"
+          variant="outline"
+          disabled={mutation.isPending}
+          onClick={form.handleSubmit(
+            (values) => onSubmit(values as unknown as GRNFormValues, "draft"),
+            onFormError
+          )}
+        >
+          <Save className="h-4 w-4 mr-2" /> Save Draft
+        </Button>
+        <Button
+          type="button"
+          disabled={mutation.isPending}
+          onClick={form.handleSubmit(
+            (values) => onSubmit(values as unknown as GRNFormValues, "posted"),
+            onFormError
+          )}
+        >
+          <Send className="h-4 w-4 mr-2" /> Save &amp; Post GRN
         </Button>
       </div>
     </form>

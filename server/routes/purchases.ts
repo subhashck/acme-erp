@@ -19,27 +19,11 @@ import {
 import { stores } from "../db/schema-inventory.ts";
 import { generateDocNumber } from "../services/sequence.ts";
 import { findOrCreateBatch, recordStockMovement } from "../services/stock-engine.ts";
-import { idParam, jsonBody, requireAdmin } from "./shared.ts";
+import { idParam, jsonBody, requireAdmin, resolveUnitId } from "./shared.ts";
 import { z } from "zod";
 import { recalculatePoStatus, toNum } from "../utils/poStatus.ts";
 
 const app = new Hono<AuthEnv>();
-
-// Helper to resolve unitId from either numeric FK or string symbol/name
-async function resolveUnitId(tx: any, unitId?: number | null, unitStr?: string | null): Promise<number> {
-  if (unitId && typeof unitId === "number" && unitId > 0) return unitId;
-  if (unitStr && typeof unitStr === "string" && unitStr.trim()) {
-    const clean = unitStr.trim();
-    const [found] = await tx
-      .select({ id: unitTypes.id })
-      .from(unitTypes)
-      .where(sql`lower(${unitTypes.symbol}) = lower(${clean}) or lower(${unitTypes.name}) = lower(${clean})`)
-      .limit(1);
-    if (found) return found.id;
-  }
-  const [first] = await tx.select({ id: unitTypes.id }).from(unitTypes).limit(1);
-  return first?.id || 1;
-}
 
 // Helper for processing stock updates when a GRN is posted
 async function processGrnPosting(
@@ -213,13 +197,13 @@ const grnInput = z.object({
   poId: z.number().int().positive().optional().nullable(),
   vendorId: z.number().int().positive().optional().nullable(),
   storeId: z.number().int().positive().optional().nullable(),
-  noPoReason: z.string().optional().nullable(),
-  grnNo: z.string().optional().nullable(),
-  grnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  dateOfDelivery: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  remarks: z.string().optional().nullable(),
+  noPoReason: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
+  grnNo: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
+  grnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "GRN Date must be in YYYY-MM-DD format"),
+  dateOfDelivery: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()),
+  remarks: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
   status: z.enum(["draft", "posted", "correction"]).default("draft"),
-  items: z.array(grnItemInput).min(1),
+  items: z.array(grnItemInput).min(1, "At least one item is required"),
 });
 
 const paymentInput = z.object({
@@ -576,18 +560,19 @@ export const purchasesRoutes = app
       }).returning();
 
       if (calculatedItems.length > 0) {
-        await tx.insert(poItems).values(
-          calculatedItems.map((item) => ({
+        const poItemsToInsert = await Promise.all(
+          calculatedItems.map(async (item) => ({
             poId: po.id,
             itemName: item.itemName,
             category: item.category,
-            unit: item.unit,
+            unitId: await resolveUnitId(tx, item.unitId, item.unit),
             orderedQty: item.orderedQty,
             unitRate: item.unitRate,
             gstPercent: item.gstPercent,
             lineValue: item.lineValue,
           }))
         );
+        await tx.insert(poItems).values(poItemsToInsert);
       }
 
       return po;
@@ -653,18 +638,19 @@ export const purchasesRoutes = app
     await tx.delete(poItems).where(eq(poItems.poId, id));
 
     if (calculatedItems.length > 0) {
-      await tx.insert(poItems).values(
-        calculatedItems.map((item) => ({
+      const poItemsToInsert = await Promise.all(
+        calculatedItems.map(async (item) => ({
           poId: id,
           itemName: item.itemName,
           category: item.category,
-          unit: item.unit,
+          unitId: await resolveUnitId(tx, item.unitId, item.unit),
           orderedQty: item.orderedQty,
           unitRate: item.unitRate,
           gstPercent: item.gstPercent,
           lineValue: item.lineValue,
         }))
       );
+      await tx.insert(poItems).values(poItemsToInsert);
     }
 
     return po;
@@ -737,13 +723,13 @@ export const purchasesRoutes = app
         }
       } else {
         if (input.items.length > 0) {
-          await tx.insert(grnItems).values(
-            input.items.map(item => ({
+          const itemsToInsert = await Promise.all(
+            input.items.map(async (item) => ({
               grnId: grn.id,
               poItemId: item.poItemId ?? null,
               itemId: item.itemId ?? null,
               itemName: item.itemName ?? null,
-              unit: item.unit ?? null,
+              unitId: await resolveUnitId(tx, item.unitId, item.unit),
               receivedQty: item.receivedQty,
               freeQty: item.freeQty,
               unitRate: item.unitRate ?? 0,
@@ -755,6 +741,7 @@ export const purchasesRoutes = app
               notes: item.notes,
             }))
           );
+          await tx.insert(grnItems).values(itemsToInsert);
         }
       }
 
@@ -809,13 +796,13 @@ export const purchasesRoutes = app
         }
       } else {
         if (input.items.length > 0) {
-          await tx.insert(grnItems).values(
-            input.items.map(item => ({
+          const itemsToInsert = await Promise.all(
+            input.items.map(async (item) => ({
               grnId: grnId,
               poItemId: item.poItemId ?? null,
               itemId: item.itemId ?? null,
               itemName: item.itemName ?? null,
-              unit: item.unit ?? null,
+              unitId: await resolveUnitId(tx, item.unitId, item.unit),
               receivedQty: item.receivedQty,
               freeQty: item.freeQty,
               unitRate: item.unitRate ?? 0,
@@ -827,6 +814,7 @@ export const purchasesRoutes = app
               notes: item.notes,
             }))
           );
+          await tx.insert(grnItems).values(itemsToInsert);
         }
       }
 
@@ -962,13 +950,13 @@ export const purchasesRoutes = app
         }
       } else {
         if (input.items.length > 0) {
-          await tx.insert(grnItems).values(
-            input.items.map(item => ({
+          const itemsToInsert = await Promise.all(
+            input.items.map(async (item) => ({
               grnId: grn.id,
               poItemId: item.poItemId ?? null,
               itemId: item.itemId ?? null,
               itemName: item.itemName ?? null,
-              unit: item.unit ?? null,
+              unitId: await resolveUnitId(tx, item.unitId, item.unit),
               receivedQty: item.receivedQty,
               freeQty: item.freeQty,
               unitRate: item.unitRate ?? 0,
@@ -980,6 +968,7 @@ export const purchasesRoutes = app
               notes: item.notes,
             }))
           );
+          await tx.insert(grnItems).values(itemsToInsert);
         }
       }
 
@@ -1055,13 +1044,13 @@ export const purchasesRoutes = app
         }
       } else {
         if (input.items.length > 0) {
-          await tx.insert(grnItems).values(
-            input.items.map(item => ({
+          const itemsToInsert = await Promise.all(
+            input.items.map(async (item) => ({
               grnId: grnId,
               poItemId: item.poItemId ?? null,
               itemId: item.itemId ?? null,
               itemName: item.itemName ?? null,
-              unit: item.unit ?? null,
+              unitId: await resolveUnitId(tx, item.unitId, item.unit),
               receivedQty: item.receivedQty,
               freeQty: item.freeQty,
               unitRate: item.unitRate ?? 0,
@@ -1073,6 +1062,7 @@ export const purchasesRoutes = app
               notes: item.notes,
             }))
           );
+          await tx.insert(grnItems).values(itemsToInsert);
         }
       }
 

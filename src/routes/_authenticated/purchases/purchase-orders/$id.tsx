@@ -10,15 +10,13 @@ import { z } from "zod";
 import { 
   ChevronLeft, 
   Loader2, 
-  // Plus, 
   Edit, 
   Trash2, 
   Calendar as CalendarIcon, 
-  // ShoppingBag, 
   CreditCard,
   Truck,
   Printer,
-  // FileText
+  Download,
 } from "lucide-react";
 import { Button } from "../../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../../ui/card";
@@ -41,8 +39,9 @@ import * as React from "react";
 import { format } from "date-fns";
 import { cn } from "../../../../utils/cn";
 import { toNum } from "../../../../utils/math";
-import html2canvas from "html2canvas-pro";
-import jsPDF from "jspdf";
+import { useHospitalSettings } from "@/lib/settings";
+import { authClient } from "@/services/auth";
+import { printPurchaseOrderPDF, downloadPurchaseOrderPDF } from "@/lib/po-export";
 
 // Schema for payment creation validation in frontend
 const paymentFormSchema = z.object({
@@ -62,9 +61,10 @@ export const Route = createFileRoute("/_authenticated/purchases/purchase-orders/
 function PurchaseOrderDetailRoute() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
+  const hospitalSettings = useHospitalSettings();
+  const session = authClient.useSession();
   const [paymentDialogOpen, setPaymentDialogOpen] = React.useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
-  const printRef = React.useRef<HTMLDivElement>(null);
 
   const { data: po, isLoading, error } = useRpcQuery<any>(
     ["purchase-orders", id],
@@ -169,46 +169,25 @@ function PurchaseOrderDetailRoute() {
     recordPaymentMutation.mutate(values);
   };
 
-  const handleGeneratePdf = async () => {
-    if (!printRef.current) return;
-    setIsGeneratingPdf(true);
-    
-    const isDark = document.documentElement.classList.contains("dark");
-    if (isDark) {
-      document.documentElement.classList.remove("dark");
+  const handlePrintPdf = () => {
+    if (!po) return;
+    try {
+      printPurchaseOrderPDF(po, hospitalSettings, session.data?.user?.name);
+    } catch (err: any) {
+      console.error("Failed to print PO", err);
+      toast.error("Failed to print Purchase Order: " + (err.message || "Unknown error"));
     }
-    
-    // give react a tick to re-render in light mode
-    setTimeout(async () => {
-      try {
-        const canvas = await html2canvas(printRef.current as HTMLElement, {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-        });
-        const imgData = canvas.toDataURL("image/png");
-        const pdf = new jsPDF({
-          orientation: "portrait",
-          unit: "pt",
-          format: "a4",
-        });
-        
-        const margin = 30; // 30pt margin
-        const pdfWidth = pdf.internal.pageSize.getWidth() - margin * 2;
-        const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-        
-        pdf.addImage(imgData, "PNG", margin, margin, pdfWidth, pdfHeight);
-        pdf.save(`PO-${po.poNo}.pdf`);
-      } catch (err) {
-        console.error("Failed to generate PDF", err);
-        toast.error("Failed to generate PDF");
-      } finally {
-        if (isDark) {
-          document.documentElement.classList.add("dark");
-        }
-        setIsGeneratingPdf(false);
-      }
-    }, 150);
+  };
+
+  const handleDownloadPdf = () => {
+    if (!po) return;
+    try {
+      downloadPurchaseOrderPDF(po, hospitalSettings, session.data?.user?.name);
+      toast.success(`Purchase Order PO-${po.poNo}.pdf downloaded`);
+    } catch (err: any) {
+      console.error("Failed to download PO PDF", err);
+      toast.error("Failed to download Purchase Order PDF: " + (err.message || "Unknown error"));
+    }
   };
 
   const getPoStatusColor = (status: string) => {
@@ -272,15 +251,20 @@ function PurchaseOrderDetailRoute() {
       title={`PO: ${po.poNo}`}
       description="Detailed view of purchase order, items, received GRNs, and payments."
       action={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button 
             variant="outline" 
-            className="hidden sm:flex" 
-            onClick={handleGeneratePdf}
-            disabled={isGeneratingPdf}
+            onClick={handlePrintPdf}
+            title="Print Purchase Order document"
           >
-            {isGeneratingPdf ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Printer className="mr-1 h-4 w-4" />} 
-            {isGeneratingPdf ? "Generating..." : "Print PO"}
+            <Printer className="mr-1 h-4 w-4" /> Print PO
+          </Button>
+          <Button 
+            variant="outline" 
+            onClick={handleDownloadPdf}
+            title="Download PDF document"
+          >
+            <Download className="mr-1 h-4 w-4" /> Download PDF
           </Button>
           <Link to="/purchases/purchase-orders" search={{ page: 1, limit: 10 }}>
             <Button variant="outline">
@@ -414,7 +398,7 @@ function PurchaseOrderDetailRoute() {
         </div>
       }
     >
-      <div ref={printRef} className="max-w-6xl mx-auto space-y-6 py-6 px-4 bg-background">
+      <div className="max-w-6xl mx-auto space-y-6 py-6 px-4 bg-background">
         {/* Header Cards */}
         <div className="grid gap-6 md:grid-cols-3">
           <Card className="relative overflow-hidden">

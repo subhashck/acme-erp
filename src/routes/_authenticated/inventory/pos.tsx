@@ -29,7 +29,9 @@ import {
   History,
   FileText,
   Clock,
-  X
+  X,
+  Percent,
+  Tag
 } from "lucide-react";
 import * as React from "react";
 import {
@@ -237,6 +239,11 @@ export function buildPosReceiptPDF(
 
   // 3. Line Items Table (Batch & Exp nested under Item Name to optimize space)
   const items = invoice.items || [];
+  const hasGst =
+    items.some((item: any) => Number(item.gstPercent || 0) > 0) ||
+    Number(invoice.cgstAmount || 0) > 0 ||
+    Number(invoice.sgstAmount || 0) > 0;
+
   const tableData = items.map((item: any, idx: number) => {
     const itemName = item.item?.name || item.itemName || "Item";
     const batchNo = item.batch?.batchNumber || item.batchNumber || "-";
@@ -255,22 +262,60 @@ export function buildPosReceiptPDF(
     const gst = Number(item.gstPercent || 0) > 0 ? `${item.gstPercent}%` : "-";
     const total = Number(item.totalAmount || (item.quantity * item.unitRate)).toFixed(2);
 
+    if (hasGst) {
+      return [
+        String(idx + 1),
+        itemDescription,
+        qty,
+        rate,
+        disc,
+        gst,
+        total,
+      ];
+    }
+
     return [
       String(idx + 1),
       itemDescription,
       qty,
       rate,
       disc,
-      gst,
       total,
     ];
   });
 
+  const tableHead = hasGst
+    ? [["#", "Item Description / Batch & Exp", "Qty", "Rate", "Disc", "GST", "Amount"]]
+    : [["#", "Item Description / Batch & Exp", "Qty", "Rate", "Disc", "Amount"]];
+
+  const emptyTableBody = hasGst
+    ? [["-", "No items", "-", "-", "-", "-", "-"]]
+    : [["-", "No items", "-", "-", "-", "-"]];
+
+  const columnStyles: Record<string, any> = hasGst
+    ? {
+        0: { cellWidth: 6, halign: "center" },
+        1: { cellWidth: 64, halign: "left" },
+        2: { cellWidth: 16, halign: "center" },
+        3: { cellWidth: 13, halign: "right" },
+        4: { cellWidth: 10, halign: "center" },
+        5: { cellWidth: 11, halign: "center" },
+        6: { cellWidth: 16, halign: "right", fontStyle: "bold" },
+      }
+    : {
+        0: { cellWidth: 6, halign: "center" },
+        1: { cellWidth: 75, halign: "left" },
+        2: { cellWidth: 16, halign: "center" },
+        3: { cellWidth: 13, halign: "right" },
+        4: { cellWidth: 10, halign: "center" },
+        5: { cellWidth: 16, halign: "right", fontStyle: "bold" },
+      };
+
   autoTable(doc, {
     startY: currentY,
     margin: { left: margin, right: margin },
-    head: [["#", "Item Description / Batch & Exp", "Qty", "Rate", "Disc", "GST", "Amount"]],
-    body: tableData.length > 0 ? tableData : [["-", "No items", "-", "-", "-", "-", "-"]],
+    head: tableHead,
+    body: tableData.length > 0 ? tableData : emptyTableBody,
     theme: "striped",
     headStyles: {
       fillColor: [30, 41, 59], // slate-800
@@ -286,15 +331,7 @@ export function buildPosReceiptPDF(
       textColor: [30, 41, 59],
       valign: "middle",
     },
-    columnStyles: {
-      0: { cellWidth: 6, halign: "center" },
-      1: { cellWidth: 64, halign: "left" },
-      2: { cellWidth: 16, halign: "center" },
-      3: { cellWidth: 13, halign: "right" },
-      4: { cellWidth: 10, halign: "center" },
-      5: { cellWidth: 11, halign: "center" },
-      6: { cellWidth: 16, halign: "right", fontStyle: "bold" },
-    },
+    columnStyles,
     willDrawCell: (data) => {
       // Suppress default text rendering for Item Description column to draw custom sized and colored lines
       if (data.section === "body" && data.column.index === 1) {
@@ -476,6 +513,9 @@ function PosTerminal() {
   const [customerPhone, setCustomerPhone] = React.useState("");
   const [doctorName, setDoctorName] = React.useState("");
   const [paymentMode, setPaymentMode] = React.useState<"cash" | "card" | "upi" | "credit">("cash");
+  const [billDiscountType, setBillDiscountType] = React.useState<"percent" | "fixed">("percent");
+  const [billDiscountValue, setBillDiscountValue] = React.useState<number>(0);
+  const [isZeroGst, setIsZeroGst] = React.useState(true);
 
   const [searchTerm, setSearchTerm] = React.useState("");
   const [cart, setCart] = React.useState<CartItem[]>([]);
@@ -501,8 +541,17 @@ function PosTerminal() {
 
   React.useEffect(() => {
     if (storesList.length > 0 && !storeId) {
-      const def = storesList.find((s: any) => s.isDefault) || storesList[0];
-      setStoreId(def.id);
+      const dispensaryStore = storesList.find(
+        (s: any) =>
+          s.code?.toUpperCase() === "DISP" ||
+          s.code?.toUpperCase() === "DISPENSARY" ||
+          s.name?.trim().toUpperCase() === "DISPENSARY" ||
+          s.name?.toUpperCase().includes("DISPENSARY")
+      );
+      const def = dispensaryStore || storesList.find((s: any) => s.isDefault) || storesList[0];
+      if (def) {
+        setStoreId(def.id);
+      }
     }
   }, [storesList, storeId]);
 
@@ -622,20 +671,68 @@ function PosTerminal() {
     setCart((prev) => prev.filter((_, idx) => idx !== index));
   };
 
-  // Calculations
-  const calculatedLines = cart.map((item) => {
-    const gross = Number((item.quantity * item.unitRate).toFixed(2));
-    const discount = Number(((gross * item.discountPercent) / 100).toFixed(2));
-    const taxable = gross - discount;
-    const gstAmt = Number(((taxable * item.gstPercent) / 100).toFixed(2));
-    const lineTotal = Number((taxable + gstAmt).toFixed(2));
-    return { gross, discount, taxable, gstAmt, lineTotal };
-  });
+  // Item-level and Bill-level Calculations
+  const grossSubtotal = React.useMemo(() => {
+    return cart.reduce((acc, item) => acc + Number((item.quantity * item.unitRate).toFixed(2)), 0);
+  }, [cart]);
 
-  const subtotal = calculatedLines.reduce((acc, l) => acc + l.gross, 0);
-  const totalDiscount = calculatedLines.reduce((acc, l) => acc + l.discount, 0);
-  const totalTaxable = calculatedLines.reduce((acc, l) => acc + l.taxable, 0);
-  const totalGst = calculatedLines.reduce((acc, l) => acc + l.gstAmt, 0);
+  const itemDiscountsTotal = React.useMemo(() => {
+    return cart.reduce((acc, item) => {
+      const gross = Number((item.quantity * item.unitRate).toFixed(2));
+      const disc = Number(((gross * (item.discountPercent || 0)) / 100).toFixed(2));
+      return acc + disc;
+    }, 0);
+  }, [cart]);
+
+  const subtotalAfterItemDiscounts = Math.max(0, grossSubtotal - itemDiscountsTotal);
+
+  const billDiscountAmountCalculated = React.useMemo(() => {
+    if (!billDiscountValue || billDiscountValue <= 0 || subtotalAfterItemDiscounts <= 0) return 0;
+    if (billDiscountType === "percent") {
+      const pct = Math.min(100, Math.max(0, billDiscountValue));
+      return Number(((subtotalAfterItemDiscounts * pct) / 100).toFixed(2));
+    }
+    return Math.min(Number(billDiscountValue), subtotalAfterItemDiscounts);
+  }, [billDiscountType, billDiscountValue, subtotalAfterItemDiscounts]);
+
+  const calculatedLines = React.useMemo(() => {
+    return cart.map((item) => {
+      const gross = Number((item.quantity * item.unitRate).toFixed(2));
+      const itemDisc = Number(((gross * (item.discountPercent || 0)) / 100).toFixed(2));
+      const itemBaseForBillDisc = Math.max(0, gross - itemDisc);
+
+      const itemBillDisc = subtotalAfterItemDiscounts > 0 && billDiscountAmountCalculated > 0
+        ? Number(((itemBaseForBillDisc / subtotalAfterItemDiscounts) * billDiscountAmountCalculated).toFixed(2))
+        : 0;
+
+      const totalItemDiscount = Number((itemDisc + itemBillDisc).toFixed(2));
+      const effectiveDiscountPercent = gross > 0
+        ? Math.min(100, Number(((totalItemDiscount / gross) * 100).toFixed(2)))
+        : 0;
+
+      const taxable = Math.max(0, Number((gross - totalItemDiscount).toFixed(2)));
+      const effectiveGstPercent = isZeroGst ? 0 : Number(item.gstPercent || 0);
+      const gstAmt = Number(((taxable * effectiveGstPercent) / 100).toFixed(2));
+      const lineTotal = Number((taxable + gstAmt).toFixed(2));
+
+      return {
+        gross,
+        itemDisc,
+        itemBillDisc,
+        totalItemDiscount,
+        effectiveDiscountPercent,
+        taxable,
+        effectiveGstPercent,
+        gstAmt,
+        lineTotal,
+      };
+    });
+  }, [cart, subtotalAfterItemDiscounts, billDiscountAmountCalculated, isZeroGst]);
+
+  const subtotal = Number(grossSubtotal.toFixed(2));
+  const totalDiscount = Number((itemDiscountsTotal + billDiscountAmountCalculated).toFixed(2));
+  const totalTaxable = Number(calculatedLines.reduce((acc, l) => acc + l.taxable, 0).toFixed(2));
+  const totalGst = Number(calculatedLines.reduce((acc, l) => acc + l.gstAmt, 0).toFixed(2));
   const cgstAmount = Number((totalGst / 2).toFixed(2));
   const sgstAmount = Number((totalGst / 2).toFixed(2));
   const rawTotal = totalTaxable + totalGst;
@@ -652,15 +749,15 @@ function PosTerminal() {
           doctorName: doctorName || null,
           paymentMode,
           isInterState: false,
-          items: cart.map((item) => ({
+          items: cart.map((item, idx) => ({
             itemId: item.itemId,
             batchId: item.batchId,
             quantity: item.quantity,
             unit: item.unit,
             unitRate: item.unitRate,
             mrp: item.mrp,
-            discountPercent: item.discountPercent,
-            gstPercent: item.gstPercent,
+            discountPercent: calculatedLines[idx]?.effectiveDiscountPercent ?? item.discountPercent,
+            gstPercent: isZeroGst ? 0 : item.gstPercent,
           })),
         },
       });
@@ -675,9 +772,11 @@ function PosTerminal() {
       // If data doesn't have items populated, attach cart items for instant printing
       const completeData = {
         ...data,
-        items: data.items && data.items.length > 0 ? data.items : cart.map((c) => ({
+        items: data.items && data.items.length > 0 ? data.items : cart.map((c, idx) => ({
           ...c,
-          totalAmount: (c.quantity * c.unitRate) - ((c.quantity * c.unitRate * c.discountPercent) / 100),
+          discountPercent: calculatedLines[idx]?.effectiveDiscountPercent ?? c.discountPercent,
+          discountAmount: calculatedLines[idx]?.totalItemDiscount ?? 0,
+          totalAmount: calculatedLines[idx]?.lineTotal ?? (c.quantity * c.unitRate),
           item: { name: c.itemName },
           batch: { batchNumber: c.batchNumber, expiryDate: c.expiryDate },
         })),
@@ -689,6 +788,8 @@ function PosTerminal() {
       setCustomerName("");
       setCustomerPhone("");
       setDoctorName("");
+      setBillDiscountValue(0);
+      setBillDiscountType("percent");
       queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
       queryClient.invalidateQueries({ queryKey: ["pos-invoices"] });
       queryClient.invalidateQueries({ queryKey: ["pos-recent-invoices"] });
@@ -942,7 +1043,13 @@ function PosTerminal() {
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono">
                             ₹{line.gstAmt.toFixed(2)}
-                            <span className="text-[10px] text-muted-foreground block">({item.gstPercent}%)</span>
+                            <span className="text-[10px] text-muted-foreground block">
+                              {isZeroGst ? (
+                                <span className="text-cyan-400 font-semibold font-sans">0% (Waived)</span>
+                              ) : (
+                                `(${item.gstPercent}%)`
+                              )}
+                            </span>
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-bold">
                             ₹{line.lineTotal.toFixed(2)}
@@ -979,25 +1086,199 @@ function PosTerminal() {
                 </span>
               </div>
 
+              {/* Bill Level Discount Control */}
+              <div className="bg-slate-800/90 rounded-lg p-3.5 border border-slate-700/70 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-amber-400" />
+                    Bill-Level Discount
+                  </Label>
+
+                  {/* Toggle % vs Flat ₹ */}
+                  <div className="flex items-center bg-slate-950 p-0.5 rounded-md border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillDiscountType("percent");
+                        setBillDiscountValue(0);
+                      }}
+                      className={cn(
+                        "px-2 py-0.5 text-[10px] font-bold rounded transition-colors cursor-pointer",
+                        billDiscountType === "percent"
+                          ? "bg-amber-500 text-slate-950 shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      )}
+                    >
+                      % Percent
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillDiscountType("fixed");
+                        setBillDiscountValue(0);
+                      }}
+                      className={cn(
+                        "px-2 py-0.5 text-[10px] font-bold rounded transition-colors cursor-pointer",
+                        billDiscountType === "fixed"
+                          ? "bg-amber-500 text-slate-950 shadow-sm"
+                          : "text-slate-400 hover:text-white"
+                      )}
+                    >
+                      ₹ Flat Amount
+                    </button>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute left-2.5 top-2 text-xs font-bold text-slate-400 pointer-events-none">
+                    {billDiscountType === "percent" ? "%" : "₹"}
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    max={billDiscountType === "percent" ? "100" : undefined}
+                    step={billDiscountType === "percent" ? "0.5" : "1"}
+                    value={billDiscountValue === 0 ? "" : billDiscountValue}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 0;
+                      if (billDiscountType === "percent") {
+                        setBillDiscountValue(Math.max(0, Math.min(100, val)));
+                      } else {
+                        setBillDiscountValue(Math.max(0, val));
+                      }
+                    }}
+                    placeholder={
+                      billDiscountType === "percent"
+                        ? "Enter % (e.g. 5, 10)"
+                        : "Enter amount (e.g. 50, 100)"
+                    }
+                    className="pl-7 pr-8 h-8 bg-slate-950 border-slate-700 text-xs font-mono font-bold text-amber-300 placeholder:text-slate-500 placeholder:font-normal focus-visible:ring-amber-500"
+                  />
+                  {billDiscountValue > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBillDiscountValue(0)}
+                      className="absolute right-2 top-2 text-slate-500 hover:text-slate-300"
+                      title="Clear discount"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Preset Chips */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-slate-400 mr-0.5">Quick:</span>
+                  {(billDiscountType === "percent" ? [5, 10, 15, 20] : [20, 50, 100, 200]).map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setBillDiscountValue(preset)}
+                      className={cn(
+                        "px-1.5 py-0.5 rounded text-[10px] font-mono font-medium transition-colors cursor-pointer border",
+                        billDiscountValue === preset
+                          ? "bg-amber-500/20 border-amber-500/60 text-amber-300"
+                          : "bg-slate-950/60 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                      )}
+                    >
+                      {billDiscountType === "percent" ? `${preset}%` : `₹${preset}`}
+                    </button>
+                  ))}
+                  {billDiscountValue > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setBillDiscountValue(0)}
+                      className="px-1.5 py-0.5 rounded text-[10px] text-red-400 hover:text-red-300 hover:bg-red-950/40 border border-red-900/40 transition-colors ml-auto cursor-pointer"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+
+                {billDiscountAmountCalculated > 0 && (
+                  <div className="flex items-center justify-between text-[11px] text-amber-400 font-mono pt-1 border-t border-slate-700/50">
+                    <span>Applied Bill Discount:</span>
+                    <span className="font-bold">-₹{billDiscountAmountCalculated.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Zero GST (0% Tax Exempt) Toggle */}
+              <div className="bg-slate-800/90 rounded-lg p-3 border border-slate-700/70 flex items-center justify-between">
+                <div>
+                  <Label
+                    className="text-xs font-bold text-slate-200 flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => setIsZeroGst(!isZeroGst)}
+                  >
+                    <Percent className="w-3.5 h-3.5 text-cyan-400" />
+                    Zero GST (0% Tax)
+                  </Label>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {isZeroGst ? "Tax waived (0% GST applied to all items)" : "Standard item tax rates applied"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsZeroGst(!isZeroGst)}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden",
+                    isZeroGst ? "bg-cyan-500" : "bg-slate-700"
+                  )}
+                  role="switch"
+                  aria-checked={isZeroGst}
+                  title="Toggle Zero GST (0% Tax)"
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out",
+                      isZeroGst ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+
+              {/* Breakdown */}
               <div className="space-y-2 text-xs text-slate-300">
                 <div className="flex justify-between">
                   <span>Gross Subtotal</span>
                   <span className="font-mono">₹{subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-amber-400">
-                  <span>Discount Total</span>
-                  <span className="font-mono">-₹{totalDiscount.toFixed(2)}</span>
-                </div>
+                {itemDiscountsTotal > 0 && (
+                  <div className="flex justify-between text-slate-400">
+                    <span>Item Discounts</span>
+                    <span className="font-mono">-₹{itemDiscountsTotal.toFixed(2)}</span>
+                  </div>
+                )}
+                {billDiscountAmountCalculated > 0 && (
+                  <div className="flex justify-between text-amber-400">
+                    <span>
+                      Bill Discount ({billDiscountType === "percent" ? `${billDiscountValue}%` : "Flat ₹"})
+                    </span>
+                    <span className="font-mono">-₹{billDiscountAmountCalculated.toFixed(2)}</span>
+                  </div>
+                )}
+                {totalDiscount > 0 && (
+                  <div className="flex justify-between text-amber-300 font-semibold border-t border-slate-800/60 pt-1">
+                    <span>Total Discount</span>
+                    <span className="font-mono">-₹{totalDiscount.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Taxable Amount</span>
                   <span className="font-mono">₹{totalTaxable.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>CGST (Central Tax)</span>
+                  <span className="flex items-center gap-1">
+                    CGST (Central Tax)
+                    {isZeroGst && <span className="text-[10px] text-cyan-400 font-semibold">(0% Waived)</span>}
+                  </span>
                   <span className="font-mono">₹{cgstAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
-                  <span>SGST (State Tax)</span>
+                  <span className="flex items-center gap-1">
+                    SGST (State Tax)
+                    {isZeroGst && <span className="text-[10px] text-cyan-400 font-semibold">(0% Waived)</span>}
+                  </span>
                   <span className="font-mono">₹{sgstAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-slate-500">

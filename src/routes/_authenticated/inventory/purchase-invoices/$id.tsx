@@ -9,6 +9,11 @@ import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
 import { Field } from "@/components/Field";
 import { Select } from "@/ui/select";
+import { Label } from "@/ui/label";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   FileText,
@@ -20,7 +25,7 @@ import {
   CreditCard,
   Plus,
   Loader2,
-  Calendar,
+  Calendar as CalendarIcon,
   Building,
   Hash,
   Clock,
@@ -598,12 +603,35 @@ function PurchaseInvoiceDetail() {
             }}
             className="space-y-4 pt-2"
           >
-            <Field
-              label="Payment Date *"
-              type="date"
-              value={paymentDate}
-              onChange={(e) => setPaymentDate(e.target.value)}
-            />
+            <div className="flex flex-col space-y-1.5">
+              <Label>Payment Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal bg-background px-3 h-10",
+                      !paymentDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                    {paymentDate && !isNaN(new Date(paymentDate).getTime()) ? (
+                      format(new Date(paymentDate), "dd MMM yyyy")
+                    ) : (
+                      <span>Pick payment date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={paymentDate ? new Date(paymentDate) : undefined}
+                    onSelect={(date) => setPaymentDate(date ? format(date, "yyyy-MM-dd") : "")}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
 
             <Field
               label={`Payment Amount (Max ₹${balanceDue.toFixed(2)}) *`}

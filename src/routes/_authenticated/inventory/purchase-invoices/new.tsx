@@ -1,9 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useFieldArray, useWatch, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 import { queryClient, useRpcQuery } from "@/lib/query";
 import { client } from "@/services/rpc";
 import { ModuleLayout } from "@/components/ModuleLayout";
@@ -11,7 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/
 import { Button } from "@/ui/button";
 import { Field } from "@/components/Field";
 import { Select } from "@/ui/select";
+import { Autocomplete } from "@/ui/autocomplete";
+import { Label } from "@/ui/label";
 import { Badge } from "@/ui/badge";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { toast } from "sonner";
 import {
   FileText,
@@ -24,7 +30,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Loader2,
-  Calendar,
+  Calendar as CalendarIcon,
   Layers,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -62,6 +68,7 @@ const invoiceFormSchema = z.object({
   poId: z.coerce.number().optional().nullable(),
   isInterState: z.boolean().default(false),
   paymentTermsDays: z.coerce.number().min(0).default(30),
+  billDiscountAmount: z.coerce.number().min(0, "Discount cannot be negative").default(0),
   tdsPercent: z.coerce.number().min(0).max(100).default(0),
   remarks: z.string().optional().nullable(),
   items: z.array(lineItemSchema).min(1, "At least one line item is required"),
@@ -101,6 +108,7 @@ function NewPurchaseInvoice() {
       dueDate: "",
       isInterState: false,
       paymentTermsDays: 30,
+      billDiscountAmount: 0,
       tdsPercent: 0,
       remarks: "",
       items: [],
@@ -112,16 +120,17 @@ function NewPurchaseInvoice() {
     name: "items",
   });
 
-  const watchVendorId = Number(form.watch("vendorId") || 0);
-  const watchIsInterState = form.watch("isInterState");
-  const watchTdsPercent = Number(form.watch("tdsPercent") || 0);
-  const watchedItems = form.watch("items") || [];
+  const watchVendorId = Number(useWatch({ control: form.control, name: "vendorId" }) || 0);
+  const watchIsInterState = Boolean(useWatch({ control: form.control, name: "isInterState" }));
+  const watchTdsPercent = Number(useWatch({ control: form.control, name: "tdsPercent" }) || 0);
+  const watchBillDiscount = Number(useWatch({ control: form.control, name: "billDiscountAmount" }) || 0);
+  const watchedItems = useWatch({ control: form.control, name: "items" }) || [];
 
-  // Query unbilled / pending GRNs for selected vendor
+  // Query unbilled / posted GRNs for selected vendor
   const { data: pendingGrns = [], isLoading: loadingGrns } = useRpcQuery<any[]>(
     ["pending-grns", watchVendorId],
     () =>
-      (client as any)["inventory"]["purchase-invoices"]["pending"].$get({
+      (client as any)["inventory"]["purchase-invoices"]["unbilled-grns"].$get({
         query: { vendorId: String(watchVendorId) },
       }),
     { enabled: watchVendorId > 0 }
@@ -130,11 +139,11 @@ function NewPurchaseInvoice() {
   // Recalculate line totals and summary whenever item rows change
   const summary = React.useMemo(() => {
     let subtotal = 0;
-    let totalDiscount = 0;
-    let taxableAmount = 0;
-    let cgstAmount = 0;
-    let sgstAmount = 0;
-    let igstAmount = 0;
+    let lineDiscounts = 0;
+    let rawTaxable = 0;
+    let rawCgst = 0;
+    let rawSgst = 0;
+    let rawIgst = 0;
 
     watchedItems.forEach((item) => {
       const gross = (Number(item.billedQty) || 0) * (Number(item.unitRate) || 0);
@@ -154,12 +163,22 @@ function NewPurchaseInvoice() {
       }
 
       subtotal += gross;
-      totalDiscount += discount;
-      taxableAmount += taxable;
-      cgstAmount += cgst;
-      sgstAmount += sgst;
-      igstAmount += igst;
+      lineDiscounts += discount;
+      rawTaxable += taxable;
+      rawCgst += cgst;
+      rawSgst += sgst;
+      rawIgst += igst;
     });
+
+    const billDiscount = Math.min(watchBillDiscount, rawTaxable);
+    const totalDiscount = lineDiscounts + billDiscount;
+    const taxableAmount = Math.max(0, rawTaxable - billDiscount);
+
+    // Proportionally scale taxes with bill discount if applicable
+    const taxScale = rawTaxable > 0 ? taxableAmount / rawTaxable : 1;
+    const cgstAmount = Number((rawCgst * taxScale).toFixed(2));
+    const sgstAmount = Number((rawSgst * taxScale).toFixed(2));
+    const igstAmount = Number((rawIgst * taxScale).toFixed(2));
 
     const totalTax = cgstAmount + sgstAmount + igstAmount;
     const rawTotal = taxableAmount + totalTax;
@@ -170,6 +189,8 @@ function NewPurchaseInvoice() {
 
     return {
       subtotal: Number(subtotal.toFixed(2)),
+      lineDiscounts: Number(lineDiscounts.toFixed(2)),
+      billDiscount: Number(billDiscount.toFixed(2)),
       totalDiscount: Number(totalDiscount.toFixed(2)),
       taxableAmount: Number(taxableAmount.toFixed(2)),
       cgstAmount: Number(cgstAmount.toFixed(2)),
@@ -180,7 +201,7 @@ function NewPurchaseInvoice() {
       tdsAmount,
       netAmount,
     };
-  }, [watchedItems, watchIsInterState, watchTdsPercent]);
+  }, [watchedItems, watchIsInterState, watchTdsPercent, watchBillDiscount]);
 
   // Update line calculations in form state
   const updateLineCalculations = (index: number) => {
@@ -291,8 +312,56 @@ function NewPurchaseInvoice() {
 
   const createMutation = useMutation({
     mutationFn: async ({ values, verifyNow }: { values: InvoiceFormValues; verifyNow: boolean }) => {
+      const mappedItems = values.items.map((item) => {
+        const billedQty = Number(item.billedQty) || 0;
+        const unitRate = Number(item.unitRate) || 0;
+        const discPct = Number(item.discountPercent) || 0;
+        const gstPct = Number(item.gstPercent) || 0;
+
+        const gross = billedQty * unitRate;
+        const discAmt = Number((gross * (discPct / 100)).toFixed(2));
+        const taxable = Math.max(0, Number((gross - discAmt).toFixed(2)));
+
+        let cgst = 0;
+        let sgst = 0;
+        let igst = 0;
+        if (values.isInterState) {
+          igst = Number((taxable * (gstPct / 100)).toFixed(2));
+        } else {
+          cgst = Number((taxable * (gstPct / 200)).toFixed(2));
+          sgst = Number((taxable * (gstPct / 200)).toFixed(2));
+        }
+        const total = Number((taxable + cgst + sgst + igst).toFixed(2));
+
+        return {
+          itemId: Number(item.itemId),
+          grnItemId: item.grnItemId ? Number(item.grnItemId) : null,
+          quantity: billedQty,
+          billedQty,
+          unitId: Number(item.unitId || 1),
+          unitRate,
+          discountPercent: discPct,
+          discountAmount: discAmt,
+          taxableAmount: taxable,
+          gstPercent: gstPct,
+          cgstAmount: cgst,
+          sgstAmount: sgst,
+          igstAmount: igst,
+          totalAmount: total,
+          notes: item.notes || null,
+        };
+      });
+
       const payload = {
-        ...values,
+        invoiceNo: values.vendorInvoiceNo?.trim(),
+        vendorInvoiceNo: values.vendorInvoiceNo?.trim(),
+        invoiceDate: values.invoiceDate,
+        dueDate: values.dueDate && values.dueDate.trim() !== "" ? values.dueDate : null,
+        vendorId: Number(values.vendorId),
+        grnId: values.grnId ? Number(values.grnId) : null,
+        poId: values.poId ? Number(values.poId) : null,
+        creditDays: Number(values.paymentTermsDays || 0),
+        paymentTermsDays: Number(values.paymentTermsDays || 0),
         subtotal: summary.subtotal,
         discountAmount: summary.totalDiscount,
         taxableAmount: summary.taxableAmount,
@@ -302,6 +371,8 @@ function NewPurchaseInvoice() {
         roundOff: summary.roundOff,
         tdsAmount: summary.tdsAmount,
         netAmount: summary.netAmount,
+        remarks: values.remarks || null,
+        items: mappedItems,
       };
 
       const res = await (client as any)["inventory"]["purchase-invoices"].$post({
@@ -310,7 +381,7 @@ function NewPurchaseInvoice() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as any)?.error || "Failed to save purchase invoice");
+        throw new Error((err as any)?.error || (err as any)?.message || "Failed to save purchase invoice");
       }
 
       const created = await res.json();
@@ -331,7 +402,7 @@ function NewPurchaseInvoice() {
           : "Purchase invoice draft saved successfully!"
       );
       navigate({
-        to: "/inventory/purchase-invoices/$id" as any,
+        to: "/inventory/purchase-invoices/$id",
         params: { id: String(data.id) },
       });
     },
@@ -344,10 +415,10 @@ function NewPurchaseInvoice() {
     createMutation.mutate({ values, verifyNow });
   };
 
-  const vendorOptions: [string, string][] = [
-    ["", "Select Supplier / Vendor *"],
-    ...vendorsList.map((v: any) => [String(v.id), `${v.name} (${v.gstNumber || "Unregistered"})`] as [string, string]),
-  ];
+  const vendorOptions: [string, string][] = vendorsList.map((v: any) => [
+    String(v.id),
+    `${v.name} (${v.gstNumber || "Unregistered"})`,
+  ]);
 
   return (
     <ModuleLayout
@@ -388,11 +459,19 @@ function NewPurchaseInvoice() {
           <CardContent className="pt-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-2">
-                <Select
-                  label="Vendor / Supplier *"
-                  options={vendorOptions}
-                  {...form.register("vendorId")}
-                  error={form.formState.errors.vendorId?.message}
+                <Controller
+                  control={form.control}
+                  name="vendorId"
+                  render={({ field, fieldState }) => (
+                    <Autocomplete
+                      label="Vendor / Supplier *"
+                      placeholder="Search and select vendor..."
+                      options={vendorOptions}
+                      value={field.value ? String(field.value) : ""}
+                      onChange={(val) => field.onChange(val ? Number(val) : 0)}
+                      error={fieldState.error?.message}
+                    />
+                  )}
                 />
               </div>
 
@@ -405,17 +484,48 @@ function NewPurchaseInvoice() {
                 />
               </div>
 
-              <div>
-                <Field
-                  label="Invoice Date *"
-                  type="date"
-                  {...form.register("invoiceDate")}
-                  error={form.formState.errors.invoiceDate?.message}
+              <div className="flex flex-col space-y-1.5">
+                <Label>Invoice Date *</Label>
+                <Controller
+                  control={form.control}
+                  name="invoiceDate"
+                  render={({ field, fieldState }) => (
+                    <>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-background px-3 h-10",
+                              !field.value && "text-muted-foreground",
+                              fieldState.error && "border-destructive"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {field.value && !isNaN(new Date(field.value).getTime()) ? (
+                              format(new Date(field.value), "dd MMM yyyy")
+                            ) : (
+                              <span>Pick invoice date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      {fieldState.error && <p className="text-xs text-destructive">{fieldState.error.message}</p>}
+                    </>
+                  )}
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Field
                   label="Payment Terms (Days)"
@@ -425,11 +535,43 @@ function NewPurchaseInvoice() {
                 />
               </div>
 
-              <div>
-                <Field
-                  label="Payment Due Date"
-                  type="date"
-                  {...form.register("dueDate")}
+              <div className="flex flex-col space-y-1.5">
+                <Label>Payment Due Date</Label>
+                <Controller
+                  control={form.control}
+                  name="dueDate"
+                  render={({ field, fieldState }) => (
+                    <>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal bg-background px-3 h-10",
+                              !field.value && "text-muted-foreground",
+                              fieldState.error && "border-destructive"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {field.value && !isNaN(new Date(field.value).getTime()) ? (
+                              format(new Date(field.value), "dd MMM yyyy")
+                            ) : (
+                              <span>Pick due date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value ? new Date(field.value) : undefined}
+                            onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      {fieldState.error && <p className="text-xs text-destructive">{fieldState.error.message}</p>}
+                    </>
+                  )}
                 />
               </div>
 
@@ -442,17 +584,17 @@ function NewPurchaseInvoice() {
                   {...form.register("tdsPercent")}
                 />
               </div>
+            </div>
 
-              <div className="flex items-center pt-6">
-                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
-                  <input
-                    type="checkbox"
-                    {...form.register("isInterState")}
-                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                  />
-                  <span>Inter-State Supply (IGST Applicable)</span>
-                </label>
-              </div>
+            <div className="flex items-center">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  {...form.register("isInterState")}
+                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <span>Inter-State Supply (IGST Applicable)</span>
+              </label>
             </div>
           </CardContent>
         </Card>
@@ -510,8 +652,18 @@ function NewPurchaseInvoice() {
                     const poQty = Number(rowItem.poOrderedQty || 0);
                     const grnQty = Number(rowItem.grnReceivedQty || 0);
                     const billedQty = Number(rowItem.billedQty || 0);
+                    const unitRate = Number(rowItem.unitRate || 0);
+                    const discPct = Number(rowItem.discountPercent || 0);
+                    const gstPct = Number(rowItem.gstPercent || 0);
+
+                    const gross = billedQty * unitRate;
+                    const discAmt = gross * (discPct / 100);
+                    const rowTaxable = Math.max(0, gross - discAmt);
+                    const rowTax = rowTaxable * (gstPct / 100);
+                    const rowTotal = rowTaxable + rowTax;
+
                     const isQtyMismatch = grnQty > 0 && billedQty > grnQty;
-                    const isRateMismatch = Number(rowItem.poRate || 0) > 0 && Number(rowItem.unitRate || 0) > Number(rowItem.poRate || 0);
+                    const isRateMismatch = Number(rowItem.poRate || 0) > 0 && unitRate > Number(rowItem.poRate || 0);
 
                     return (
                       <tr key={field.id} className="hover:bg-muted/10 transition-colors">
@@ -593,7 +745,7 @@ function NewPurchaseInvoice() {
                         </td>
 
                         <td className="px-3 py-2 text-right font-mono font-medium">
-                          ₹{Number(rowItem.taxableAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          ₹{rowTaxable.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
 
                         <td className="px-3 py-2 text-right w-20">
@@ -608,7 +760,7 @@ function NewPurchaseInvoice() {
                         </td>
 
                         <td className="px-3 py-2 text-right font-mono font-bold text-foreground">
-                          ₹{Number(rowItem.totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                          ₹{rowTotal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
 
                         <td className="px-3 py-2 text-center">
@@ -665,11 +817,41 @@ function NewPurchaseInvoice() {
               <CardContent className="p-4 space-y-2 text-xs">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Gross Subtotal</span>
-                  <span className="font-mono">₹{summary.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-mono font-medium">₹{summary.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                 </div>
-                {summary.totalDiscount > 0 && (
+                {summary.lineDiscounts > 0 && (
                   <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
-                    <span>Discount</span>
+                    <span>Line Item Discounts</span>
+                    <span className="font-mono">-₹{summary.lineDiscounts.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                
+                {/* Bill Level Discount Input */}
+                <div className="flex items-center justify-between gap-3 pt-1 border-t">
+                  <span className="text-muted-foreground font-medium">Bill Level Discount</span>
+                  <div className="w-32">
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs font-mono">₹</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        {...form.register("billDiscountAmount")}
+                        className="w-full h-7 pl-5 pr-2 text-right rounded border bg-background text-xs font-mono font-bold"
+                      />
+                    </div>
+                    {form.formState.errors.billDiscountAmount && (
+                      <p className="text-[10px] text-destructive text-right mt-0.5">
+                        {form.formState.errors.billDiscountAmount.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {summary.totalDiscount > 0 && summary.lineDiscounts > 0 && summary.billDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold border-t border-emerald-500/20 pt-0.5">
+                    <span>Total Discount</span>
                     <span className="font-mono">-₹{summary.totalDiscount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
                   </div>
                 )}
@@ -785,7 +967,7 @@ function NewPurchaseInvoice() {
                       {grn.poNo && <Badge variant="outline" className="text-[10px]">PO: {grn.poNo}</Badge>}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
-                      Received: {grn.receivedDate || "—"} | Items: {grn.items?.length || 0}
+                      Received: {grn.grnDate || grn.receivedDate || grn.dateOfDelivery || "—"} | Items: {grn.items?.length || 0}
                     </div>
                   </div>
 

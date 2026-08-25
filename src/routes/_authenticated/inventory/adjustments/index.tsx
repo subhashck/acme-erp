@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { ModuleLayout } from "@/components/ModuleLayout";
 import { useRpcQuery, queryClient } from "@/lib/query";
 import { client } from "@/services/rpc";
@@ -25,7 +25,14 @@ import {
   TrendingUp,
   TrendingDown,
   Calendar,
-  Layers
+  Layers,
+  Search,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  X
 } from "lucide-react";
 import * as React from "react";
 import { z } from "zod";
@@ -43,9 +50,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DataTable, type ColumnDef } from "@/components/DataTable";
 import { format } from "date-fns";
 import { cn } from "@/utils/cn";
+import { ColumnDef } from "@/components/DataTable";
 
 const adjItemSchema = z.object({
   itemId: z.coerce.number().positive("Item is required"),
@@ -63,17 +70,72 @@ const adjFormSchema = z.object({
 
 type AdjFormValues = z.infer<typeof adjFormSchema>;
 
+const adjustmentsSearchSchema = z.object({
+  page: z.coerce.number().optional().catch(1),
+  limit: z.coerce.number().optional().catch(20),
+  search: z.string().optional().catch(""),
+  status: z.string().optional().catch("all"),
+  storeId: z.string().optional().catch("all"),
+  adjustmentId: z.coerce.number().optional().catch(undefined),
+});
+
 export const Route = createFileRoute("/_authenticated/inventory/adjustments/")({
+  validateSearch: (search) => adjustmentsSearchSchema.parse(search),
   component: AdjustmentsList,
 });
 
 function AdjustmentsList() {
+  const searchParams = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const [localSearch, setLocalSearch] = React.useState(searchParams.search || "");
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [selectedAdj, setSelectedAdj] = React.useState<any | null>(null);
 
+  // Auto-open adjustment detail dialog if adjustmentId is present in URL search
+  const { data: directAdjustment } = useRpcQuery<any>(
+    ["inventory-adjustment-direct", searchParams.adjustmentId],
+    () =>
+      client.inventory.adjustments[":id"].$get({
+        param: { id: String(searchParams.adjustmentId) },
+      }),
+    {
+      enabled: !!searchParams.adjustmentId,
+    }
+  );
+
+  React.useEffect(() => {
+    if (directAdjustment && !("error" in directAdjustment)) {
+      setSelectedAdj(directAdjustment);
+    }
+  }, [directAdjustment]);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearch !== (searchParams.search || "")) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            search: localSearch || undefined,
+            page: 1,
+          }),
+        });
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [localSearch, searchParams.search, navigate]);
+
   const { data: adjsResponse, isLoading, refetch, isRefetching } = useRpcQuery<any>(
-    ["inventory-adjustments"],
-    () => client.inventory.adjustments.$get()
+    ["inventory-adjustments", searchParams],
+    () =>
+      client.inventory.adjustments.$get({
+        query: {
+          page: String(searchParams.page || 1),
+          limit: String(searchParams.limit || 20),
+          search: searchParams.search || undefined,
+          status: searchParams.status !== "all" ? searchParams.status : undefined,
+          storeId: searchParams.storeId !== "all" ? searchParams.storeId : undefined,
+        },
+      })
   );
 
   const { data: storesList = [] } = useRpcQuery<any[]>(
@@ -82,6 +144,14 @@ function AdjustmentsList() {
   );
 
   const adjsData = adjsResponse?.data || [];
+  const pagination = adjsResponse?.pagination || { page: 1, pageSize: 20, totalRecords: 0, totalPages: 1 };
+  const startRecord = pagination.totalRecords === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const endRecord = Math.min(pagination.page * pagination.pageSize, pagination.totalRecords);
+  const hasActiveFilters = Boolean(
+    searchParams.search ||
+    (searchParams.status && searchParams.status !== "all") ||
+    (searchParams.storeId && searchParams.storeId !== "all")
+  );
 
   const form = useForm<AdjFormValues>({
     resolver: zodResolver(adjFormSchema) as any,
@@ -277,27 +347,296 @@ function AdjustmentsList() {
         </div>
       }
     >
-      {/* List Card */}
-      <Card className="shadow-sm">
-        <CardContent className="p-6">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-16 text-muted-foreground text-xs">
-              <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mr-2" />
-              <span>Loading stock adjustments...</span>
+      <div className="space-y-4">
+        {/* Search & Filter Toolbar */}
+        <Card className="shadow-xs border-slate-200/80">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-[240px]">
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
+                  <Input
+                    type="text"
+                    value={localSearch}
+                    onChange={(e) => setLocalSearch(e.target.value)}
+                    placeholder="Search by adjustment no or audit reason..."
+                    className="pl-9 h-9 text-xs"
+                  />
+                  {localSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalSearch("");
+                        navigate({
+                          search: (prev: any) => ({ ...prev, search: undefined, page: 1 }),
+                        });
+                      }}
+                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-[150px]">
+                <Select
+                  value={searchParams.status || "all"}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        status: val !== "all" ? val : undefined,
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="posted">Posted</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-[190px]">
+                <Select
+                  value={searchParams.storeId || "all"}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        storeId: val !== "all" ? val : undefined,
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Store Location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Stores</SelectItem>
+                    {storesList.map((s: any) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name} ({s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-[110px]">
+                <Select
+                  value={String(searchParams.limit || 20)}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        limit: Number(val),
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Page Size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 / page</SelectItem>
+                    <SelectItem value="20">20 / page</SelectItem>
+                    <SelectItem value="50">50 / page</SelectItem>
+                    <SelectItem value="100">100 / page</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {hasActiveFilters && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setLocalSearch("");
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        page: 1,
+                        limit: 20,
+                        search: "",
+                        status: "all",
+                        storeId: "all",
+                      }),
+                    });
+                  }}
+                  className="h-9 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-3.5 h-3.5 mr-1" />
+                  Reset Filters
+                </Button>
+              )}
             </div>
-          ) : adjsData.length === 0 ? (
-            <div className="text-center py-16 text-muted-foreground">
-              <SlidersHorizontal className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-semibold">No stock adjustments recorded</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Click &quot;New Stock Take / Adjustment&quot; above to log physical count reconciliations.
-              </p>
+          </CardContent>
+        </Card>
+
+        {/* Data Table */}
+        <Card className="shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/40 text-muted-foreground uppercase text-[11px] font-semibold tracking-wider border-b">
+                <tr>
+                  <th className="px-4 py-3">Adjustment No</th>
+                  <th className="px-4 py-3">Store Location</th>
+                  <th className="px-4 py-3">Audit Reason</th>
+                  <th className="px-4 py-3">Audited Date</th>
+                  <th className="px-4 py-3">Logged By</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                        <span>Loading stock adjustments...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : adjsData.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                      <SlidersHorizontal className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                      <p className="font-semibold text-foreground">No stock adjustments recorded</p>
+                      <p className="text-[11px] mt-0.5">
+                        {hasActiveFilters ? "Try clearing search or filters" : "Click 'New Stock Take / Adjustment' above to get started"}
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  adjsData.map((row: any) => (
+                    <tr key={row.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-foreground">
+                        {row.adjustmentNo}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-medium text-foreground">
+                          <Warehouse className="w-3.5 h-3.5 text-muted-foreground" />
+                          {row.storeName || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground font-medium">
+                        {row.reason}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-muted-foreground">
+                        {row.createdAt ? format(new Date(row.createdAt), "dd MMM yyyy") : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {row.createdByName || "Admin"}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {getStatusBadge(String(row.status || ""))}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs px-2.5"
+                          onClick={() => setSelectedAdj(row)}
+                        >
+                          <FileText className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
+                          {row.status === "draft" ? "Review & Post" : "View Details"}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Server-Side Pagination Footer */}
+          {!isLoading && pagination.totalRecords > 0 && (
+            <div className="px-4 py-3 border-t flex flex-wrap items-center justify-between gap-3 bg-muted/10 text-xs">
+              <div className="text-muted-foreground">
+                Showing <strong className="text-foreground font-semibold">{startRecord}</strong> to{" "}
+                <strong className="text-foreground font-semibold">{endRecord}</strong> of{" "}
+                <strong className="text-foreground font-semibold">{pagination.totalRecords}</strong> adjustments
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: pagination.page - 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <div className="px-2 font-medium">
+                  Page {pagination.page} of {pagination.totalPages}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: pagination.page + 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Next Page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: pagination.totalPages }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
-          ) : (
-            <DataTable columns={columns} rows={adjsData as Record<string, unknown>[]} />
           )}
-        </CardContent>
-      </Card>
+        </Card>
+      </div>
 
       {/* Create Adjustment Dialog with shadcn Components */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -472,7 +811,19 @@ function AdjustmentsList() {
 
       {/* Detail & Post Dialog with shadcn Dialog */}
       {selectedAdj && (
-        <Dialog open={!!selectedAdj} onOpenChange={() => setSelectedAdj(null)}>
+        <Dialog
+          open={!!selectedAdj}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedAdj(null);
+              if (searchParams.adjustmentId) {
+                navigate({
+                  search: (prev: any) => ({ ...prev, adjustmentId: undefined }),
+                });
+              }
+            }
+          }}
+        >
           <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center justify-between pr-4">

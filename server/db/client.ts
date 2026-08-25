@@ -11,12 +11,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 if (!process.env.DATABASE_URL) {
-  const candidates = [
-    path.resolve(process.cwd(), ".env"),
-    path.resolve(__dirname, "../../.env"),
-    path.resolve(__dirname, "../.env"),
-    path.resolve(__dirname, ".env"),
-  ];
+  const envTest = path.resolve(process.cwd(), ".env.test");
+  const candidates = process.env.NODE_ENV === "test" && fs.existsSync(envTest)
+    ? [envTest]
+    : [
+        path.resolve(process.cwd(), ".env"),
+        path.resolve(__dirname, "../../.env"),
+        path.resolve(__dirname, "../.env"),
+        path.resolve(__dirname, ".env"),
+      ];
 
   for (const envPath of candidates) {
     if (fs.existsSync(envPath)) {

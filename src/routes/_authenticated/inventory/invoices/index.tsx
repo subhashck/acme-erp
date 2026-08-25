@@ -36,7 +36,11 @@ import {
   Download,
   Calendar,
   X,
-  CreditCard
+  CreditCard,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from "lucide-react";
 import * as React from "react";
 import { z } from "zod";
@@ -47,10 +51,12 @@ import { authClient } from "@/services/auth";
 import { printPosReceiptPDF, downloadPosReceiptPDF } from "../pos";
 
 const invoiceSearchSchema = z.object({
-  page: z.number().optional().catch(1),
-  limit: z.number().optional().catch(20),
-  storeId: z.string().optional().catch("all"),
+  page: z.coerce.number().optional().catch(1),
+  limit: z.coerce.number().optional().catch(20),
   search: z.string().optional().catch(""),
+  storeId: z.string().optional().catch("all"),
+  status: z.string().optional().catch("all"),
+  paymentMode: z.string().optional().catch("all"),
 });
 
 export const Route = createFileRoute("/_authenticated/inventory/invoices/")({
@@ -61,18 +67,27 @@ export const Route = createFileRoute("/_authenticated/inventory/invoices/")({
 function InvoicesList() {
   const searchParams = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-
-  const page = searchParams.page ?? 1;
-  const limit = searchParams.limit ?? 20;
-  const storeIdFilter = searchParams.storeId || "all";
-  const searchFilter = searchParams.search || "";
-
-  const [localSearch, setLocalSearch] = React.useState(searchFilter);
+  const [localSearch, setLocalSearch] = React.useState(searchParams.search || "");
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
 
   const hospitalSettings = useHospitalSettings();
   const session = authClient.useSession();
   const currentUserName = session?.data?.user?.name || "Cashier";
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearch !== (searchParams.search || "")) {
+        navigate({
+          search: (prev: any) => ({
+            ...prev,
+            search: localSearch || undefined,
+            page: 1,
+          }),
+        });
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [localSearch, searchParams.search, navigate]);
 
   const { data: storesList = [] } = useRpcQuery<any[]>(
     ["inventory-stores"],
@@ -84,15 +99,26 @@ function InvoicesList() {
     () =>
       client.inventory.pos.invoices.$get({
         query: {
-          page: String(page),
-          limit: String(limit),
-          storeId: storeIdFilter !== "all" ? storeIdFilter : undefined,
-          search: searchFilter || undefined,
+          page: String(searchParams.page || 1),
+          limit: String(searchParams.limit || 20),
+          storeId: searchParams.storeId !== "all" ? searchParams.storeId : undefined,
+          status: searchParams.status !== "all" ? searchParams.status : undefined,
+          paymentMode: searchParams.paymentMode !== "all" ? searchParams.paymentMode : undefined,
+          search: searchParams.search || undefined,
         },
       })
   );
 
   const invoicesData = invoicesResponse?.data || [];
+  const pagination = invoicesResponse?.pagination || { page: 1, pageSize: 20, totalRecords: 0, totalPages: 1 };
+  const startRecord = pagination.totalRecords === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
+  const endRecord = Math.min(pagination.page * pagination.pageSize, pagination.totalRecords);
+  const hasActiveFilters = Boolean(
+    searchParams.search ||
+    (searchParams.storeId && searchParams.storeId !== "all") ||
+    (searchParams.status && searchParams.status !== "all") ||
+    (searchParams.paymentMode && searchParams.paymentMode !== "all")
+  );
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,11 +293,11 @@ function InvoicesList() {
         </Button>
       }
     >
-      <div className="space-y-6">
-        {/* Search & Filter Bar with shadcn Components */}
-        <Card className="shadow-sm border-slate-200/80">
-          <CardContent className="p-4">
-            <form onSubmit={handleSearch} className="flex flex-wrap items-center gap-3">
+      <div className="space-y-4">
+        {/* Search & Filter Toolbar */}
+        <Card className="shadow-xs border-slate-200/80">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex-1 min-w-[240px]">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
@@ -282,30 +308,127 @@ function InvoicesList() {
                     placeholder="Search by invoice no, customer name, phone, or doctor..."
                     className="pl-9 h-9 text-xs"
                   />
+                  {localSearch && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalSearch("");
+                        navigate({
+                          search: (prev: any) => ({ ...prev, search: undefined, page: 1 }),
+                        });
+                      }}
+                      className="absolute right-2.5 top-2.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
-              <div className="w-[200px]">
-                <Select value={storeIdFilter} onValueChange={handleStoreChange}>
+              <div className="w-[150px]">
+                <Select
+                  value={searchParams.status || "all"}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        status: val !== "all" ? val : undefined,
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
                   <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="All Stores" />
+                    <SelectValue placeholder="All Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="partial">Partial</SelectItem>
+                    <SelectItem value="cancelled">Cancelled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-[150px]">
+                <Select
+                  value={searchParams.paymentMode || "all"}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        paymentMode: val !== "all" ? val : undefined,
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Payment Mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Modes</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="card">Card</SelectItem>
+                    <SelectItem value="credit">Credit / IPD</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="w-[180px]">
+                <Select
+                  value={searchParams.storeId || "all"}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        storeId: val !== "all" ? val : undefined,
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Store Location" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Stores</SelectItem>
-                    {storesList.map((store: any) => (
-                      <SelectItem key={store.id} value={String(store.id)}>
-                        {store.name} ({store.code})
+                    {storesList.map((s: any) => (
+                      <SelectItem key={s.id} value={String(s.id)}>
+                        {s.name} ({s.code})
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              <Button type="submit" size="sm" className="h-9 text-xs font-semibold">
-                Search
-              </Button>
+              <div className="w-[110px]">
+                <Select
+                  value={String(searchParams.limit || 20)}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev: any) => ({
+                        ...prev,
+                        limit: Number(val),
+                        page: 1,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Page Size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 / page</SelectItem>
+                    <SelectItem value="20">20 / page</SelectItem>
+                    <SelectItem value="50">50 / page</SelectItem>
+                    <SelectItem value="100">100 / page</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-              {(searchFilter || storeIdFilter !== "all") && (
+              {hasActiveFilters && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -313,39 +436,217 @@ function InvoicesList() {
                   onClick={() => {
                     setLocalSearch("");
                     navigate({
-                      search: () => ({ page: 1, limit: 20, storeId: "all", search: "" }),
+                      search: (prev: any) => ({
+                        ...prev,
+                        page: 1,
+                        limit: 20,
+                        search: "",
+                        storeId: "all",
+                        status: "all",
+                        paymentMode: "all",
+                      }),
                     });
                   }}
-                  className="h-9 text-xs text-muted-foreground"
+                  className="h-9 text-xs text-muted-foreground hover:text-foreground"
                 >
                   <X className="w-3.5 h-3.5 mr-1" />
-                  Clear
+                  Reset Filters
                 </Button>
               )}
-            </form>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Data Table Card */}
-        <Card className="shadow-sm">
-          <CardContent className="p-6">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-16 text-muted-foreground text-xs">
-                <Loader2 className="w-6 h-6 animate-spin text-emerald-600 mr-2" />
-                <span>Loading sales invoices...</span>
+        {/* Data Table */}
+        <Card className="shadow-xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-muted/40 text-muted-foreground uppercase text-[11px] font-semibold tracking-wider border-b">
+                <tr>
+                  <th className="px-4 py-3">Invoice No</th>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Store</th>
+                  <th className="px-4 py-3">Customer / Patient</th>
+                  <th className="px-4 py-3 text-right">Net Amount</th>
+                  <th className="px-4 py-3 text-center">Payment Mode</th>
+                  <th className="px-4 py-3 text-center">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                      <div className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                        <span>Loading sales invoices...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : invoicesData.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                      <Receipt className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                      <p className="font-semibold text-foreground">No sales invoices found</p>
+                      <p className="text-[11px] mt-0.5">
+                        {hasActiveFilters ? "Try clearing search or filters" : "Open POS Billing Terminal to generate receipts"}
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  invoicesData.map((row: any) => (
+                    <tr key={row.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 font-mono font-bold text-foreground">
+                        {row.invoiceNo}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-muted-foreground">
+                        {row.invoiceDate ? format(new Date(row.invoiceDate), "dd MMM yyyy, HH:mm") : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5 font-medium text-foreground">
+                          <Warehouse className="w-3.5 h-3.5 text-muted-foreground" />
+                          {row.store?.name || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-foreground">{row.customerName || "Walk-in Guest"}</div>
+                        {row.customerPhone && (
+                          <div className="text-[11px] text-muted-foreground font-mono">{row.customerPhone}</div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-foreground">
+                        ₹{Number(row.netAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge variant="outline" className="capitalize text-[11px]">
+                          {row.paymentMode || "Cash"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge
+                          className={cn(
+                            row.status === "completed"
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+                              : row.status === "partial"
+                              ? "bg-amber-100 text-amber-800 border-amber-200"
+                              : "bg-red-100 text-red-800 border-red-200"
+                          )}
+                        >
+                          {row.status || "Completed"}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs px-2"
+                            onClick={() => setSelectedInvoice(row)}
+                          >
+                            <FileText className="w-3.5 h-3.5 mr-1" />
+                            View
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => handlePrint(row)}
+                            title="Print Receipt"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-emerald-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => handleDownload(row)}
+                            title="Download PDF"
+                          >
+                            <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Server-Side Pagination Footer */}
+          {!isLoading && pagination.totalRecords > 0 && (
+            <div className="px-4 py-3 border-t flex flex-wrap items-center justify-between gap-3 bg-muted/10 text-xs">
+              <div className="text-muted-foreground">
+                Showing <strong className="text-foreground font-semibold">{startRecord}</strong> to{" "}
+                <strong className="text-foreground font-semibold">{endRecord}</strong> of{" "}
+                <strong className="text-foreground font-semibold">{pagination.totalRecords}</strong> sales invoices
               </div>
-            ) : invoicesData.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <Receipt className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm font-semibold">No sales invoices found</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Open the POS Billing Terminal to generate customer receipts.
-                </p>
+
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: pagination.page - 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <div className="px-2 font-medium">
+                  Page {pagination.page} of {pagination.totalPages}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: pagination.page + 1 }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Next Page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() =>
+                    navigate({
+                      search: (prev: any) => ({ ...prev, page: pagination.totalPages }),
+                    })
+                  }
+                  className="h-8 px-2"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
               </div>
-            ) : (
-              <DataTable columns={columns} rows={invoicesData as Record<string, unknown>[]} />
-            )}
-          </CardContent>
+            </div>
+          )}
         </Card>
       </div>
 

@@ -40,7 +40,9 @@ import {
   ChevronsLeft,
   ChevronLeft,
   ChevronsRight,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Printer,
+  Download,
 } from "lucide-react";
 import * as React from "react";
 import { format } from "date-fns";
@@ -48,6 +50,9 @@ import { cn } from "@/utils/cn";
 import { toNum } from "@/utils/math";
 import { z } from "zod";
 import XLSX from "xlsx-js-style";
+import { useHospitalSettings } from "@/lib/settings";
+import { authClient } from "@/services/auth";
+import { printPurchaseOrderPDF, downloadPurchaseOrderPDF } from "@/lib/po-export";
 
 // Define TanStack Router search validation schema
 const poSearchSchema = z.object({
@@ -90,6 +95,41 @@ function PurchaseOrders() {
   const [showFilters, setShowFilters] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
+  const [isExportingPdfId, setIsExportingPdfId] = React.useState<number | null>(null);
+
+  const hospitalSettings = useHospitalSettings();
+  const session = authClient.useSession();
+
+  const handlePrintPo = async (poId: number) => {
+    try {
+      setIsExportingPdfId(poId);
+      const res = await (client["purchase-orders"][":id"] as any).$get({ param: { id: String(poId) } });
+      const fullPo = await res.json();
+      printPurchaseOrderPDF(fullPo, hospitalSettings, session.data?.user?.name);
+    } catch (err: any) {
+      console.error("Failed to print PO", err);
+      toast.error("Failed to print PO: " + (err.message || "Unknown error"));
+    } finally {
+      setIsExportingPdfId(null);
+      setActiveMenuId(null);
+    }
+  };
+
+  const handleDownloadPo = async (poId: number) => {
+    try {
+      setIsExportingPdfId(poId);
+      const res = await (client["purchase-orders"][":id"] as any).$get({ param: { id: String(poId) } });
+      const fullPo = await res.json();
+      downloadPurchaseOrderPDF(fullPo, hospitalSettings, session.data?.user?.name);
+      toast.success(`Purchase Order PO-${fullPo.poNo}.pdf downloaded`);
+    } catch (err: any) {
+      console.error("Failed to download PO PDF", err);
+      toast.error("Failed to download PO PDF: " + (err.message || "Unknown error"));
+    } finally {
+      setIsExportingPdfId(null);
+      setActiveMenuId(null);
+    }
+  };
 
   // Fetch all vendors to support filtering
   const { data: vendors = [] } = useRpcQuery<any[]>(["vendors"], () => client.vendors.$get());
@@ -722,6 +762,29 @@ function PurchaseOrders() {
                                           <Eye className="h-3.5 w-3.5 mr-2 text-muted-foreground" /> View Detail
                                         </button>
                                       </Link>
+
+                                      {/* Print PO via jsPDF */}
+                                      <button
+                                        onClick={() => handlePrintPo(po.id)}
+                                        disabled={isExportingPdfId === po.id}
+                                        className="flex items-center w-full px-4 py-2 text-xs hover:bg-muted font-medium text-left"
+                                      >
+                                        {isExportingPdfId === po.id ? (
+                                          <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin text-primary" />
+                                        ) : (
+                                          <Printer className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                                        )}
+                                        Print PO
+                                      </button>
+
+                                      {/* Download PDF via jsPDF */}
+                                      <button
+                                        onClick={() => handleDownloadPo(po.id)}
+                                        disabled={isExportingPdfId === po.id}
+                                        className="flex items-center w-full px-4 py-2 text-xs hover:bg-muted font-medium text-left"
+                                      >
+                                        <Download className="h-3.5 w-3.5 mr-2 text-muted-foreground" /> Download PDF
+                                      </button>
 
                                       {/* Edit */}
                                       <Link
