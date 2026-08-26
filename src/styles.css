@@ -300,27 +300,28 @@ input[type="number"] {
 
 /* Paragraphs & Text */
 .ProseMirror p {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-  line-height: 1.7;
+  margin-top: 0;
+  margin-bottom: 0.45rem;
+  line-height: 1.55;
 }
 
 .ProseMirror hr {
-  margin: 1.5rem 0;
+  margin: 1.25rem 0;
   border: none;
   border-top: 2px dashed var(--border);
 }
 
 .ProseMirror blockquote {
-  border-left: 4px solid var(--primary);
-  padding-left: 1rem;
-  margin: 1rem 0;
+  border-left: 3px solid var(--primary);
+  padding-left: 0.85rem;
+  margin: 0.65rem 0;
   font-style: italic;
   color: var(--muted-foreground);
   background: var(--muted)/30;
-  padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
-  border-radius: 0 0.5rem 0.5rem 0;
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-radius: 0 0.4rem 0.4rem 0;
+  font-size: 0.92rem;
 }
 
 /* Lists */
@@ -554,4 +555,123 @@ input[type="number"] {
   border-radius: 0.5rem;
   margin: 1.25rem 0;
   border: 1px solid var(--border);
+}
+
+/* ==========================================================================
+   TIPTAP A4 WYSIWYG MAGAZINE SHEET & PAGE BREAKS
+   ========================================================================== */
+.tiptap-a4-canvas {
+  background-color: var(--muted);
+  padding: 2rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  overflow-y: auto;
+  border-radius: 0 0 var(--radius-lg, 0.75rem) var(--radius-lg, 0.75rem);
+}
+
+.tiptap-a4-page-frame {
+  width: 100%;
+  max-width: 620px;
+  min-height: 877px; /* Exact ISO A4 proportional height: 620px * 1.4142 = 877px */
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 2.25rem 2.25rem 2rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: box-shadow 0.2s ease;
+}
+
+:is(.dark *) .tiptap-a4-page-frame {
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.tiptap-a4-header-guide {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.65rem;
+  user-select: none;
+  pointer-events: none;
+}
+
+.tiptap-a4-footer-guide {
+  margin-top: auto;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.62rem;
+  color: var(--muted-foreground);
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Page Break Divider in Tiptap */
+.ProseMirror .page-break-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 1.5rem 0;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ProseMirror .page-break-divider::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  border-top: 2px dashed var(--primary);
+  opacity: 0.5;
+}
+
+.ProseMirror .page-break-divider:hover::before {
+  opacity: 0.9;
+}
+
+.ProseMirror .page-break-pill {
+  position: relative;
+  z-index: 2;
+  background: var(--card);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.75rem;
+  border-radius: 9999px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+}
+
+.ProseMirror .page-break-divider:hover .page-break-pill {
+  background: var(--primary);
+  color: white;
+  transform: scale(1.04);
+}
+
+.ProseMirror .page-break-divider.ProseMirror-selectednode .page-break-pill {
+  outline: 2px solid var(--ring);
+  background: var(--primary);
+  color: white;
 }

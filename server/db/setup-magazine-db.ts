@@ -37,6 +37,8 @@ export async function createMagazineSchemaAndTables() {
       "slug" TEXT NOT NULL UNIQUE,
       "cover_image_url" TEXT,
       "description" TEXT,
+      "editorial_title" TEXT DEFAULT 'From the Editorial Desk',
+      "editorial_html" TEXT,
       "issue_month" INTEGER NOT NULL,
       "issue_year" INTEGER NOT NULL,
       "status" "magazine"."magazine_status" NOT NULL DEFAULT 'draft',
@@ -87,6 +89,9 @@ export async function createMagazineSchemaAndTables() {
       "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
       "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
     );
+
+    ALTER TABLE "magazine"."magazine_issues" ADD COLUMN IF NOT EXISTS "editorial_title" TEXT DEFAULT 'From the Editorial Desk';
+    ALTER TABLE "magazine"."magazine_issues" ADD COLUMN IF NOT EXISTS "editorial_html" TEXT;
 
     ALTER TABLE "magazine"."magazine_media" ADD COLUMN IF NOT EXISTS "tags" JSONB NOT NULL DEFAULT '[]'::jsonb;
 

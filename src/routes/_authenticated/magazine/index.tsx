@@ -92,6 +92,8 @@ export function MagazineDashboard() {
   const [newYear, setNewYear] = React.useState(currentYear);
   const [newSlug, setNewSlug] = React.useState(generateSlug("", currentMonth, currentYear));
   const [newDescription, setNewDescription] = React.useState("Monthly medical insights, clinical highlights, hospital achievements, and health tips.");
+  const [newEditorialTitle, setNewEditorialTitle] = React.useState("From the Editorial Desk");
+  const [newEditorialHtml, setNewEditorialHtml] = React.useState("");
   const [newCoverUrl, setNewCoverUrl] = React.useState("");
   const [isUploadingCover, setIsUploadingCover] = React.useState(false);
 
@@ -104,6 +106,8 @@ export function MagazineDashboard() {
   const [editYear, setEditYear] = React.useState(currentYear);
   const [editSlug, setEditSlug] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
+  const [editEditorialTitle, setEditEditorialTitle] = React.useState("From the Editorial Desk");
+  const [editEditorialHtml, setEditEditorialHtml] = React.useState("");
   const [editCoverUrl, setEditCoverUrl] = React.useState("");
   const [isUploadingEditCover, setIsUploadingEditCover] = React.useState(false);
   const [downloadingPdfId, setDownloadingPdfId] = React.useState<number | null>(null);
@@ -219,6 +223,8 @@ export function MagazineDashboard() {
           title: newTitle.trim(),
           slug: newSlug.trim().toLowerCase(),
           description: newDescription.trim() || null,
+          editorialTitle: newEditorialTitle.trim() || "From the Editorial Desk",
+          editorialHtml: newEditorialHtml.trim() || null,
           coverImageUrl: newCoverUrl || null,
           issueMonth: newMonth,
           issueYear: newYear,
@@ -249,6 +255,8 @@ export function MagazineDashboard() {
     slug: string;
     coverImageUrl: string | null;
     description: string | null;
+    editorialTitle?: string | null;
+    editorialHtml?: string | null;
     issueMonth: number;
     issueYear: number;
   }, e?: React.MouseEvent) => {
@@ -260,6 +268,8 @@ export function MagazineDashboard() {
     setEditYear(issue.issueYear);
     setEditSlug(issue.slug);
     setEditDescription(issue.description || "");
+    setEditEditorialTitle(issue.editorialTitle || "From the Editorial Desk");
+    setEditEditorialHtml(issue.editorialHtml || "");
     setEditCoverUrl(issue.coverImageUrl || "");
     setIsEditOpen(true);
   };
@@ -315,6 +325,8 @@ export function MagazineDashboard() {
           title: editTitle.trim(),
           slug: editSlug.trim().toLowerCase(),
           description: editDescription.trim() || null,
+          editorialTitle: editEditorialTitle.trim() || "From the Editorial Desk",
+          editorialHtml: editEditorialHtml.trim() || null,
           coverImageUrl: editCoverUrl || null,
           issueMonth: editMonth,
           issueYear: editYear,
@@ -810,6 +822,28 @@ export function MagazineDashboard() {
                 />
               </div>
 
+              {/* Editorial Foreword */}
+              <div className="border-t border-border pt-3 space-y-2">
+                <div>
+                  <label className="text-xs font-bold text-foreground">Editorial Desk Foreword</label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Custom message on Inside Cover (contents list is generated automatically).
+                  </p>
+                </div>
+                <Input
+                  value={newEditorialTitle}
+                  onChange={(e) => setNewEditorialTitle(e.target.value)}
+                  placeholder="From the Editorial Desk"
+                  className="text-xs"
+                />
+                <textarea
+                  value={newEditorialHtml}
+                  onChange={(e) => setNewEditorialHtml(e.target.value)}
+                  placeholder="Editorial welcome message (optional)..."
+                  className="w-full min-h-[70px] p-2 text-xs rounded-md border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary font-sans leading-relaxed text-foreground"
+                />
+              </div>
+
               {/* Cover Image */}
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-foreground block">Cover Image Artwork</label>
@@ -956,6 +990,28 @@ export function MagazineDashboard() {
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   placeholder="Summary of this issue edition..."
+                />
+              </div>
+
+              {/* Editorial Foreword */}
+              <div className="border-t border-border pt-3 space-y-2">
+                <div>
+                  <label className="text-xs font-bold text-foreground">Editorial Desk Foreword</label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Custom message on Inside Cover (contents list is generated automatically).
+                  </p>
+                </div>
+                <Input
+                  value={editEditorialTitle}
+                  onChange={(e) => setEditEditorialTitle(e.target.value)}
+                  placeholder="From the Editorial Desk"
+                  className="text-xs"
+                />
+                <textarea
+                  value={editEditorialHtml}
+                  onChange={(e) => setEditEditorialHtml(e.target.value)}
+                  placeholder="Editorial welcome message (optional)..."
+                  className="w-full min-h-[70px] p-2 text-xs rounded-md border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary font-sans leading-relaxed text-foreground"
                 />
               </div>
 

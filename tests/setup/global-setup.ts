@@ -87,16 +87,39 @@ export async function setup() {
       );
       console.log("✅ Database snapshot restored successfully with full test data.\n");
 
-      // Sync latest Drizzle schema definitions on top of the restored snapshot
-      console.log("📦 Syncing Drizzle schema on restored database...");
+      // Sync latest Drizzle schema definitions and custom setup DDL on top of the restored snapshot
+      console.log("📦 Syncing Drizzle schema and module setups on restored database...");
       try {
-        const migrationSql = "ALTER TABLE inventory.sales_invoice_items ADD COLUMN IF NOT EXISTS unit_id integer; ALTER TABLE inventory.sales_invoice_items ALTER COLUMN unit DROP NOT NULL; ALTER TABLE inventory.stock_transfer_items ADD COLUMN IF NOT EXISTS unit_id integer; ALTER TABLE inventory.stock_transfer_items ALTER COLUMN unit DROP NOT NULL;";
+        const migrationSql = `
+          ALTER TABLE inventory.sales_invoice_items ADD COLUMN IF NOT EXISTS unit_id integer;
+          ALTER TABLE inventory.sales_invoice_items ALTER COLUMN unit DROP NOT NULL;
+          ALTER TABLE inventory.stock_transfer_items ADD COLUMN IF NOT EXISTS unit_id integer;
+          ALTER TABLE inventory.stock_transfer_items ALTER COLUMN unit DROP NOT NULL;
+          ALTER TABLE inventory.sales_return_items ADD COLUMN IF NOT EXISTS unit_id integer;
+        `;
         execSync(
           `docker exec -i acme-erp-test-db psql -U postgres -d acme_erp_test -c "${migrationSql}"`,
           { stdio: "pipe", timeout: 15_000 }
         );
       } catch (colErr: any) {
         console.warn("Column migration notice:", colErr.stderr?.toString() || colErr.message);
+      }
+
+      try {
+        execSync("npx tsx server/db/setup-inventory-db.ts", {
+          cwd: rootDir,
+          stdio: "pipe",
+          timeout: 30_000,
+          env: { ...process.env, DATABASE_URL: dbUrl },
+        });
+        execSync("npx tsx server/db/setup-magazine-db.ts", {
+          cwd: rootDir,
+          stdio: "pipe",
+          timeout: 30_000,
+          env: { ...process.env, DATABASE_URL: dbUrl },
+        });
+      } catch (setupErr: any) {
+        console.warn("Module DB setup notice:", setupErr.stderr?.toString() || setupErr.message);
       }
 
       execSync("npx drizzle-kit push --force", {

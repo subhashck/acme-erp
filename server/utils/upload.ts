@@ -1,35 +1,114 @@
 import path from "node:path";
 import { lookup as mimeLookup } from "mime-types";
+import sharp from "sharp";
 import { uploadToMinio, getFromMinio, deleteFromMinio } from "./minio.ts";
+
+export const IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/tiff",
+  "image/avif",
+  "image/bmp",
+];
+
+/**
+ * Checks if a file is an image and converts it into compressed WebP format.
+ * Non-image files (PDFs, DOCX, ZIPs, SVGs) are preserved in their native format.
+ */
+export async function optimizeImageIfApplicable(file: File): Promise<{
+  buffer: Buffer;
+  mimeType: string;
+  isWebpConverted: boolean;
+}> {
+  const rawBuffer = Buffer.from(await file.arrayBuffer());
+  const ext = path.extname(file.name).toLowerCase();
+  const isImage =
+    IMAGE_MIME_TYPES.includes(file.type) ||
+    /\.(jpe?g|png|gif|tiff?|avif|bmp)$/i.test(ext);
+
+  // Preserve vector SVGs and non-image document formats
+  if (!isImage || file.type === "image/svg+xml" || ext === ".svg") {
+    return {
+      buffer: rawBuffer,
+      mimeType: file.type || (mimeLookup(ext) as string) || "application/octet-stream",
+      isWebpConverted: false,
+    };
+  }
+
+  try {
+    const webpBuffer = await sharp(rawBuffer)
+      .rotate() // Auto-orient based on EXIF tags
+      .resize({
+        width: 2400,
+        height: 2400,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 82, effort: 4 })
+      .toBuffer();
+
+    return {
+      buffer: webpBuffer,
+      mimeType: "image/webp",
+      isWebpConverted: true,
+    };
+  } catch (err) {
+    console.warn(
+      `[Image Optimization Warning] Could not convert "${file.name}" to WebP, saving original:`,
+      err
+    );
+    return {
+      buffer: rawBuffer,
+      mimeType: file.type || "application/octet-stream",
+      isWebpConverted: false,
+    };
+  }
+}
 
 /**
  * Save an uploaded leave supporting document file to MinIO.
- * Returns the object key stored in the DB (e.g. `leave-docs/LV-20260222-document.pdf`).
+ * Images are automatically converted and saved as space-saving WebP.
+ * Returns the object key stored in the DB (e.g. `leave-docs/LV-20260222-document.webp` or `...document.pdf`).
  */
 export async function saveLeaveDocument(file: File, requestNo: string): Promise<string> {
-  // Sanitise filename: strip path separators and unusual characters, keep extension
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const { buffer, mimeType, isWebpConverted } = await optimizeImageIfApplicable(file);
+
+  let safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (isWebpConverted) {
+    const parsed = path.parse(safeName);
+    safeName = `${parsed.name}.webp`;
+  }
   const objectKey = `leave-docs/${requestNo}-${safeName}`;
 
-  await uploadToMinio(file, objectKey, file.type);
+  await uploadToMinio(buffer, objectKey, mimeType);
   return objectKey;
 }
 
 /**
  * Save an uploaded student document to MinIO.
- * Returns the object key stored in the DB (e.g. `student-docs/STU-12-certificate-mark_sheet.pdf`).
+ * Images (certificates, ID cards, photos) are automatically converted and saved as space-saving WebP.
+ * Returns the object key stored in the DB (e.g. `student-docs/STU-12-certificate-mark_sheet.webp` or `...pdf`).
  */
 export async function saveStudentDocument(
   file: File,
   studentId: number | string,
   docType: string
 ): Promise<string> {
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const { buffer, mimeType, isWebpConverted } = await optimizeImageIfApplicable(file);
+
+  let safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (isWebpConverted) {
+    const parsed = path.parse(safeName);
+    safeName = `${parsed.name}.webp`;
+  }
   const safeDocType = docType.replace(/[^a-zA-Z0-9._-]/g, "_");
   const timestamp = Date.now();
   const objectKey = `student-docs/STU-${studentId}-${safeDocType}-${timestamp}-${safeName}`;
 
-  await uploadToMinio(file, objectKey, file.type);
+  await uploadToMinio(buffer, objectKey, mimeType);
   return objectKey;
 }
 
