@@ -45,6 +45,8 @@ export const magazineIssues = magazineSchema.table("magazine_issues", {
   slug: text("slug").notNull().unique(),
   coverImageUrl: text("cover_image_url"),
   description: text("description"),
+  editorialTitle: text("editorial_title").default("From the Editorial Desk"),
+  editorialHtml: text("editorial_html"),
   issueMonth: integer("issue_month").notNull(), // 1 - 12
   issueYear: integer("issue_year").notNull(), // e.g. 2026
   status: magazineStatusEnum("status").notNull().default("draft"),

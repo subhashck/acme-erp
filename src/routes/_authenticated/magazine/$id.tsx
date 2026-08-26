@@ -66,6 +66,8 @@ interface IssueData {
   slug: string;
   coverImageUrl: string | null;
   description: string | null;
+  editorialTitle: string | null;
+  editorialHtml: string | null;
   issueMonth: number;
   issueYear: number;
   status: "draft" | "published" | "archived";
@@ -115,6 +117,8 @@ export function MagazineIssueEditor() {
   const [title, setTitle] = React.useState("");
   const [slug, setSlug] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [editorialTitle, setEditorialTitle] = React.useState("From the Editorial Desk");
+  const [editorialHtml, setEditorialHtml] = React.useState("");
   const [month, setMonth] = React.useState(1);
   const [year, setYear] = React.useState(2026);
   const [coverImageUrl, setCoverImageUrl] = React.useState("");
@@ -140,6 +144,8 @@ export function MagazineIssueEditor() {
       setTitle(d.title);
       setSlug(d.slug);
       setDescription(d.description || "");
+      setEditorialTitle(d.editorialTitle || "From the Editorial Desk");
+      setEditorialHtml(d.editorialHtml || "");
       setMonth(d.issueMonth);
       setYear(d.issueYear);
       setCoverImageUrl(d.coverImageUrl || "");
@@ -161,6 +167,8 @@ export function MagazineIssueEditor() {
           title: title.trim(),
           slug: slug.trim().toLowerCase(),
           description: description.trim() || null,
+          editorialTitle: editorialTitle.trim() || "From the Editorial Desk",
+          editorialHtml: editorialHtml.trim() || null,
           coverImageUrl: coverImageUrl || null,
           issueMonth: month,
           issueYear: year,
@@ -863,6 +871,27 @@ export function MagazineIssueEditor() {
                 )}
               </div>
 
+              {/* Preview Editorial Foreword */}
+              <Card className="p-6 space-y-3 bg-card border-border">
+                <div className="border-b border-border pb-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                    Editorial Foreword
+                  </span>
+                  <h3 className="font-serif text-xl font-bold text-foreground mt-2">
+                    {editorialTitle || "From the Editorial Desk"}
+                  </h3>
+                </div>
+                <div
+                  className="prose dark:prose-invert max-w-none font-serif text-sm leading-relaxed text-muted-foreground"
+                  dangerouslySetInnerHTML={{
+                    __html:
+                      editorialHtml && editorialHtml.trim()
+                        ? (editorialHtml.includes("<") ? editorialHtml : `<p>${editorialHtml}</p>`)
+                        : `<p>Welcome to the <strong>Month ${month} ${year}</strong> edition of <em>${title}</em>. Our clinical teams and departments continue to bring groundbreaking updates, healthcare insights, and medical excellence to our community.</p>`,
+                  }}
+                />
+              </Card>
+
               {/* Preview TOC */}
               {sections.length > 0 && (
                 <Card className="p-6 space-y-4">
@@ -929,7 +958,7 @@ export function MagazineIssueEditor() {
             <CardHeader>
               <CardTitle className="text-base font-bold">Issue Settings & Cover</CardTitle>
               <CardDescription className="text-xs">
-                Update the issue title, unique URL slug, edition date, and cover artwork.
+                Update the issue title, unique URL slug, edition date, cover artwork, and editorial foreword.
               </CardDescription>
             </CardHeader>
 
@@ -977,8 +1006,43 @@ export function MagazineIssueEditor() {
                 </div>
               </div>
 
+              {/* Editorial Desk Foreword Section */}
+              <div className="border-t border-border pt-4 space-y-3">
+                <div>
+                  <h4 className="text-sm font-bold text-foreground">Editorial Desk Foreword</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Customize the opening message displayed on the Inside Cover &amp; Editorial section.
+                    <span className="font-semibold text-primary block mt-0.5">
+                      Note: The Table of Contents ("In This Issue") is automatically compiled from your article sections.
+                    </span>
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Editorial Title</label>
+                  <Input
+                    value={editorialTitle}
+                    onChange={(e) => setEditorialTitle(e.target.value)}
+                    placeholder="From the Editorial Desk"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-foreground">Editorial Message</label>
+                  <textarea
+                    value={editorialHtml}
+                    onChange={(e) => setEditorialHtml(e.target.value)}
+                    placeholder="Welcome message, highlights of this edition, leadership remarks..."
+                    className="w-full min-h-[120px] p-3 text-sm rounded-md border border-input bg-background focus:outline-hidden focus:ring-2 focus:ring-primary font-sans leading-relaxed text-foreground"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Plain text or HTML formatted paragraphs. Leave empty to use the dynamic default welcome foreword.
+                  </p>
+                </div>
+              </div>
+
               {/* Cover Image Upload */}
-              <div className="space-y-2 pt-2">
+              <div className="space-y-2 pt-2 border-t border-border">
                 <label className="text-xs font-semibold text-foreground block">Cover Image Artwork</label>
                 <div className="flex flex-wrap items-center gap-3">
                   <Button

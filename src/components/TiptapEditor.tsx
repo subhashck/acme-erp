@@ -24,6 +24,7 @@ import FontFamily from "@tiptap/extension-font-family";
 
 import { Callout, CalloutType } from "@/components/tiptap/callout-extension";
 import { FontSize } from "@/components/tiptap/font-size-extension";
+import { PageBreak } from "@/components/tiptap/page-break-extension";
 import { MediaLibraryDialog } from "@/components/magazine/MediaLibraryDialog";
 
 import {
@@ -80,6 +81,9 @@ import {
   Plus,
   Type,
   RemoveFormatting,
+  SeparatorHorizontal,
+  BookOpen,
+  ScrollText,
 } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -96,6 +100,7 @@ interface TiptapEditorProps {
   issueId?: number | string;
   className?: string;
   minHeight?: string;
+  defaultLayout?: "a4" | "stream";
 }
 
 const COLOR_PALETTE = [
@@ -193,10 +198,12 @@ export function TiptapEditor({
   issueId = "general",
   className,
   minHeight = "320px",
+  defaultLayout = "a4",
 }: TiptapEditorProps) {
   const [isUploading, setIsUploading] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [editorMode, setEditorMode] = React.useState<"visual" | "html" | "preview">("visual");
+  const [layoutMode, setLayoutMode] = React.useState<"a4" | "stream">(defaultLayout);
   const [htmlSource, setHtmlSource] = React.useState("");
   const [, setIsCopied] = React.useState(false);
   const [showSearch, setShowSearch] = React.useState(false);
@@ -236,14 +243,20 @@ export function TiptapEditor({
         nested: true,
       }),
       Callout,
+      PageBreak,
       Image.configure({
         allowBase64: true,
         inline: false,
       }),
       Youtube.configure({
         inline: false,
+        allowFullscreen: true,
         width: 640,
         height: 360,
+        HTMLAttributes: {
+          allowfullscreen: "true",
+          allow: "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen",
+        },
       }),
       Link.configure({
         openOnClick: false,
@@ -512,6 +525,40 @@ export function TiptapEditor({
             <span>Preview</span>
           </button>
         </div>
+
+        {/* A4 Sheet vs Continuous Stream Switcher (Active in Visual Mode) */}
+        {editorMode === "visual" && (
+          <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border border-border text-xs">
+            <button
+              type="button"
+              onClick={() => setLayoutMode("a4")}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-all",
+                layoutMode === "a4"
+                  ? "bg-background text-primary shadow-xs border border-border/80"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              title="A4 Magazine Sheet WYSIWYG (Matches Flipbook Page Ratio)"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+              <span>A4 Sheet</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode("stream")}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-all",
+                layoutMode === "stream"
+                  ? "bg-background text-primary shadow-xs border border-border/80"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+              title="Continuous Stream Mode"
+            >
+              <ScrollText className="h-3.5 w-3.5" />
+              <span>Stream</span>
+            </button>
+          </div>
+        )}
 
         {/* Live Word Count & Metrics */}
         <div className="flex items-center gap-3">
@@ -1419,9 +1466,22 @@ export function TiptapEditor({
               size="sm"
               onClick={() => editor.chain().focus().setHorizontalRule().run()}
               className="h-8 w-8 p-0"
-              title="Horizontal Divider"
+              title="Horizontal Rule Line"
             >
               <Minus className="h-4 w-4" />
+            </Button>
+
+            {/* Page Break Inserter */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => (editor.chain().focus() as any).setPageBreak().run()}
+              className="h-8 px-2 flex items-center gap-1.5 text-xs font-semibold text-primary hover:bg-primary/10"
+              title="Insert Page Break (Ctrl+Enter / Mod+Enter)"
+            >
+              <SeparatorHorizontal className="h-4 w-4 text-primary" />
+              <span className="hidden sm:inline">Page Break</span>
             </Button>
           </div>
         </div>
@@ -1622,7 +1682,29 @@ export function TiptapEditor({
         )}
         style={{ minHeight: isFullscreen ? "calc(100vh - 90px)" : minHeight }}
       >
-        {editorMode === "visual" && <EditorContent editor={editor} />}
+        {editorMode === "visual" && (
+          layoutMode === "a4" ? (
+            <div className="tiptap-a4-canvas">
+              <div className="tiptap-a4-page-frame">
+                <div className="tiptap-a4-header-guide">
+                  <span>A4 Magazine Page Sheet &bull; WYSIWYG</span>
+                  <span>210mm &times; 297mm &bull; 1.414 ratio</span>
+                </div>
+                <div className="flex-1">
+                  <EditorContent editor={editor} />
+                </div>
+                <div className="tiptap-a4-footer-guide">
+                  <span>Use "Page Break" button or Ctrl+Enter for explicit page turns</span>
+                  <span>A4 Flipbook Layout</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6">
+              <EditorContent editor={editor} />
+            </div>
+          )
+        )}
 
         {editorMode === "html" && (
           <div className="p-4 h-full flex flex-col">
@@ -1768,6 +1850,10 @@ export function TiptapEditor({
               <div className="flex items-center justify-between p-2 rounded-lg bg-muted/40 border border-border">
                 <span>Undo / Redo</span>
                 <kbd className="px-2 py-0.5 rounded bg-background border border-border font-mono text-[11px]">Ctrl+Z / Ctrl+Y</kbd>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg bg-primary/10 border border-primary/30 text-primary font-semibold">
+                <span>Insert Page Break</span>
+                <kbd className="px-2 py-0.5 rounded bg-background border border-primary/40 font-mono text-[11px]">Ctrl+Enter</kbd>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-muted/40 border border-border">
                 <span>Exit Fullscreen</span>

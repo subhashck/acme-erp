@@ -5,6 +5,8 @@ export interface MagazineIssueData {
   slug: string;
   coverImageUrl?: string | null;
   description?: string | null;
+  editorialTitle?: string | null;
+  editorialHtml?: string | null;
   issueMonth: number;
   issueYear: number;
   status: string;
@@ -137,7 +139,8 @@ function extractTopLevelHtmlBlocks(html: string): string[] {
 
 /**
  * Intelligent Layout Paginator for StPageFlip
- * Splits article HTML blocks into balanced pages without vertical overflow
+ * Calibrated for standard ISO A4 page dimensions (210mm x 297mm).
+ * Fits a balanced density of paragraphs and visual elements per A4 page.
  */
 function splitHtmlIntoMagazinePages(html: string): string[] {
   if (!html || !html.trim()) {
@@ -152,41 +155,41 @@ function splitHtmlIntoMagazinePages(html: string): string[] {
       : ['<p class="empty-note">Story content is being compiled.</p>'];
   }
 
-  const blocks: string[] = [];
-  for (const block of rawBlocks) {
-    const textLen = stripHtml(block).length;
-    if (block.toLowerCase().startsWith("<p") && textLen > 400) {
-      const innerText = block.replace(/^<p[^>]*>/i, "").replace(/<\/p>$/i, "");
-      const sentences = innerText.split(/(?<=[.!?])\s+/);
-      let curr = "";
-      for (const sent of sentences) {
-        if ((curr + " " + sent).length > 250 && curr.length > 0) {
-          blocks.push(`<p>${curr.trim()}</p>`);
-          curr = sent;
-        } else {
-          curr = curr ? `${curr} ${sent}` : sent;
-        }
-      }
-      if (curr) blocks.push(`<p>${curr.trim()}</p>`);
-    } else {
-      blocks.push(block);
-    }
-  }
+  // Preserve all blocks intact without slicing across internal HTML tags (spans, fonts, colors, marks)
+  const blocks: string[] = rawBlocks;
 
   const pages: string[] = [];
   let currentPageBlocks: string[] = [];
   let currentWeight = 0;
 
-  // First page capacity is ~420 units (due to article header), continuation pages ~680 units
-  const getCapacity = (pageIdx: number) => (pageIdx === 0 ? 420 : 680);
+  // A4 Standard Dimensions:
+  // - Lead Page capacity ~1250 units (leaves room for story header, title, author byline)
+  // - Continuation Page capacity ~1950 units (full A4 body copy of ~350-450 words)
+  const getCapacity = (pageIdx: number) => (pageIdx === 0 ? 1250 : 1950);
 
   for (const block of blocks) {
+    const isExplicitPageBreak =
+      /<hr[^>]*class="[^"]*page-break[^"]*"/i.test(block) ||
+      /data-page-break/i.test(block) ||
+      /class="[^"]*page-break-divider/i.test(block);
+
+    if (isExplicitPageBreak) {
+      if (currentPageBlocks.length > 0) {
+        pages.push(currentPageBlocks.join("\n"));
+        currentPageBlocks = [];
+        currentWeight = 0;
+      }
+      continue;
+    }
+
     let weight = stripHtml(block).length;
-    if (/<img/i.test(block)) weight = 420;
-    if (/<table/i.test(block)) weight = 450;
-    if (/<blockquote/i.test(block)) weight = Math.round(weight * 1.4) + 60;
-    if (/<h[1-6]/i.test(block)) weight += 60;
-    if (/<ul|<ol/i.test(block)) weight = Math.round(weight * 1.2) + 50;
+    if (/<img/i.test(block)) weight = 550;
+    if (/<iframe|<video|data-youtube-video/i.test(block)) weight = 600;
+    if (/<table/i.test(block)) weight = Math.round(weight * 0.9) + 400;
+    if (/class="[^"]*callout/i.test(block) || /data-callout-type/i.test(block)) weight = Math.round(weight * 1.15) + 120;
+    if (/<blockquote/i.test(block)) weight = Math.round(weight * 1.25) + 80;
+    if (/<h[1-6]/i.test(block)) weight += 80;
+    if (/<ul|<ol/i.test(block)) weight = Math.round(weight * 1.15) + 50;
 
     const maxCap = getCapacity(pages.length);
 
@@ -207,6 +210,70 @@ function splitHtmlIntoMagazinePages(html: string): string[] {
   return pages.length > 0 ? pages : ['<p class="empty-note">Story content is being compiled.</p>'];
 }
 
+export function enrichIframePermissions(html: string): string {
+  if (!html) return "";
+
+  // 1. Process div[data-youtube-video] and .video-wrapper containers
+  let processed = html.replace(
+    /<div([^>]*data-youtube-video[^>]*)>([\s\S]*?)<\/div>/gi,
+    (_fullDiv, divAttrs, inner) => {
+      const srcMatch = inner.match(/src="([^"]*)"/i);
+      const src = srcMatch ? srcMatch[1] : "";
+      const ytMatch = src.match(/(?:youtube\.com\/(?:embed\/|v\/|watch\?v=)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([a-zA-Z0-9_-]{11})/i);
+      const videoId = ytMatch ? ytMatch[1] : "";
+      const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : (src || "https://www.youtube.com");
+
+      const enrichedInner = inner.replace(/<iframe\b([^>]*)>/gi, (_m: string, attrs: string) => {
+        let newAttrs = attrs;
+        if (!/allowfullscreen/i.test(newAttrs)) {
+          newAttrs += ' allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"';
+        }
+        if (/allow="/i.test(newAttrs)) {
+          newAttrs = newAttrs.replace(/allow="([^"]*)"/i, (_m2: string, permsStr: string) => {
+            const perms = permsStr.split(";").map((s) => s.trim()).filter(Boolean);
+            const required = ["accelerometer", "autoplay", "clipboard-write", "encrypted-media", "gyroscope", "picture-in-picture", "web-share", "fullscreen"];
+            required.forEach((r) => { if (!perms.includes(r)) perms.push(r); });
+            return `allow="${perms.join("; ")}"`;
+          });
+        } else {
+          newAttrs += ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"';
+        }
+        return `<iframe${newAttrs}>`;
+      });
+
+      const openTabBtn = `
+        <a href="${watchUrl}" target="_blank" rel="noopener noreferrer" class="yt-open-tab-btn" title="Open YouTube video in new tab (watch in fullscreen)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          <span>Watch on YouTube ↗</span>
+        </a>
+      `;
+
+      return `<div${divAttrs}>${enrichedInner}${openTabBtn}</div>`;
+    }
+  );
+
+  // 2. Process any standalone iframes that weren't wrapped in div[data-youtube-video]
+  processed = processed.replace(/<iframe\b([^>]*)>/gi, (_match, attrs) => {
+    let newAttrs = attrs;
+    if (!/allowfullscreen/i.test(newAttrs)) {
+      newAttrs += ' allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"';
+    }
+    if (/allow="/i.test(newAttrs)) {
+      newAttrs = newAttrs.replace(/allow="([^"]*)"/i, (_m: string, permsStr: string) => {
+        const perms = permsStr.split(";").map((s) => s.trim()).filter(Boolean);
+        const required = ["accelerometer", "autoplay", "clipboard-write", "encrypted-media", "gyroscope", "picture-in-picture", "web-share", "fullscreen"];
+        required.forEach((r) => { if (!perms.includes(r)) perms.push(r); });
+        return `allow="${perms.join("; ")}"`;
+      });
+    } else {
+      newAttrs += ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"';
+    }
+    return `<iframe${newAttrs}>`;
+  });
+
+  return processed;
+}
+
 export function renderMagazineHtml(
   issue: MagazineIssueData,
   sections: MagazineSectionData[],
@@ -225,8 +292,13 @@ export function renderMagazineHtml(
   const hospitalDivision = hospital?.editorialDivision || "ACME Healthcare Communications & Editorial Division";
   const hospitalCopyright = hospital?.copyrightText || "ACME Monthly Electronic Magazine. All rights reserved.";
 
-  // Calculate total reading time
   const totalMinutes = sections.reduce((acc, sec) => acc + calculateReadingTime(sec.contentHtml || ""), 0);
+
+  // Pre-calculate page splits and start page indices for each section with enriched permissions
+  const enrichedSections = sections.map((s) => ({
+    ...s,
+    contentHtml: enrichIframePermissions(s.contentHtml || ""),
+  }));
 
   // Pre-paginate all sections for multi-page StPageFlip layout
   const sectionPaging: {
@@ -238,7 +310,7 @@ export function renderMagazineHtml(
 
   let nextFlipIndex = 2; // Index 0: Cover (P.1), Index 1: Inside Cover (P.2)
 
-  sections.forEach((sec) => {
+  enrichedSections.forEach((sec) => {
     const secPages = splitHtmlIntoMagazinePages(sec.contentHtml || "");
     sectionPaging.push({
       section: sec,
@@ -273,11 +345,11 @@ export function renderMagazineHtml(
   }).join("");
 
   // Prepare scroll mode section articles
-  const scrollSectionsHtml = sections.map((sec, idx) => {
+  const scrollSectionsHtml = enrichedSections.map((sec, idx) => {
     const anchor = `section-${sec.id}`;
     const readMins = calculateReadingTime(sec.contentHtml || "");
-    const prevSec = sections[idx - 1];
-    const nextSec = sections[idx + 1];
+    const prevSec = enrichedSections[idx - 1];
+    const nextSec = enrichedSections[idx + 1];
 
     return `
       <article id="${anchor}" class="story-article">
@@ -374,6 +446,29 @@ export function renderMagazineHtml(
     `,
   });
 
+  // Prepare Editorial Desk Foreword (User-defined or fallback)
+  const editorialTitle = issue.editorialTitle?.trim() || "From the Editorial Desk";
+  let editorialContentHtml = "";
+  if (issue.editorialHtml && issue.editorialHtml.trim()) {
+    const raw = issue.editorialHtml.trim();
+    if (raw.includes("<") && raw.includes(">")) {
+      editorialContentHtml = raw;
+    } else {
+      editorialContentHtml = raw
+        .split(/\n+/)
+        .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
+        .join("");
+    }
+  } else {
+    editorialContentHtml = `
+      <p>
+        Welcome to the <strong>${issueDateStr}</strong> edition of <em>${escapeHtml(issue.title)}</em>.
+        Our clinical teams and departments continue to bring groundbreaking updates, 
+        healthcare insights, and medical excellence to our community.
+      </p>
+    `;
+  }
+
   // Inside Cover: Editorial Foreword + Quick TOC (Page 2)
   stPages.push({
     density: "hard",
@@ -386,13 +481,11 @@ export function renderMagazineHtml(
 
         <div class="page-inner-scroll">
           <div class="editorial-box">
-            <h2 class="editorial-title">From the Editorial Desk</h2>
+            <h2 class="editorial-title">${escapeHtml(editorialTitle)}</h2>
             <div class="editorial-accent-bar"></div>
-            <p class="editorial-text">
-              Welcome to the <strong>${issueDateStr}</strong> edition of <em>${escapeHtml(issue.title)}</em>.
-              Our clinical teams and departments continue to bring groundbreaking updates, 
-              healthcare insights, and medical excellence to our community.
-            </p>
+            <div class="editorial-text">
+              ${editorialContentHtml}
+            </div>
           </div>
 
           <div class="flip-toc-box">
@@ -460,7 +553,7 @@ export function renderMagazineHtml(
                   ` : ""}
                 </div>
 
-                <div class="story-page-prose prose">
+                <div class="story-page-prose prose story-page-lead-prose">
                   ${pageContent}
                 </div>
               </div>
@@ -780,37 +873,44 @@ export function renderMagazineHtml(
       transition: padding 0.2s ease;
     }
 
-    .nav-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
-    .brand-mark { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: inherit; min-width: 0; }
+    .nav-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1 1 auto; margin-right: 0.5rem; }
+    .brand-mark { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: inherit; min-width: 0; max-width: 100%; }
     .brand-badge { font-family: var(--font-masthead); background: var(--accent-gradient); color: white; font-weight: 800; font-size: 0.72rem; letter-spacing: 0.15em; padding: 0.3rem 0.6rem; border-radius: var(--radius-sm); flex-shrink: 0; }
-    .brand-title { font-weight: 700; font-size: 0.92rem; display: flex; align-items: center; gap: 0.45rem; min-width: 0; }
-    .brand-title-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+    .brand-title { font-weight: 700; font-size: 0.92rem; display: flex; align-items: center; gap: 0.45rem; min-width: 0; flex: 1 1 auto; }
+    .brand-title-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: clamp(240px, 45vw, 650px); }
     .brand-issue-pill { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); background: var(--bg-elevated); padding: 0.15rem 0.45rem; border-radius: var(--radius-sm); white-space: nowrap; flex-shrink: 0; }
     
     .nav-controls { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
     .mode-toggle-group { display: flex; align-items: center; background: var(--bg-elevated); border: 1px solid var(--border-main); border-radius: var(--radius-sm); padding: 2px; }
-    .mode-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.65rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); border: none; background: transparent; cursor: pointer; transition: all 0.15s ease; }
+    .mode-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.65rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); border: none; background: transparent; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; }
     .mode-btn.active { background: var(--bg-card); color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-    .control-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-main); padding: 0.4rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.15s ease; }
+    .control-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-main); padding: 0.4rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.15s ease; white-space: nowrap; }
     .control-btn:hover { background: var(--bg-card-hover); border-color: var(--primary); transform: translateY(-1px); }
     .control-icon-btn { width: 34px; height: 34px; padding: 0; border-radius: var(--radius-sm); }
+    .nav-btn-label { white-space: nowrap; }
+
+    @media (max-width: 1024px) {
+      .brand-title-text { max-width: clamp(180px, 32vw, 400px); }
+    }
 
     @media (max-width: 860px) {
-      .brand-title-text { display: none; }
       .print-btn { display: none !important; }
+      .brand-title-text { max-width: clamp(140px, 28vw, 260px); font-size: 0.86rem; }
+      .control-btn { padding: 0.35rem 0.6rem; font-size: 0.76rem; }
     }
 
     @media (max-width: 640px) {
-      .sticky-header { padding: 0.35rem 0.65rem; height: 48px; }
+      .sticky-header { padding: 0.35rem 0.5rem; height: 48px; }
       .nav-btn-label { display: none; }
       .brand-issue-pill { display: none; }
       .brand-badge { padding: 0.25rem 0.45rem; font-size: 0.65rem; }
+      .brand-title-text { max-width: clamp(110px, 34vw, 200px); font-size: 0.8rem; }
       .control-btn { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
       .control-icon-btn { width: 32px; height: 32px; }
       .mode-btn { padding: 0.35rem 0.45rem; }
       .mode-toggle-group { padding: 1px; }
       .nav-controls { gap: 0.25rem; }
-      .nav-left { gap: 0.4rem; }
+      .nav-left { gap: 0.4rem; margin-right: 0.25rem; }
     }
 
     /* ==========================================================================
@@ -987,21 +1087,22 @@ export function renderMagazineHtml(
       justify-content: space-between;
       align-items: center;
       font-family: var(--font-mono);
-      font-size: 0.7rem;
+      font-size: 0.58rem;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.08em;
       color: var(--page-muted);
       border-bottom: 1px solid var(--page-border);
-      padding-bottom: 0.6rem;
-      margin-bottom: 1.25rem;
+      padding-bottom: 0.35rem;
+      margin-bottom: 0.65rem;
       flex-shrink: 0;
     }
 
     @media (max-width: 600px) {
       .page-running-header {
-        margin-bottom: 0.65rem;
-        padding-bottom: 0.35rem;
-        font-size: 0.62rem;
+        margin-bottom: 0.45rem;
+        padding-bottom: 0.25rem;
+        font-size: 0.52rem;
       }
     }
 
@@ -1026,20 +1127,20 @@ export function renderMagazineHtml(
 
     .page-running-footer {
       margin-top: auto;
-      padding-top: 0.65rem;
+      padding-top: 0.45rem;
       border-top: 1px solid var(--page-border);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.75rem;
+      font-size: 0.64rem;
       color: var(--page-muted);
       flex-shrink: 0;
     }
 
     @media (max-width: 600px) {
       .page-running-footer {
-        padding-top: 0.4rem;
-        font-size: 0.68rem;
+        padding-top: 0.3rem;
+        font-size: 0.58rem;
       }
     }
 
@@ -1050,7 +1151,7 @@ export function renderMagazineHtml(
 
     .page-continue-hint {
       font-family: var(--font-mono);
-      font-size: 0.72rem;
+      font-size: 0.62rem;
       color: var(--primary);
       font-weight: 600;
       font-style: italic;
@@ -1058,13 +1159,101 @@ export function renderMagazineHtml(
 
     .page-end-mark {
       font-family: var(--font-mono);
-      font-size: 0.72rem;
+      font-size: 0.62rem;
       color: var(--page-muted);
       font-weight: 700;
     }
 
+    /* Story Lead Header in Flipbook */
+    .story-page-head {
+      margin-bottom: 0.65rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 1px solid var(--page-border);
+      flex-shrink: 0;
+    }
+
+    .story-page-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .story-page-badge {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.12rem 0.45rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+    }
+
+    .story-page-time {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--page-muted);
+    }
+
+    .story-page-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+      font-weight: 800;
+      line-height: 1.2;
+      margin: 0 0 0.25rem 0;
+      color: var(--text-main);
+      word-break: break-word;
+    }
+
+    .story-page-subtitle {
+      font-family: var(--font-ui);
+      font-size: 0.82rem;
+      color: var(--page-muted);
+      line-height: 1.35;
+      margin: 0 0 0.4rem 0;
+    }
+
+    .story-page-byline {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-top: 0.35rem;
+    }
+
+    .story-page-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-gradient);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.68rem;
+      flex-shrink: 0;
+    }
+
+    .story-page-author-info {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+    }
+
+    .story-page-author-name {
+      font-weight: 700;
+      font-size: 0.76rem;
+    }
+
+    .story-page-author-role {
+      font-size: 0.65rem;
+      color: var(--page-muted);
+    }
+
     .continuation-page .continuation-prose {
-      padding-top: 0.25rem;
+      padding-top: 0.15rem;
     }
 
     .continuation-prose > p:first-of-type::first-letter {
@@ -1077,72 +1266,301 @@ export function renderMagazineHtml(
 
     .story-page-prose {
       font-family: var(--font-prose);
-      font-size: var(--flip-font-size, 0.95rem);
-      line-height: var(--flip-line-height, 1.65);
+      font-size: var(--flip-font-size, 0.92rem);
+      line-height: var(--flip-line-height, 1.55);
       color: var(--page-text);
       transition: font-size 0.2s ease, line-height 0.2s ease;
     }
 
-    .story-page-prose > p:first-of-type::first-letter {
+    .story-page-lead-prose > p:first-of-type::first-letter {
       font-family: var(--font-display);
       float: left;
-      font-size: clamp(2rem, 5vw, 2.8rem);
+      font-size: clamp(1.8rem, 3.5vw, 2.2rem);
       line-height: 0.85;
       padding-top: 2px;
-      padding-right: 8px;
+      padding-right: 6px;
       font-weight: 900;
       color: var(--primary);
     }
 
-    .story-page-prose p {
-      margin-bottom: 0.85rem;
+    .continuation-prose > p:first-of-type::first-letter {
+      float: none !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      color: inherit !important;
+      padding: 0 !important;
     }
 
-    .story-page-prose h1, .story-page-prose h2, .story-page-prose h3 {
+    .story-page-prose p {
+      margin-top: 0;
+      margin-bottom: 0.45rem;
+    }
+
+    .story-page-prose h1, .story-page-prose h2, .story-page-prose h3, .story-page-prose h4 {
       font-family: var(--font-ui);
       font-weight: 800;
-      margin-top: 0.75rem;
-      margin-bottom: 0.4rem;
-      line-height: 1.3;
-      font-size: 1.15rem;
+      margin-top: 0.65rem;
+      margin-bottom: 0.25rem;
+      line-height: 1.25;
+      color: var(--text-main);
     }
+    .story-page-prose h1 { font-size: 1.22rem; }
+    .story-page-prose h2 { font-size: 1.12rem; }
+    .story-page-prose h3 { font-size: 1.02rem; }
+    .story-page-prose h4 { font-size: 0.92rem; }
 
     .story-page-prose blockquote {
-      margin: 0.85rem 0;
-      padding: 0.6rem 1rem;
+      margin: 0.5rem 0;
+      padding: 0.5rem 0.85rem;
       background: var(--blockquote-bg);
       border-left: 3px solid var(--blockquote-border);
       border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
       font-family: var(--font-display);
       font-style: italic;
-      font-size: 0.95rem;
+      font-size: 0.88rem;
       line-height: 1.5;
       color: var(--blockquote-text);
     }
 
-    .story-page-prose table {
+    /* Callout Boxes (Info, Success, Warning, Danger, Note) */
+    .story-page-prose .callout-box,
+    .story-body .callout-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.55rem 0.85rem;
+      margin: 0.55rem 0;
+      border-radius: var(--radius-sm);
+      border-left-width: 4px;
+      border-left-style: solid;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    .story-page-prose .callout-box p,
+    .story-body .callout-box p {
+      margin: 0.1rem 0;
+    }
+    .callout-box.callout-info, [data-callout-type="info"] {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: #38bdf8;
+      color: var(--text-main);
+    }
+    .callout-box.callout-success, [data-callout-type="success"] {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: #22c55e;
+      color: var(--text-main);
+    }
+    .callout-box.callout-warning, [data-callout-type="warning"] {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
+      color: var(--text-main);
+    }
+    .callout-box.callout-danger, [data-callout-type="danger"] {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: #ef4444;
+      color: var(--text-main);
+    }
+    .callout-box.callout-note, [data-callout-type="note"] {
+      background: rgba(168, 85, 247, 0.1);
+      border-color: #a855f7;
+      color: var(--text-main);
+    }
+
+    /* Tables */
+    .story-page-prose table,
+    .story-body table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.75rem;
-      margin: 0.5rem 0;
-      display: block;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+      font-size: 0.82rem;
+      margin: 0.55rem 0;
+      display: table;
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .story-page-prose th,
+    .story-body th {
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      font-weight: 700;
+      text-align: left;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border-main);
+    }
+    .story-page-prose td,
+    .story-body td {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border-main);
+      color: var(--page-text);
     }
 
-    .story-page-prose th, .story-page-prose td {
-      padding: 0.35rem 0.5rem;
-      border: 1px solid var(--page-border);
-    }
-
-    .story-page-prose img {
+    /* Images */
+    .story-page-prose img,
+    .story-body img {
       max-width: 100%;
-      max-height: 200px;
+      height: auto;
+      max-height: 280px;
       object-fit: cover;
       border-radius: var(--radius-sm);
-      margin: 0.65rem auto;
+      margin: 0.75rem auto;
       display: block;
       border: 1px solid var(--page-border);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Embedded Videos & YouTube */
+    .story-page-prose div[data-youtube-video],
+    .story-body div[data-youtube-video],
+    .story-page-prose .video-wrapper,
+    .story-body .video-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      aspect-ratio: 16 / 9;
+      margin: 0.85rem 0;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--page-border);
+      background: #000;
+    }
+
+    .story-page-prose div[data-youtube-video] iframe,
+    .story-body div[data-youtube-video] iframe,
+    .story-page-prose iframe,
+    .story-body iframe {
+      width: 100% !important;
+      max-width: 100% !important;
+      aspect-ratio: 16 / 9;
+      height: auto;
+      border: none;
+      display: block;
+      border-radius: var(--radius-sm);
+    }
+
+    .story-page-prose div[data-youtube-video] iframe,
+    .story-body div[data-youtube-video] iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 100%;
+      border-radius: 0;
+    }
+
+    .story-page-prose video,
+    .story-body video {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border-radius: var(--radius-sm);
+      margin: 0.85rem 0;
+      border: 1px solid var(--page-border);
+      display: block;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    }
+
+    .yt-open-tab-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 30;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #ffffff !important;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      pointer-events: auto !important;
+    }
+
+    .yt-open-tab-btn:hover {
+      background: #ef4444; /* YouTube Accent Red */
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateY(-1px) scale(1.03);
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.45);
+      color: #ffffff !important;
+    }
+
+    .yt-open-tab-btn:active {
+      transform: scale(0.97);
+    }
+
+    @media (max-width: 600px) {
+      .story-page-prose div[data-youtube-video],
+      .story-body div[data-youtube-video],
+      .story-page-prose iframe,
+      .story-body iframe,
+      .story-page-prose video,
+      .story-body video {
+        margin: 0.45rem 0;
+      }
+      .yt-open-tab-btn {
+        top: 6px;
+        right: 6px;
+        padding: 4px 8px;
+        font-size: 0.65rem;
+      }
+    }
+
+    /* Lists */
+    .story-page-prose ul, .story-body ul {
+      list-style-type: disc;
+      padding-left: 1.35rem;
+      margin: 0.65rem 0;
+    }
+    .story-page-prose ol, .story-body ol {
+      list-style-type: decimal;
+      padding-left: 1.35rem;
+      margin: 0.65rem 0;
+    }
+    .story-page-prose li, .story-body li {
+      margin-bottom: 0.3rem;
+    }
+
+    /* Code blocks */
+    .story-page-prose pre, .story-body pre {
+      background: var(--bg-elevated);
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      margin: 0.75rem 0;
+      border: 1px solid var(--border-main);
+    }
+    .story-page-prose code, .story-body code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--bg-elevated);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+
+    /* Inline Marks & Links */
+    .story-page-prose mark, .story-body mark {
+      background-color: rgba(253, 224, 71, 0.35);
+      color: inherit;
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+    }
+    .story-page-prose a, .story-body a {
+      color: var(--primary);
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
 
     /* Cover Styling */
@@ -1268,19 +1686,21 @@ export function renderMagazineHtml(
     }
 
     /* Inside Cover & Editorial Foreword */
-    .editorial-box { margin-bottom: 1.75rem; }
+    .editorial-box { margin-bottom: 1.5rem; }
     .editorial-title { font-family: var(--font-display); font-size: clamp(1.2rem, 3vw, 1.5rem); font-weight: 800; margin-bottom: 0.35rem; }
     .editorial-accent-bar { width: 40px; height: 3px; background: var(--primary); margin-bottom: 0.85rem; border-radius: var(--radius-full); }
     .editorial-text { font-family: var(--font-prose); font-size: clamp(0.85rem, 2vw, 0.95rem); line-height: 1.65; color: var(--page-muted); }
+    .editorial-text p { margin-bottom: 0.75rem; }
+    .editorial-text p:last-child { margin-bottom: 0; }
 
-    .flip-toc-title { font-family: var(--font-ui); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--primary); font-weight: 800; margin-bottom: 0.85rem; }
-    .flip-toc-entries { display: flex; flex-direction: column; gap: 0.65rem; }
-    .flip-toc-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.88rem; cursor: pointer; padding: 0.35rem 0.5rem; border-radius: 6px; transition: all 0.15s ease; }
+    .flip-toc-title { font-family: var(--font-ui); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--primary); font-weight: 800; margin-bottom: 0.75rem; }
+    .flip-toc-entries { display: flex; flex-direction: column; gap: 0.5rem; }
+    .flip-toc-row { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.88rem; cursor: pointer; padding: 0.35rem 0.5rem; border-radius: 6px; transition: all 0.15s ease; }
     .flip-toc-row:hover { background: var(--primary-glow); color: var(--primary); }
-    .toc-row-num { font-family: var(--font-display); font-weight: 800; color: var(--primary); min-width: 1.5rem; }
-    .toc-row-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
-    .toc-row-dots { flex: 1; border-bottom: 1px dotted var(--page-muted); margin: 0 0.25rem; opacity: 0.4; }
-    .toc-row-page { font-family: var(--font-mono); font-size: 0.75rem; color: var(--page-muted); }
+    .toc-row-num { font-family: var(--font-display); font-weight: 800; color: var(--primary); min-width: 1.5rem; flex-shrink: 0; }
+    .toc-row-title { font-weight: 600; white-space: normal; word-break: break-word; line-height: 1.35; flex: 1; min-width: 0; }
+    .toc-row-dots { flex: 1; border-bottom: 1px dotted var(--page-muted); margin: 0 0.25rem; opacity: 0.4; min-width: 8px; align-self: flex-end; margin-bottom: 4px; }
+    .toc-row-page { font-family: var(--font-mono); font-size: 0.75rem; color: var(--page-muted); flex-shrink: 0; white-space: nowrap; }
 
     @media (max-width: 600px) {
       .editorial-box { margin-bottom: 1rem; }
@@ -1420,6 +1840,11 @@ export function renderMagazineHtml(
     html[data-mode="scroll"] .magazine-scroll-wrapper { display: block; }
     html[data-mode="flip"] .magazine-scroll-wrapper { display: none; }
 
+    .magazine-scroll-wrapper hr.page-break,
+    .magazine-scroll-wrapper .page-break-divider {
+      display: none !important;
+    }
+
     /* Key Anchor Fix: Scroll Margin Offset so Sticky Header Never Clips Section Heads */
     .story-article,
     .cover-hero-card,
@@ -1442,6 +1867,51 @@ export function renderMagazineHtml(
     .primary-action-btn { background: var(--accent-gradient); color: white; border: none; font-weight: 700; padding: 0.7rem 1.4rem; border-radius: var(--radius-sm); display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; cursor: pointer; transition: all 0.2s ease; }
     .cover-image-container { position: relative; width: 100%; max-height: 520px; overflow: hidden; background: #000; }
     .cover-image-container img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    .editorial-scroll-section {
+      background: var(--bg-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-main);
+      padding: 2.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      margin-bottom: 3rem;
+    }
+    .editorial-scroll-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-main);
+    }
+    .editorial-scroll-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      display: inline-block;
+      margin-bottom: 0.6rem;
+    }
+    .editorial-scroll-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.35rem, 3.5vw, 1.85rem);
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 0.4rem;
+    }
+    .editorial-scroll-body {
+      font-family: var(--font-prose);
+      font-size: var(--prose-font-size, 1.12rem);
+      line-height: var(--prose-line-height, 1.8);
+      color: var(--text-body);
+    }
+    .editorial-scroll-body p {
+      margin-bottom: 1.25rem;
+    }
+    .editorial-scroll-body p:last-child {
+      margin-bottom: 0;
+    }
 
     .toc-section { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-main); padding: 2.5rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); margin-bottom: 4rem; }
     .toc-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border-main); flex-wrap: wrap; gap: 0.75rem; }
@@ -1863,6 +2333,19 @@ export function renderMagazineHtml(
       color: white;
       transform: translateY(-2px);
     }
+
+    @media print {
+      .sticky-header,
+      .dock-toolbar,
+      .progress-bar-container,
+      .back-to-top-link,
+      .page-break-divider,
+      .page-break-pill,
+      hr.page-break,
+      [data-page-break] {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -1887,11 +2370,11 @@ export function renderMagazineHtml(
     <div class="nav-controls">
       <!-- Mode Toggle: StPageFlip vs Continuous Scroll Reader -->
       <div class="mode-toggle-group" title="Switch Reading Experience">
-        <button onclick="setReaderMode('flip')" class="mode-btn active" id="modeFlipBtn" title="3D Page-Flip Mode">
+        <button onclick="setReaderMode('flip', true)" class="mode-btn active" id="modeFlipBtn" title="3D Page-Flip Mode">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
           <span class="nav-btn-label">Page-Flip</span>
         </button>
-        <button onclick="setReaderMode('scroll')" class="mode-btn" id="modeScrollBtn" title="Continuous Scroll Mode">
+        <button onclick="setReaderMode('scroll', true)" class="mode-btn" id="modeScrollBtn" title="Continuous Scroll Mode">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
           <span class="nav-btn-label">Scroll</span>
         </button>
@@ -1989,11 +2472,6 @@ export function renderMagazineHtml(
       <button class="dock-btn" onclick="toggleAudio()" id="soundBtn" title="Toggle Page Turn Sound">
         <svg id="soundIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
       </button>
-
-      <!-- Fullscreen Toggle -->
-      <button class="dock-btn" onclick="toggleFullscreen()" title="Toggle Fullscreen (F)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
-      </button>
     </div>
   </section>
 
@@ -2032,7 +2510,7 @@ export function renderMagazineHtml(
 
           <div class="cover-actions">
             ${sections.length > 0 ? `
-              <button onclick="setReaderMode('flip')" class="primary-action-btn">
+              <button onclick="setReaderMode('flip', true)" class="primary-action-btn">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
                 <span>Read in 3D Page-Flip Mode</span>
               </button>
@@ -2046,6 +2524,18 @@ export function renderMagazineHtml(
           <img src="${escapeHtml(issue.coverImageUrl)}" alt="Cover: ${escapeHtml(issue.title)}" loading="eager">
         </div>
       ` : ""}
+    </section>
+
+    <!-- Editorial Foreword Card -->
+    <section id="editorial" class="editorial-scroll-section">
+      <div class="editorial-scroll-header">
+        <span class="editorial-scroll-badge">EDITORIAL FOREWORD</span>
+        <h2 class="editorial-scroll-title">${escapeHtml(editorialTitle)}</h2>
+        <div class="editorial-accent-bar"></div>
+      </div>
+      <div class="editorial-scroll-body">
+        ${editorialContentHtml}
+      </div>
     </section>
 
     <!-- Table of Contents Card -->
@@ -2117,13 +2607,13 @@ export function renderMagazineHtml(
               </a>
             </li>
             <li>
-              <button onclick="setReaderMode('flip')" class="footer-link-item">
+              <button onclick="setReaderMode('flip', true)" class="footer-link-item">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
                 <span>StPageFlip Experience</span>
               </button>
             </li>
             <li>
-              <button onclick="setReaderMode('scroll')" class="footer-link-item">
+              <button onclick="setReaderMode('scroll', true)" class="footer-link-item">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line></svg>
                 <span>Continuous Scroll Mode</span>
               </button>
@@ -2286,35 +2776,37 @@ export function renderMagazineHtml(
       }
     }
 
-    // 4. StPageFlip Dynamic Aspect-Ratio & Dimension Calculator
+    // 4. StPageFlip Dynamic A4 Aspect-Ratio & Dimension Calculator (210mm x 297mm)
     function getFlipbookDimensions() {
       const winW = window.innerWidth;
       const winH = window.innerHeight;
-      const isPortrait = winW < 800;
+      const isPortrait = winW < 820;
       const headerH = winW < 640 ? 48 : 52;
       const dockH = winW < 520 ? 52 : 62;
-      const stageAvailH = Math.max(340, winH - headerH - dockH);
-      const stageAvailW = isPortrait ? Math.max(280, winW - 16) : Math.max(560, Math.min(winW - 32, 1150));
+      const stageAvailH = Math.max(360, winH - headerH - dockH - 16);
+      const stageAvailW = isPortrait ? Math.max(280, winW - 16) : Math.max(560, Math.min(winW - 32, 1280));
 
-      const targetRatio = 1.36; // height / width for a single page
+      // ISO 216 A4 standard ratio: 297mm height / 210mm width = 1.4142 (sqrt(2))
+      const a4Ratio = 297 / 210;
 
       let bookW, bookH;
       if (isPortrait) {
-        // Single page portrait mode
-        bookW = Math.min(stageAvailW, 520);
-        bookH = Math.min(stageAvailH, Math.round(bookW * targetRatio));
-        if (bookH > stageAvailH) {
-          bookH = stageAvailH;
-          bookW = Math.round(bookH / targetRatio);
+        // Single A4 page portrait mode
+        const maxW = Math.min(stageAvailW, 580);
+        bookH = Math.min(stageAvailH, Math.round(maxW * a4Ratio));
+        bookW = Math.round(bookH / a4Ratio);
+        if (bookW > stageAvailW) {
+          bookW = stageAvailW;
+          bookH = Math.round(bookW * a4Ratio);
         }
       } else {
-        // 2-page spread landscape mode
+        // 2-page A4 spread landscape mode (two A4 pages side-by-side)
         const maxSinglePageW = Math.floor(stageAvailW / 2);
-        bookH = Math.min(stageAvailH, 740);
-        bookW = Math.min(maxSinglePageW, Math.round(bookH / targetRatio));
+        bookH = Math.min(stageAvailH, Math.round(maxSinglePageW * a4Ratio));
+        bookW = Math.round(bookH / a4Ratio);
         if (bookW * 2 > stageAvailW) {
           bookW = Math.floor(stageAvailW / 2);
-          bookH = Math.round(bookW * targetRatio);
+          bookH = Math.round(bookW * a4Ratio);
         }
       }
 
@@ -2360,45 +2852,54 @@ export function renderMagazineHtml(
       flipContainer.classList.remove('vertical-mode');
 
       if (!window.St || !window.St.PageFlip) {
-        setTimeout(() => initHorizontalStPageFlip(flipContainer), 100);
+        let attempts = (flipContainer._stAttempts || 0) + 1;
+        flipContainer._stAttempts = attempts;
+        if (attempts < 40) {
+          setTimeout(() => initHorizontalStPageFlip(flipContainer), 80);
+        }
         return;
       }
+      flipContainer._stAttempts = 0;
 
       const dims = getFlipbookDimensions();
 
-      pageFlipInstance = new St.PageFlip(flipContainer, {
-        width: dims.width,
-        height: dims.height,
-        size: 'stretch',
-        minWidth: 260,
-        maxWidth: 800,
-        minHeight: 360,
-        maxHeight: 1200,
-        maxShadowOpacity: 0.55,
-        showCover: true,
-        mobileScrollSupport: true,
-        useMouseEvents: true,
-        swipeDistance: 20,
-        clickEventForward: true,
-        drawShadow: true,
-        flippingTime: 1000,
-        usePortrait: dims.isPortrait,
-        startPage: currentFlipIndex
-      });
+      try {
+        pageFlipInstance = new St.PageFlip(flipContainer, {
+          width: dims.width,
+          height: dims.height,
+          size: 'stretch',
+          minWidth: 260,
+          maxWidth: 800,
+          minHeight: 360,
+          maxHeight: 1200,
+          maxShadowOpacity: 0.55,
+          showCover: true,
+          mobileScrollSupport: true,
+          useMouseEvents: true,
+          swipeDistance: 20,
+          clickEventForward: true,
+          drawShadow: true,
+          flippingTime: 1000,
+          usePortrait: dims.isPortrait,
+          startPage: currentFlipIndex
+        });
 
-      const pages = flipContainer.querySelectorAll('.page');
-      pageFlipInstance.loadFromHTML(pages);
+        const pages = flipContainer.querySelectorAll('.page');
+        pageFlipInstance.loadFromHTML(pages);
 
-      pageFlipInstance.on('flip', (e) => {
-        playPageTurnAudio();
-        currentFlipIndex = e.data;
-        updateFlipDock();
-      });
+        pageFlipInstance.on('flip', (e) => {
+          playPageTurnAudio();
+          currentFlipIndex = e.data;
+          updateFlipDock();
+        });
 
-      pageFlipInstance.on('init', () => {
-        totalFlipPages = pageFlipInstance.getPageCount();
-        updateFlipDock();
-      });
+        pageFlipInstance.on('init', () => {
+          totalFlipPages = pageFlipInstance.getPageCount();
+          updateFlipDock();
+        });
+      } catch (err) {
+        console.warn('PageFlip init error:', err);
+      }
     }
 
     function initVerticalFlipMode(flipContainer) {
@@ -2533,9 +3034,7 @@ export function renderMagazineHtml(
     function toggleFlipOrientation() {
       const next = flipOrientation === 'vertical' ? 'horizontal' : 'vertical';
       localStorage.setItem('magazine-flip-orient', next);
-      flipOrientation = next;
-      initFlipEngine();
-      showToast('Switched to ' + next.toUpperCase() + ' flip');
+      window.location.reload();
     }
 
     function updateOrientationUI(orient) {
@@ -2558,29 +3057,40 @@ export function renderMagazineHtml(
     }
 
     // 6. Reader Mode Switcher (Page-Flip & Continuous Scroll)
-    function setReaderMode(mode) {
-      document.documentElement.setAttribute('data-mode', mode);
+    function setReaderMode(mode, isUserAction = false) {
+      const currentMode = document.documentElement.getAttribute('data-mode');
       localStorage.setItem('magazine-reader-mode', mode);
+
+      if (isUserAction && currentMode && currentMode !== mode) {
+        window.location.reload();
+        return;
+      }
+
+      document.documentElement.setAttribute('data-mode', mode);
 
       const flipBtn = document.getElementById('modeFlipBtn');
       const scrollBtn = document.getElementById('modeScrollBtn');
       const orientBtn = document.getElementById('headerOrientBtn');
 
       if (mode === 'flip') {
-        flipBtn.classList.add('active');
-        scrollBtn.classList.remove('active');
+        if (flipBtn) flipBtn.classList.add('active');
+        if (scrollBtn) scrollBtn.classList.remove('active');
         if (orientBtn) orientBtn.style.display = 'inline-flex';
-        setTimeout(initFlipEngine, 50);
+        // Double requestAnimationFrame ensures browser calculates display:flex container dimensions before initializing PageFlip
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            initFlipEngine();
+          });
+        });
       } else {
-        scrollBtn.classList.add('active');
-        flipBtn.classList.remove('active');
+        if (scrollBtn) scrollBtn.classList.add('active');
+        if (flipBtn) flipBtn.classList.remove('active');
         if (orientBtn) orientBtn.style.display = 'none';
         if (pageFlipInstance) {
           try { pageFlipInstance.destroy(); } catch (e) {}
           pageFlipInstance = null;
         }
       }
-      showToast('Switched to ' + (mode === 'flip' ? '3D PAGE-FLIP' : 'SCROLL') + ' mode');
     }
 
     // 7. TOC Navigation (Handles both StPageFlip and Scroll Modes)
@@ -2698,16 +3208,7 @@ export function renderMagazineHtml(
       showToast('Link copied to clipboard!');
     }
 
-    // 13. Fullscreen
-    function toggleFullscreen() {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      } else {
-        document.exitFullscreen().catch(() => {});
-      }
-    }
-
-    // 14. Keyboard Navigation
+    // 13. Keyboard Navigation
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
@@ -2727,15 +3228,20 @@ export function renderMagazineHtml(
         flipNext();
       }
       if (e.key === 't' || e.key === 'T') toggleTocDrawer();
-      if (e.key === 'f' || e.key === 'F') toggleFullscreen();
       if (e.key === 'Escape') closeTocDrawer();
     });
 
-    // Auto-init on load
-    window.addEventListener('DOMContentLoaded', () => {
+    // Auto-init on load (ensures immediate initialization even if document is already ready)
+    function initOnReady() {
       const savedMode = localStorage.getItem('magazine-reader-mode') || 'flip';
       setReaderMode(savedMode);
-    });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initOnReady);
+    } else {
+      initOnReady();
+    }
 
     // Debounced resize & orientation change handler
     let resizeTimer = null;
