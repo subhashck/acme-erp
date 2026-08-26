@@ -37,7 +37,8 @@ import {
   Scale,
   CalendarOff,
   FileBarChart,
-  GraduationCap
+  GraduationCap,
+  BookOpen
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -261,6 +262,22 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
+  if (pathname === "/magazine" || pathname === "/magazine/") {
+    items.push({ label: "E-Magazine", to: "/magazine" });
+    return items;
+  }
+
+  if (pathname.startsWith("/magazine/")) {
+    items.push({ label: "E-Magazine", to: "/magazine" });
+    const sub = pathname.replace("/magazine/", "");
+    if (sub === "editors") {
+      items.push({ label: "Editorial Access", to: "/magazine/editors" });
+    } else {
+      items.push({ label: "Issue Details", to: `/magazine/${sub}` });
+    }
+    return items;
+  }
+
   return items;
 };
 
@@ -283,7 +300,7 @@ export function Shell() {
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewInventory } = useUserPermissions();
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewInventory, canManageMagazine } = useUserPermissions();
   const displayName = currentStaff?.name || session.data?.user?.name;
 
   React.useEffect(() => {
@@ -1102,6 +1119,18 @@ export function Shell() {
                 </div>
               )}
 
+              {/* E-Magazine */}
+              {canManageMagazine && (
+                <Link
+                  to="/magazine"
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                >
+                  <BookOpen size={18} />
+                  <span>E-Magazine</span>
+                </Link>
+              )}
+
               <Link
                 to="/settings"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -1401,6 +1430,17 @@ export function Shell() {
                     <Coins size={20} />
                   </Link>
                 </>
+              )}
+
+              {canManageMagazine && (
+                <Link
+                  to="/magazine"
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Electronic Magazine"
+                >
+                  <BookOpen size={20} />
+                </Link>
               )}
 
               <Link

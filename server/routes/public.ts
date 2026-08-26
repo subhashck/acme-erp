@@ -7,7 +7,7 @@
  */
 
 import { Hono } from "hono";
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import {
   dailyClosingReports,
@@ -23,6 +23,13 @@ import {
   dailyPaymentChannels,
   user,
 } from "../db/schema.ts";
+import {
+  magazineIssues,
+  magazineSections,
+} from "../db/schema-magazine.ts";
+import { getDocumentStream } from "../utils/upload.ts";
+import { renderMagazineHtml } from "../services/magazine-ssr.ts";
+import { getHospitalSettingsFromDb } from "../services/hospital-settings.ts";
 
 // ---------------------------------------------------------------------------
 // HMAC helpers (Web Crypto — available natively in Node 18+)
@@ -232,4 +239,159 @@ export const publicRoutes = new Hono()
       // Include expiry so the frontend can display it
       _linkExpiresAt: payload.expiresAt,
     });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Public Magazine Endpoints
+  // ---------------------------------------------------------------------------
+
+  /**
+   * GET /public/magazine
+   * Returns list of all published magazine issues.
+   */
+  .get("/public/magazine", async (c) => {
+    const issues = await db
+      .select({
+        id: magazineIssues.id,
+        issueNo: magazineIssues.issueNo,
+        title: magazineIssues.title,
+        slug: magazineIssues.slug,
+        coverImageUrl: magazineIssues.coverImageUrl,
+        description: magazineIssues.description,
+        issueMonth: magazineIssues.issueMonth,
+        issueYear: magazineIssues.issueYear,
+        publishedAt: magazineIssues.publishedAt,
+      })
+      .from(magazineIssues)
+      .where(eq(magazineIssues.status, "published"))
+      .orderBy(desc(magazineIssues.issueYear), desc(magazineIssues.issueMonth));
+
+    return c.json(issues);
+  })
+
+  /**
+   * GET /public/magazine/:slug
+   * Returns published issue details with sections in JSON format.
+   */
+  .get("/public/magazine/:slug", async (c) => {
+    const slug = c.req.param("slug");
+
+    // Slug validation regex
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      return c.json({ error: "Invalid issue slug format" }, 400);
+    }
+
+    const [issue] = await db
+      .select()
+      .from(magazineIssues)
+      .where(eq(magazineIssues.slug, slug))
+      .limit(1);
+
+    if (!issue || issue.status !== "published") {
+      return c.json({ error: "Magazine issue not found or not published" }, 404);
+    }
+
+    const sections = await db
+      .select({
+        id: magazineSections.id,
+        title: magazineSections.title,
+        subtitle: magazineSections.subtitle,
+        authorName: magazineSections.authorName,
+        authorRole: magazineSections.authorRole,
+        contentHtml: magazineSections.contentHtml,
+        sortOrder: magazineSections.sortOrder,
+      })
+      .from(magazineSections)
+      .where(eq(magazineSections.issueId, issue.id))
+      .orderBy(magazineSections.sortOrder, magazineSections.id);
+
+    return c.json({
+      ...issue,
+      sections,
+    });
+  })
+
+  /**
+   * GET /public/magazine/view/:slug
+   * Returns fully rendered standalone HTML reader (Flipbook & Scroll modes).
+   */
+  .get("/public/magazine/view/:slug", async (c) => {
+    const slug = c.req.param("slug");
+
+    // Slug validation regex
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      return c.html(
+        `<!DOCTYPE html><html><head><title>Invalid Request</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}</style></head><body><h1>400 - Invalid Issue Slug</h1><p>The magazine slug format is invalid.</p></body></html>`,
+        400
+      );
+    }
+
+    const [issue] = await db
+      .select()
+      .from(magazineIssues)
+      .where(eq(magazineIssues.slug, slug))
+      .limit(1);
+
+    if (!issue || issue.status !== "published") {
+      return c.html(
+        `<!DOCTYPE html><html><head><title>Magazine Issue Not Found</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}a{color:#0284c7;text-decoration:none;font-weight:600;}</style></head><body><h1>404 - Magazine Issue Not Found</h1><p>The requested monthly edition is not published or does not exist.</p><p><a href="/">Return to Home</a></p></body></html>`,
+        404
+      );
+    }
+
+    const sections = await db
+      .select({
+        id: magazineSections.id,
+        title: magazineSections.title,
+        subtitle: magazineSections.subtitle,
+        authorName: magazineSections.authorName,
+        authorRole: magazineSections.authorRole,
+        contentHtml: magazineSections.contentHtml,
+        sortOrder: magazineSections.sortOrder,
+      })
+      .from(magazineSections)
+      .where(eq(magazineSections.issueId, issue.id))
+      .orderBy(magazineSections.sortOrder, magazineSections.id);
+
+    const hospital = await getHospitalSettingsFromDb();
+
+    const html = renderMagazineHtml(issue as any, sections as any, hospital as any);
+    return c.html(html);
+  })
+
+  /**
+   * GET /public/magazine/ssr/:slug
+   * Alias for /public/magazine/view/:slug
+   */
+  .get("/public/magazine/ssr/:slug", async (c) => {
+    return c.redirect(`/api/public/magazine/view/${c.req.param("slug")}`);
+  })
+
+  /**
+   * GET /public/magazine/images/*
+   * Stream magazine images stored in MinIO.
+   */
+  .get("/public/magazine/images/*", async (c) => {
+    // Extract key after /public/magazine/images/ (handling both with/without /api prefix)
+    const rawPath = c.req.path.replace(/^.*\/public\/magazine\/images\//, "");
+    let decodedKey = decodeURIComponent(rawPath).replace(/^\/+/, "");
+
+    // Validate key structure for safety: must start with "magazine/" and have no ".."
+    if (!decodedKey.startsWith("magazine/") || decodedKey.includes("..")) {
+      return c.json({ error: "Invalid image path" }, 400);
+    }
+
+    const docStream = await getDocumentStream(decodedKey);
+    if (!docStream) {
+      return c.json({ error: "Image not found" }, 404);
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": docStream.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "Content-Disposition": `inline; filename="${docStream.filename}"`,
+    };
+
+    return new Response(docStream.stream as any, { headers });
   });
+

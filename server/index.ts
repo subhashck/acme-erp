@@ -9,7 +9,8 @@ import { eq } from "drizzle-orm";
 import { auth, type AuthEnv } from "./auth.ts";
 import { db } from "./db/client.ts";
 import { user } from "./db/schema.ts";
-import { createInventorySchemaAndTables } from "./db/setup-inventory-db.ts";
+import { magazineIssues, magazineSections } from "./db/schema-magazine.ts";
+import { renderMagazineHtml } from "./services/magazine-ssr.ts";
 import { api } from "./routes.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -43,6 +44,59 @@ app.use(
 
 // Mount public (unauthenticated) API routes BEFORE the auth middleware
 app.route("/api", publicRoutes);
+
+import { getHospitalSettingsFromDb } from "./services/hospital-settings.ts";
+
+// ---------------------------------------------------------------------------
+// Public Server-Side Rendered (SSR) Electronic Magazine Reader
+// ---------------------------------------------------------------------------
+async function renderMagazineSsr(c: any) {
+  const slug = c.req.param("slug");
+
+  // Slug validation regex
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return c.html(
+      `<!DOCTYPE html><html><head><title>Invalid Request</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}</style></head><body><h1>400 - Invalid Issue Slug</h1><p>The magazine slug format is invalid.</p></body></html>`,
+      400
+    );
+  }
+
+  const [issue] = await db
+    .select()
+    .from(magazineIssues)
+    .where(eq(magazineIssues.slug, slug))
+    .limit(1);
+
+  if (!issue || issue.status !== "published") {
+    return c.html(
+      `<!DOCTYPE html><html><head><title>Magazine Issue Not Found</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}a{color:#0284c7;text-decoration:none;font-weight:600;}</style></head><body><h1>404 - Magazine Issue Not Found</h1><p>The requested monthly edition is not published or does not exist.</p><p><a href="/">Return to Home</a></p></body></html>`,
+      404
+    );
+  }
+
+  const sections = await db
+    .select({
+      id: magazineSections.id,
+      title: magazineSections.title,
+      subtitle: magazineSections.subtitle,
+      authorName: magazineSections.authorName,
+      authorRole: magazineSections.authorRole,
+      contentHtml: magazineSections.contentHtml,
+      sortOrder: magazineSections.sortOrder,
+    })
+    .from(magazineSections)
+    .where(eq(magazineSections.issueId, issue.id))
+    .orderBy(magazineSections.sortOrder, magazineSections.id);
+
+  const hospital = await getHospitalSettingsFromDb();
+
+  const html = renderMagazineHtml(issue as any, sections as any, hospital as any);
+  return c.html(html);
+}
+
+app.get("/magazine/view/:slug", renderMagazineSsr);
+app.get("/magazine/ssr/:slug", renderMagazineSsr);
+app.get("/magazine/:slug", renderMagazineSsr);
 
 app.use("/api/*", async (c, next) => {
   // Auth endpoints: delegate directly to better-auth and return its response
@@ -125,10 +179,6 @@ app.use(
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 8787;
 
 if (process.env.NODE_ENV !== "test") {
-  createInventorySchemaAndTables().catch((err) => {
-    console.error("Failed to initialize inventory tables:", err);
-  });
-
   serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     console.log(`Hono API listening on http://localhost:${info.port}`);
   });

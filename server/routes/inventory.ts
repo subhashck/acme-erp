@@ -136,13 +136,34 @@ const purchaseInvoiceInput = z
     };
   });
 
-const purchaseInvoicePaymentInput = z.object({
-  paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
-  amount: z.coerce.number().min(0.01, "Amount must be > 0"),
-  paymentMode: z.enum(["cash", "upi", "card", "rtgs", "cheque", "other"]),
-  referenceNo: z.string().optional().nullable(),
-  remarks: z.string().optional().nullable(),
-});
+const purchaseInvoicePaymentInput = z
+  .object({
+    paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+    amount: z.coerce.number().min(0.01, "Amount must be > 0"),
+    paymentMode: z
+      .string()
+      .transform((val) => {
+        const lower = val.toLowerCase().trim();
+        if (["rtgs", "neft", "imps", "bank_transfer", "netbanking", "wire"].includes(lower)) return "rtgs";
+        if (["upi", "online"].includes(lower)) return "upi";
+        if (["card", "credit_card", "debit_card"].includes(lower)) return "card";
+        if (["cheque", "check"].includes(lower)) return "cheque";
+        if (["cash"].includes(lower)) return "cash";
+        if (["other", "credit_note"].includes(lower)) return "other";
+        return lower;
+      })
+      .pipe(z.enum(["cash", "upi", "card", "rtgs", "cheque", "other"])),
+    referenceNo: z.string().optional().nullable(),
+    remarks: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+  })
+  .transform((data) => ({
+    paymentDate: data.paymentDate,
+    amount: data.amount,
+    paymentMode: data.paymentMode,
+    referenceNo: data.referenceNo || null,
+    remarks: data.remarks || data.notes || null,
+  }));
 
 // ---------------------------------------------------------------------------
 // Stores CRUD

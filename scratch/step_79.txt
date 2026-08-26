@@ -1,0 +1,7 @@
+Created At: 2026-08-26T11:28:04+05:30
+Completed At: 2026-08-26T11:28:04+05:30
+{"File":"d:\\dev\\acme\\acme-erp\\src\\routes\\_authenticated\\magazine\\index.tsx"}
+{"File":"d:\\dev\\acme\\acme-erp\\src\\routes\\_authenticated\\magazine\\$id.tsx"}
+{"File":"d:\\dev\\acme\\acme-erp\\server\\services\\magazine-ssr.ts"}
+{"File":"d:\\dev\\acme\\acme-erp\\scratch\\test-split.ts"}
+{"File":"d:\\dev\\acme\\acme-erp\\server\\routes\\public.ts"}

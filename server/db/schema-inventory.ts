@@ -337,6 +337,7 @@ export const salesReturnItems = inventorySchema.table("sales_return_items", {
   itemId: integer("item_id").notNull().references(() => items.id),
   batchId: integer("batch_id").notNull().references(() => itemBatches.id),
   returnedQty: numeric("returned_qty", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  unitId: integer("unit_id").references(() => unitTypes.id),
   unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }).notNull(),
   refundAmount: numeric("refund_amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
 });
@@ -506,6 +507,7 @@ export const salesReturnItemsRelations = relations(salesReturnItems, ({ one }) =
   salesReturn: one(salesReturns, { fields: [salesReturnItems.returnId], references: [salesReturns.id] }),
   item: one(items, { fields: [salesReturnItems.itemId], references: [items.id] }),
   batch: one(itemBatches, { fields: [salesReturnItems.batchId], references: [itemBatches.id] }),
+  unit: one(unitTypes, { fields: [salesReturnItems.unitId], references: [unitTypes.id] }),
 }));
 
 export const purchaseInvoicesRelations = relations(purchaseInvoices, ({ one, many }) => ({
