@@ -61,6 +61,81 @@ function calculateReadingTime(html: string): number {
 }
 
 /**
+ * Extracts balanced top-level HTML block elements preserving nested tags like
+ * tables (<table>...<p>...</p>...</table>), callouts, lists, and figures without truncation.
+ */
+function extractTopLevelHtmlBlocks(html: string): string[] {
+  if (!html || !html.trim()) return [];
+
+  const trimmed = html.trim();
+  const blocks: string[] = [];
+  const tagRegex = /<\/?([a-zA-Z0-9-]+)(?:\s+[^>]*)?\/?>/g;
+
+  const voidTags = new Set(["img", "hr", "br", "input", "meta", "link", "source"]);
+  let lastIndex = 0;
+  let topLevelTag: string | null = null;
+  let topLevelStart = 0;
+  let depth = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(trimmed)) !== null) {
+    const fullTag = match[0];
+    const tagName = match[1].toLowerCase();
+    const isClosing = fullTag.startsWith("</");
+    const isSelfClosing = fullTag.endsWith("/>") || voidTags.has(tagName);
+
+    if (topLevelTag === null) {
+      // Capture any text before this top-level tag
+      const textBefore = trimmed.slice(lastIndex, match.index).trim();
+      if (textBefore) {
+        blocks.push(textBefore.startsWith("<") ? textBefore : `<p>${textBefore}</p>`);
+      }
+
+      if (isSelfClosing) {
+        blocks.push(fullTag);
+        lastIndex = tagRegex.lastIndex;
+        continue;
+      }
+
+      if (!isClosing) {
+        topLevelTag = tagName;
+        topLevelStart = match.index;
+        depth = 1;
+      }
+    } else {
+      if (tagName === topLevelTag) {
+        if (isClosing) {
+          depth--;
+          if (depth === 0) {
+            const block = trimmed.slice(topLevelStart, tagRegex.lastIndex);
+            blocks.push(block);
+            topLevelTag = null;
+            lastIndex = tagRegex.lastIndex;
+          }
+        } else if (!isSelfClosing) {
+          depth++;
+        }
+      }
+    }
+  }
+
+  if (topLevelTag !== null) {
+    const remaining = trimmed.slice(topLevelStart).trim();
+    if (remaining) {
+      const closed = remaining.toLowerCase().endsWith(`</${topLevelTag}>`) ? remaining : `${remaining}</${topLevelTag}>`;
+      blocks.push(closed);
+    }
+  } else {
+    const remaining = trimmed.slice(lastIndex).trim();
+    if (remaining) {
+      blocks.push(remaining.startsWith("<") ? remaining : `<p>${remaining}</p>`);
+    }
+  }
+
+  return blocks;
+}
+
+/**
  * Intelligent Layout Paginator for StPageFlip
  * Splits article HTML blocks into balanced pages without vertical overflow
  */
@@ -69,11 +144,12 @@ function splitHtmlIntoMagazinePages(html: string): string[] {
     return ['<p class="empty-note">Story content is being compiled.</p>'];
   }
 
-  const blockRegex = /(<(?:p|blockquote|h[1-6]|ul|ol|figure|div|pre|table|hr)[^>]*>[\s\S]*?<\/(?:p|blockquote|h[1-6]|ul|ol|figure|div|pre|table|hr)>|<(?:img|hr)[^>]*\/?>)/gi;
-  let rawBlocks: string[] = html.match(blockRegex) || [];
+  const rawBlocks = extractTopLevelHtmlBlocks(html);
   if (rawBlocks.length === 0) {
     const rawParas = html.split(/<\/p>|<br\s*\/?>\s*<br\s*\/?>/i).filter(b => b.trim());
-    rawBlocks = rawParas.map(p => (p.trim().startsWith("<") ? p : `<p>${p}</p>`));
+    return rawParas.length > 0
+      ? rawParas.map(p => (p.trim().startsWith("<") ? p : `<p>${p}</p>`))
+      : ['<p class="empty-note">Story content is being compiled.</p>'];
   }
 
   const blocks: string[] = [];
@@ -483,7 +559,7 @@ export function renderMagazineHtml(
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,600;0,700;0,800;0,900;1,600;1,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Caveat:wght@400;600;700&family=Cinzel:wght@600;700;800;900&family=Dancing+Script:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Montserrat:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400;1,600;1,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <!-- StPageFlip Official Browser Library -->
   <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
@@ -605,10 +681,25 @@ export function renderMagazineHtml(
       --blockquote-text: #78350f;
     }
 
-    /* Font Scale */
-    html[data-font="small"] { --prose-font-size: 1rem; --prose-line-height: 1.75; }
-    html[data-font="normal"] { --prose-font-size: 1.15rem; --prose-line-height: 1.85; }
-    html[data-font="large"] { --prose-font-size: 1.3rem; --prose-line-height: 1.95; }
+    /* FONT SCALING TIERS (Affects both Flipbook and Scroll Views) */
+    html[data-font="small"] {
+      --prose-font-size: 1rem;
+      --prose-line-height: 1.7;
+      --flip-font-size: 0.84rem;
+      --flip-line-height: 1.52;
+    }
+    html[data-font="normal"] {
+      --prose-font-size: 1.15rem;
+      --prose-line-height: 1.85;
+      --flip-font-size: 0.95rem;
+      --flip-line-height: 1.65;
+    }
+    html[data-font="large"] {
+      --prose-font-size: 1.32rem;
+      --prose-line-height: 1.95;
+      --flip-font-size: 1.08rem;
+      --flip-line-height: 1.75;
+    }
 
     *, *::before, *::after {
       box-sizing: border-box;
@@ -774,6 +865,86 @@ export function renderMagazineHtml(
       background: transparent;
     }
 
+    /* Vertical 3D Flip Mode (Mobile & Tablet) */
+    #book.vertical-mode {
+      position: relative;
+      width: 100%;
+      max-width: 540px;
+      height: 100%;
+      max-height: calc(100vh - 130px);
+      transform-style: preserve-3d;
+      perspective: 1400px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--bg-card);
+      touch-action: pan-y pinch-zoom;
+    }
+
+    @media (max-width: 640px) {
+      #book.vertical-mode {
+        max-height: calc(100vh - 105px);
+        border-radius: var(--radius-sm);
+        max-width: 100%;
+      }
+    }
+
+    #book.vertical-mode .page {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background-color: var(--page-bg);
+      color: var(--page-text);
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-sizing: border-box;
+      backface-visibility: hidden;
+      transform-origin: center top;
+      transition: transform 0.85s cubic-bezier(0.25, 1, 0.35, 1), opacity 0.75s ease, filter 0.75s ease, box-shadow 0.75s ease;
+      will-change: transform, opacity;
+      pointer-events: none;
+    }
+
+    @media (max-width: 640px) {
+      #book.vertical-mode .page {
+        border-radius: var(--radius-sm);
+      }
+    }
+
+    #book.vertical-mode .page.v-active {
+      z-index: 10;
+      transform: translateY(0) rotateX(0deg) scale(1);
+      opacity: 1;
+      filter: brightness(1);
+      pointer-events: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    #book.vertical-mode .page.v-next-peek {
+      z-index: 5;
+      transform: translateY(0) scale(0.96);
+      opacity: 0.85;
+      filter: brightness(0.85);
+      pointer-events: none;
+    }
+
+    #book.vertical-mode .page.v-past {
+      z-index: 20;
+      transform: translateY(-105%) rotateX(60deg) scale(0.92);
+      opacity: 0;
+      filter: brightness(0.6);
+      pointer-events: none;
+    }
+
+    #book.vertical-mode .page.v-future {
+      z-index: 1;
+      transform: translateY(105%) scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+    }
+
     /* StPageFlip Individual Page */
     .page {
       background-color: var(--page-bg);
@@ -906,9 +1077,10 @@ export function renderMagazineHtml(
 
     .story-page-prose {
       font-family: var(--font-prose);
-      font-size: 0.95rem;
-      line-height: 1.65;
+      font-size: var(--flip-font-size, 0.95rem);
+      line-height: var(--flip-line-height, 1.65);
       color: var(--page-text);
+      transition: font-size 0.2s ease, line-height 0.2s ease;
     }
 
     .story-page-prose > p:first-of-type::first-letter {
@@ -1157,43 +1329,6 @@ export function renderMagazineHtml(
     .back-bottom-note { font-size: 0.75rem; color: var(--text-dim); }
     .back-edition-pill { font-family: var(--font-mono); font-size: 0.72rem; color: var(--primary); background: var(--primary-glow); padding: 0.25rem 0.65rem; border-radius: var(--radius-full); display: inline-block; margin-top: 0.5rem; border: 1px solid var(--border-accent); }
 
-    /* Floating Side Navigation Arrows */
-    .side-nav-arrow {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: var(--bg-glass);
-      backdrop-filter: blur(12px);
-      border: 1px solid var(--border-main);
-      color: var(--text-main);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 50;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-      transition: all 0.2s ease;
-    }
-
-    .side-nav-arrow:hover {
-      background: var(--primary);
-      color: white;
-      border-color: var(--primary);
-      transform: translateY(-50%) scale(1.1);
-    }
-
-    .side-nav-arrow.prev { left: 0.25rem; }
-    .side-nav-arrow.next { right: 0.25rem; }
-
-    @media (max-width: 820px) {
-      .side-nav-arrow {
-        display: none !important;
-      }
-    }
-
     /* Bottom Control Dock */
     .dock-bar {
       position: fixed;
@@ -1323,6 +1458,78 @@ export function renderMagazineHtml(
     .toc-card-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem; color: var(--text-dim); }
     .toc-card-arrow { color: var(--text-dim); transition: transform 0.2s ease, color 0.2s ease; margin-top: 2px; }
     .toc-card:hover .toc-card-arrow { color: var(--primary); transform: translateX(4px); }
+
+    /* ==========================================================================
+       SLIDE-OVER TABLE OF CONTENTS DRAWER
+       ========================================================================== */
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      z-index: 998;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .toc-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 100%;
+      max-width: 440px;
+      height: 100vh;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border-main);
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+      z-index: 999;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+    }
+
+    .toc-drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border-main);
+      background: var(--bg-elevated);
+      flex-shrink: 0;
+    }
+
+    .drawer-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin: 0;
+    }
+
+    .drawer-body {
+      padding: 1.25rem 1.25rem 2.5rem;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      -webkit-overflow-scrolling: touch;
+    }
 
     .story-article { background: var(--bg-card); border-radius: var(--radius-xl); border: 1px solid var(--border-main); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55); padding: 4rem 3.5rem; margin-bottom: 4rem; position: relative; }
     .story-header { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--border-main); }
@@ -1690,6 +1897,14 @@ export function renderMagazineHtml(
         </button>
       </div>
 
+      <!-- Flip Orientation Switcher -->
+      <button onclick="toggleFlipOrientation()" class="control-btn" id="headerOrientBtn" title="Toggle Flip Orientation (Horizontal / Vertical)">
+        <svg id="headerOrientIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>
+        </svg>
+        <span class="nav-btn-label" id="headerOrientLabel">Flip</span>
+      </button>
+
       <!-- Table of Contents Drawer Trigger -->
       <button onclick="toggleTocDrawer()" class="control-btn" title="Open Table of Contents (T)">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
@@ -1728,18 +1943,15 @@ export function renderMagazineHtml(
   <!-- 1. StPageFlip OFFICIAL 3D PAGE FLIPPER VIEWPORT                           -->
   <!-- ========================================================================= -->
   <section class="stpageflip-container" id="stPageFlipSection">
-    <div class="stpageflip-stage-wrapper">
-      <button class="side-nav-arrow prev" onclick="flipPrev()" title="Previous Page (Left Arrow)">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-      </button>
+    <!-- Hidden pristine template so re-init and resize never lose DOM nodes -->
+    <div id="rawBookPages" style="display:none;" aria-hidden="true">
+      ${stPagesHtml}
+    </div>
 
+    <div class="stpageflip-stage-wrapper">
       <div id="book">
         ${stPagesHtml}
       </div>
-
-      <button class="side-nav-arrow next" onclick="flipNext()" title="Next Page (Right Arrow)">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-      </button>
     </div>
 
     <!-- StPageFlip Bottom Floating Control Dock -->
@@ -1765,6 +1977,13 @@ export function renderMagazineHtml(
       </button>
 
       <div class="dock-divider"></div>
+
+      <!-- Orientation Switcher in Dock -->
+      <button class="dock-btn" onclick="toggleFlipOrientation()" title="Toggle Vertical / Horizontal Flip Mode">
+        <svg id="dockOrientIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>
+        </svg>
+      </button>
 
       <!-- Page Audio Sound Toggle -->
       <button class="dock-btn" onclick="toggleAudio()" id="soundBtn" title="Toggle Page Turn Sound">
@@ -1976,10 +2195,14 @@ export function renderMagazineHtml(
   <!-- ========================================================================= -->
   <script>
     let pageFlipInstance = null;
+    let currentFlipIndex = 0;
+    let totalFlipPages = ${stPages.length};
+    let flipOrientation = 'horizontal'; // 'horizontal' | 'vertical'
     let soundEnabled = true;
     let audioCtx = null;
+    let isTransitioning = false;
 
-    // 1. Reading Progress Bar (Scroll Mode)
+    // 1. Reading Progress Bar (Scroll Mode & Flip Mode)
     window.addEventListener('scroll', () => {
       if (document.documentElement.getAttribute('data-mode') !== 'scroll') return;
       const winScroll = document.documentElement.scrollTop || document.body.scrollTop;
@@ -2023,7 +2246,7 @@ export function renderMagazineHtml(
           audioCtx.resume();
         }
 
-        const bufferSize = audioCtx.sampleRate * 0.12;
+        const bufferSize = audioCtx.sampleRate * 0.2;
         const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
         const data = buffer.getChannelData(0);
 
@@ -2041,7 +2264,7 @@ export function renderMagazineHtml(
 
         const gain = audioCtx.createGain();
         gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
 
         noise.connect(filter);
         filter.connect(gain);
@@ -2102,17 +2325,43 @@ export function renderMagazineHtml(
       };
     }
 
-    function initStPageFlip() {
+    function getRawPagesHtml() {
+      const rawEl = document.getElementById('rawBookPages');
+      return rawEl ? rawEl.innerHTML : '';
+    }
+
+    // 5. Unified Flip Engine Dispatcher (Desktop Horizontal + Mobile Vertical)
+    function initFlipEngine() {
       const flipContainer = document.getElementById('book');
       if (!flipContainer) return;
-      if (!window.St || !window.St.PageFlip) {
-        setTimeout(initStPageFlip, 150);
-        return;
-      }
 
       if (pageFlipInstance) {
         try { pageFlipInstance.destroy(); } catch (e) {}
         pageFlipInstance = null;
+      }
+
+      // Always restore clean unmutated HTML
+      flipContainer.innerHTML = getRawPagesHtml();
+
+      const isMobileDevice = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024 && window.innerHeight > window.innerWidth);
+      const savedOrient = localStorage.getItem('magazine-flip-orient');
+      flipOrientation = savedOrient || (isMobileDevice ? 'vertical' : 'horizontal');
+
+      updateOrientationUI(flipOrientation);
+
+      if (flipOrientation === 'vertical') {
+        initVerticalFlipMode(flipContainer);
+      } else {
+        initHorizontalStPageFlip(flipContainer);
+      }
+    }
+
+    function initHorizontalStPageFlip(flipContainer) {
+      flipContainer.classList.remove('vertical-mode');
+
+      if (!window.St || !window.St.PageFlip) {
+        setTimeout(() => initHorizontalStPageFlip(flipContainer), 100);
+        return;
       }
 
       const dims = getFlipbookDimensions();
@@ -2132,9 +2381,9 @@ export function renderMagazineHtml(
         swipeDistance: 20,
         clickEventForward: true,
         drawShadow: true,
-        flippingTime: 600,
+        flippingTime: 1000,
         usePortrait: dims.isPortrait,
-        startPage: 0
+        startPage: currentFlipIndex
       });
 
       const pages = flipContainer.querySelectorAll('.page');
@@ -2142,58 +2391,199 @@ export function renderMagazineHtml(
 
       pageFlipInstance.on('flip', (e) => {
         playPageTurnAudio();
-        const currentIdx = e.data;
-        const total = pageFlipInstance.getPageCount();
-        const displayElem = document.getElementById('dockCurrentDisplay');
-        if (displayElem) {
-          displayElem.innerText = (currentIdx + 1) + ' / ' + total;
-        }
+        currentFlipIndex = e.data;
+        updateFlipDock();
       });
 
       pageFlipInstance.on('init', () => {
-        const total = pageFlipInstance.getPageCount();
-        const totalElem = document.getElementById('dockTotalDisplay');
-        if (totalElem) totalElem.innerText = total;
-        const displayElem = document.getElementById('dockCurrentDisplay');
-        if (displayElem) displayElem.innerText = '1 / ' + total;
+        totalFlipPages = pageFlipInstance.getPageCount();
+        updateFlipDock();
       });
     }
 
+    function initVerticalFlipMode(flipContainer) {
+      flipContainer.classList.add('vertical-mode');
+
+      const pages = flipContainer.querySelectorAll('.page');
+      totalFlipPages = pages.length;
+      renderVerticalPages(currentFlipIndex);
+      updateFlipDock();
+
+      setupVerticalTouchEvents(flipContainer);
+    }
+
+    function renderVerticalPages(targetIdx) {
+      const flipContainer = document.getElementById('book');
+      if (!flipContainer) return;
+      const pages = flipContainer.querySelectorAll('.page');
+      if (!pages.length) return;
+
+      pages.forEach((p, idx) => {
+        p.classList.remove('v-active', 'v-next-peek', 'v-past', 'v-future');
+        if (idx < targetIdx) {
+          p.classList.add('v-past');
+        } else if (idx === targetIdx) {
+          p.classList.add('v-active');
+        } else if (idx === targetIdx + 1) {
+          p.classList.add('v-next-peek');
+        } else {
+          p.classList.add('v-future');
+        }
+      });
+
+      currentFlipIndex = targetIdx;
+      updateFlipDock();
+    }
+
+    function setupVerticalTouchEvents(container) {
+      if (container._vTouchBound) return;
+      container._vTouchBound = true;
+
+      let touchStartY = 0;
+      let touchStartX = 0;
+
+      container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+          touchStartY = e.touches[0].clientY;
+          touchStartX = e.touches[0].clientX;
+        }
+      }, { passive: true });
+
+      container.addEventListener('touchend', (e) => {
+        if (e.changedTouches.length !== 1 || isTransitioning || flipOrientation !== 'vertical') return;
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        const deltaX = e.changedTouches[0].clientX - touchStartX;
+
+        if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
+          if (deltaY < 0) {
+            flipNext();
+          } else {
+            flipPrev();
+          }
+        }
+      }, { passive: true });
+
+      let wheelTimer = null;
+      container.addEventListener('wheel', (e) => {
+        if (isTransitioning || flipOrientation !== 'vertical') return;
+        clearTimeout(wheelTimer);
+        wheelTimer = setTimeout(() => {
+          if (e.deltaY > 20) {
+            flipNext();
+          } else if (e.deltaY < -20) {
+            flipPrev();
+          }
+        }, 50);
+      }, { passive: true });
+    }
+
     function flipNext() {
-      if (pageFlipInstance) pageFlipInstance.flipNext();
+      if (flipOrientation === 'horizontal') {
+        if (pageFlipInstance) pageFlipInstance.flipNext();
+      } else {
+        if (currentFlipIndex < totalFlipPages - 1) {
+          goToFlipPage(currentFlipIndex + 1);
+        }
+      }
     }
 
     function flipPrev() {
-      if (pageFlipInstance) pageFlipInstance.flipPrev();
+      if (flipOrientation === 'horizontal') {
+        if (pageFlipInstance) pageFlipInstance.flipPrev();
+      } else {
+        if (currentFlipIndex > 0) {
+          goToFlipPage(currentFlipIndex - 1);
+        }
+      }
     }
 
     function goToFlipPage(idx) {
       closeTocDrawer();
-      if (pageFlipInstance) {
-        pageFlipInstance.turnToPage(idx);
+      const clamped = Math.max(0, Math.min(idx, totalFlipPages - 1));
+
+      if (flipOrientation === 'horizontal') {
+        if (pageFlipInstance) {
+          pageFlipInstance.turnToPage(clamped);
+        } else {
+          currentFlipIndex = clamped;
+          initFlipEngine();
+        }
+      } else {
+        if (clamped === currentFlipIndex && isTransitioning) return;
+        isTransitioning = true;
+        playPageTurnAudio();
+        renderVerticalPages(clamped);
+        setTimeout(() => { isTransitioning = false; }, 850);
       }
     }
 
-    // 5. Reader Mode Switcher
+    function updateFlipDock() {
+      const curDisplay = document.getElementById('dockCurrentDisplay');
+      const totDisplay = document.getElementById('dockTotalDisplay');
+      if (curDisplay) curDisplay.innerText = (currentFlipIndex + 1);
+      if (totDisplay) totDisplay.innerText = totalFlipPages;
+
+      if (document.documentElement.getAttribute('data-mode') === 'flip') {
+        const percent = totalFlipPages > 1 ? (currentFlipIndex / (totalFlipPages - 1)) * 100 : 100;
+        const pBar = document.getElementById('progressBar');
+        if (pBar) pBar.style.width = percent + '%';
+      }
+    }
+
+    function toggleFlipOrientation() {
+      const next = flipOrientation === 'vertical' ? 'horizontal' : 'vertical';
+      localStorage.setItem('magazine-flip-orient', next);
+      flipOrientation = next;
+      initFlipEngine();
+      showToast('Switched to ' + next.toUpperCase() + ' flip');
+    }
+
+    function updateOrientationUI(orient) {
+      const headerIcon = document.getElementById('headerOrientIcon');
+      const headerLabel = document.getElementById('headerOrientLabel');
+      const dockIcon = document.getElementById('dockOrientIcon');
+
+      const vSvg = '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>';
+      const hSvg = '<path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>';
+
+      if (orient === 'vertical') {
+        if (headerIcon) headerIcon.innerHTML = vSvg;
+        if (dockIcon) dockIcon.innerHTML = vSvg;
+        if (headerLabel) headerLabel.innerText = 'Vertical';
+      } else {
+        if (headerIcon) headerIcon.innerHTML = hSvg;
+        if (dockIcon) dockIcon.innerHTML = hSvg;
+        if (headerLabel) headerLabel.innerText = 'Horizontal';
+      }
+    }
+
+    // 6. Reader Mode Switcher (Page-Flip & Continuous Scroll)
     function setReaderMode(mode) {
       document.documentElement.setAttribute('data-mode', mode);
       localStorage.setItem('magazine-reader-mode', mode);
 
       const flipBtn = document.getElementById('modeFlipBtn');
       const scrollBtn = document.getElementById('modeScrollBtn');
+      const orientBtn = document.getElementById('headerOrientBtn');
 
       if (mode === 'flip') {
         flipBtn.classList.add('active');
         scrollBtn.classList.remove('active');
-        setTimeout(initStPageFlip, 50);
+        if (orientBtn) orientBtn.style.display = 'inline-flex';
+        setTimeout(initFlipEngine, 50);
       } else {
         scrollBtn.classList.add('active');
         flipBtn.classList.remove('active');
+        if (orientBtn) orientBtn.style.display = 'none';
+        if (pageFlipInstance) {
+          try { pageFlipInstance.destroy(); } catch (e) {}
+          pageFlipInstance = null;
+        }
       }
       showToast('Switched to ' + (mode === 'flip' ? '3D PAGE-FLIP' : 'SCROLL') + ' mode');
     }
 
-    // 6. TOC Navigation (Handles both StPageFlip and Scroll Modes)
+    // 7. TOC Navigation (Handles both StPageFlip and Scroll Modes)
     function handleTocClick(anchorId, pageIdx, event) {
       closeTocDrawer();
       const currentMode = document.documentElement.getAttribute('data-mode');
@@ -2218,7 +2608,7 @@ export function renderMagazineHtml(
       }
     }
 
-    // 7. Theme Switcher
+    // 8. Theme Switcher
     const themes = ['dark', 'light', 'sepia'];
     const savedTheme = localStorage.getItem('magazine-theme') || 'dark';
     document.documentElement.setAttribute('data-theme', savedTheme);
@@ -2246,10 +2636,11 @@ export function renderMagazineHtml(
       }
     }
 
-    // 8. Font Scaling
+    // 9. Font Scaling
     const fontSizes = ['small', 'normal', 'large'];
     const savedFont = localStorage.getItem('magazine-font') || 'normal';
     document.documentElement.setAttribute('data-font', savedFont);
+    updateFontButtonLabel(savedFont);
 
     function cycleFontSize() {
       const current = document.documentElement.getAttribute('data-font') || 'normal';
@@ -2257,10 +2648,21 @@ export function renderMagazineHtml(
       const nextFont = fontSizes[nextIndex];
       document.documentElement.setAttribute('data-font', nextFont);
       localStorage.setItem('magazine-font', nextFont);
+      updateFontButtonLabel(nextFont);
       showToast('Font size: ' + nextFont.toUpperCase());
     }
 
-    // 9. Drawer Toggle
+    function updateFontButtonLabel(size) {
+      const fontBtn = document.getElementById('fontBtn');
+      if (!fontBtn) return;
+      const span = fontBtn.querySelector('span');
+      if (!span) return;
+      if (size === 'small') span.innerText = 'A-';
+      else if (size === 'large') span.innerText = 'A+';
+      else span.innerText = 'A';
+    }
+
+    // 10. Drawer Toggle
     function toggleTocDrawer() {
       document.getElementById('drawerOverlay').classList.toggle('open');
       document.getElementById('tocDrawer').classList.toggle('open');
@@ -2271,7 +2673,7 @@ export function renderMagazineHtml(
       document.getElementById('tocDrawer').classList.remove('open');
     }
 
-    // 10. Toast
+    // 11. Toast
     function showToast(msg) {
       const toast = document.getElementById('toast');
       toast.innerText = msg;
@@ -2279,7 +2681,7 @@ export function renderMagazineHtml(
       setTimeout(() => toast.classList.remove('show'), 2400);
     }
 
-    // 11. Share
+    // 12. Share
     async function shareMagazine() {
       const url = window.location.href;
       if (navigator.share) {
@@ -2296,7 +2698,7 @@ export function renderMagazineHtml(
       showToast('Link copied to clipboard!');
     }
 
-    // 12. Fullscreen
+    // 13. Fullscreen
     function toggleFullscreen() {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => {});
@@ -2305,7 +2707,7 @@ export function renderMagazineHtml(
       }
     }
 
-    // 13. Keyboard Navigation
+    // 14. Keyboard Navigation
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
@@ -2315,6 +2717,14 @@ export function renderMagazineHtml(
       if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
         e.preventDefault();
         flipPrev();
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        flipPrev();
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        flipNext();
       }
       if (e.key === 't' || e.key === 'T') toggleTocDrawer();
       if (e.key === 'f' || e.key === 'F') toggleFullscreen();
@@ -2333,7 +2743,7 @@ export function renderMagazineHtml(
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         if (document.documentElement.getAttribute('data-mode') === 'flip') {
-          initStPageFlip();
+          initFlipEngine();
         }
       }, 150);
     }

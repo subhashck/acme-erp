@@ -248,6 +248,10 @@ input[type="number"] {
 }
 
 /* Tiptap / ProseMirror Rich Text Editor Styles */
+.ProseMirror {
+  min-height: 280px;
+}
+
 .ProseMirror p.is-editor-empty:first-child::before {
   color: var(--muted-foreground);
   content: attr(data-placeholder);
@@ -260,26 +264,294 @@ input[type="number"] {
   outline: none;
 }
 
+/* Headings */
+.ProseMirror h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1.25;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.025em;
+}
+
+.ProseMirror h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.ProseMirror h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+/* Paragraphs & Text */
+.ProseMirror p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  line-height: 1.7;
+}
+
+.ProseMirror hr {
+  margin: 1.5rem 0;
+  border: none;
+  border-top: 2px dashed var(--border);
+}
+
+.ProseMirror blockquote {
+  border-left: 4px solid var(--primary);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: var(--muted-foreground);
+  background: var(--muted)/30;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+/* Lists */
+.ProseMirror ul:not([data-type="taskList"]) {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+.ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+.ProseMirror li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.ProseMirror li p {
+  margin: 0;
+}
+
+/* Task Lists */
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0;
+}
+
+.ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.35rem 0;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-right: 0.5rem;
+  user-select: none;
+  margin-top: 0.2rem;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label input[type="checkbox"] {
+  cursor: pointer;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 0.25rem;
+  accent-color: var(--primary);
+}
+
+.ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div {
+  text-decoration: line-through;
+  color: var(--muted-foreground);
+}
+
+/* Tables */
 .ProseMirror table {
   border-collapse: collapse;
-  margin: 1rem 0;
+  margin: 1.25rem 0;
   overflow: hidden;
   table-layout: fixed;
   width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
 }
 
 .ProseMirror td,
 .ProseMirror th {
   box-sizing: border-box;
-  min-width: 1em;
-  padding: 6px 8px;
+  min-width: 1.5em;
+  padding: 8px 12px;
   position: relative;
   vertical-align: top;
+  border: 1px solid var(--border);
 }
 
+.ProseMirror th {
+  background-color: var(--muted);
+  font-weight: 700;
+  text-align: left;
+}
+
+.ProseMirror .selectedCell:after {
+  background: rgba(59, 130, 246, 0.15);
+  content: "";
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: 2;
+}
+
+.ProseMirror .column-resize-handle {
+  background-color: var(--primary);
+  bottom: -2px;
+  position: absolute;
+  right: -2px;
+  pointer-events: none;
+  top: 0;
+  width: 4px;
+}
+
+/* Code & Code Blocks */
+.ProseMirror code:not(pre code) {
+  background-color: var(--muted);
+  color: var(--foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875em;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border);
+}
+
+.ProseMirror pre {
+  background: #0f172a;
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 1rem 1.25rem;
+  border-radius: 0.5rem;
+  margin: 1rem 0;
+  overflow-x: auto;
+  position: relative;
+}
+
+.ProseMirror pre code {
+  color: inherit;
+  padding: 0;
+  background: none;
+  font-size: 0.9rem;
+}
+
+/* Callout Boxes */
+.ProseMirror .callout-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  border-radius: 0.625rem;
+  border-left-width: 4px;
+  border-left-style: solid;
+  transition: all 0.2s ease;
+}
+
+.ProseMirror .callout-box p {
+  margin: 0.25rem 0;
+}
+
+.ProseMirror .callout-info {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1e3a8a;
+}
+:is(.dark *) .ProseMirror .callout-info {
+  background: rgba(30, 58, 138, 0.2);
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+.ProseMirror .callout-success {
+  background: #f0fdf4;
+  border-color: #22c55e;
+  color: #14532d;
+}
+:is(.dark *) .ProseMirror .callout-success {
+  background: rgba(20, 83, 45, 0.2);
+  border-color: #4ade80;
+  color: #86efac;
+}
+
+.ProseMirror .callout-warning {
+  background: #fffbeb;
+  border-color: #f59e0b;
+  color: #78350f;
+}
+:is(.dark *) .ProseMirror .callout-warning {
+  background: rgba(120, 53, 15, 0.2);
+  border-color: #fbbf24;
+  color: #fde68a;
+}
+
+.ProseMirror .callout-danger {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #7f1d1d;
+}
+:is(.dark *) .ProseMirror .callout-danger {
+  background: rgba(127, 29, 29, 0.2);
+  border-color: #f87171;
+  color: #fca5a5;
+}
+
+.ProseMirror .callout-note {
+  background: #f8fafc;
+  border-color: #64748b;
+  color: #334155;
+}
+:is(.dark *) .ProseMirror .callout-note {
+  background: rgba(51, 65, 85, 0.2);
+  border-color: #94a3b8;
+  color: #cbd5e1;
+}
+
+/* Media & Embeds */
 .ProseMirror img {
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-md, 0.5rem);
   max-width: 100%;
   height: auto;
-  margin: 1rem 0;
+  margin: 1.25rem auto;
+  display: block;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease;
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 3px solid var(--primary);
+}
+
+.ProseMirror iframe {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 0.5rem;
+  margin: 1.25rem 0;
+  border: 1px solid var(--border);
 }
