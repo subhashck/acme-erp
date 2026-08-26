@@ -12,6 +12,13 @@ import type { AuthEnv } from "../auth.ts";
 import { requireAdmin, idParam, jsonBody } from "./shared.ts";
 import { generateDocNumber } from "../services/sequence.ts";
 import { uploadToMinio } from "../utils/minio.ts";
+import {
+  processAndStoreMedia,
+  listMediaAssets,
+  updateMediaAsset,
+  deleteMediaAsset,
+  getAllMediaTags,
+} from "../services/media-engine.ts";
 
 export const requireMagazineAccess = async (c: any, next: any) => {
   const session = c.get("session");
@@ -716,10 +723,57 @@ export const magazineRoutes = new Hono<AuthEnv>()
   })
 
   // -------------------------------------------------------------
-  // Image Upload to MinIO
+  // Magazine Media Library & WebP Uploads
   // -------------------------------------------------------------
+  .get("/magazine/media", requireMagazineAccess, async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const pageSize = query.pageSize ? parseInt(query.pageSize, 10) : 24;
+    const search = query.search?.trim();
+    const tag = query.tag?.trim();
+    const issueId = query.issueId ? parseInt(query.issueId, 10) : undefined;
+
+    const result = await listMediaAssets({
+      page,
+      pageSize,
+      search,
+      tag,
+      issueId,
+    });
+
+    return c.json(result);
+  })
+
+  .get("/magazine/media/tags", requireMagazineAccess, async (c) => {
+    const tags = await getAllMediaTags();
+    return c.json({ tags });
+  })
+
+  .patch("/magazine/media/:id", requireMagazineAccess, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const body = await jsonBody(
+      c,
+      z.object({
+        originalName: z.string().min(1, "Name cannot be empty").optional(),
+        tags: z.array(z.string()).optional(),
+      })
+    );
+
+    const updated = await updateMediaAsset(id, {
+      originalName: body.originalName,
+      tags: body.tags,
+    });
+
+    if (!updated) {
+      return c.json({ error: "Media asset not found" }, 404);
+    }
+
+    return c.json(updated);
+  })
+
   .post("/magazine/upload-image", requireMagazineAccess, async (c) => {
     try {
+      const session = c.get("session")!;
       const formData = await c.req.formData();
       const file = formData.get("file");
 
@@ -727,34 +781,63 @@ export const magazineRoutes = new Hono<AuthEnv>()
         return c.json({ error: "No file provided" }, 400);
       }
 
-      // Check mime type
-      const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml"];
+      // Allowed types
+      const allowedTypes = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/svg+xml",
+        "image/tiff",
+        "image/avif",
+      ];
       if (!allowedTypes.includes(file.type)) {
-        return c.json({ error: "Only image files (JPEG, PNG, WebP, GIF, SVG) are allowed" }, 400);
+        return c.json({ error: "Only image files (JPEG, PNG, WebP, GIF, SVG, TIFF, AVIF) are allowed" }, 400);
       }
 
-      // 5MB max
-      if (file.size > 5 * 1024 * 1024) {
-        return c.json({ error: "File size exceeds 5MB limit" }, 400);
+      // Max 15MB upload (sharp will compress it down to efficient WebP)
+      if (file.size > 15 * 1024 * 1024) {
+        return c.json({ error: "File size exceeds 15MB limit" }, 400);
       }
 
-      const issueId = formData.get("issueId") ? String(formData.get("issueId")) : "general";
-      const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-      const cleanFileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-      const objectKey = `magazine/${issueId}/${cleanFileName}`;
+      const issueIdStr = formData.get("issueId");
+      const issueId = issueIdStr && !isNaN(Number(issueIdStr)) ? Number(issueIdStr) : null;
+      const tagsJson = formData.get("tags") ? String(formData.get("tags")) : null;
+      let tags: string[] | undefined;
+      if (tagsJson) {
+        try {
+          tags = JSON.parse(tagsJson);
+        } catch {
+          tags = tagsJson.split(",").map((s) => s.trim());
+        }
+      }
 
-      await uploadToMinio(file, objectKey, file.type);
+      const fileBuffer = Buffer.from(await file.arrayBuffer());
 
-      // Return direct public image endpoint URL
-      const publicUrl = `/api/public/magazine/images/${encodeURIComponent(objectKey)}`;
-
-      return c.json({
-        url: publicUrl,
-        objectKey,
-        fileName: file.name,
+      const result = await processAndStoreMedia({
+        fileBuffer,
+        originalName: file.name,
+        mimeType: file.type,
+        issueId,
+        userId: session.user.id,
+        tags,
       });
+
+      return c.json(result);
     } catch (err: any) {
       console.error("[Magazine Image Upload Error]:", err);
-      return c.json({ error: err.message || "Failed to upload image" }, 500);
+      return c.json({ error: err.message || "Failed to process and upload image" }, 500);
     }
+  })
+
+  .delete("/magazine/media/:id", requireMagazineAccess, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const deleted = await deleteMediaAsset(id);
+
+    if (!deleted) {
+      return c.json({ error: "Media asset not found" }, 404);
+    }
+
+    return c.json({ success: true });
   });

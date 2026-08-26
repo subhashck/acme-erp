@@ -39,8 +39,10 @@ import {
   Sparkles,
   Settings,
   Download,
+  Images,
 } from "lucide-react";
 import * as React from "react";
+import { MediaLibraryDialog } from "@/components/magazine/MediaLibraryDialog";
 import { useUserPermissions } from "@/lib/permissions";
 import { exportMagazineToPDF } from "@/lib/magazine-export";
 import { toast } from "sonner";
@@ -105,6 +107,10 @@ export function MagazineDashboard() {
   const [editCoverUrl, setEditCoverUrl] = React.useState("");
   const [isUploadingEditCover, setIsUploadingEditCover] = React.useState(false);
   const [downloadingPdfId, setDownloadingPdfId] = React.useState<number | null>(null);
+
+  // Media Library state
+  const [isMediaLibraryOpen, setIsMediaLibraryOpen] = React.useState(false);
+  const [mediaLibraryPurpose, setMediaLibraryPurpose] = React.useState<"general" | "createCover" | "editCover">("general");
 
   const handleDownloadIssuePDF = async (issueItem: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -402,6 +408,19 @@ export function MagazineDashboard() {
               </Button>
             </Link>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setMediaLibraryPurpose("general");
+              setIsMediaLibraryOpen(true);
+            }}
+            className="gap-1.5 bg-muted/40 hover:bg-muted font-semibold"
+          >
+            <Images className="h-4 w-4 text-primary" />
+            <span>Media Assets</span>
+          </Button>
 
           {canManageMagazine && (
             <Button
@@ -792,21 +811,46 @@ export function MagazineDashboard() {
               </div>
 
               {/* Cover Image */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Cover Image</label>
-                <div className="flex items-center gap-3">
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCoverUpload}
-                    disabled={isUploadingCover}
-                    className="cursor-pointer"
-                  />
-                  {isUploadingCover && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground block">Cover Image Artwork</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMediaLibraryPurpose("createCover");
+                      setIsMediaLibraryOpen(true);
+                    }}
+                    className="text-xs gap-1.5 font-semibold bg-muted/40"
+                  >
+                    <Images className="h-3.5 w-3.5 text-primary" />
+                    <span>Choose from WebP Library</span>
+                  </Button>
+                  <span className="text-xs text-muted-foreground">or upload:</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverUpload}
+                      disabled={isUploadingCover}
+                      className="cursor-pointer text-xs h-8 max-w-[200px]"
+                    />
+                    {isUploadingCover && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                  </div>
                 </div>
                 {newCoverUrl && (
-                  <div className="mt-2 h-28 w-full rounded-lg overflow-hidden border border-border">
+                  <div className="mt-2 relative h-32 w-full rounded-lg overflow-hidden border border-border bg-muted/20">
                     <img src={newCoverUrl} alt="Cover preview" className="h-full w-full object-cover" />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setNewCoverUrl("")}
+                      className="absolute top-1.5 right-1.5 h-6 text-[10px] px-2"
+                    >
+                      Remove
+                    </Button>
                   </div>
                 )}
               </div>
@@ -823,7 +867,7 @@ export function MagazineDashboard() {
                     Creating...
                   </>
                 ) : (
-                  "Create Issue"
+                  "Create Issue Edition"
                 )}
               </Button>
             </DialogFooter>
@@ -833,19 +877,16 @@ export function MagazineDashboard() {
 
       {/* Edit Issue Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-[550px]">
-          <form onSubmit={handleUpdateIssue}>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-                <Settings className="h-5 w-5 text-primary" />
-                Edit Issue Details
-              </DialogTitle>
-              <DialogDescription>
-                Update the metadata and cover image for <span className="font-mono font-semibold text-foreground">{editingIssueNo}</span>.
-              </DialogDescription>
-            </DialogHeader>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Edit Issue Details</DialogTitle>
+            <DialogDescription>
+              Update edition metadata, publication schedule, or cover artwork for {editingIssueNo}.
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-4 py-4">
+          <form onSubmit={handleUpdateIssue} className="space-y-4">
+            <div className="space-y-3">
               {/* Month and Year Selectors */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -892,7 +933,6 @@ export function MagazineDashboard() {
                 <Input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  placeholder="e.g. ACME Health Digest — August 2026"
                   required
                 />
               </div>
@@ -905,7 +945,6 @@ export function MagazineDashboard() {
                 <Input
                   value={editSlug}
                   onChange={(e) => setEditSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
-                  placeholder="e.g. august-2026"
                   required
                 />
               </div>
@@ -921,21 +960,46 @@ export function MagazineDashboard() {
               </div>
 
               {/* Cover Image */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Cover Image</label>
-                <div className="flex items-center gap-3">
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleEditCoverUpload}
-                    disabled={isUploadingEditCover}
-                    className="cursor-pointer"
-                  />
-                  {isUploadingEditCover && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-foreground block">Cover Image Artwork</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setMediaLibraryPurpose("editCover");
+                      setIsMediaLibraryOpen(true);
+                    }}
+                    className="text-xs gap-1.5 font-semibold bg-muted/40"
+                  >
+                    <Images className="h-3.5 w-3.5 text-primary" />
+                    <span>Choose from WebP Library</span>
+                  </Button>
+                  <span className="text-xs text-muted-foreground">or upload:</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditCoverUpload}
+                      disabled={isUploadingEditCover}
+                      className="cursor-pointer text-xs h-8 max-w-[200px]"
+                    />
+                    {isUploadingEditCover && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                  </div>
                 </div>
                 {editCoverUrl && (
-                  <div className="mt-2 h-28 w-full rounded-lg overflow-hidden border border-border">
+                  <div className="mt-2 relative h-32 w-full rounded-lg overflow-hidden border border-border bg-muted/20">
                     <img src={editCoverUrl} alt="Cover preview" className="h-full w-full object-cover" />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setEditCoverUrl("")}
+                      className="absolute top-1.5 right-1.5 h-6 text-[10px] px-2"
+                    >
+                      Remove
+                    </Button>
                   </div>
                 )}
               </div>
@@ -959,6 +1023,28 @@ export function MagazineDashboard() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Reusable WebP Media Library Modal */}
+      <MediaLibraryDialog
+        isOpen={isMediaLibraryOpen}
+        onClose={() => setIsMediaLibraryOpen(false)}
+        onSelectImage={(media) => {
+          if (mediaLibraryPurpose === "createCover") {
+            setNewCoverUrl(media.url);
+            toast.success("Cover image selected from library!");
+          } else if (mediaLibraryPurpose === "editCover") {
+            setEditCoverUrl(media.url);
+            toast.success("Cover image selected from library!");
+          } else {
+            toast.info(`Selected ${media.alt || "image"}`);
+          }
+        }}
+        title={
+          mediaLibraryPurpose === "general"
+            ? "Magazine Media Assets Library"
+            : "Select Issue Cover Image"
+        }
+      />
     </ModuleLayout>
   );
 }

@@ -71,6 +71,31 @@ export const magazineSections = magazineSchema.table("magazine_sections", {
   idxIssueSort: index("idx_magazine_sections_issue_sort").on(t.issueId, t.sortOrder),
 }));
 
+// 4. Magazine Media Library Assets
+export const magazineMedia = magazineSchema.table("magazine_media", {
+  id: serial("id").primaryKey(),
+  fileHash: text("file_hash").notNull().unique(), // SHA-256 hash for deduplication
+  fileName: text("file_name").notNull(), // Stored file name e.g. "med_abc123.webp"
+  originalName: text("original_name").notNull(), // User's original file name
+  mimeType: text("mime_type").notNull().default("image/webp"),
+  fileSize: integer("file_size").notNull(), // Compressed size in bytes
+  originalSize: integer("original_size"), // Original size before compression
+  width: integer("width"), // Image width
+  height: integer("height"), // Image height
+  objectKey: text("object_key").notNull(), // MinIO object key
+  thumbnailKey: text("thumbnail_key"), // MinIO thumbnail key
+  url: text("url").notNull(), // Public URL
+  thumbnailUrl: text("thumbnail_url"), // Thumbnail URL
+  tags: jsonb("tags").$type<string[]>().notNull().default([]), // Categorical user tags
+  issueId: integer("issue_id").references(() => magazineIssues.id, { onDelete: "set null" }),
+  uploadedBy: text("uploaded_by").references(() => user.id),
+  ...timestamps,
+}, (t) => ({
+  idxMediaHash: index("idx_magazine_media_hash").on(t.fileHash),
+  idxMediaIssue: index("idx_magazine_media_issue").on(t.issueId),
+  idxMediaCreated: index("idx_magazine_media_created").on(t.createdAt),
+}));
+
 // Relations
 export const magazineEditorsRelations = relations(magazineEditors, ({ one }) => ({
   user: one(user, {
@@ -89,6 +114,7 @@ export const magazineIssuesRelations = relations(magazineIssues, ({ one, many })
     references: [user.id],
   }),
   sections: many(magazineSections),
+  media: many(magazineMedia),
 }));
 
 export const magazineSectionsRelations = relations(magazineSections, ({ one }) => ({
@@ -97,3 +123,15 @@ export const magazineSectionsRelations = relations(magazineSections, ({ one }) =
     references: [magazineIssues.id],
   }),
 }));
+
+export const magazineMediaRelations = relations(magazineMedia, ({ one }) => ({
+  issue: one(magazineIssues, {
+    fields: [magazineMedia.issueId],
+    references: [magazineIssues.id],
+  }),
+  uploader: one(user, {
+    fields: [magazineMedia.uploadedBy],
+    references: [user.id],
+  }),
+}));
+
