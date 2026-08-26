@@ -15,6 +15,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
+import { Route as AuthenticatedMagazineIndexRouteImport } from './routes/_authenticated/magazine/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
@@ -31,6 +32,8 @@ import { Route as AuthenticatedMastersManagementApproversRouteImport } from './r
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
 import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
+import { Route as AuthenticatedMagazineEditorsRouteImport } from './routes/_authenticated/magazine/editors'
+import { Route as AuthenticatedMagazineIdRouteImport } from './routes/_authenticated/magazine/$id'
 import { Route as AuthenticatedInventoryStoresRouteImport } from './routes/_authenticated/inventory/stores'
 import { Route as AuthenticatedInventoryStockRouteImport } from './routes/_authenticated/inventory/stock'
 import { Route as AuthenticatedInventoryPosRouteImport } from './routes/_authenticated/inventory/pos'
@@ -121,6 +124,12 @@ const AuthenticatedCommunicationRoute =
   AuthenticatedCommunicationRouteImport.update({
     id: '/communication',
     path: '/communication',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMagazineIndexRoute =
+  AuthenticatedMagazineIndexRouteImport.update({
+    id: '/magazine/',
+    path: '/magazine/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedCollegeIndexRoute =
@@ -218,6 +227,17 @@ const AuthenticatedMastersBanksRoute =
     path: '/masters/banks',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedMagazineEditorsRoute =
+  AuthenticatedMagazineEditorsRouteImport.update({
+    id: '/magazine/editors',
+    path: '/magazine/editors',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMagazineIdRoute = AuthenticatedMagazineIdRouteImport.update({
+  id: '/magazine/$id',
+  path: '/magazine/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInventoryStoresRoute =
   AuthenticatedInventoryStoresRouteImport.update({
     id: '/inventory/stores',
@@ -621,6 +641,8 @@ export interface FileRoutesByFullPath {
   '/inventory/pos': typeof AuthenticatedInventoryPosRoute
   '/inventory/stock': typeof AuthenticatedInventoryStockRoute
   '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
+  '/magazine/$id': typeof AuthenticatedMagazineIdRoute
+  '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -637,6 +659,7 @@ export interface FileRoutesByFullPath {
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
+  '/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
@@ -705,6 +728,8 @@ export interface FileRoutesByTo {
   '/inventory/pos': typeof AuthenticatedInventoryPosRoute
   '/inventory/stock': typeof AuthenticatedInventoryStockRoute
   '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
+  '/magazine/$id': typeof AuthenticatedMagazineIdRoute
+  '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -720,6 +745,7 @@ export interface FileRoutesByTo {
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
+  '/magazine': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
@@ -790,6 +816,8 @@ export interface FileRoutesById {
   '/_authenticated/inventory/pos': typeof AuthenticatedInventoryPosRoute
   '/_authenticated/inventory/stock': typeof AuthenticatedInventoryStockRoute
   '/_authenticated/inventory/stores': typeof AuthenticatedInventoryStoresRoute
+  '/_authenticated/magazine/$id': typeof AuthenticatedMagazineIdRoute
+  '/_authenticated/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
   '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -806,6 +834,7 @@ export interface FileRoutesById {
   '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
+  '/_authenticated/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/_authenticated/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
@@ -876,6 +905,8 @@ export interface FileRouteTypes {
     | '/inventory/pos'
     | '/inventory/stock'
     | '/inventory/stores'
+    | '/magazine/$id'
+    | '/magazine/editors'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -892,6 +923,7 @@ export interface FileRouteTypes {
     | '/purchases/vendors'
     | '/shared/report/$token'
     | '/college/'
+    | '/magazine/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/college/reports/daily-income-expenses'
@@ -960,6 +992,8 @@ export interface FileRouteTypes {
     | '/inventory/pos'
     | '/inventory/stock'
     | '/inventory/stores'
+    | '/magazine/$id'
+    | '/magazine/editors'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -975,6 +1009,7 @@ export interface FileRouteTypes {
     | '/purchases/vendors'
     | '/shared/report/$token'
     | '/college'
+    | '/magazine'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/college/reports/daily-income-expenses'
@@ -1044,6 +1079,8 @@ export interface FileRouteTypes {
     | '/_authenticated/inventory/pos'
     | '/_authenticated/inventory/stock'
     | '/_authenticated/inventory/stores'
+    | '/_authenticated/magazine/$id'
+    | '/_authenticated/magazine/editors'
     | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
@@ -1060,6 +1097,7 @@ export interface FileRouteTypes {
     | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
     | '/_authenticated/college/'
+    | '/_authenticated/magazine/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
     | '/_authenticated/college/reports/daily-income-expenses'
@@ -1137,6 +1175,13 @@ declare module '@tanstack/react-router' {
       path: '/communication'
       fullPath: '/communication'
       preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/': {
+      id: '/_authenticated/magazine/'
+      path: '/magazine'
+      fullPath: '/magazine/'
+      preLoaderRoute: typeof AuthenticatedMagazineIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/college/': {
@@ -1249,6 +1294,20 @@ declare module '@tanstack/react-router' {
       path: '/masters/banks'
       fullPath: '/masters/banks'
       preLoaderRoute: typeof AuthenticatedMastersBanksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/editors': {
+      id: '/_authenticated/magazine/editors'
+      path: '/magazine/editors'
+      fullPath: '/magazine/editors'
+      preLoaderRoute: typeof AuthenticatedMagazineEditorsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/$id': {
+      id: '/_authenticated/magazine/$id'
+      path: '/magazine/$id'
+      fullPath: '/magazine/$id'
+      preLoaderRoute: typeof AuthenticatedMagazineIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/inventory/stores': {
@@ -1747,6 +1806,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInventoryPosRoute: typeof AuthenticatedInventoryPosRoute
   AuthenticatedInventoryStockRoute: typeof AuthenticatedInventoryStockRoute
   AuthenticatedInventoryStoresRoute: typeof AuthenticatedInventoryStoresRoute
+  AuthenticatedMagazineIdRoute: typeof AuthenticatedMagazineIdRoute
+  AuthenticatedMagazineEditorsRoute: typeof AuthenticatedMagazineEditorsRoute
   AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
@@ -1762,6 +1823,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPurchasesUnitTypesRoute: typeof AuthenticatedPurchasesUnitTypesRoute
   AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
   AuthenticatedCollegeIndexRoute: typeof AuthenticatedCollegeIndexRoute
+  AuthenticatedMagazineIndexRoute: typeof AuthenticatedMagazineIndexRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
   AuthenticatedCollegeReportsDailyIncomeExpensesRoute: typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
@@ -1833,6 +1895,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInventoryPosRoute: AuthenticatedInventoryPosRoute,
   AuthenticatedInventoryStockRoute: AuthenticatedInventoryStockRoute,
   AuthenticatedInventoryStoresRoute: AuthenticatedInventoryStoresRoute,
+  AuthenticatedMagazineIdRoute: AuthenticatedMagazineIdRoute,
+  AuthenticatedMagazineEditorsRoute: AuthenticatedMagazineEditorsRoute,
   AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
@@ -1852,6 +1916,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPurchasesUnitTypesRoute: AuthenticatedPurchasesUnitTypesRoute,
   AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
   AuthenticatedCollegeIndexRoute: AuthenticatedCollegeIndexRoute,
+  AuthenticatedMagazineIndexRoute: AuthenticatedMagazineIndexRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
   AuthenticatedCollegeReportsDailyIncomeExpensesRoute:

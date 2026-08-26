@@ -51,6 +51,7 @@ export function useUserPermissions() {
   const canViewCollege = isAdmin || isAccounts || isAcon;
   const canViewInventory = isAdmin || isAccounts || userRole === "inventory" || userRole === "store" || userRole === "pharmacist" || true;
   const canManageStores = isAdmin || isManagementApprover;
+  const canManageMagazine = isAdmin || userRole === "magazine_editor" || isHr;
 
   return {
     currentStaff,
@@ -64,6 +65,7 @@ export function useUserPermissions() {
     canViewCollege,
     canViewInventory,
     canManageStores,
+    canManageMagazine,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
   };
 }

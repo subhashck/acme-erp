@@ -30,6 +30,16 @@ export default defineConfig({
         target: "http://localhost:8787",
         changeOrigin: true,
         cookieDomainRewrite: "localhost",
+      },
+      "/magazine/ssr": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
+      },
+      "/magazine/view": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
       }
     }
   }

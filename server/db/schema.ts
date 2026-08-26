@@ -106,6 +106,22 @@ export const nursingSupers = sqliteTable("nursing_supers", {
   ...timestamps
 });
 
+export const hospitalSettings = sqliteTable("hospital_settings", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().default("ACME Hospital & Healthcare"),
+  tagline: text("tagline").default("Excellence in Medical Care, Research & Healthcare Innovation"),
+  logoUrl: text("logo_url"),
+  phone: text("phone").default("+91 98765 43210"),
+  email: text("email").default("editorial@acmehospital.com"),
+  website: text("website").default("www.acmehospital.com"),
+  address: text("address").default("123 Healthcare Ave, Medical District, Healthcare Campus"),
+  emergencyPhone: text("emergency_phone").default("+91 98765 43211"),
+  opdPhone: text("opd_phone").default("+91 98765 43212"),
+  editorialDivision: text("editorial_division").default("ACME Healthcare Communications & Editorial Division"),
+  copyrightText: text("copyright_text").default("ACME Monthly Electronic Magazine. All rights reserved."),
+  ...timestamps
+});
+
 /**
  * staff — versioned employee records.
  *

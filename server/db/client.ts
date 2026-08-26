@@ -2,6 +2,7 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema.ts";
 import * as inventorySchema from "./schema-inventory.ts";
+import * as magazineSchema from "./schema-magazine.ts";
 
 import path from "path";
 import fs from "fs";
@@ -47,6 +48,6 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5000, // Short timeout to fail-fast and retry
 });
 
-const fullSchema = { ...schema, ...inventorySchema };
+const fullSchema = { ...schema, ...inventorySchema, ...magazineSchema };
 
 export const db = drizzle(pool, { schema: fullSchema });

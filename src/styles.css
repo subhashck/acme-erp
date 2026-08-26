@@ -246,3 +246,40 @@ input[type="number"] {
   scrollbar-width: thin;
   scrollbar-color: #94a3b8 transparent;
 }
+
+/* Tiptap / ProseMirror Rich Text Editor Styles */
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.ProseMirror:focus {
+  outline: none;
+}
+
+.ProseMirror table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+  overflow: hidden;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.ProseMirror td,
+.ProseMirror th {
+  box-sizing: border-box;
+  min-width: 1em;
+  padding: 6px 8px;
+  position: relative;
+  vertical-align: top;
+}
+
+.ProseMirror img {
+  border-radius: var(--radius-md);
+  max-width: 100%;
+  height: auto;
+  margin: 1rem 0;
+}

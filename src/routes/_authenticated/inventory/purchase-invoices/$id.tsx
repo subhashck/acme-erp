@@ -71,7 +71,7 @@ function PurchaseInvoiceDetail() {
   // Payment form state
   const [paymentDate, setPaymentDate] = React.useState(new Date().toISOString().split("T")[0]);
   const [paymentAmount, setPaymentAmount] = React.useState<number | "">("");
-  const [paymentMode, setPaymentMode] = React.useState("bank_transfer");
+  const [paymentMode, setPaymentMode] = React.useState("rtgs");
   const [paymentRef, setPaymentRef] = React.useState("");
   const [paymentNotes, setPaymentNotes] = React.useState("");
 
@@ -149,7 +149,7 @@ function PurchaseInvoiceDetail() {
         amount: Number(paymentAmount),
         paymentMode,
         referenceNo: paymentRef || null,
-        notes: paymentNotes || null,
+        remarks: paymentNotes || null,
       };
 
       const res = await (client as any)["inventory"]["purchase-invoices"][":id"]["payments"].$post({
@@ -482,7 +482,9 @@ function PurchaseInvoiceDetail() {
                         {payments.map((p: any) => (
                           <tr key={p.id} className="hover:bg-muted/10">
                             <td className="px-3 py-2">{p.paymentDate}</td>
-                            <td className="px-3 py-2 font-medium uppercase text-[11px]">{p.paymentMode}</td>
+                            <td className="px-3 py-2 font-medium uppercase text-[11px]">
+                              {p.paymentMode === "rtgs" ? "NEFT / RTGS" : p.paymentMode}
+                            </td>
                             <td className="px-3 py-2 font-mono text-muted-foreground">{p.referenceNo || "—"}</td>
                             <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
                               ₹{Number(p.amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -648,11 +650,12 @@ function PurchaseInvoiceDetail() {
                 onChange={(e) => setPaymentMode(e.target.value)}
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-xs"
               >
-                <option value="bank_transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
+                <option value="rtgs">Bank Transfer (NEFT / RTGS / IMPS)</option>
                 <option value="cheque">Cheque</option>
                 <option value="upi">UPI / Online</option>
+                <option value="card">Debit / Credit Card</option>
                 <option value="cash">Cash</option>
-                <option value="credit_note">Credit Note</option>
+                <option value="other">Other</option>
               </select>
             </div>
 

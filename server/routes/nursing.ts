@@ -175,7 +175,7 @@ export async function generateNextReferrerPaymentVoucherNo(year: string): Promis
 }
 
 export const nursingRoutes = new Hono<AuthEnv>()
-  .use("*", requireCollegeAccess)
+  .use("/nursing/*", requireCollegeAccess)
   // -------------------------------------------------------------------------
   // Dashboard / Analytics Stats
   // -------------------------------------------------------------------------
