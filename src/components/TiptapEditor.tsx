@@ -24,6 +24,7 @@ import FontFamily from "@tiptap/extension-font-family";
 
 import { Callout, CalloutType } from "@/components/tiptap/callout-extension";
 import { FontSize } from "@/components/tiptap/font-size-extension";
+import { MediaLibraryDialog } from "@/components/magazine/MediaLibraryDialog";
 
 import {
   Bold,
@@ -359,47 +360,24 @@ export function TiptapEditor({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isFullscreen, showSearch]);
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !editor) return;
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("issueId", String(issueId));
-
-    try {
-      const res = await fetch("/api/magazine/upload-image", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to upload image");
-      }
-
-      const data = await res.json();
-      editor.chain().focus().setImage({ src: data.url, alt: file.name }).run();
-      toast.success("Image uploaded and inserted successfully");
-      setIsImageModalOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to upload image");
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
-  };
-
-  const handleInsertImageUrl = () => {
-    if (!editor || !imageUrl.trim()) return;
-    editor.chain().focus().setImage({ src: imageUrl.trim(), alt: imageAlt.trim() || undefined }).run();
-    setImageUrl("");
-    setImageAlt("");
-    setIsImageModalOpen(false);
-    toast.success("Image inserted");
+  const handleSelectMediaImage = (media: {
+    url: string;
+    alt?: string;
+    title?: string;
+    width?: number | null;
+    height?: number | null;
+  }) => {
+    if (!editor) return;
+    editor
+      .chain()
+      .focus()
+      .setImage({
+        src: media.url,
+        alt: media.alt || media.title || undefined,
+        title: media.title || undefined,
+      })
+      .run();
+    toast.success("Image inserted into article");
   };
 
   const handleInsertYoutube = () => {
@@ -1261,83 +1239,18 @@ export function TiptapEditor({
               </Button>
             )}
 
-            {/* Image Modal / Dropdown */}
-            <Popover.Root open={isImageModalOpen} onOpenChange={setIsImageModalOpen}>
-              <Popover.Trigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2 flex items-center gap-1.5 text-xs font-semibold text-foreground hover:bg-accent"
-                  title="Insert Image (Upload or Web URL)"
-                >
-                  <ImageIcon className="h-4 w-4 text-primary" />
-                  <span className="hidden sm:inline">Image</span>
-                </Button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content
-                  className="z-50 w-80 rounded-xl border border-border bg-popover p-4 shadow-xl text-popover-foreground animate-in fade-in-50"
-                  sideOffset={6}
-                >
-                  <p className="text-sm font-semibold mb-3">Add Image</p>
-                  <div className="space-y-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className="w-full h-9 flex items-center justify-center gap-2 border-dashed border-2 hover:border-primary"
-                    >
-                      {isUploading ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                      ) : (
-                        <Plus className="h-4 w-4" />
-                      )}
-                      <span>Upload from Device</span>
-                    </Button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleImageUpload}
-                      accept="image/png, image/jpeg, image/webp, image/gif, image/svg+xml"
-                      className="hidden"
-                    />
-
-                    <div className="relative flex items-center justify-center text-xs">
-                      <span className="bg-popover px-2 text-muted-foreground z-10">Or from URL</span>
-                      <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-border" />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="https://example.com/image.png"
-                        value={imageUrl}
-                        onChange={(e) => setImageUrl(e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                      <Input
-                        placeholder="Alt text / caption (optional)"
-                        value={imageAlt}
-                        onChange={(e) => setImageAlt(e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={handleInsertImageUrl}
-                        disabled={!imageUrl.trim()}
-                        className="w-full h-8 text-xs font-semibold"
-                      >
-                        Insert Image
-                      </Button>
-                    </div>
-                  </div>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
+            {/* Image Button -> Opens Media Library */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsImageModalOpen(true)}
+              className="h-8 px-2 flex items-center gap-1.5 text-xs font-semibold text-foreground hover:bg-accent"
+              title="Insert Image (Browse WebP Media Library)"
+            >
+              <ImageIcon className="h-4 w-4 text-primary" />
+              <span className="hidden sm:inline">Media</span>
+            </Button>
 
             {/* Video / YouTube Embed */}
             <Popover.Root open={isYoutubeOpen} onOpenChange={setIsYoutubeOpen}>
@@ -1688,6 +1601,16 @@ export function TiptapEditor({
           >
             H2
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsImageModalOpen(true)}
+            className="h-7 w-7 p-0"
+            title="Insert Media Image"
+          >
+            <ImageIcon className="h-3.5 w-3.5 text-primary" />
+          </Button>
         </div>
       )}
 
@@ -1854,6 +1777,15 @@ export function TiptapEditor({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {/* Magazine Media Library Dialog */}
+      <MediaLibraryDialog
+        isOpen={isImageModalOpen}
+        onClose={() => setIsImageModalOpen(false)}
+        onSelectImage={handleSelectMediaImage}
+        issueId={issueId}
+        title="Insert Article Media"
+      />
     </div>
   );
 }

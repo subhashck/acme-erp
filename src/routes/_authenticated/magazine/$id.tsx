@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { TiptapEditor } from "@/components/TiptapEditor";
+import { MediaLibraryDialog } from "@/components/magazine/MediaLibraryDialog";
 import { useUserPermissions } from "@/lib/permissions";
 import { exportMagazineToPDF } from "@/lib/magazine-export";
 import { toast } from "sonner";
@@ -119,6 +120,7 @@ export function MagazineIssueEditor() {
   const [coverImageUrl, setCoverImageUrl] = React.useState("");
   const [isSavingMeta, setIsSavingMeta] = React.useState(false);
   const [isUploadingCover, setIsUploadingCover] = React.useState(false);
+  const [isMediaLibraryOpen, setIsMediaLibraryOpen] = React.useState(false);
 
   // Sections local draft state
   const [sections, setSections] = React.useState<SectionItem[]>([]);
@@ -976,26 +978,40 @@ export function MagazineIssueEditor() {
               </div>
 
               {/* Cover Image Upload */}
-              <div className="space-y-1 pt-2">
-                <label className="text-xs font-semibold text-foreground">Cover Image Artwork</label>
-                <div className="flex items-center gap-3">
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleCoverUpload}
-                    disabled={isUploadingCover}
-                  />
-                  {isUploadingCover && <Loader2 className="h-5 w-5 animate-spin text-primary" />}
+              <div className="space-y-2 pt-2">
+                <label className="text-xs font-semibold text-foreground block">Cover Image Artwork</label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsMediaLibraryOpen(true)}
+                    className="text-xs gap-1.5 font-semibold bg-muted/40"
+                  >
+                    <ImageIcon className="h-4 w-4 text-primary" />
+                    <span>Choose from WebP Media Library</span>
+                  </Button>
+                  <span className="text-xs text-muted-foreground">or upload new file:</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleCoverUpload}
+                      disabled={isUploadingCover}
+                      className="text-xs h-8 max-w-[220px]"
+                    />
+                    {isUploadingCover && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
+                  </div>
                 </div>
 
                 {coverImageUrl && (
-                  <div className="mt-3 relative h-48 w-full rounded-xl overflow-hidden border border-border">
+                  <div className="mt-3 relative h-48 w-full rounded-xl overflow-hidden border border-border bg-muted/20">
                     <img src={coverImageUrl} alt="Cover Artwork" className="h-full w-full object-cover" />
                     <Button
                       size="sm"
                       variant="destructive"
                       onClick={() => setCoverImageUrl("")}
-                      className="absolute top-2 right-2 h-7 text-xs"
+                      className="absolute top-2 right-2 h-7 text-xs shadow-md"
                     >
                       Remove
                     </Button>
@@ -1025,6 +1041,18 @@ export function MagazineIssueEditor() {
           </Card>
         )}
       </div>
+
+      {/* Media Library Dialog for Cover Image */}
+      <MediaLibraryDialog
+        isOpen={isMediaLibraryOpen}
+        onClose={() => setIsMediaLibraryOpen(false)}
+        onSelectImage={(media) => {
+          setCoverImageUrl(media.url);
+          toast.success("Cover image selected from library!");
+        }}
+        issueId={id}
+        title="Select Magazine Cover Artwork"
+      />
     </ModuleLayout>
   );
 }

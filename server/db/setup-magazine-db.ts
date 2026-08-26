@@ -65,6 +65,34 @@ export async function createMagazineSchemaAndTables() {
     -- Ensure indices on magazine_sections
     CREATE INDEX IF NOT EXISTS "idx_magazine_sections_issue_sort" 
       ON "magazine"."magazine_sections" ("issue_id", "sort_order");
+
+    -- 4. Magazine Media Assets
+    CREATE TABLE IF NOT EXISTS "magazine"."magazine_media" (
+      "id" SERIAL PRIMARY KEY,
+      "file_hash" TEXT NOT NULL UNIQUE,
+      "file_name" TEXT NOT NULL,
+      "original_name" TEXT NOT NULL,
+      "mime_type" TEXT NOT NULL DEFAULT 'image/webp',
+      "file_size" INTEGER NOT NULL,
+      "original_size" INTEGER,
+      "width" INTEGER,
+      "height" INTEGER,
+      "object_key" TEXT NOT NULL,
+      "thumbnail_key" TEXT,
+      "url" TEXT NOT NULL,
+      "thumbnail_url" TEXT,
+      "tags" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "issue_id" INTEGER REFERENCES "magazine"."magazine_issues"("id") ON DELETE SET NULL,
+      "uploaded_by" TEXT REFERENCES "public"."user"("id"),
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    ALTER TABLE "magazine"."magazine_media" ADD COLUMN IF NOT EXISTS "tags" JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+    CREATE INDEX IF NOT EXISTS "idx_magazine_media_hash" ON "magazine"."magazine_media" ("file_hash");
+    CREATE INDEX IF NOT EXISTS "idx_magazine_media_issue" ON "magazine"."magazine_media" ("issue_id");
+    CREATE INDEX IF NOT EXISTS "idx_magazine_media_created" ON "magazine"."magazine_media" ("created_at");
   `;
 
   await pool.query(ddl);
