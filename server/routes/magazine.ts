@@ -88,6 +88,36 @@ const sectionSchema = z.object({
 
 export const magazineRoutes = new Hono<AuthEnv>()
   // -------------------------------------------------------------
+  // Magazine Access Check (Current User)
+  // -------------------------------------------------------------
+  .get("/magazine/my-access", async (c) => {
+    const session = c.get("session");
+    if (!session?.user) {
+      return c.json({ isEditor: false, isAdmin: false });
+    }
+
+    if (session.user.role === "admin") {
+      return c.json({ isEditor: true, isAdmin: true });
+    }
+
+    const [editor] = await db
+      .select({ id: magazineEditors.id, active: magazineEditors.active })
+      .from(magazineEditors)
+      .where(
+        and(
+          eq(magazineEditors.userId, session.user.id),
+          eq(magazineEditors.active, true)
+        )
+      )
+      .limit(1);
+
+    return c.json({
+      isEditor: !!editor,
+      isAdmin: false,
+    });
+  })
+
+  // -------------------------------------------------------------
   // Magazine Editors Management (Admin Only)
   // -------------------------------------------------------------
   .get("/magazine/editors", requireAdmin, async (c) => {

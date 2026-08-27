@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ModuleLayout } from "@/components/ModuleLayout";
-import { useRpcQuery } from "@/lib/query";
+import { useRpcQuery, queryClient } from "@/lib/query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Badge } from "@/ui/badge";
@@ -98,6 +98,7 @@ export function MagazineEditorsPage() {
       setIsAddOpen(false);
       setSelectedUserId("");
       editorsQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["magazine-my-access"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to add editor");
     } finally {
@@ -120,6 +121,7 @@ export function MagazineEditorsPage() {
 
       toast.success(`Editor ${!currentActive ? "activated" : "deactivated"}`);
       editorsQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["magazine-my-access"] });
     } catch (err: any) {
       toast.error(err.message);
     }
@@ -137,6 +139,7 @@ export function MagazineEditorsPage() {
 
       toast.success("Editor removed");
       editorsQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["magazine-my-access"] });
     } catch (err: any) {
       toast.error(err.message);
     }

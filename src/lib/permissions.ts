@@ -38,6 +38,13 @@ export function useUserPermissions() {
     );
   }, [currentStaff?.staffId, managementApproversQuery.data]);
 
+  const magazineAccessQuery = useRpcQuery<{ isEditor: boolean; isAdmin: boolean }>(
+    ["magazine-my-access", session.data?.user?.id],
+    () => fetch("/api/magazine/my-access")
+  );
+
+  const isMagazineEditor = magazineAccessQuery.data?.isEditor ?? false;
+
   const userRole = (session.data?.user?.role || "").trim().toLowerCase();
   const staffDept = (currentStaff?.departmentName || "").trim().toUpperCase();
 
@@ -51,7 +58,7 @@ export function useUserPermissions() {
   const canViewCollege = isAdmin || isAccounts || isAcon;
   const canViewInventory = isAdmin || isAccounts || userRole === "inventory" || userRole === "store" || userRole === "pharmacist" || true;
   const canManageStores = isAdmin || isManagementApprover;
-  const canManageMagazine = isAdmin || userRole === "magazine_editor" || isHr;
+  const canManageMagazine = isAdmin || userRole === "magazine_editor" || isHr || isMagazineEditor;
 
   return {
     currentStaff,
@@ -60,12 +67,14 @@ export function useUserPermissions() {
     isAccounts,
     isAcon,
     isManagementApprover,
+    isMagazineEditor,
     canViewAccounts,
     canViewHr,
     canViewCollege,
     canViewInventory,
     canManageStores,
     canManageMagazine,
-    isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
+    isLoading: staffQuery.isLoading || managementApproversQuery.isLoading || magazineAccessQuery.isLoading,
   };
 }
+

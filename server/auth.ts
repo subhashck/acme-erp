@@ -12,14 +12,18 @@ if (!rawAuthUrl && process.env.RAILWAY_STATIC_URL) {
 
 const cleanAuthUrl = (rawAuthUrl ?? "http://localhost:8787").trim().replace(/\/+$/, "");
 
-const extraOrigins: string[] = ["http://localhost:5173"];
+const extraOrigins: string[] = [
+  "http://localhost:5173",
+  "https://*.trycloudflare.com",
+  "http://*.trycloudflare.com",
+  "*.trycloudflare.com",
+];
 if (process.env.RAILWAY_STATIC_URL) {
   extraOrigins.push(`https://${process.env.RAILWAY_STATIC_URL}`);
 }
 if (process.env.RAILWAY_PUBLIC_DOMAIN) {
   extraOrigins.push(`https://${process.env.RAILWAY_PUBLIC_DOMAIN}`);
 }
-extraOrigins.push("https://acme-erp-production.up.railway.app");
 
 const envOrigins = process.env.TRUSTED_ORIGINS
   ? process.env.TRUSTED_ORIGINS.split(",")

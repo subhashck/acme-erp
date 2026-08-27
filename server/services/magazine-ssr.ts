@@ -819,7 +819,8 @@ export function renderMagazineHtml(
     html[data-mode="flip"],
     html[data-mode="flip"] body {
       height: 100vh;
-      max-height: 100vh;
+      height: 100dvh;
+      max-height: 100dvh;
       overflow: hidden;
     }
 
@@ -899,6 +900,15 @@ export function renderMagazineHtml(
       .control-btn { padding: 0.35rem 0.6rem; font-size: 0.76rem; }
     }
 
+    @media (max-width: 768px) {
+      /* Hide scroll mode and horizontal flip controls on mobile devices */
+      .mode-toggle-group,
+      #headerOrientBtn,
+      #dockOrientBtn {
+        display: none !important;
+      }
+    }
+
     @media (max-width: 640px) {
       .sticky-header { padding: 0.35rem 0.5rem; height: 48px; }
       .nav-btn-label { display: none; }
@@ -907,8 +917,6 @@ export function renderMagazineHtml(
       .brand-title-text { max-width: clamp(110px, 34vw, 200px); font-size: 0.8rem; }
       .control-btn { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
       .control-icon-btn { width: 32px; height: 32px; }
-      .mode-btn { padding: 0.35rem 0.45rem; }
-      .mode-toggle-group { padding: 1px; }
       .nav-controls { gap: 0.25rem; }
       .nav-left { gap: 0.4rem; margin-right: 0.25rem; }
     }
@@ -920,14 +928,16 @@ export function renderMagazineHtml(
       display: none;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: space-between;
       height: calc(100vh - 52px);
-      max-height: calc(100vh - 52px);
-      padding: 0.5rem 0.75rem 4.25rem;
+      height: calc(100dvh - 52px);
+      max-height: calc(100dvh - 52px);
+      padding: 0.5rem 0.75rem 0.5rem;
       position: relative;
       user-select: none;
       overflow: hidden;
       box-sizing: border-box;
+      gap: 0.35rem;
     }
 
     html[data-mode="flip"] .stpageflip-container { display: flex; }
@@ -936,8 +946,10 @@ export function renderMagazineHtml(
     @media (max-width: 640px) {
       .stpageflip-container {
         height: calc(100vh - 48px);
-        max-height: calc(100vh - 48px);
-        padding: 0.25rem 0.25rem 3.5rem;
+        height: calc(100dvh - 48px);
+        max-height: calc(100dvh - 48px);
+        padding: 0.2rem 0.35rem 0.35rem;
+        gap: 0.2rem;
       }
     }
 
@@ -947,15 +959,56 @@ export function renderMagazineHtml(
       justify-content: center;
       align-items: center;
       width: 100%;
-      max-width: 1150px;
-      height: calc(100vh - 135px);
+      flex: 1 1 0;
+      min-height: 0;
+      max-width: 1400px;
       margin: 0 auto;
+      gap: 0.75rem;
     }
 
-    @media (max-width: 640px) {
-      .stpageflip-stage-wrapper {
-        height: calc(100vh - 110px);
+    .stage-nav-arrow {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      flex-shrink: 0;
+      z-index: 20;
+    }
+
+    .stage-nav-arrow:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      transform: scale(1.08);
+      box-shadow: 0 6px 20px var(--primary-glow);
+    }
+
+    .stage-nav-arrow:active {
+      transform: scale(0.95);
+    }
+
+    @media (max-width: 860px) {
+      .stage-nav-arrow {
+        display: none !important;
       }
+    }
+
+    .book-viewport-constrainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: visible;
     }
 
     #book {
@@ -971,7 +1024,7 @@ export function renderMagazineHtml(
       width: 100%;
       max-width: 540px;
       height: 100%;
-      max-height: calc(100vh - 130px);
+      max-height: 100%;
       transform-style: preserve-3d;
       perspective: 1400px;
       border-radius: var(--radius-md);
@@ -982,7 +1035,6 @@ export function renderMagazineHtml(
 
     @media (max-width: 640px) {
       #book.vertical-mode {
-        max-height: calc(100vh - 105px);
         border-radius: var(--radius-sm);
         max-width: 100%;
       }
@@ -1072,13 +1124,13 @@ export function renderMagazineHtml(
 
     @media (max-width: 900px) {
       .book-page-content {
-        padding: 1.5rem 1.25rem 1rem;
+        padding: 1.25rem 1.15rem 0.85rem;
       }
     }
 
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .book-page-content {
-        padding: 1rem 0.85rem 0.75rem;
+        padding: 0.65rem 0.65rem 0.35rem;
       }
     }
 
@@ -1094,20 +1146,21 @@ export function renderMagazineHtml(
       color: var(--page-muted);
       border-bottom: 1px solid var(--page-border);
       padding-bottom: 0.35rem;
-      margin-bottom: 0.65rem;
+      margin-bottom: 0.55rem;
       flex-shrink: 0;
     }
 
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .page-running-header {
-        margin-bottom: 0.45rem;
-        padding-bottom: 0.25rem;
-        font-size: 0.52rem;
+        margin-bottom: 0.35rem;
+        padding-bottom: 0.2rem;
+        font-size: 0.5rem;
       }
     }
 
     .page-inner-scroll {
-      flex: 1;
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
       overflow-x: hidden;
       display: flex;
@@ -1115,6 +1168,7 @@ export function renderMagazineHtml(
       -webkit-overflow-scrolling: touch;
       scrollbar-width: thin;
       scrollbar-color: var(--border-accent) transparent;
+      padding-bottom: 1.25rem;
     }
 
     .page-inner-scroll::-webkit-scrollbar {
@@ -1127,7 +1181,7 @@ export function renderMagazineHtml(
 
     .page-running-footer {
       margin-top: auto;
-      padding-top: 0.45rem;
+      padding-top: 0.35rem;
       border-top: 1px solid var(--page-border);
       display: flex;
       justify-content: space-between;
@@ -1137,10 +1191,10 @@ export function renderMagazineHtml(
       flex-shrink: 0;
     }
 
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
       .page-running-footer {
-        padding-top: 0.3rem;
-        font-size: 0.58rem;
+        padding-top: 0.25rem;
+        font-size: 0.55rem;
       }
     }
 
@@ -1749,22 +1803,28 @@ export function renderMagazineHtml(
     .back-bottom-note { font-size: 0.75rem; color: var(--text-dim); }
     .back-edition-pill { font-family: var(--font-mono); font-size: 0.72rem; color: var(--primary); background: var(--primary-glow); padding: 0.25rem 0.65rem; border-radius: var(--radius-full); display: inline-block; margin-top: 0.5rem; border: 1px solid var(--border-accent); }
 
-    /* Bottom Control Dock */
-    .dock-bar {
-      position: fixed;
-      bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
-      left: 50%;
-      transform: translateX(-50%);
+    /* Bottom Control Dock (Outside the page) */
+    .dock-bar-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      flex-shrink: 0;
+      padding-bottom: max(0.15rem, env(safe-area-inset-bottom, 0.15rem));
       z-index: 80;
+    }
+
+    .dock-bar {
+      position: relative;
       display: none;
       align-items: center;
       gap: 0.5rem;
       background: var(--bg-glass);
       backdrop-filter: blur(20px);
       border: 1px solid var(--border-main);
-      padding: 0.4rem 0.85rem;
+      padding: 0.35rem 0.85rem;
       border-radius: var(--radius-full);
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
       max-width: calc(100vw - 20px);
       box-sizing: border-box;
     }
@@ -1809,9 +1869,8 @@ export function renderMagazineHtml(
 
     @media (max-width: 520px) {
       .dock-bar {
-        padding: 0.3rem 0.5rem;
+        padding: 0.25rem 0.45rem;
         gap: 0.25rem;
-        bottom: max(0.5rem, env(safe-area-inset-bottom, 0.5rem));
       }
       .dock-btn {
         width: 32px;
@@ -1958,6 +2017,8 @@ export function renderMagazineHtml(
       width: 100%;
       max-width: 440px;
       height: 100vh;
+      height: 100dvh;
+      max-height: 100dvh;
       background: var(--bg-card);
       border-left: 1px solid var(--border-main);
       box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
@@ -1967,6 +2028,7 @@ export function renderMagazineHtml(
       display: flex;
       flex-direction: column;
       box-sizing: border-box;
+      overflow: hidden;
     }
 
     .toc-drawer.open {
@@ -1992,13 +2054,15 @@ export function renderMagazineHtml(
     }
 
     .drawer-body {
-      padding: 1.25rem 1.25rem 2.5rem;
+      padding: 1.25rem 1.25rem calc(4.5rem + env(safe-area-inset-bottom, 1.5rem));
       overflow-y: auto;
-      flex: 1;
+      flex: 1 1 auto;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       gap: 0.85rem;
       -webkit-overflow-scrolling: touch;
+      box-sizing: border-box;
     }
 
     .story-article { background: var(--bg-card); border-radius: var(--radius-xl); border: 1px solid var(--border-main); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55); padding: 4rem 3.5rem; margin-bottom: 4rem; position: relative; }
@@ -2431,47 +2495,60 @@ export function renderMagazineHtml(
       ${stPagesHtml}
     </div>
 
+    <!-- Flipbook Stage (with side navigation arrows outside the book) -->
     <div class="stpageflip-stage-wrapper">
-      <div id="book">
-        ${stPagesHtml}
+      <button class="stage-nav-arrow stage-nav-prev" onclick="flipPrev()" title="Previous Page (Left Arrow)" aria-label="Previous Page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+
+      <div class="book-viewport-constrainer">
+        <div id="book">
+          ${stPagesHtml}
+        </div>
       </div>
+
+      <button class="stage-nav-arrow stage-nav-next" onclick="flipNext()" title="Next Page (Right Arrow)" aria-label="Next Page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
     </div>
 
-    <!-- StPageFlip Bottom Floating Control Dock -->
-    <div class="dock-bar">
-      <button class="dock-btn dock-btn-secondary" onclick="goToFlipPage(0)" title="First Page / Cover">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
-      </button>
-      <button class="dock-btn" onclick="flipPrev()" title="Previous Page">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-      </button>
+    <!-- StPageFlip Bottom Page Control Dock (Outside the page, below book stage) -->
+    <div class="dock-bar-wrapper">
+      <div class="dock-bar">
+        <button class="dock-btn dock-btn-secondary" onclick="goToFlipPage(0)" title="First Page / Cover">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+        </button>
+        <button class="dock-btn" onclick="flipPrev()" title="Previous Page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
 
-      <div class="dock-page-display">
-        <span id="dockCurrentDisplay">1</span>
-        <span style="opacity:0.5;">/</span>
-        <span id="dockTotalDisplay">${stPages.length}</span>
+        <div class="dock-page-display">
+          <span id="dockCurrentDisplay">1</span>
+          <span style="opacity:0.5;">/</span>
+          <span id="dockTotalDisplay">${stPages.length}</span>
+        </div>
+
+        <button class="dock-btn" onclick="flipNext()" title="Next Page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+        <button class="dock-btn dock-btn-secondary" onclick="goToFlipPage(${stPages.length - 1})" title="Last Page / Back Cover">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+        </button>
+
+        <div class="dock-divider"></div>
+
+        <!-- Orientation Switcher in Dock -->
+        <button class="dock-btn" id="dockOrientBtn" onclick="toggleFlipOrientation()" title="Toggle Vertical / Horizontal Flip Mode">
+          <svg id="dockOrientIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>
+          </svg>
+        </button>
+
+        <!-- Page Audio Sound Toggle -->
+        <button class="dock-btn" onclick="toggleAudio()" id="soundBtn" title="Toggle Page Turn Sound">
+          <svg id="soundIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+        </button>
       </div>
-
-      <button class="dock-btn" onclick="flipNext()" title="Next Page">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-      </button>
-      <button class="dock-btn dock-btn-secondary" onclick="goToFlipPage(${stPages.length - 1})" title="Last Page / Back Cover">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
-      </button>
-
-      <div class="dock-divider"></div>
-
-      <!-- Orientation Switcher in Dock -->
-      <button class="dock-btn" onclick="toggleFlipOrientation()" title="Toggle Vertical / Horizontal Flip Mode">
-        <svg id="dockOrientIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>
-        </svg>
-      </button>
-
-      <!-- Page Audio Sound Toggle -->
-      <button class="dock-btn" onclick="toggleAudio()" id="soundBtn" title="Toggle Page Turn Sound">
-        <svg id="soundIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
-      </button>
     </div>
   </section>
 
@@ -2564,13 +2641,13 @@ export function renderMagazineHtml(
   <!-- Slide-over Table of Contents Drawer -->
   <div id="drawerOverlay" class="drawer-overlay" onclick="closeTocDrawer()"></div>
   <aside id="tocDrawer" class="toc-drawer" aria-label="Table of Contents Drawer">
-    <div class="drawer-header" style="display:flex; justify-content:space-between; padding: 1.5rem; align-items:center; border-bottom: 1px solid var(--border-main);">
-      <h3 class="drawer-title" style="font-family: var(--font-display); font-size: 1.25rem;">Contents</h3>
+    <div class="drawer-header">
+      <h3 class="drawer-title">Contents</h3>
       <button onclick="closeTocDrawer()" class="control-btn control-icon-btn" title="Close">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
     </div>
-    <div class="drawer-body" style="padding: 1.25rem 1.5rem 1.5rem; overflow-y:auto; flex:1;">
+    <div class="drawer-body">
       ${tocItemsHtml}
     </div>
   </aside>
@@ -2782,9 +2859,13 @@ export function renderMagazineHtml(
       const winH = window.innerHeight;
       const isPortrait = winW < 820;
       const headerH = winW < 640 ? 48 : 52;
-      const dockH = winW < 520 ? 52 : 62;
-      const stageAvailH = Math.max(360, winH - headerH - dockH - 16);
-      const stageAvailW = isPortrait ? Math.max(280, winW - 16) : Math.max(560, Math.min(winW - 32, 1280));
+      const dockH = winW < 520 ? 46 : 54;
+      const paddingH = winW < 640 ? 16 : 28;
+      const stageAvailH = Math.max(280, winH - headerH - dockH - paddingH);
+      const sideNavW = (!isPortrait && winW >= 860) ? 110 : 0;
+      const stageAvailW = isPortrait
+        ? Math.max(280, winW - 16)
+        : Math.max(560, Math.min(winW - sideNavW - 32, 1280));
 
       // ISO 216 A4 standard ratio: 297mm height / 210mm width = 1.4142 (sqrt(2))
       const a4Ratio = 297 / 210;
@@ -2811,8 +2892,8 @@ export function renderMagazineHtml(
       }
 
       return {
-        width: Math.max(260, bookW),
-        height: Math.max(360, bookH),
+        width: Math.max(240, bookW),
+        height: Math.max(320, bookH),
         isPortrait: isPortrait
       };
     }
@@ -2837,7 +2918,7 @@ export function renderMagazineHtml(
 
       const isMobileDevice = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024 && window.innerHeight > window.innerWidth);
       const savedOrient = localStorage.getItem('magazine-flip-orient');
-      flipOrientation = savedOrient || (isMobileDevice ? 'vertical' : 'horizontal');
+      flipOrientation = isMobileDevice ? 'vertical' : (savedOrient || 'horizontal');
 
       updateOrientationUI(flipOrientation);
 
@@ -2862,6 +2943,7 @@ export function renderMagazineHtml(
       flipContainer._stAttempts = 0;
 
       const dims = getFlipbookDimensions();
+      const isMobileDevice = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024 && window.innerHeight > window.innerWidth);
 
       try {
         pageFlipInstance = new St.PageFlip(flipContainer, {
@@ -2875,9 +2957,9 @@ export function renderMagazineHtml(
           maxShadowOpacity: 0.55,
           showCover: true,
           mobileScrollSupport: true,
-          useMouseEvents: true,
-          swipeDistance: 20,
-          clickEventForward: true,
+          useMouseEvents: !isMobileDevice, // Disable mouse/touch tap-to-flip on mobile
+          clickEventForward: !isMobileDevice,
+          swipeDistance: 35,
           drawShadow: true,
           flippingTime: 1000,
           usePortrait: dims.isPortrait,
@@ -2942,27 +3024,56 @@ export function renderMagazineHtml(
 
       let touchStartY = 0;
       let touchStartX = 0;
+      let touchStartTime = 0;
 
-      container.addEventListener('touchstart', (e) => {
+      const onTouchStart = (e) => {
         if (e.touches.length === 1) {
           touchStartY = e.touches[0].clientY;
           touchStartX = e.touches[0].clientX;
+          touchStartTime = Date.now();
         }
-      }, { passive: true });
+      };
 
-      container.addEventListener('touchend', (e) => {
+      const onTouchEnd = (e) => {
         if (e.changedTouches.length !== 1 || isTransitioning || flipOrientation !== 'vertical') return;
         const deltaY = e.changedTouches[0].clientY - touchStartY;
         const deltaX = e.changedTouches[0].clientX - touchStartX;
 
-        if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 30) {
-          if (deltaY < 0) {
-            flipNext();
-          } else {
-            flipPrev();
-          }
+        // Strictly enforce vertical swipe gesture:
+        // 1. Minimum vertical travel distance (45px) - rejects static taps & micro-touches
+        // 2. Strict vertical dominance (|deltaY| >= 1.4 * |deltaX|) - rejects horizontal swipes/taps
+        const isIntentionalVerticalSwipe = Math.abs(deltaY) >= 45 && Math.abs(deltaY) >= Math.abs(deltaX) * 1.4;
+        if (!isIntentionalVerticalSwipe) return;
+
+        // Check if inside inner-scrollable article copy on current page
+        const activePage = container.querySelector('.page.v-active');
+        const innerScroll = activePage ? activePage.querySelector('.page-inner-scroll') : null;
+        if (innerScroll && innerScroll.scrollHeight > innerScroll.clientHeight + 10) {
+          const atTop = innerScroll.scrollTop <= 8;
+          const atBottom = innerScroll.scrollTop + innerScroll.clientHeight >= innerScroll.scrollHeight - 8;
+
+          // Allow natural touch reading scroll inside article before triggering full page turn
+          if (deltaY > 0 && !atTop) return;
+          if (deltaY < 0 && !atBottom) return;
         }
-      }, { passive: true });
+
+        if (deltaY < 0) {
+          flipNext(); // Swipe Up -> Next Page
+        } else {
+          flipPrev(); // Swipe Down -> Previous Page
+        }
+      };
+
+      container.addEventListener('touchstart', onTouchStart, { passive: true });
+      container.addEventListener('touchend', onTouchEnd, { passive: true });
+
+      // Also attach to the parent stage section to catch swipes that start outside text boxes
+      const stageSection = document.getElementById('stPageFlipSection');
+      if (stageSection && stageSection !== container && !stageSection._vTouchBound) {
+        stageSection._vTouchBound = true;
+        stageSection.addEventListener('touchstart', onTouchStart, { passive: true });
+        stageSection.addEventListener('touchend', onTouchEnd, { passive: true });
+      }
 
       let wheelTimer = null;
       container.addEventListener('wheel', (e) => {
