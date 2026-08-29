@@ -1104,6 +1104,12 @@ export const grns = sqliteTable("grns", {
   dateOfDelivery: date("date_of_delivery"),
   remarks: text("remarks"),
   status: grnStatusEnum("status").notNull().default("draft"),
+  subtotal: numeric("subtotal", { precision: 12, scale: 2, mode: "number" }).default(0),
+  discountAmount: numeric("discount_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  taxableAmount: numeric("taxable_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  totalGst: numeric("total_gst", { precision: 12, scale: 2, mode: "number" }).default(0),
+  roundOff: numeric("round_off", { precision: 12, scale: 2, mode: "number" }).default(0),
+  netAmount: numeric("net_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
   createdBy: text("created_by").references(() => user.id),
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
@@ -1119,6 +1125,9 @@ export const grnItems = sqliteTable("grn_items", {
   receivedQty: numeric("received_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   freeQty: numeric("free_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }),
+  discountPercent: numeric("discount_percent", { precision: 5, scale: 2, mode: "number" }).default(0),
+  discountAmount: numeric("discount_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  taxableAmount: numeric("taxable_amount", { precision: 12, scale: 2, mode: "number" }),
   salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }),
   gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }),
   lineValue: numeric("line_value", { precision: 12, scale: 2, mode: "number" }),

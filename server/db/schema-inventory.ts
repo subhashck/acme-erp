@@ -268,6 +268,7 @@ export const stockAdjustmentItems = inventorySchema.table("stock_adjustment_item
   systemQty: numeric("system_qty", { precision: 12, scale: 3, mode: "number" }).notNull(),
   physicalQty: numeric("physical_qty", { precision: 12, scale: 3, mode: "number" }).notNull(),
   differenceQty: numeric("difference_qty", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  unitId: integer("unit_id").references(() => unitTypes.id),
   type: adjustmentTypeEnum("type").notNull(),
 });
 
@@ -478,6 +479,7 @@ export const stockAdjustmentItemsRelations = relations(stockAdjustmentItems, ({ 
   adjustment: one(stockAdjustments, { fields: [stockAdjustmentItems.adjustmentId], references: [stockAdjustments.id] }),
   item: one(items, { fields: [stockAdjustmentItems.itemId], references: [items.id] }),
   batch: one(itemBatches, { fields: [stockAdjustmentItems.batchId], references: [itemBatches.id] }),
+  unit: one(unitTypes, { fields: [stockAdjustmentItems.unitId], references: [unitTypes.id] }),
 }));
 
 export const salesInvoicesRelations = relations(salesInvoices, ({ one, many }) => ({

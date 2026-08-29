@@ -88,8 +88,7 @@ export async function recordStockMovement(tx: any, input: StockMovementInput) {
     .select()
     .from(storeBatchStock)
     .where(and(eq(storeBatchStock.storeId, storeId), eq(storeBatchStock.batchId, batchId)))
-    .for("update")
-    .execute();
+    .for("update");
 
   let stockRow = lockedRows[0];
   let currentOnHand = stockRow ? Number(stockRow.quantityOnHand) : 0;

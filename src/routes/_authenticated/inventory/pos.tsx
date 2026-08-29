@@ -9,16 +9,16 @@ import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import { Badge } from "@/ui/badge";
 import { toast } from "sonner";
-import { 
-  ShoppingCart, 
-  Search, 
-  Trash2, 
-  Plus, 
-  Minus, 
-  Printer, 
-  CreditCard, 
-  Receipt, 
-  Loader2, 
+import {
+  ShoppingCart,
+  Search,
+  Trash2,
+  Plus,
+  Minus,
+  Printer,
+  CreditCard,
+  Receipt,
+  Loader2,
   CheckCircle,
   Warehouse,
   User,
@@ -41,6 +41,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -114,23 +121,40 @@ function numberToIndianWords(num: number): string {
   return `Rupees ${str.trim()} Only`;
 }
 
-// Build standardized POS Invoice jsPDF Document (A5 Portrait)
+// Format number to Indian Currency string for PDF export (e.g. "Rs. 1,250.00")
+function formatPdfCurrency(amount: number | string, includePrefix = true): string {
+  const val = Number(amount) || 0;
+  const formatted = new Intl.NumberFormat("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Math.abs(val));
+  const prefix = includePrefix ? "Rs. " : "";
+  if (val < 0) {
+    return `-${prefix}${formatted}`;
+  }
+  return `${prefix}${formatted}`;
+}
+
+// Build standardized POS Invoice jsPDF Document (A5 Landscape or Portrait)
 export function buildPosReceiptPDF(
   invoice: any,
   hospitalSettings?: HospitalSettings,
   currentStore?: any,
-  cashierName?: string
+  cashierName?: string,
+  orientation: "landscape" | "portrait" = "landscape"
 ) {
+  const isLandscape = orientation === "landscape";
   const doc = new jsPDF({
-    orientation: "portrait",
+    orientation: isLandscape ? "landscape" : "portrait",
     unit: "mm",
-    format: "a5", // 148 x 210 mm
+    format: "a5", // 210 x 148 mm (landscape) or 148 x 210 mm (portrait)
   });
 
-  const pageWidth = 148;
-  const margin = 6;
-  const contentWidth = pageWidth - margin * 2; // 136 mm
-  let currentY = 8;
+  const pageWidth = isLandscape ? 210 : 148;
+  const pageHeight = isLandscape ? 148 : 210;
+  const margin = isLandscape ? 8 : 6;
+  const contentWidth = pageWidth - margin * 2;
+  let currentY = isLandscape ? 6 : 8;
 
   // 1. Hospital / Pharmacy Header
   const orgName = hospitalSettings?.name || "ACME HOSPITAL PHARMACY";
@@ -153,30 +177,27 @@ export function buildPosReceiptPDF(
   doc.setTextColor(71, 85, 105); // slate-600
   const subText = `${storeName}${storeCode ? ` (${storeCode})` : ""} • ${orgAddress}`;
   doc.text(subText, pageWidth / 2, currentY, { align: "center" });
-  currentY += 3.6;
+  currentY += isLandscape ? 3.4 : 3.6;
 
   const contactText = `Phone: ${orgPhone} | Email: ${orgEmail}`;
   doc.text(contactText, pageWidth / 2, currentY, { align: "center" });
-  currentY += 4.2;
+  currentY += 4;
 
-  // Banner: TAX INVOICE / RETAIL BILL
-  doc.setFillColor(15, 23, 42); // slate-900
-  doc.roundedRect(margin, currentY, contentWidth, 5.5, 1, 1, "F");
+  // Banner: TAX INVOICE / RETAIL BILL (Border only to save printer ink)
+  doc.setDrawColor(15, 23, 42); // slate-900
+  doc.setLineWidth(0.35);
+  doc.roundedRect(margin, currentY, contentWidth, isLandscape ? 5 : 5.5, 1, 1, "S");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  doc.text("TAX INVOICE / RETAIL CASH MEMO", pageWidth / 2, currentY + 3.8, { align: "center" });
-  currentY += 7.2;
+  doc.setFontSize(isLandscape ? 7.8 : 8);
+  doc.setTextColor(15, 23, 42);
+  doc.text("TAX INVOICE / RETAIL CASH MEMO", pageWidth / 2, currentY + (isLandscape ? 3.5 : 3.8), { align: "center" });
+  currentY += isLandscape ? 6.5 : 7.2;
 
   // 2. Metadata Box
-  doc.setFillColor(248, 250, 252); // slate-50
-  doc.setDrawColor(226, 232, 240); // slate-200
-  doc.roundedRect(margin, currentY, contentWidth, 18, 1, 1, "FD");
-
-  const leftColX = margin + 3;
-  const leftValX = margin + 22;
-  const rightColX = margin + 68;
-  const rightValX = margin + 88;
+  doc.setDrawColor(203, 213, 225); // slate-300
+  doc.setLineWidth(0.25);
+  const metaHeight = isLandscape ? 13 : 18;
+  doc.roundedRect(margin, currentY, contentWidth, metaHeight, 1, 1, "S");
 
   const invDate = invoice.invoiceDate || invoice.createdAt || new Date();
   let formattedDate = "";
@@ -186,58 +207,122 @@ export function buildPosReceiptPDF(
     formattedDate = String(invDate);
   }
   const cashier = invoice.cashier?.name || cashierName || "Cashier";
-
-  doc.setFontSize(7.5);
-  // Left col
-  doc.setTextColor(100, 116, 139); // slate-500
-  doc.setFont("helvetica", "bold");
-  doc.text("Invoice No:", leftColX, currentY + 4.5);
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "bold");
-  doc.text(invoice.invoiceNo || "-", leftValX, currentY + 4.5);
-
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "bold");
-  doc.text("Date & Time:", leftColX, currentY + 9);
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "normal");
-  doc.text(formattedDate, leftValX, currentY + 9);
-
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "bold");
-  doc.text("Cashier:", leftColX, currentY + 13.5);
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "normal");
-  doc.text(cashier, leftValX, currentY + 13.5);
-
-  // Right col
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "bold");
-  doc.text("Customer:", rightColX, currentY + 4.5);
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "normal");
-  doc.text(invoice.customerName || "Walk-in Customer", rightValX, currentY + 4.5);
-
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "bold");
-  doc.text("Phone / Doc:", rightColX, currentY + 9);
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "normal");
   const phoneDoc = [invoice.customerPhone, invoice.doctorName ? `Dr. ${invoice.doctorName}` : ""]
     .filter(Boolean)
     .join(" | ") || "-";
-  doc.text(phoneDoc, rightValX, currentY + 9);
 
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "bold");
-  doc.text("Pay Mode:", rightColX, currentY + 13.5);
-  doc.setTextColor(16, 185, 129); // emerald-600
-  doc.setFont("helvetica", "bold");
-  doc.text((invoice.paymentMode || "CASH").toUpperCase(), rightValX, currentY + 13.5);
+  doc.setFontSize(isLandscape ? 7.2 : 7.5);
 
-  currentY += 20;
+  if (isLandscape) {
+    // 3 columns in landscape
+    const leftColX = margin + 3;
+    const leftValX = margin + 20;
+    const midColX = margin + 68;
+    const midValX = margin + 85;
+    const rightColX = margin + 138;
+    const rightValX = margin + 158;
 
-  // 3. Line Items Table (Batch & Exp nested under Item Name to optimize space)
+    // Col 1
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Invoice No:", leftColX, currentY + 4.2);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "bold");
+    doc.text(invoice.invoiceNo || "-", leftValX, currentY + 4.2);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Date & Time:", leftColX, currentY + 8.8);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(formattedDate, leftValX, currentY + 8.8);
+
+    // Col 2
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Customer:", midColX, currentY + 4.2);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(invoice.customerName || "Walk-in Customer", midValX, currentY + 4.2);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Phone / Doc:", midColX, currentY + 8.8);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(phoneDoc, midValX, currentY + 8.8);
+
+    // Col 3
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Pharmacist:", rightColX, currentY + 4.2);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(cashier, rightValX, currentY + 4.2);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Pay Mode:", rightColX, currentY + 8.8);
+    doc.setTextColor(16, 185, 129);
+    doc.setFont("helvetica", "bold");
+    doc.text((invoice.paymentMode || "CASH").toUpperCase(), rightValX, currentY + 8.8);
+
+    currentY += 15;
+  } else {
+    // 2 columns in portrait
+    const leftColX = margin + 3;
+    const leftValX = margin + 22;
+    const rightColX = margin + 68;
+    const rightValX = margin + 88;
+
+    // Left col
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Invoice No:", leftColX, currentY + 4.5);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "bold");
+    doc.text(invoice.invoiceNo || "-", leftValX, currentY + 4.5);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Date & Time:", leftColX, currentY + 9);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(formattedDate, leftValX, currentY + 9);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Cashier:", leftColX, currentY + 13.5);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(cashier, leftValX, currentY + 13.5);
+
+    // Right col
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Customer:", rightColX, currentY + 4.5);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(invoice.customerName || "Walk-in Customer", rightValX, currentY + 4.5);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Phone / Doc:", rightColX, currentY + 9);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont("helvetica", "normal");
+    doc.text(phoneDoc, rightValX, currentY + 9);
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont("helvetica", "bold");
+    doc.text("Pay Mode:", rightColX, currentY + 13.5);
+    doc.setTextColor(16, 185, 129);
+    doc.setFont("helvetica", "bold");
+    doc.text((invoice.paymentMode || "CASH").toUpperCase(), rightValX, currentY + 13.5);
+
+    currentY += 20;
+  }
+
+  // 3. Line Items Table
   const items = invoice.items || [];
   const hasGst =
     items.some((item: any) => Number(item.gstPercent || 0) > 0) ||
@@ -248,19 +333,30 @@ export function buildPosReceiptPDF(
     const itemName = item.item?.name || item.itemName || "Item";
     const batchNo = item.batch?.batchNumber || item.batchNumber || "-";
     const exp = item.batch?.expiryDate || item.expiryDate || "-";
-    
+
+    let formattedExp = exp;
+    if (exp && exp !== "-") {
+      const expDate = new Date(exp);
+      if (!isNaN(expDate.getTime())) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+        formattedExp = diffDays <= 90 ? exp : format(expDate, "MMM-yyyy");
+      }
+    }
+
     const batchExpDetails = [
       batchNo && batchNo !== "-" ? `Batch: ${batchNo}` : null,
-      exp && exp !== "-" ? `Exp: ${exp}` : null,
+      formattedExp && formattedExp !== "-" ? `Exp: ${formattedExp}` : null,
     ].filter(Boolean).join("   |   ");
 
     const itemDescription = batchExpDetails ? `${itemName}\n${batchExpDetails}` : itemName;
 
     const qty = `${item.quantity} ${item.unit || "Unit"}`;
-    const rate = Number(item.unitRate || 0).toFixed(2);
+    const rate = formatPdfCurrency(item.unitRate || 0);
     const disc = Number(item.discountPercent || 0) > 0 ? `${item.discountPercent}%` : "-";
     const gst = Number(item.gstPercent || 0) > 0 ? `${item.gstPercent}%` : "-";
-    const total = Number(item.totalAmount || (item.quantity * item.unitRate)).toFixed(2);
+    const total = formatPdfCurrency(item.totalAmount ?? (Number(item.quantity || 0) * Number(item.unitRate || 0)));
 
     if (hasGst) {
       return [
@@ -292,44 +388,67 @@ export function buildPosReceiptPDF(
     ? [["-", "No items", "-", "-", "-", "-", "-"]]
     : [["-", "No items", "-", "-", "-", "-"]];
 
-  const columnStyles: Record<string, any> = hasGst
-    ? {
-        0: { cellWidth: 6, halign: "center" },
-        1: { cellWidth: 64, halign: "left" },
-        2: { cellWidth: 16, halign: "center" },
-        3: { cellWidth: 13, halign: "right" },
-        4: { cellWidth: 10, halign: "center" },
-        5: { cellWidth: 11, halign: "center" },
-        6: { cellWidth: 16, halign: "right", fontStyle: "bold" },
+  const columnStyles: Record<string, any> = isLandscape
+    ? (hasGst
+      ? {
+        0: { cellWidth: 7, halign: "center" },
+        1: { cellWidth: 88, halign: "left" },
+        2: { cellWidth: 18, halign: "center" },
+        3: { cellWidth: 24, halign: "right" },
+        4: { cellWidth: 12, halign: "center" },
+        5: { cellWidth: 12, halign: "center" },
+        6: { cellWidth: 33, halign: "right", fontStyle: "bold" },
       }
-    : {
-        0: { cellWidth: 6, halign: "center" },
-        1: { cellWidth: 75, halign: "left" },
-        2: { cellWidth: 16, halign: "center" },
-        3: { cellWidth: 13, halign: "right" },
-        4: { cellWidth: 10, halign: "center" },
-        5: { cellWidth: 16, halign: "right", fontStyle: "bold" },
-      };
+      : {
+        0: { cellWidth: 7, halign: "center" },
+        1: { cellWidth: 103, halign: "left" },
+        2: { cellWidth: 20, halign: "center" },
+        3: { cellWidth: 28, halign: "right" },
+        4: { cellWidth: 12, halign: "center" },
+        5: { cellWidth: 24, halign: "right", fontStyle: "bold" },
+      })
+    : (hasGst
+      ? {
+        0: { cellWidth: 5, halign: "center" },
+        1: { cellWidth: 55, halign: "left" },
+        2: { cellWidth: 14, halign: "center" },
+        3: { cellWidth: 20, halign: "right" },
+        4: { cellWidth: 9, halign: "center" },
+        5: { cellWidth: 9, halign: "center" },
+        6: { cellWidth: 24, halign: "right", fontStyle: "bold" },
+      }
+      : {
+        0: { cellWidth: 5, halign: "center" },
+        1: { cellWidth: 64, halign: "left" },
+        2: { cellWidth: 14, halign: "center" },
+        3: { cellWidth: 22, halign: "right" },
+        4: { cellWidth: 9, halign: "center" },
+        5: { cellWidth: 22, halign: "right", fontStyle: "bold" },
+      });
 
   autoTable(doc, {
     startY: currentY,
     margin: { left: margin, right: margin },
     head: tableHead,
     body: tableData.length > 0 ? tableData : emptyTableBody,
-    theme: "striped",
+    theme: "plain",
     headStyles: {
-      fillColor: [30, 41, 59], // slate-800
-      textColor: [255, 255, 255],
+      fillColor: false,
+      textColor: [15, 23, 42],
       fontStyle: "bold",
       fontSize: 7.2,
       halign: "center",
       cellPadding: 2,
+      lineWidth: { top: 0.35, bottom: 0.35, left: 0, right: 0 },
+      lineColor: [15, 23, 42],
     },
     styles: {
       fontSize: 7,
-      cellPadding: 2,
+      cellPadding: { top: 2, bottom: 2, left: 1.5, right: 1.5 },
       textColor: [30, 41, 59],
       valign: "middle",
+      lineWidth: { bottom: 0.15, top: 0, left: 0, right: 0 },
+      lineColor: [226, 232, 240],
     },
     columnStyles,
     willDrawCell: (data) => {
@@ -346,9 +465,20 @@ export function buildPosReceiptPDF(
         const batchNo = item.batch?.batchNumber || item.batchNumber || "-";
         const exp = item.batch?.expiryDate || item.expiryDate || "-";
 
+        let formattedExp = exp;
+        if (exp && exp !== "-") {
+          const expDate = new Date(exp);
+          if (!isNaN(expDate.getTime())) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+            formattedExp = diffDays <= 90 ? exp : format(expDate, "MMM-yyyy");
+          }
+        }
+
         const batchExpDetails = [
           batchNo && batchNo !== "-" ? `Batch: ${batchNo}` : null,
-          exp && exp !== "-" ? `Exp: ${exp}` : null,
+          formattedExp && formattedExp !== "-" ? `Exp: ${formattedExp}` : null,
         ].filter(Boolean).join("   |   ");
 
         const padLeft = typeof data.cell.padding === "function" ? data.cell.padding("left") : 2;
@@ -378,7 +508,7 @@ export function buildPosReceiptPDF(
     },
   });
 
-  const finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 4 : currentY + 30;
+  const finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 3 : currentY + 25;
   let summaryY = finalY;
 
   // 4. Financial Summary & Amount in Words
@@ -390,91 +520,100 @@ export function buildPosReceiptPDF(
   const roundOff = Number(invoice.roundOff || 0);
   const netAmount = Number(invoice.netAmount || 0);
 
-  // Left: Amount in Words box & Remarks
-  const wordsBoxWidth = 62;
-  doc.setFillColor(248, 250, 252);
-  doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(margin, summaryY, wordsBoxWidth, 24, 1, 1, "FD");
+  // Left: Amount in Words box & Remarks (Border only)
+  const wordsBoxWidth = isLandscape ? 100 : 62;
+  const wordsBoxHeight = isLandscape ? 22 : 24;
+  doc.setDrawColor(203, 213, 225); // slate-300
+  doc.setLineWidth(0.25);
+  doc.roundedRect(margin, summaryY, wordsBoxWidth, wordsBoxHeight, 1, 1, "S");
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text("AMOUNT IN WORDS:", margin + 2, summaryY + 4);
+  doc.text("AMOUNT IN WORDS:", margin + 2, summaryY + (isLandscape ? 3.8 : 4));
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
   doc.setTextColor(15, 23, 42);
   const words = numberToIndianWords(netAmount);
   const wordLines = doc.splitTextToSize(words, wordsBoxWidth - 4);
-  doc.text(wordLines, margin + 2, summaryY + 8);
+  doc.text(wordLines, margin + 2, summaryY + (isLandscape ? 7.5 : 8));
 
   doc.setFont("helvetica", "italic");
   doc.setFontSize(6);
   doc.setTextColor(100, 116, 139);
-  doc.text("* Returns accepted within 7 days with original invoice.", margin + 2, summaryY + 17);
-  doc.text("* Keep medicines stored in cool & dry place.", margin + 2, summaryY + 21);
+  doc.text("* Returns accepted within 7 days with original invoice.", margin + 2, summaryY + (isLandscape ? 15 : 17));
+  doc.text("* Keep medicines stored in cool & dry place.", margin + 2, summaryY + (isLandscape ? 18.5 : 21));
 
   // Right: Numerical Breakdown
-  const sumLabelX = margin + wordsBoxWidth + 4;
+  const sumLabelX = margin + wordsBoxWidth + (isLandscape ? 6 : 4);
   const sumValX = pageWidth - margin - 3;
-  const sumRowH = 3.8;
-  let rY = summaryY + 3.5;
+  const sumRowH = isLandscape ? 3.5 : 3.8;
+  let rY = summaryY + (isLandscape ? 3 : 3.5);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   doc.setTextColor(71, 85, 105);
 
   doc.text("Gross Subtotal:", sumLabelX, rY);
-  doc.text(subtotal.toFixed(2), sumValX, rY, { align: "right" });
+  doc.text(formatPdfCurrency(subtotal), sumValX, rY, { align: "right" });
   rY += sumRowH;
 
   if (discountAmount > 0) {
     doc.setTextColor(217, 119, 6); // amber-600
     doc.text("Total Discount:", sumLabelX, rY);
-    doc.text(`-${discountAmount.toFixed(2)}`, sumValX, rY, { align: "right" });
+    doc.text(formatPdfCurrency(-discountAmount), sumValX, rY, { align: "right" });
     rY += sumRowH;
   }
 
-  doc.setTextColor(71, 85, 105);
-  doc.text("Taxable Value:", sumLabelX, rY);
-  doc.text(taxableAmount.toFixed(2), sumValX, rY, { align: "right" });
-  rY += sumRowH;
+  // Only show Taxable Value & CGST/SGST lines when GST is present/non-zero
+  if (hasGst && (cgstAmount > 0 || sgstAmount > 0)) {
+    doc.setTextColor(71, 85, 105);
+    doc.text("Taxable Value:", sumLabelX, rY);
+    doc.text(formatPdfCurrency(taxableAmount), sumValX, rY, { align: "right" });
+    rY += sumRowH;
 
-  if (cgstAmount > 0 || sgstAmount > 0) {
     doc.text("CGST / SGST:", sumLabelX, rY);
-    doc.text(`${cgstAmount.toFixed(2)} + ${sgstAmount.toFixed(2)}`, sumValX, rY, { align: "right" });
+    doc.text(`${formatPdfCurrency(cgstAmount)} + ${formatPdfCurrency(sgstAmount)}`, sumValX, rY, { align: "right" });
     rY += sumRowH;
   }
 
   if (roundOff !== 0) {
+    doc.setTextColor(71, 85, 105);
     doc.text("Round Off:", sumLabelX, rY);
-    doc.text(`${roundOff >= 0 ? "+" : ""}${roundOff.toFixed(2)}`, sumValX, rY, { align: "right" });
+    doc.text(`${roundOff >= 0 ? "+" : ""}${formatPdfCurrency(roundOff)}`, sumValX, rY, { align: "right" });
     rY += sumRowH;
   }
 
-  // Net Total Highlight Box
+  // Net Total Highlight Box (Border only to save printer ink)
   rY += 1;
   const netBoxW = contentWidth - wordsBoxWidth - 3;
-  doc.setFillColor(16, 185, 129); // emerald-500
-  doc.roundedRect(sumLabelX - 2, rY - 3, netBoxW, 7.5, 1, 1, "F");
+  doc.setDrawColor(15, 23, 42); // slate-900 border
+  doc.setLineWidth(0.4);
+  doc.roundedRect(sumLabelX - 2, rY - (isLandscape ? 2.5 : 3), netBoxW, isLandscape ? 7 : 7.5, 1, 1, "S");
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  doc.text("NET AMOUNT:", sumLabelX + 1, rY + 1.8);
+  doc.setTextColor(15, 23, 42);
+  doc.text("NET AMOUNT:", sumLabelX + 1, rY + (isLandscape ? 2 : 1.8));
   doc.setFontSize(9);
-  doc.text(`Rs. ${netAmount.toFixed(2)}`, sumValX, rY + 1.8, { align: "right" });
+  doc.text(formatPdfCurrency(netAmount), sumValX, rY + (isLandscape ? 2 : 1.8), { align: "right" });
 
-  // 5. Footer (Authorized Signatory removed as requested)
-  const footerY = 198;
+  // 5. Footer
+  const footerY = isLandscape ? 141 : 198;
   doc.setDrawColor(226, 232, 240);
   doc.line(margin, footerY, pageWidth - margin, footerY);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(148, 163, 184);
-  doc.text("Thank you for your visit! Wishing you good health.", margin, footerY + 4);
-  doc.text("Computer Generated Invoice • No signature required", margin, footerY + 7.5);
+  doc.text("Thank you for your visit! Wishing you good health.", margin, footerY + 3.5);
+  doc.text(
+    "Computer Generated Invoice • No signature required",
+    isLandscape ? pageWidth - margin : margin,
+    footerY + (isLandscape ? 3.5 : 7.5),
+    isLandscape ? { align: "right" } : undefined
+  );
 
   return doc;
 }
@@ -483,9 +622,10 @@ export function printPosReceiptPDF(
   invoice: any,
   hospitalSettings?: HospitalSettings,
   currentStore?: any,
-  cashierName?: string
+  cashierName?: string,
+  orientation: "landscape" | "portrait" = "landscape"
 ) {
-  const doc = buildPosReceiptPDF(invoice, hospitalSettings, currentStore, cashierName);
+  const doc = buildPosReceiptPDF(invoice, hospitalSettings, currentStore, cashierName, orientation);
   const pdfBlob = doc.output("blob");
   const blobUrl = URL.createObjectURL(pdfBlob);
   const printWindow = window.open(blobUrl, "_blank");
@@ -501,9 +641,10 @@ export function downloadPosReceiptPDF(
   invoice: any,
   hospitalSettings?: HospitalSettings,
   currentStore?: any,
-  cashierName?: string
+  cashierName?: string,
+  orientation: "landscape" | "portrait" = "landscape"
 ) {
-  const doc = buildPosReceiptPDF(invoice, hospitalSettings, currentStore, cashierName);
+  const doc = buildPosReceiptPDF(invoice, hospitalSettings, currentStore, cashierName, orientation);
   doc.save(`Invoice-${invoice.invoiceNo || "POS"}.pdf`);
 }
 
@@ -516,6 +657,20 @@ function PosTerminal() {
   const [billDiscountType, setBillDiscountType] = React.useState<"percent" | "fixed">("percent");
   const [billDiscountValue, setBillDiscountValue] = React.useState<number>(0);
   const [isZeroGst, setIsZeroGst] = React.useState(true);
+  const [printOrientation, setPrintOrientation] = React.useState<"landscape" | "portrait">(() => {
+    try {
+      const saved = localStorage.getItem("pos_print_orientation");
+      if (saved === "portrait" || saved === "landscape") return saved;
+    } catch { }
+    return "landscape";
+  });
+
+  const handleOrientationChange = (val: "landscape" | "portrait") => {
+    setPrintOrientation(val);
+    try {
+      localStorage.setItem("pos_print_orientation", val);
+    } catch { }
+  };
 
   const [searchTerm, setSearchTerm] = React.useState("");
   const [cart, setCart] = React.useState<CartItem[]>([]);
@@ -645,17 +800,14 @@ function PosTerminal() {
   };
 
   const updateQuantity = (index: number, newQty: number) => {
-    if (newQty <= 0) {
-      removeFromCart(index);
-      return;
-    }
+    const val = isNaN(newQty) ? 0 : Math.max(0, newQty);
     const target = cart[index];
-    if (newQty > target.availableQty) {
+    if (val > target.availableQty) {
       toast.error(`Max available quantity is ${target.availableQty}`);
       return;
     }
     setCart((prev) =>
-      prev.map((item, idx) => (idx === index ? { ...item, quantity: newQty } : item))
+      prev.map((item, idx) => (idx === index ? { ...item, quantity: val } : item))
     );
   };
 
@@ -804,19 +956,24 @@ function PosTerminal() {
       toast.error("Cart is empty");
       return;
     }
+    const zeroItem = cart.find((item) => !item.quantity || item.quantity <= 0);
+    if (zeroItem) {
+      toast.error(`Please enter a valid quantity for "${zeroItem.itemName}" or click trash to remove it`);
+      return;
+    }
     invoiceMutation.mutate();
   };
 
-  const handlePrint = (invToPrint?: any) => {
+  const handlePrint = (invToPrint?: any, orient?: "landscape" | "portrait") => {
     const inv = invToPrint || completedInvoice;
     if (!inv) return;
-    printPosReceiptPDF(inv, hospitalSettings, currentStore, currentUserName);
+    printPosReceiptPDF(inv, hospitalSettings, currentStore, currentUserName, orient || printOrientation);
   };
 
-  const handleDownload = (invToDownload?: any) => {
+  const handleDownload = (invToDownload?: any, orient?: "landscape" | "portrait") => {
     const inv = invToDownload || completedInvoice;
     if (!inv) return;
-    downloadPosReceiptPDF(inv, hospitalSettings, currentStore, currentUserName);
+    downloadPosReceiptPDF(inv, hospitalSettings, currentStore, currentUserName, orient || printOrientation);
   };
 
   return (
@@ -825,6 +982,23 @@ function PosTerminal() {
       description="Marg ERP–inspired high-speed retail pharmacy and dispensing billing counter"
       action={
         <div className="flex items-center gap-2">
+          {/* Print Format Selector */}
+          <div className="flex items-center gap-1.5 bg-muted/60 px-2 py-1 rounded-md border text-xs">
+            <span className="text-muted-foreground font-medium text-[11px]">Print:</span>
+            <Select
+              value={printOrientation}
+              onValueChange={(val: "landscape" | "portrait") => handleOrientationChange(val)}
+            >
+              <SelectTrigger className="h-7 w-28 text-xs bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="landscape">Landscape (A5)</SelectItem>
+                <SelectItem value="portrait">Portrait (A5)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           <Button
             variant="outline"
             size="sm"
@@ -1007,7 +1181,7 @@ function PosTerminal() {
                                 type="button"
                                 variant="outline"
                                 size="icon"
-                                onClick={() => updateQuantity(index, item.quantity - 1)}
+                                onClick={() => updateQuantity(index, Math.max(0, item.quantity - 1))}
                                 className="w-6 h-6 rounded"
                               >
                                 <Minus className="w-3 h-3" />
@@ -1015,8 +1189,9 @@ function PosTerminal() {
                               <Input
                                 type="number"
                                 step="1"
-                                value={item.quantity}
-                                onChange={(e) => updateQuantity(index, Number(e.target.value))}
+                                min="0"
+                                value={item.quantity === 0 ? "" : item.quantity}
+                                onChange={(e) => updateQuantity(index, e.target.value === "" ? 0 : Number(e.target.value))}
                                 className="w-14 h-6 text-center font-mono font-bold text-xs p-1"
                               />
                               <Button
@@ -1350,26 +1525,57 @@ function PosTerminal() {
                 </Badge>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2">
-                <Button 
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-1">
+                <span className="text-[11px] font-medium">Format:</span>
+                <div className="inline-flex rounded-md border p-0.5 bg-slate-100 dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange("landscape")}
+                    className={cn(
+                      "px-2.5 py-1 text-xs rounded font-medium transition-all cursor-pointer",
+                      printOrientation === "landscape"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Landscape (A5)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOrientationChange("portrait")}
+                    className={cn(
+                      "px-2.5 py-1 text-xs rounded font-medium transition-all cursor-pointer",
+                      printOrientation === "portrait"
+                        ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Portrait (A5)
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <Button
                   onClick={() => handlePrint(completedInvoice)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium cursor-pointer"
                 >
                   <Printer className="w-4 h-4 mr-2" />
                   Print Receipt
                 </Button>
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => handleDownload(completedInvoice)}
+                  className="cursor-pointer"
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Download PDF
                 </Button>
               </div>
 
-              <Button 
-                variant="ghost" 
-                className="w-full text-xs text-muted-foreground" 
+              <Button
+                variant="ghost"
+                className="w-full text-xs text-muted-foreground cursor-pointer"
                 onClick={() => setCompletedInvoice(null)}
               >
                 Close & New Bill
@@ -1379,21 +1585,21 @@ function PosTerminal() {
         </Dialog>
       )}
 
-      {/* Recent Invoices / Reprint Dialog */}
-      <Dialog open={showRecentInvoices} onOpenChange={setShowRecentInvoices}>
-        <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+      {/* Recent Invoices / Reprint Sheet (Slide-over from right) */}
+      <Sheet open={showRecentInvoices} onOpenChange={setShowRecentInvoices}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl p-6 flex flex-col">
+          <SheetHeader className="pb-2 border-b">
+            <SheetTitle className="flex items-center gap-2">
               <History className="w-5 h-5 text-emerald-600" />
               Recent POS Invoices & Reprint
-            </DialogTitle>
-            <DialogDescription>
+            </SheetTitle>
+            <SheetDescription>
               Search past bills, view details, and instantly generate or print receipts with jsPDF.
-            </DialogDescription>
-          </DialogHeader>
+            </SheetDescription>
+          </SheetHeader>
 
-          <div className="py-2">
-            <div className="relative">
+          <div className="py-2 flex items-center gap-2">
+            <div className="relative flex-1">
               <Search className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
               <Input
                 placeholder="Search by invoice #, customer name or phone..."
@@ -1402,6 +1608,18 @@ function PosTerminal() {
                 className="pl-9 h-9 text-xs"
               />
             </div>
+            <Select
+              value={printOrientation}
+              onValueChange={(val: "landscape" | "portrait") => handleOrientationChange(val)}
+            >
+              <SelectTrigger className="h-9 w-36 text-xs shrink-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="landscape">Landscape (A5)</SelectItem>
+                <SelectItem value="portrait">Portrait (A5)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="flex-1 overflow-y-auto min-h-[300px] border rounded-lg">
@@ -1486,8 +1704,8 @@ function PosTerminal() {
               </table>
             )}
           </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
     </ModuleLayout>
   );
 }

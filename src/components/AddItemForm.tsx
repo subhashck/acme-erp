@@ -281,7 +281,7 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
       const payload = {
         name: data.name,
         itemTypeId: Number(data.itemTypeId),
-        baseUnitId: Number(data.baseUnitId || data.purchaseUnitId),
+        baseUnitId: Number(data.purchaseUnitId),
         purchaseUnitId: Number(data.purchaseUnitId),
         saleUnitId: Number(data.saleUnitId),
         rate: Number(data.rate),

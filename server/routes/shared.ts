@@ -4,7 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { db } from "../db/client.ts";
 import { auth, type AuthEnv } from "../auth.ts";
-import { staff, patients, managementApprovers, departments, staffDepartments, unitTypes } from "../db/schema.ts";
+import { staff, patients, managementApprovers, departments, staffDepartments, unitTypes, unitConversions, items } from "../db/schema.ts";
 
 // ---------------------------------------------------------------------------
 // Simple helpers
@@ -43,6 +43,122 @@ export async function resolveUnitId(tx: any, unitId?: number | null, unitStr?: s
     return created.id;
   }
   return first.id;
+}
+
+// Helper to get unit conversion multiplier from fromUnitId to toUnitId
+export async function getUnitConversionMultiplier(
+  tx: any,
+  fromUnitId?: number | null,
+  toUnitId?: number | null
+): Promise<number> {
+  if (!fromUnitId || !toUnitId || fromUnitId === toUnitId) {
+    return 1;
+  }
+
+  // Check direct conversion
+  const [direct] = await tx
+    .select({ multiplier: unitConversions.multiplier })
+    .from(unitConversions)
+    .where(and(eq(unitConversions.fromUnitId, fromUnitId), eq(unitConversions.toUnitId, toUnitId)))
+    .limit(1);
+
+  if (direct && Number(direct.multiplier) > 0) {
+    return Number(direct.multiplier);
+  }
+
+  // Check inverse conversion
+  const [inverse] = await tx
+    .select({ multiplier: unitConversions.multiplier })
+    .from(unitConversions)
+    .where(and(eq(unitConversions.fromUnitId, toUnitId), eq(unitConversions.toUnitId, fromUnitId)))
+    .limit(1);
+
+  if (inverse && Number(inverse.multiplier) > 0) {
+    return 1 / Number(inverse.multiplier);
+  }
+
+  // Multi-step conversion via all rules (BFS search)
+  const allConversions = await tx
+    .select({
+      fromUnitId: unitConversions.fromUnitId,
+      toUnitId: unitConversions.toUnitId,
+      multiplier: unitConversions.multiplier,
+    })
+    .from(unitConversions);
+
+  const adj = new Map<number, Array<{ to: number; factor: number }>>();
+  for (const c of allConversions) {
+    const f = Number(c.fromUnitId);
+    const t = Number(c.toUnitId);
+    const m = Number(c.multiplier);
+    if (m > 0) {
+      if (!adj.has(f)) adj.set(f, []);
+      if (!adj.has(t)) adj.set(t, []);
+      adj.get(f)!.push({ to: t, factor: m });
+      adj.get(t)!.push({ to: f, factor: 1 / m });
+    }
+  }
+
+  const queue: Array<{ unitId: number; cumulativeFactor: number }> = [
+    { unitId: fromUnitId, cumulativeFactor: 1 },
+  ];
+  const visited = new Set<number>([fromUnitId]);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.unitId === toUnitId) {
+      return current.cumulativeFactor;
+    }
+
+    const neighbors = adj.get(current.unitId) || [];
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor.to)) {
+        visited.add(neighbor.to);
+        queue.push({
+          unitId: neighbor.to,
+          cumulativeFactor: current.cumulativeFactor * neighbor.factor,
+        });
+      }
+    }
+  }
+
+  return 1;
+}
+
+// Helper to convert an item's quantity to its base unit
+export async function convertItemQuantityToBase(
+  tx: any,
+  itemId: number,
+  quantity: number,
+  fromUnitId?: number | null,
+  fromUnitStr?: string | null
+): Promise<{ baseQuantity: number; factor: number; baseUnitId: number }> {
+  const [item] = await tx
+    .select({
+      id: items.id,
+      baseUnitId: items.baseUnitId,
+      purchaseUnitId: items.purchaseUnitId,
+      saleUnitId: items.saleUnitId,
+    })
+    .from(items)
+    .where(eq(items.id, itemId))
+    .limit(1);
+
+  if (!item) {
+    return { baseQuantity: quantity, factor: 1, baseUnitId: fromUnitId || 1 };
+  }
+
+  const effectiveFromUnitId = await resolveUnitId(tx, fromUnitId, fromUnitStr);
+  const effectiveBaseUnitId =
+    item.baseUnitId ||
+    (await resolveUnitId(tx, item.purchaseUnitId || item.saleUnitId, null));
+
+  const factor = await getUnitConversionMultiplier(tx, effectiveFromUnitId, effectiveBaseUnitId);
+  return {
+    baseQuantity: Number((quantity * factor).toFixed(4)),
+    factor,
+    baseUnitId: effectiveBaseUnitId,
+  };
 }
 
 export const jsonBody = async <T extends z.ZodTypeAny>(c: Context, schema: T) => {

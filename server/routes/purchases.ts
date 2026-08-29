@@ -101,6 +101,13 @@ async function processGrnPosting(
     }
 
     const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+    const basicValue = (item.receivedQty || 0) * (item.unitRate || 0);
+    const discPercent = item.discountPercent || 0;
+    const discAmt = item.discountAmount ?? (basicValue * (discPercent / 100));
+    const taxable = Math.max(0, basicValue - discAmt);
+    const gstPct = item.gstPercent || 0;
+    const gstAmt = taxable * (gstPct / 100);
+    const lineVal = taxable + gstAmt;
 
     await tx.insert(grnItems).values({
       grnId,
@@ -112,9 +119,12 @@ async function processGrnPosting(
       receivedQty: item.receivedQty,
       freeQty: item.freeQty,
       unitRate: item.unitRate ?? 0,
+      discountPercent: discPercent,
+      discountAmount: discAmt,
+      taxableAmount: taxable,
       salePrice: item.salePrice ?? 0,
       gstPercent: item.gstPercent ?? 0,
-      lineValue: item.unitRate ? item.unitRate * item.receivedQty : 0,
+      lineValue: lineVal,
       batch: item.batch,
       expiryDate: item.expiryDate,
       notes: item.notes,
@@ -166,11 +176,17 @@ const grnItemInput = z.object({
   itemName: z.string().optional().nullable(),
   unitId: z.coerce.number().positive().optional(),
   unit: z.string().optional().nullable(),
+  saleUnit: z.string().optional().nullable(),
+  saleUnitId: z.coerce.number().positive().optional(),
   receivedQty: z.coerce.number().min(0),
   freeQty: z.coerce.number().min(0).default(0),
   unitRate: z.coerce.number().min(0).optional(),
+  discountPercent: z.coerce.number().min(0).max(100).default(0).optional(),
+  discountAmount: z.coerce.number().min(0).default(0).optional(),
+  taxableAmount: z.coerce.number().min(0).optional(),
   salePrice: z.coerce.number().min(0).optional(),
   gstPercent: z.coerce.number().min(0).optional(),
+  lineValue: z.coerce.number().min(0).optional(),
   batch: z.string().optional().nullable(),
   expiryDate: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
@@ -203,6 +219,13 @@ const grnInput = z.object({
   dateOfDelivery: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()),
   remarks: z.preprocess(v => (typeof v === "string" && v.trim() === "" ? null : v), z.string().nullable().optional()),
   status: z.enum(["draft", "posted", "correction"]).default("draft"),
+  subtotal: z.coerce.number().min(0).optional(),
+  billDiscountAmount: z.coerce.number().min(0).default(0).optional(),
+  discountAmount: z.coerce.number().min(0).default(0).optional(),
+  taxableAmount: z.coerce.number().min(0).optional(),
+  totalGst: z.coerce.number().min(0).optional(),
+  roundOff: z.coerce.number().optional(),
+  netAmount: z.coerce.number().optional(),
   items: z.array(grnItemInput).min(1, "At least one item is required"),
 });
 
@@ -713,6 +736,12 @@ export const purchasesRoutes = app
         dateOfDelivery: input.dateOfDelivery,
         remarks: input.remarks,
         status: input.status as any,
+        subtotal: input.subtotal ?? 0,
+        discountAmount: input.billDiscountAmount ?? input.discountAmount ?? 0,
+        taxableAmount: input.taxableAmount ?? 0,
+        totalGst: input.totalGst ?? 0,
+        roundOff: input.roundOff ?? 0,
+        netAmount: input.netAmount ?? 0,
         createdBy: userId,
       }).returning();
 
@@ -724,22 +753,35 @@ export const purchasesRoutes = app
       } else {
         if (input.items.length > 0) {
           const itemsToInsert = await Promise.all(
-            input.items.map(async (item) => ({
-              grnId: grn.id,
-              poItemId: item.poItemId ?? null,
-              itemId: item.itemId ?? null,
-              itemName: item.itemName ?? null,
-              unitId: await resolveUnitId(tx, item.unitId, item.unit),
-              receivedQty: item.receivedQty,
-              freeQty: item.freeQty,
-              unitRate: item.unitRate ?? 0,
-              salePrice: item.salePrice ?? 0,
-              gstPercent: item.gstPercent ?? 0,
-              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-              batch: item.batch,
-              expiryDate: item.expiryDate,
-              notes: item.notes,
-            }))
+            input.items.map(async (item) => {
+              const basicValue = (item.receivedQty || 0) * (item.unitRate || 0);
+              const discPercent = item.discountPercent || 0;
+              const discAmt = item.discountAmount ?? (basicValue * (discPercent / 100));
+              const taxable = Math.max(0, basicValue - discAmt);
+              const gstPct = item.gstPercent || 0;
+              const gstAmt = taxable * (gstPct / 100);
+              const lineVal = taxable + gstAmt;
+
+              return {
+                grnId: grn.id,
+                poItemId: item.poItemId ?? null,
+                itemId: item.itemId ?? null,
+                itemName: item.itemName ?? null,
+                unitId: await resolveUnitId(tx, item.unitId, item.unit),
+                receivedQty: item.receivedQty,
+                freeQty: item.freeQty,
+                unitRate: item.unitRate ?? 0,
+                discountPercent: discPercent,
+                discountAmount: discAmt,
+                taxableAmount: taxable,
+                salePrice: item.salePrice ?? 0,
+                gstPercent: item.gstPercent ?? 0,
+                lineValue: lineVal,
+                batch: item.batch,
+                expiryDate: item.expiryDate,
+                notes: item.notes,
+              };
+            })
           );
           await tx.insert(grnItems).values(itemsToInsert);
         }
@@ -779,40 +821,60 @@ export const purchasesRoutes = app
       }
 
       const [grn] = await tx.update(grns).set({
+        vendorId: input.vendorId || existingGrn.vendorId,
         storeId: input.storeId || existingGrn.storeId,
         grnNo,
         grnDate: input.grnDate,
         dateOfDelivery: input.dateOfDelivery,
         remarks: input.remarks,
         status: input.status as any,
+        subtotal: input.subtotal ?? existingGrn.subtotal,
+        discountAmount: (input.billDiscountAmount ?? input.discountAmount) ?? existingGrn.discountAmount,
+        taxableAmount: input.taxableAmount ?? existingGrn.taxableAmount,
+        totalGst: input.totalGst ?? existingGrn.totalGst,
+        roundOff: input.roundOff ?? existingGrn.roundOff,
+        netAmount: input.netAmount ?? existingGrn.netAmount,
       }).where(eq(grns.id, grnId)).returning();
 
       await tx.delete(grnItems).where(eq(grnItems.grnId, grnId));
 
       if (input.status === "posted") {
-        const usedStoreId = await processGrnPosting(tx, grnId, input.storeId || existingGrn.storeId, existingGrn.vendorId, input.items, userId);
+        const usedStoreId = await processGrnPosting(tx, grnId, input.storeId || existingGrn.storeId, input.vendorId || existingGrn.vendorId, input.items, userId);
         if (!grn.storeId) {
           await tx.update(grns).set({ storeId: usedStoreId }).where(eq(grns.id, grnId));
         }
       } else {
         if (input.items.length > 0) {
           const itemsToInsert = await Promise.all(
-            input.items.map(async (item) => ({
-              grnId: grnId,
-              poItemId: item.poItemId ?? null,
-              itemId: item.itemId ?? null,
-              itemName: item.itemName ?? null,
-              unitId: await resolveUnitId(tx, item.unitId, item.unit),
-              receivedQty: item.receivedQty,
-              freeQty: item.freeQty,
-              unitRate: item.unitRate ?? 0,
-              salePrice: item.salePrice ?? 0,
-              gstPercent: item.gstPercent ?? 0,
-              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-              batch: item.batch,
-              expiryDate: item.expiryDate,
-              notes: item.notes,
-            }))
+            input.items.map(async (item) => {
+              const basicValue = (item.receivedQty || 0) * (item.unitRate || 0);
+              const discPercent = item.discountPercent || 0;
+              const discAmt = item.discountAmount ?? (basicValue * (discPercent / 100));
+              const taxable = Math.max(0, basicValue - discAmt);
+              const gstPct = item.gstPercent || 0;
+              const gstAmt = taxable * (gstPct / 100);
+              const lineVal = taxable + gstAmt;
+
+              return {
+                grnId: grnId,
+                poItemId: item.poItemId ?? null,
+                itemId: item.itemId ?? null,
+                itemName: item.itemName ?? null,
+                unitId: await resolveUnitId(tx, item.unitId, item.unit),
+                receivedQty: item.receivedQty,
+                freeQty: item.freeQty,
+                unitRate: item.unitRate ?? 0,
+                discountPercent: discPercent,
+                discountAmount: discAmt,
+                taxableAmount: taxable,
+                salePrice: item.salePrice ?? 0,
+                gstPercent: item.gstPercent ?? 0,
+                lineValue: lineVal,
+                batch: item.batch,
+                expiryDate: item.expiryDate,
+                notes: item.notes,
+              };
+            })
           );
           await tx.insert(grnItems).values(itemsToInsert);
         }
@@ -940,6 +1002,12 @@ export const purchasesRoutes = app
         dateOfDelivery: input.dateOfDelivery,
         remarks: input.remarks,
         status: input.status as any,
+        subtotal: input.subtotal ?? 0,
+        discountAmount: input.billDiscountAmount ?? input.discountAmount ?? 0,
+        taxableAmount: input.taxableAmount ?? 0,
+        totalGst: input.totalGst ?? 0,
+        roundOff: input.roundOff ?? 0,
+        netAmount: input.netAmount ?? 0,
         createdBy: userId,
       }).returning();
 
@@ -951,22 +1019,35 @@ export const purchasesRoutes = app
       } else {
         if (input.items.length > 0) {
           const itemsToInsert = await Promise.all(
-            input.items.map(async (item) => ({
-              grnId: grn.id,
-              poItemId: item.poItemId ?? null,
-              itemId: item.itemId ?? null,
-              itemName: item.itemName ?? null,
-              unitId: await resolveUnitId(tx, item.unitId, item.unit),
-              receivedQty: item.receivedQty,
-              freeQty: item.freeQty,
-              unitRate: item.unitRate ?? 0,
-              salePrice: item.salePrice ?? 0,
-              gstPercent: item.gstPercent ?? 0,
-              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-              batch: item.batch,
-              expiryDate: item.expiryDate,
-              notes: item.notes,
-            }))
+            input.items.map(async (item) => {
+              const basicValue = (item.receivedQty || 0) * (item.unitRate || 0);
+              const discPercent = item.discountPercent || 0;
+              const discAmt = item.discountAmount ?? (basicValue * (discPercent / 100));
+              const taxable = Math.max(0, basicValue - discAmt);
+              const gstPct = item.gstPercent || 0;
+              const gstAmt = taxable * (gstPct / 100);
+              const lineVal = taxable + gstAmt;
+
+              return {
+                grnId: grn.id,
+                poItemId: item.poItemId ?? null,
+                itemId: item.itemId ?? null,
+                itemName: item.itemName ?? null,
+                unitId: await resolveUnitId(tx, item.unitId, item.unit),
+                receivedQty: item.receivedQty,
+                freeQty: item.freeQty,
+                unitRate: item.unitRate ?? 0,
+                discountPercent: discPercent,
+                discountAmount: discAmt,
+                taxableAmount: taxable,
+                salePrice: item.salePrice ?? 0,
+                gstPercent: item.gstPercent ?? 0,
+                lineValue: lineVal,
+                batch: item.batch,
+                expiryDate: item.expiryDate,
+                notes: item.notes,
+              };
+            })
           );
           await tx.insert(grnItems).values(itemsToInsert);
         }
@@ -1033,6 +1114,12 @@ export const purchasesRoutes = app
         dateOfDelivery: input.dateOfDelivery,
         remarks: input.remarks,
         status: input.status as any,
+        subtotal: input.subtotal ?? existingGrn.subtotal,
+        discountAmount: (input.billDiscountAmount ?? input.discountAmount) ?? existingGrn.discountAmount,
+        taxableAmount: input.taxableAmount ?? existingGrn.taxableAmount,
+        totalGst: input.totalGst ?? existingGrn.totalGst,
+        roundOff: input.roundOff ?? existingGrn.roundOff,
+        netAmount: input.netAmount ?? existingGrn.netAmount,
       }).where(eq(grns.id, grnId)).returning();
 
       await tx.delete(grnItems).where(eq(grnItems.grnId, grnId));
@@ -1045,22 +1132,35 @@ export const purchasesRoutes = app
       } else {
         if (input.items.length > 0) {
           const itemsToInsert = await Promise.all(
-            input.items.map(async (item) => ({
-              grnId: grnId,
-              poItemId: item.poItemId ?? null,
-              itemId: item.itemId ?? null,
-              itemName: item.itemName ?? null,
-              unitId: await resolveUnitId(tx, item.unitId, item.unit),
-              receivedQty: item.receivedQty,
-              freeQty: item.freeQty,
-              unitRate: item.unitRate ?? 0,
-              salePrice: item.salePrice ?? 0,
-              gstPercent: item.gstPercent ?? 0,
-              lineValue: item.unitRate ? (item.unitRate * item.receivedQty) : 0,
-              batch: item.batch,
-              expiryDate: item.expiryDate,
-              notes: item.notes,
-            }))
+            input.items.map(async (item) => {
+              const basicValue = (item.receivedQty || 0) * (item.unitRate || 0);
+              const discPercent = item.discountPercent || 0;
+              const discAmt = item.discountAmount ?? (basicValue * (discPercent / 100));
+              const taxable = Math.max(0, basicValue - discAmt);
+              const gstPct = item.gstPercent || 0;
+              const gstAmt = taxable * (gstPct / 100);
+              const lineVal = taxable + gstAmt;
+
+              return {
+                grnId: grnId,
+                poItemId: item.poItemId ?? null,
+                itemId: item.itemId ?? null,
+                itemName: item.itemName ?? null,
+                unitId: await resolveUnitId(tx, item.unitId, item.unit),
+                receivedQty: item.receivedQty,
+                freeQty: item.freeQty,
+                unitRate: item.unitRate ?? 0,
+                discountPercent: discPercent,
+                discountAmount: discAmt,
+                taxableAmount: taxable,
+                salePrice: item.salePrice ?? 0,
+                gstPercent: item.gstPercent ?? 0,
+                lineValue: lineVal,
+                batch: item.batch,
+                expiryDate: item.expiryDate,
+                notes: item.notes,
+              };
+            })
           );
           await tx.insert(grnItems).values(itemsToInsert);
         }

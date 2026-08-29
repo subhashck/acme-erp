@@ -53,12 +53,15 @@ import {
 import { format } from "date-fns";
 import { cn } from "@/utils/cn";
 import { ColumnDef } from "@/components/DataTable";
+import { findUnit, getUnitConversionFactor } from "@/lib/unit-conversion";
 
 const adjItemSchema = z.object({
   itemId: z.coerce.number().positive("Item is required"),
   batchId: z.coerce.number().positive("Batch is required"),
   systemQty: z.coerce.number().min(0),
   physicalQty: z.coerce.number().min(0, "Physical quantity is required"),
+  unit: z.string().optional(),
+  unitId: z.coerce.number().optional().nullable(),
   type: z.enum(["gain", "loss", "expired", "damaged"]).default("gain"),
 });
 
@@ -89,25 +92,21 @@ function AdjustmentsList() {
   const navigate = useNavigate({ from: Route.fullPath });
   const [localSearch, setLocalSearch] = React.useState(searchParams.search || "");
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [selectedAdj, setSelectedAdj] = React.useState<any | null>(null);
-
-  // Auto-open adjustment detail dialog if adjustmentId is present in URL search
-  const { data: directAdjustment } = useRpcQuery<any>(
-    ["inventory-adjustment-direct", searchParams.adjustmentId],
-    () =>
-      client.inventory.adjustments[":id"].$get({
-        param: { id: String(searchParams.adjustmentId) },
-      }),
-    {
-      enabled: !!searchParams.adjustmentId,
-    }
+  const [selectedAdjId, setSelectedAdjId] = React.useState<number | null>(
+    searchParams.adjustmentId || null
   );
 
-  React.useEffect(() => {
-    if (directAdjustment && !("error" in directAdjustment)) {
-      setSelectedAdj(directAdjustment);
+  // Fetch full adjustment details including items and store metadata when an ID is selected
+  const { data: selectedAdjDetail, isFetching: isLoadingDetail } = useRpcQuery<any>(
+    ["inventory-adjustment-detail", selectedAdjId],
+    () =>
+      client.inventory.adjustments[":id"].$get({
+        param: { id: String(selectedAdjId) },
+      }),
+    {
+      enabled: !!selectedAdjId,
     }
-  }, [directAdjustment]);
+  );
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -143,6 +142,16 @@ function AdjustmentsList() {
     () => client.inventory.stores.$get()
   );
 
+  const { data: unitTypes = [] } = useRpcQuery<any[]>(
+    ["unit-types"],
+    () => client["unit-types"].$get()
+  );
+
+  const { data: unitConversions = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
   const adjsData = adjsResponse?.data || [];
   const pagination = adjsResponse?.pagination || { page: 1, pageSize: 20, totalRecords: 0, totalPages: 1 };
   const startRecord = pagination.totalRecords === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1;
@@ -158,7 +167,7 @@ function AdjustmentsList() {
     defaultValues: {
       storeId: storesList[0]?.id || 0,
       reason: "Physical Stock Count / Variance Reconciliation",
-      items: [{ itemId: 0, batchId: 0, systemQty: 0, physicalQty: 0, type: "gain" }],
+      items: [{ itemId: 0, batchId: 0, systemQty: 0, physicalQty: 0, unit: "Unit", unitId: null, type: "gain" }],
     },
   });
 
@@ -183,6 +192,36 @@ function AdjustmentsList() {
     control: form.control,
     name: "items",
   });
+
+  const handleUnitChange = (index: number, newUnit: string) => {
+    const oldUnit = form.getValues(`items.${index}.unit`) || "Unit";
+    const oldSysQty = Number(form.getValues(`items.${index}.systemQty`)) || 0;
+    const oldPhysQty = Number(form.getValues(`items.${index}.physicalQty`)) || 0;
+    const targetUnitId = findUnit(newUnit, unitTypes)?.id || null;
+
+    if (oldUnit && newUnit && oldUnit !== newUnit) {
+      const conv = getUnitConversionFactor(oldUnit, newUnit, unitTypes, unitConversions);
+      if (conv.convertible && conv.factor > 0) {
+        form.setValue(`items.${index}.systemQty`, Number((oldSysQty * conv.factor).toFixed(3)));
+        form.setValue(`items.${index}.physicalQty`, Number((oldPhysQty * conv.factor).toFixed(3)));
+      } else {
+        // Check conversion from batch's source stock unit
+        const bId = form.getValues(`items.${index}.batchId`);
+        const stockMatch = storeStockList.find((s: any) => s.batchId === bId);
+        if (stockMatch) {
+          const baseUnit = stockMatch.unit || stockMatch.baseUnit;
+          const convFromBase = getUnitConversionFactor(baseUnit, newUnit, unitTypes, unitConversions);
+          if (convFromBase.convertible && convFromBase.factor > 0) {
+            const newSys = Number((Number(stockMatch.availableQty) * convFromBase.factor).toFixed(3));
+            form.setValue(`items.${index}.systemQty`, newSys);
+            form.setValue(`items.${index}.physicalQty`, newSys);
+          }
+        }
+      }
+    }
+    form.setValue(`items.${index}.unit`, newUnit);
+    form.setValue(`items.${index}.unitId`, targetUnitId);
+  };
 
   const createMutation = useMutation({
     mutationFn: async (values: AdjFormValues) => {
@@ -220,9 +259,10 @@ function AdjustmentsList() {
     onSuccess: () => {
       toast.success("Stock adjustment posted and inventory stock updated successfully!");
       queryClient.invalidateQueries({ queryKey: ["inventory-adjustments"] });
+      queryClient.invalidateQueries({ queryKey: ["inventory-adjustment-detail"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
       queryClient.invalidateQueries({ queryKey: ["inventory-ledger"] });
-      setSelectedAdj(null);
+      setSelectedAdjId(null);
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -258,9 +298,9 @@ function AdjustmentsList() {
       render: (row: any) => (
         <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
           <Warehouse className="w-3.5 h-3.5 text-slate-400" />
-          <span>{row.store?.name || "N/A"}</span>
-          {row.store?.code && (
-            <span className="text-[10px] text-muted-foreground font-mono">({row.store.code})</span>
+          <span>{row.storeName || row.store?.name || "N/A"}</span>
+          {(row.storeCode || row.store?.code) && (
+            <span className="text-[10px] text-muted-foreground font-mono">({row.storeCode || row.store?.code})</span>
           )}
         </div>
       ),
@@ -299,13 +339,13 @@ function AdjustmentsList() {
     {
       id: "actions",
       label: "Actions",
-      render: (row) => (
+      render: (row: any) => (
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setSelectedAdj(row)}
-            className="h-8 text-xs font-medium"
+            onClick={() => setSelectedAdjId(row.id)}
+            className="h-8 text-xs font-medium cursor-pointer"
           >
             <FileText className="w-3.5 h-3.5 mr-1 text-slate-500" />
             {row.status === "draft" ? "Review & Post" : "View Details"}
@@ -398,7 +438,7 @@ function AdjustmentsList() {
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="posted">Posted</SelectItem>
+                    <SelectItem value="approved">Posted</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
                   </SelectContent>
                 </Select>
@@ -529,6 +569,9 @@ function AdjustmentsList() {
                         <div className="flex items-center gap-1.5 font-medium text-foreground">
                           <Warehouse className="w-3.5 h-3.5 text-muted-foreground" />
                           {row.storeName || "N/A"}
+                          {row.storeCode && (
+                            <span className="text-[10px] text-muted-foreground font-mono">({row.storeCode})</span>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground font-medium">
@@ -547,8 +590,8 @@ function AdjustmentsList() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 text-xs px-2.5"
-                          onClick={() => setSelectedAdj(row)}
+                          className="h-7 text-xs px-2.5 cursor-pointer"
+                          onClick={() => setSelectedAdjId(row.id)}
                         >
                           <FileText className="w-3.5 h-3.5 mr-1 text-muted-foreground" />
                           {row.status === "draft" ? "Review & Post" : "View Details"}
@@ -638,9 +681,9 @@ function AdjustmentsList() {
         </Card>
       </div>
 
-      {/* Create Adjustment Dialog with shadcn Components */}
+      {/* Create Adjustment Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <SlidersHorizontal className="w-5 h-5 text-emerald-600" />
@@ -702,98 +745,195 @@ function AdjustmentsList() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => append({ itemId: 0, batchId: 0, systemQty: 0, physicalQty: 0, type: "gain" })}
+                  onClick={() => append({ itemId: 0, batchId: 0, systemQty: 0, physicalQty: 0, unit: "Unit", unitId: null, type: "gain" })}
                   className="h-8 text-xs font-medium"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Batch Item
                 </Button>
               </div>
 
-              {fields.map((field, index) => (
-                <div key={field.id} className="flex flex-wrap items-center gap-2.5 p-3 rounded-lg border bg-muted/30">
-                  <div className="flex-1 min-w-[200px]">
-                    <Label className="text-[10px] text-muted-foreground block mb-1">Select Batch</Label>
-                    <Controller
-                      control={form.control}
-                      name={`items.${index}.batchId`}
-                      render={({ field: batchField }) => (
-                        <Select
-                          value={batchField.value ? String(batchField.value) : ""}
-                          onValueChange={(val) => {
-                            const bId = Number(val);
-                            batchField.onChange(bId);
-                            const match = storeStockList.find((s: any) => s.batchId === bId);
-                            if (match) {
-                              form.setValue(`items.${index}.itemId`, match.itemId);
-                              form.setValue(`items.${index}.systemQty`, Number(match.availableQty));
-                              form.setValue(`items.${index}.physicalQty`, Number(match.availableQty));
-                            }
-                          }}
+              {fields.map((field, index) => {
+                const currentBatchId = form.watch(`items.${index}.batchId`);
+                const currentItemId = form.watch(`items.${index}.itemId`);
+                const currentUnit = form.watch(`items.${index}.unit`) || "Unit";
+                const currentSysQty = Number(form.watch(`items.${index}.systemQty`)) || 0;
+                const currentPhysQty = Number(form.watch(`items.${index}.physicalQty`)) || 0;
+                const diff = currentPhysQty - currentSysQty;
+
+                const currentStockItem = storeStockList.find((s: any) => s.batchId === currentBatchId);
+
+                // Collect available units for this item
+                const unitsSet = new Set<string>();
+                if (currentUnit) unitsSet.add(currentUnit);
+                if (currentStockItem) {
+                  if (currentStockItem.unit) unitsSet.add(currentStockItem.unit);
+                  if (currentStockItem.baseUnit) unitsSet.add(currentStockItem.baseUnit);
+                  if (currentStockItem.purchaseUnit) unitsSet.add(currentStockItem.purchaseUnit);
+                  if (currentStockItem.saleUnit) unitsSet.add(currentStockItem.saleUnit);
+                }
+                const relatedStock = storeStockList.filter((s: any) => s.itemId === currentItemId);
+                relatedStock.forEach((s: any) => {
+                  if (s.unit) unitsSet.add(s.unit);
+                  if (s.baseUnit) unitsSet.add(s.baseUnit);
+                  if (s.purchaseUnit) unitsSet.add(s.purchaseUnit);
+                  if (s.saleUnit) unitsSet.add(s.saleUnit);
+                });
+                (unitTypes as any[]).forEach((u: any) => {
+                  const sym = u.symbol || u.name;
+                  if (sym) unitsSet.add(sym);
+                });
+                const unitOptions = Array.from(unitsSet);
+
+                return (
+                  <div key={field.id} className="p-3 rounded-lg border bg-muted/30 space-y-2.5">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <div className="flex-1 min-w-[200px]">
+                        <Label className="text-[10px] text-muted-foreground block mb-1">Select Batch *</Label>
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.batchId`}
+                          render={({ field: batchField }) => (
+                            <Select
+                              value={batchField.value ? String(batchField.value) : ""}
+                              onValueChange={(val) => {
+                                const bId = Number(val);
+                                batchField.onChange(bId);
+                                const match = storeStockList.find((s: any) => s.batchId === bId);
+                                if (match) {
+                                  const defUnit = match.unit || match.baseUnit || match.saleUnit || match.purchaseUnit || "Unit";
+                                  const defUnitId = findUnit(defUnit, unitTypes)?.id || null;
+                                  form.setValue(`items.${index}.itemId`, match.itemId);
+                                  form.setValue(`items.${index}.unit`, defUnit);
+                                  form.setValue(`items.${index}.unitId`, defUnitId);
+                                  form.setValue(`items.${index}.systemQty`, Number(match.availableQty));
+                                  form.setValue(`items.${index}.physicalQty`, Number(match.availableQty));
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-full h-9 text-xs">
+                                <SelectValue placeholder={isStockLoading ? "Loading stock..." : "Choose Batch"} />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-60">
+                                {storeStockList.map((st: any) => (
+                                  <SelectItem key={st.id} value={String(st.batchId)}>
+                                    {st.itemName} • Batch: {st.batchNumber} (System: {st.availableQty} {st.unit})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </div>
+
+                      <div className="w-24">
+                        <Label className="text-[10px] text-muted-foreground block mb-1">Physical Qty *</Label>
+                        <Input
+                          type="number"
+                          step="0.001"
+                          placeholder="0"
+                          {...form.register(`items.${index}.physicalQty`, {
+                            onChange: (e) => {
+                              const val = Number(e.target.value) || 0;
+                              const curSys = Number(form.getValues(`items.${index}.systemQty`)) || 0;
+                              const curType = form.getValues(`items.${index}.type`);
+                              if (val > curSys && curType === "loss") {
+                                form.setValue(`items.${index}.type`, "gain");
+                              } else if (val < curSys && curType === "gain") {
+                                form.setValue(`items.${index}.type`, "loss");
+                              }
+                            },
+                          })}
+                          className="h-9 text-xs font-mono font-bold text-center"
+                        />
+                      </div>
+
+                      <div className="w-28">
+                        <Label className="text-[10px] text-muted-foreground block mb-1">Unit Type *</Label>
+                        <select
+                          value={currentUnit}
+                          onChange={(e) => handleUnitChange(index, e.target.value)}
+                          className="w-full h-9 px-2 rounded-md border bg-background text-xs font-mono font-medium outline-none focus-visible:ring-1 cursor-pointer"
                         >
-                          <SelectTrigger className="w-full h-9 text-xs">
-                            <SelectValue placeholder={isStockLoading ? "Loading stock..." : "Choose Batch"} />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-60">
-                            {storeStockList.map((st: any) => (
-                              <SelectItem key={st.id} value={String(st.batchId)}>
-                                {st.itemName} • Batch: {st.batchNumber} (System: {st.availableQty} {st.unit})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
+                          {unitOptions.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                  <div className="w-24">
-                    <Label className="text-[10px] text-muted-foreground block mb-1">Physical Qty</Label>
-                    <Input
-                      type="number"
-                      step="0.001"
-                      placeholder="0"
-                      {...form.register(`items.${index}.physicalQty`)}
-                      className="h-9 text-xs font-mono font-bold text-center"
-                    />
-                  </div>
+                      <div className="w-32">
+                        <Label className="text-[10px] text-muted-foreground block mb-1">Adjustment Type</Label>
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.type`}
+                          render={({ field: typeField }) => (
+                            <Select
+                              value={typeField.value}
+                              onValueChange={typeField.onChange}
+                            >
+                              <SelectTrigger className="h-9 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="gain">Stock Gain (+)</SelectItem>
+                                <SelectItem value="loss">Stock Loss (-)</SelectItem>
+                                <SelectItem value="expired">Expired Loss</SelectItem>
+                                <SelectItem value="damaged">Damaged Loss</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                      </div>
 
-                  <div className="w-32">
-                    <Label className="text-[10px] text-muted-foreground block mb-1">Adjustment Type</Label>
-                    <Controller
-                      control={form.control}
-                      name={`items.${index}.type`}
-                      render={({ field: typeField }) => (
-                        <Select
-                          value={typeField.value}
-                          onValueChange={typeField.onChange}
+                      {fields.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          className="h-9 w-9 mt-4 text-muted-foreground hover:text-destructive cursor-pointer"
+                          title="Remove Item"
                         >
-                          <SelectTrigger className="h-9 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="gain">Stock Gain (+)</SelectItem>
-                            <SelectItem value="loss">Stock Loss (-)</SelectItem>
-                            <SelectItem value="expired">Expired Loss</SelectItem>
-                            <SelectItem value="damaged">Damaged Loss</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       )}
-                    />
-                  </div>
+                    </div>
 
-                  {fields.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => remove(index)}
-                      className="h-9 w-9 mt-4 text-muted-foreground hover:text-destructive"
-                      title="Remove Item"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+                    {/* Variance and Conversion Helper Display */}
+                    {currentBatchId > 0 && (
+                      <div className="flex items-center justify-between text-[11px] pt-1 px-1 border-t border-border/40 text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span>
+                            System Recorded: <strong className="font-mono text-foreground">{currentSysQty.toFixed(2)} {currentUnit}</strong>
+                          </span>
+                          {currentStockItem && currentStockItem.unit && currentStockItem.unit !== currentUnit && (
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              (Base: {Number(currentStockItem.availableQty).toFixed(2)} {currentStockItem.unit})
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span>Calculated Variance:</span>
+                          <span
+                            className={cn(
+                              "font-mono font-bold px-1.5 py-0.5 rounded text-[10px]",
+                              diff > 0
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                                : diff < 0
+                                ? "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800"
+                                : "bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)} {currentUnit}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
@@ -809,108 +949,198 @@ function AdjustmentsList() {
         </DialogContent>
       </Dialog>
 
-      {/* Detail & Post Dialog with shadcn Dialog */}
-      {selectedAdj && (
-        <Dialog
-          open={!!selectedAdj}
-          onOpenChange={(open) => {
-            if (!open) {
-              setSelectedAdj(null);
-              if (searchParams.adjustmentId) {
-                navigate({
-                  search: (prev: any) => ({ ...prev, adjustmentId: undefined }),
-                });
-              }
+      {/* Detail & Post Dialog with Complete Line Items Breakdown */}
+      <Dialog
+        open={!!selectedAdjId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAdjId(null);
+            if (searchParams.adjustmentId) {
+              navigate({
+                search: (prev: any) => ({ ...prev, adjustmentId: undefined }),
+              });
             }
-          }}
-        >
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <div className="flex items-center justify-between pr-4">
-                <DialogTitle className="flex items-center gap-2">
-                  <SlidersHorizontal className="w-5 h-5 text-emerald-600" />
-                  <span>Adjustment #{selectedAdj.adjustmentNo}</span>
-                </DialogTitle>
-                {getStatusBadge(selectedAdj.status)}
-              </div>
-              <DialogDescription>
-                Store: {selectedAdj.store?.name || "Main Store"} • Purpose: {selectedAdj.reason}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-2">
-              {/* Summary Metadata */}
-              <div className="grid grid-cols-2 gap-3 bg-muted/40 p-3 rounded-lg text-xs border">
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Store Location:</span>
-                  <span className="font-semibold">{selectedAdj.store?.name || "N/A"}</span>
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          {isLoadingDetail ? (
+            <div className="py-16 flex flex-col items-center justify-center gap-2 text-muted-foreground text-xs">
+              <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+              <span>Loading adjustment details...</span>
+            </div>
+          ) : !selectedAdjDetail || "error" in selectedAdjDetail ? (
+            <div className="py-12 text-center text-muted-foreground text-xs">
+              <AlertTriangle className="w-8 h-8 mx-auto text-amber-500 mb-2" />
+              <p className="font-semibold text-foreground">Adjustment record not found</p>
+            </div>
+          ) : (
+            <>
+              <DialogHeader>
+                <div className="flex items-center justify-between pr-4">
+                  <DialogTitle className="flex items-center gap-2 text-base">
+                    <SlidersHorizontal className="w-5 h-5 text-emerald-600" />
+                    <span>Adjustment #{selectedAdjDetail.adjustmentNo}</span>
+                  </DialogTitle>
+                  {getStatusBadge(selectedAdjDetail.status)}
                 </div>
-                <div>
-                  <span className="text-muted-foreground block text-[11px]">Date Created:</span>
-                  <span className="font-semibold font-mono">{new Date(selectedAdj.createdAt).toLocaleDateString()}</span>
-                </div>
-              </div>
+                <DialogDescription>
+                  Store: {selectedAdjDetail.storeName || "Main Store"} • Purpose: {selectedAdjDetail.reason}
+                </DialogDescription>
+              </DialogHeader>
 
-              {/* Items Breakdown Table */}
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/60 text-muted-foreground font-semibold border-b">
-                    <tr>
-                      <th className="py-2.5 px-3">Item Description</th>
-                      <th className="py-2.5 px-3">Batch</th>
-                      <th className="py-2.5 px-3 text-right">System</th>
-                      <th className="py-2.5 px-3 text-right">Physical</th>
-                      <th className="py-2.5 px-3 text-right">Variance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {selectedAdj.items?.map((item: any) => {
-                      const diff = Number(item.differenceQty);
-                      return (
-                        <tr key={item.id} className="hover:bg-muted/20">
-                          <td className="py-2.5 px-3 font-semibold">{item.item?.name || `Item #${item.itemId}`}</td>
-                          <td className="py-2.5 px-3 font-mono text-muted-foreground">{item.batch?.batchNumber || `#${item.batchId}`}</td>
-                          <td className="py-2.5 px-3 text-right font-mono">{item.systemQty}</td>
-                          <td className="py-2.5 px-3 text-right font-mono font-medium">{item.physicalQty}</td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold">
-                            <span className={cn(
-                              "inline-flex items-center px-1.5 py-0.5 rounded text-[11px]",
-                              diff > 0 ? "bg-emerald-50 text-emerald-700" : diff < 0 ? "bg-rose-50 text-rose-700" : "text-muted-foreground"
-                            )}>
-                              {diff > 0 ? `+${diff}` : diff}
-                            </span>
+              <div className="space-y-4 py-2">
+                {/* Summary Metadata Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                  <div className="bg-muted/40 p-2.5 rounded-lg border text-xs">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Store Location</span>
+                    <span className="font-semibold text-foreground flex items-center gap-1 mt-0.5">
+                      <Warehouse className="w-3.5 h-3.5 text-muted-foreground" />
+                      {selectedAdjDetail.storeName || "N/A"}
+                      {selectedAdjDetail.storeCode && (
+                        <span className="text-[10px] text-muted-foreground font-mono">({selectedAdjDetail.storeCode})</span>
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="bg-muted/40 p-2.5 rounded-lg border text-xs">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Audit Date</span>
+                    <span className="font-semibold font-mono text-foreground mt-0.5 block">
+                      {selectedAdjDetail.createdAt ? format(new Date(selectedAdjDetail.createdAt), "dd MMM yyyy, hh:mm a") : "—"}
+                    </span>
+                  </div>
+
+                  <div className="bg-muted/40 p-2.5 rounded-lg border text-xs">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Logged By</span>
+                    <span className="font-semibold text-foreground mt-0.5 block">
+                      {selectedAdjDetail.createdByName || "Admin"}
+                    </span>
+                  </div>
+
+                  <div className="bg-muted/40 p-2.5 rounded-lg border text-xs">
+                    <span className="text-muted-foreground block text-[10px] uppercase font-semibold">Items Count</span>
+                    <span className="font-semibold text-foreground mt-0.5 block">
+                      {selectedAdjDetail.items?.length || 0} Batches Counted
+                    </span>
+                  </div>
+                </div>
+
+                {/* Items Breakdown Table */}
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-muted/60 text-muted-foreground font-semibold border-b">
+                      <tr>
+                        <th className="py-2.5 px-3 w-8 text-center">#</th>
+                        <th className="py-2.5 px-3">Item Description</th>
+                        <th className="py-2.5 px-3">Batch & Expiry</th>
+                        <th className="py-2.5 px-3 text-center">Adj Type</th>
+                        <th className="py-2.5 px-3 text-right">System Qty</th>
+                        <th className="py-2.5 px-3 text-right">Physical Qty</th>
+                        <th className="py-2.5 px-3 text-right">Variance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {!selectedAdjDetail.items || selectedAdjDetail.items.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-muted-foreground text-xs">
+                            No adjustment line items recorded.
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      ) : (
+                        selectedAdjDetail.items.map((item: any, idx: number) => {
+                          const diff = Number(item.differenceQty || 0);
+                          const unit = item.unit ? ` ${item.unit}` : "";
 
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <Button variant="outline" size="sm" onClick={() => setSelectedAdj(null)}>
-                  Close
-                </Button>
-                {selectedAdj.status === "draft" && (
-                  <Button
-                    size="sm"
-                    disabled={postMutation.isPending}
-                    onClick={() => postMutation.mutate(selectedAdj.id)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                  >
-                    {postMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                    )}
-                    Post Adjustment to Ledger
+                          let formattedExp = item.expiryDate || "—";
+                          if (item.expiryDate && item.expiryDate !== "—") {
+                            try {
+                              const expDate = new Date(item.expiryDate);
+                              if (!isNaN(expDate.getTime())) {
+                                const today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
+                                formattedExp = diffDays <= 90 ? item.expiryDate : format(expDate, "MMM-yyyy");
+                              }
+                            } catch {}
+                          }
+
+                          const getTypeBadge = (type: string) => {
+                            switch (type) {
+                              case "gain":
+                                return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Gain (+)</Badge>;
+                              case "loss":
+                                return <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-[10px]">Loss (-)</Badge>;
+                              case "expired":
+                                return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">Expired</Badge>;
+                              case "damaged":
+                                return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px]">Damaged</Badge>;
+                              default:
+                                return <Badge variant="outline" className="text-[10px]">{type}</Badge>;
+                            }
+                          };
+
+                          return (
+                            <tr key={item.id || idx} className="hover:bg-muted/20">
+                              <td className="py-2.5 px-3 text-center text-muted-foreground font-mono">{idx + 1}</td>
+                              <td className="py-2.5 px-3">
+                                <div className="font-semibold text-foreground">{item.itemName || `Item #${item.itemId}`}</div>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <span className="font-mono font-medium text-foreground">{item.batchNumber || `#${item.batchId}`}</span>
+                                {formattedExp && formattedExp !== "—" && (
+                                  <span className="text-[10px] text-muted-foreground block">Exp: {formattedExp}</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-3 text-center">
+                                {getTypeBadge(item.type)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-muted-foreground">
+                                {Number(item.systemQty).toFixed(2)}{unit}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-medium text-foreground">
+                                {Number(item.physicalQty).toFixed(2)}{unit}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold">
+                                <span className={cn(
+                                  "inline-flex items-center px-1.5 py-0.5 rounded text-[11px]",
+                                  diff > 0 ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : diff < 0 ? "bg-rose-50 text-rose-700 border border-rose-200" : "text-muted-foreground"
+                                )}>
+                                  {diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)}{unit}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t">
+                  <Button variant="outline" size="sm" onClick={() => setSelectedAdjId(null)}>
+                    Close
                   </Button>
-                )}
+                  {selectedAdjDetail.status === "draft" && (
+                    <Button
+                      size="sm"
+                      disabled={postMutation.isPending}
+                      onClick={() => postMutation.mutate(selectedAdjDetail.id)}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium cursor-pointer"
+                    >
+                      {postMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-4 h-4 mr-1.5" />
+                      )}
+                      Post Adjustment to Ledger
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </ModuleLayout>
   );
 }

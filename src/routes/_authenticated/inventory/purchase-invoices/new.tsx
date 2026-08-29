@@ -99,6 +99,37 @@ function NewPurchaseInvoice() {
     () => client["unit-types"].$get()
   );
 
+  const { data: unitConversions = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
+  const getConversionFactor = React.useCallback(
+    (fromSymbol: string, toSymbol: string) => {
+      if (!fromSymbol || !toSymbol) return 0;
+      if (fromSymbol === toSymbol) return 1;
+      const fromU = (unitTypes as any[]).find((u) => u.symbol === fromSymbol || u.name === fromSymbol);
+      const toU = (unitTypes as any[]).find((u) => u.symbol === toSymbol || u.name === toSymbol);
+      if (!fromU || !toU || !(unitConversions as any[]) || (unitConversions as any[]).length === 0) return 0;
+
+      const fId = Number(fromU.id);
+      const tId = Number(toU.id);
+
+      const direct = (unitConversions as any[]).find(
+        (c: any) => Number(c.fromUnitId) === fId && Number(c.toUnitId) === tId
+      );
+      if (direct && Number(direct.multiplier) > 0) return Number(direct.multiplier);
+
+      const inverse = (unitConversions as any[]).find(
+        (c: any) => Number(c.fromUnitId) === tId && Number(c.toUnitId) === fId
+      );
+      if (inverse && Number(inverse.multiplier) > 0) return 1 / Number(inverse.multiplier);
+
+      return 0;
+    },
+    [unitTypes, unitConversions]
+  );
+
   const form = useForm<InvoiceFormValues>({
     resolver: zodResolver(invoiceFormSchema) as any,
     defaultValues: {
@@ -676,9 +707,16 @@ function NewPurchaseInvoice() {
                                 onChange: (e) => {
                                   const sel = itemsCatalog.find((it: any) => it.id === Number(e.target.value));
                                   if (sel) {
+                                    const purUnit = sel.purchaseUnit || sel.unit || "unit";
+                                    const uObj = (unitTypes as any[]).find(
+                                      (u) => u.symbol === purUnit || u.name === purUnit || u.id === (sel.purchaseUnitId || sel.baseUnitId)
+                                    );
+                                    const resolvedUnitId = uObj ? Number(uObj.id) : (sel.purchaseUnitId || sel.baseUnitId || 1);
+                                    const resolvedUnitName = uObj ? (uObj.symbol || uObj.name) : purUnit;
+
                                     form.setValue(`items.${index}.itemName`, sel.name);
-                                    form.setValue(`items.${index}.unitId`, sel.purchaseUnitId || sel.baseUnitId || 1);
-                                    form.setValue(`items.${index}.unit`, sel.unit || "unit");
+                                    form.setValue(`items.${index}.unitId`, resolvedUnitId);
+                                    form.setValue(`items.${index}.unit`, resolvedUnitName);
                                     form.setValue(`items.${index}.unitRate`, Number(sel.rate || 0));
                                     form.setValue(`items.${index}.gstPercent`, Number(sel.gstPercent || 0));
                                     updateLineCalculations(index);
@@ -697,8 +735,65 @@ function NewPurchaseInvoice() {
                           )}
                         </td>
 
-                        <td className="px-3 py-2 w-24">
-                          <span className="font-mono text-muted-foreground">{rowItem.unit || "unit"}</span>
+                        <td className="px-3 py-2 min-w-[100px]">
+                          {rowItem.grnItemId ? (
+                            <span className="font-mono text-muted-foreground">{rowItem.unit || "unit"}</span>
+                          ) : (
+                            <select
+                              value={rowItem.unit || ""}
+                              onChange={(e) => {
+                                const newUnitSymbol = e.target.value;
+                                const uObj = (unitTypes as any[]).find(
+                                  (u) => u.symbol === newUnitSymbol || u.name === newUnitSymbol || String(u.id) === newUnitSymbol
+                                );
+                                const resolvedUnitId = uObj ? Number(uObj.id) : (rowItem.unitId || 1);
+                                const resolvedUnitName = uObj ? (uObj.symbol || uObj.name) : newUnitSymbol;
+
+                                form.setValue(`items.${index}.unitId`, resolvedUnitId);
+                                form.setValue(`items.${index}.unit`, resolvedUnitName);
+
+                                const catItem = itemsCatalog.find((it: any) => it.id === Number(rowItem.itemId));
+                                if (catItem) {
+                                  const baseUnit = catItem.purchaseUnit || catItem.unit || "";
+                                  const baseRate = Number(catItem.rate || 0);
+
+                                  const tier = catItem.unitPrices?.find((up: any) => up.unit === resolvedUnitName);
+                                  if (tier && Number(tier.costPrice) > 0) {
+                                    form.setValue(`items.${index}.unitRate`, Number(tier.costPrice));
+                                  } else if (resolvedUnitName && baseUnit && resolvedUnitName === baseUnit) {
+                                    form.setValue(`items.${index}.unitRate`, baseRate);
+                                  } else {
+                                    const factor = getConversionFactor(resolvedUnitName, baseUnit);
+                                    if (factor > 0 && baseRate > 0) {
+                                      form.setValue(`items.${index}.unitRate`, Number((baseRate * factor).toFixed(2)));
+                                    }
+                                  }
+                                }
+                                updateLineCalculations(index);
+                              }}
+                              className="w-full h-8 px-1.5 rounded border bg-background text-xs font-mono font-medium outline-none focus-visible:ring-1"
+                            >
+                              {(() => {
+                                const catItem = itemsCatalog.find((it: any) => it.id === Number(rowItem.itemId));
+                                const currentUnit = rowItem.unit;
+                                const unitsSet = new Set<string>();
+                                if (currentUnit) unitsSet.add(currentUnit);
+                                if (catItem?.unit) unitsSet.add(catItem.unit);
+                                if (catItem?.purchaseUnit) unitsSet.add(catItem.purchaseUnit);
+                                if (catItem?.saleUnit) unitsSet.add(catItem.saleUnit);
+                                if (catItem?.unitPrices && Array.isArray(catItem.unitPrices)) {
+                                  catItem.unitPrices.forEach((up: any) => { if (up.unit) unitsSet.add(up.unit); });
+                                }
+                                (unitTypes as any[]).forEach((ut: any) => {
+                                  const u = ut.symbol || ut.name;
+                                  if (u) unitsSet.add(u);
+                                });
+                                const opts = Array.from(unitsSet);
+                                if (opts.length === 0) return <option value="">Unit</option>;
+                                return opts.map((u) => <option key={u} value={u}>{u}</option>);
+                              })()}
+                            </select>
+                          )}
                         </td>
 
                         <td className="px-3 py-2 text-right font-mono text-muted-foreground">

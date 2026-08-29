@@ -170,6 +170,7 @@ export async function createInventorySchemaAndTables() {
       "system_qty" NUMERIC(12, 3) NOT NULL,
       "physical_qty" NUMERIC(12, 3) NOT NULL,
       "difference_qty" NUMERIC(12, 3) NOT NULL,
+      "unit_id" INTEGER REFERENCES "public"."unit_types"("id"),
       "type" TEXT NOT NULL DEFAULT 'gain'
     );
 
@@ -312,6 +313,7 @@ export async function createInventorySchemaAndTables() {
     -- -------------------------------------------------------------
     ALTER TABLE "inventory"."stock_requisition_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
     ALTER TABLE "inventory"."stock_transfer_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
+    ALTER TABLE "inventory"."stock_adjustment_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
     ALTER TABLE "inventory"."sales_invoice_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
     ALTER TABLE "inventory"."sales_return_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
     ALTER TABLE "inventory"."purchase_invoices" ADD COLUMN IF NOT EXISTS "po_id" INTEGER REFERENCES "public"."purchase_orders"("id");
