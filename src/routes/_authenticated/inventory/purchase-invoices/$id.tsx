@@ -396,7 +396,7 @@ function PurchaseInvoiceDetail() {
                 {items.map((item: any) => {
                   const poQty = Number(item.poOrderedQty || 0);
                   const grnQty = Number(item.grnReceivedQty || 0);
-                  const billedQty = Number(item.billedQty || 0);
+                  const billedQty = Number(item.quantity ?? item.billedQty ?? 0);
                   const isQtyMismatch = grnQty > 0 && billedQty > grnQty;
 
                   return (
@@ -405,7 +405,7 @@ function PurchaseInvoiceDetail() {
                         {item.item?.name || item.itemName || "Item"}
                       </td>
                       <td className="px-3 py-2.5 font-mono text-muted-foreground">
-                        {item.unitType?.symbol || item.unit || "unit"}
+                        {item.unitSymbol || item.unitName || item.unitType?.symbol || item.unit || "unit"}
                       </td>
                       <td className="px-3 py-2.5 text-right font-mono text-muted-foreground">
                         {poQty > 0 ? poQty : "—"}

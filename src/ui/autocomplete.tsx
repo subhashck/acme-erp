@@ -89,7 +89,7 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
     };
 
     return (
-      <div className={cn("relative flex flex-col w-full", isOpen && "z-99999", className)} ref={containerRef}>
+      <div className={cn("relative flex flex-col w-full", isOpen && "z-[9999]", className)} ref={containerRef}>
         {label && <Label className="font-semibold block mb-1 text-xs">{label}</Label>}
         <div className="relative flex items-center">
           <input
@@ -130,7 +130,7 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
         </div>
 
         {isOpen && (
-          <ul className="absolute top-[calc(100%+4px)] z-99999 w-full max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in slide-in-from-top-1 duration-200">
+          <ul className="absolute top-[calc(100%+4px)] z-[9999] w-full max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-lg animate-in fade-in slide-in-from-top-1 duration-200">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
                 const isSelected = opt[0] === value;

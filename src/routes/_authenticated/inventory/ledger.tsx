@@ -39,12 +39,18 @@ import { z } from "zod";
 import { format } from "date-fns";
 import XLSX from "xlsx-js-style";
 import { cn } from "@/utils/cn";
+import { 
+  findUnit, 
+  getUnitConversionFactor, 
+  formatQtyNumber 
+} from "@/lib/unit-conversion";
 
 const ledgerSearchSchema = z.object({
   page: z.coerce.number().optional().catch(1),
   limit: z.coerce.number().optional().catch(20),
   storeId: z.string().optional().catch("all"),
   movementType: z.string().optional().catch("all"),
+  unitFilter: z.string().optional().catch("all"),
   search: z.string().optional().catch(""),
   dateFrom: z.string().optional().catch(""),
   dateTo: z.string().optional().catch(""),
@@ -63,6 +69,7 @@ function StockLedger() {
   const limit = searchParams.limit ?? 20;
   const storeIdFilter = searchParams.storeId || "all";
   const movementTypeFilter = searchParams.movementType || "all";
+  const unitFilter = searchParams.unitFilter || "all";
   const searchFilter = searchParams.search || "";
   const dateFromFilter = searchParams.dateFrom || "";
   const dateToFilter = searchParams.dateTo || "";
@@ -96,6 +103,18 @@ function StockLedger() {
     () => client.inventory.stores.$get()
   );
 
+  // Fetch available unit types
+  const { data: unitTypesList = [] } = useRpcQuery<any[]>(
+    ["unit-types"],
+    () => client["unit-types"].$get()
+  );
+
+  // Fetch unit conversions
+  const { data: unitConversionsList = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
   // Fetch paginated ledger data
   const { data: ledgerResponse, isLoading, refetch, isRefetching } = useRpcQuery<any>(
     ["inventory-ledger", searchParams],
@@ -125,6 +144,7 @@ function StockLedger() {
     searchFilter ||
     (storeIdFilter && storeIdFilter !== "all") ||
     (movementTypeFilter && movementTypeFilter !== "all") ||
+    (unitFilter && unitFilter !== "all") ||
     dateFromFilter ||
     dateToFilter
   );
@@ -137,6 +157,7 @@ function StockLedger() {
         limit: 20,
         storeId: "all",
         movementType: "all",
+        unitFilter: "all",
         search: "",
         dateFrom: "",
         dateTo: "",
@@ -184,6 +205,31 @@ function StockLedger() {
       default:
         return <Badge variant="outline">{type}</Badge>;
     }
+  };
+
+  const formatExpiryDisplay = (expiryDateStr?: string | null) => {
+    if (!expiryDateStr) return null;
+    const expiry = new Date(expiryDateStr);
+    if (isNaN(expiry.getTime())) return `Exp: ${expiryDateStr}`;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 3600 * 24));
+
+    if (diffDays <= 0) {
+      return (
+        <span className="text-rose-600 dark:text-rose-400 font-semibold">
+          Expired ({expiryDateStr})
+        </span>
+      );
+    }
+    if (diffDays <= 90) {
+      return (
+        <span className="text-amber-600 dark:text-amber-400 font-medium">
+          Exp: {expiryDateStr} ({diffDays}d)
+        </span>
+      );
+    }
+    return <span>Exp: {format(expiry, "MMM-yyyy")}</span>;
   };
 
   const renderReference = (row: any) => {
@@ -323,8 +369,9 @@ function StockLedger() {
     listRows.push([`Generated on: ${format(new Date(), "dd MMM yyyy, hh:mm a")}`]);
     const storeLabel = storeIdFilter === "all" ? "All Stores" : (storesList.find((s: any) => String(s.id) === storeIdFilter)?.name || storeIdFilter);
     const mTypeLabel = movementTypeFilter === "all" ? "All Movement Types" : movementTypeFilter;
+    const unitLabel = unitFilter === "all" ? "Original / Default Units" : unitFilter;
     const dateRangeLabel = dateFromFilter || dateToFilter ? `${dateFromFilter || "Beginning"} to ${dateToFilter || "Present"}` : "All Time";
-    listRows.push([`Filters: Store [${storeLabel}] | Movement [${mTypeLabel}] | Period [${dateRangeLabel}]`]);
+    listRows.push([`Filters: Store [${storeLabel}] | Movement [${mTypeLabel}] | Unit [${unitLabel}] | Period [${dateRangeLabel}]`]);
     listRows.push([]); // blank spacer
 
     // Headers
@@ -336,7 +383,7 @@ function StockLedger() {
       "Movement Type",
       "Reference",
       "Quantity Change",
-      "Base Unit",
+      "Stock Unit",
       "Balance After",
       "Cost Rate (₹)",
       "Purchase Unit",
@@ -354,7 +401,17 @@ function StockLedger() {
       const balanceAfter = Number(row.balanceAfter || 0);
       const costRate = Number(row.costPrice || 0);
       const saleRate = Number(row.salePrice || 0);
-      totalQtyChange += qtyChange;
+      const baseUnit = row.baseUnit || row.unit || "unit";
+
+      const conv = unitFilter && unitFilter !== "all"
+        ? getUnitConversionFactor(baseUnit, unitFilter, unitTypesList, unitConversionsList)
+        : { convertible: false, factor: 1 };
+
+      const outQtyChange = conv.convertible ? Number((qtyChange * conv.factor).toFixed(3)) : qtyChange;
+      const outBalanceAfter = conv.convertible ? Number((balanceAfter * conv.factor).toFixed(3)) : balanceAfter;
+      const outUnit = conv.convertible ? (conv.toUnit?.symbol || unitFilter) : baseUnit;
+
+      totalQtyChange += outQtyChange;
 
       const dateStr = row.transactionDate
         ? format(new Date(row.transactionDate), "dd MMM yyyy, HH:mm:ss")
@@ -367,9 +424,9 @@ function StockLedger() {
         row.batchNumber || "—",
         row.movementType || "",
         `${row.referenceType || ""} #${row.referenceId || ""}`,
-        qtyChange,
-        row.baseUnit || row.unit || "",
-        balanceAfter,
+        outQtyChange,
+        outUnit,
+        outBalanceAfter,
         costRate,
         row.purchaseUnit || row.unit || "unit",
         saleRate,
@@ -455,6 +512,31 @@ function StockLedger() {
       description="Complete audit trail of every stock transaction, receipt, sale, transfer, and adjustment"
       action={
         <div className="flex items-center gap-2">
+          {/* Unit Conversion Filter */}
+          <Select
+            value={unitFilter}
+            onValueChange={(val) =>
+              navigate({
+                search: (prev) => ({
+                  ...prev,
+                  unitFilter: val,
+                }),
+              })
+            }
+          >
+            <SelectTrigger className="h-8 w-[140px] sm:w-[160px] bg-background text-xs shadow-xs">
+              <SelectValue placeholder="Display Unit" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Original Units</SelectItem>
+              {unitTypesList.map((u: any) => (
+                <SelectItem key={u.id} value={u.symbol || u.name}>
+                  {u.name} ({u.symbol})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Button
             variant="outline"
             size="sm"
@@ -484,7 +566,7 @@ function StockLedger() {
           <CardContent className="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
               {/* Search input */}
-              <div className="lg:col-span-3">
+              <div className="sm:col-span-2 lg:col-span-4">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground pointer-events-none" />
                   <Input
@@ -566,7 +648,7 @@ function StockLedger() {
               </div>
 
               {/* Date From (Calendar Popover) */}
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-1.5  sm:col-span-1">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -577,10 +659,10 @@ function StockLedger() {
                       )}
                     >
                       <CalendarIcon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">
+                      <span className="truncate text-xs">
                         {dateFromFilter
-                          ? format(new Date(dateFromFilter), "dd MMM yyyy")
-                          : "Date From"}
+                          ? format(new Date(dateFromFilter), "dd MMM")
+                          : "From"}
                       </span>
                       {dateFromFilter && (
                         <X
@@ -617,7 +699,7 @@ function StockLedger() {
               </div>
 
               {/* Date To (Calendar Popover) */}
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-1.5 sm:col-span-1">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -628,10 +710,10 @@ function StockLedger() {
                       )}
                     >
                       <CalendarIcon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate">
+                      <span className="truncate text-xs">
                         {dateToFilter
-                          ? format(new Date(dateToFilter), "dd MMM yyyy")
-                          : "Date To"}
+                          ? format(new Date(dateToFilter), "dd MMM")
+                          : "To"}
                       </span>
                       {dateToFilter && (
                         <X
@@ -737,16 +819,32 @@ function StockLedger() {
                   <tbody className="divide-y divide-border">
                     {ledgerData.map((row: any) => {
                       const qty = Number(row.quantityChange || 0);
-                      const isPositive = qty > 0;
+                      const balanceAfter = Number(row.balanceAfter || 0);
                       const dateObj = row.transactionDate ? new Date(row.transactionDate) : null;
+                      const baseUnitSymbol = row.baseUnit || row.unit || "unit";
+
+                      const conv = unitFilter && unitFilter !== "all"
+                        ? getUnitConversionFactor(baseUnitSymbol, unitFilter, unitTypesList, unitConversionsList)
+                        : { convertible: false, factor: 1 };
+
+                      const displayQty = conv.convertible ? Number((qty * conv.factor).toFixed(3)) : qty;
+                      const displayBalance = conv.convertible ? Number((balanceAfter * conv.factor).toFixed(3)) : balanceAfter;
+                      const displayUnit = conv.convertible ? (conv.toUnit?.symbol || unitFilter) : baseUnitSymbol;
+                      const isConverted = conv.convertible && displayUnit.toLowerCase() !== baseUnitSymbol.toLowerCase();
+                      const isPositive = displayQty > 0;
 
                       return (
                         <tr key={row.id} className="hover:bg-muted/30 transition-colors duration-150">
                           {/* Date & Time */}
-                          <td className="px-4 py-3 align-middle whitespace-nowrap font-mono text-xs text-muted-foreground">
-                            {dateObj && !isNaN(dateObj.getTime())
-                              ? format(dateObj, "dd MMM yyyy, HH:mm:ss")
-                              : String(row.transactionDate || "—")}
+                          <td className="px-4 py-3 align-middle whitespace-nowrap font-mono text-xs">
+                            {dateObj && !isNaN(dateObj.getTime()) ? (
+                              <div>
+                                <div className="font-medium text-foreground">{format(dateObj, "dd MMM yyyy")}</div>
+                                <div className="text-[11px] text-muted-foreground">{format(dateObj, "HH:mm:ss")}</div>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">{String(row.transactionDate || "—")}</span>
+                            )}
                           </td>
 
                           {/* Store */}
@@ -781,7 +879,7 @@ function StockLedger() {
                                 </span>
                                 {row.expiryDate && (
                                   <span className="text-[10px] text-muted-foreground">
-                                    Exp: {row.expiryDate}
+                                    {formatExpiryDisplay(row.expiryDate)}
                                   </span>
                                 )}
                               </div>
@@ -801,19 +899,49 @@ function StockLedger() {
                           {/* Quantity Change */}
                           <td className="px-4 py-3 align-middle text-right font-mono font-bold text-sm whitespace-nowrap">
                             {isPositive ? (
-                              <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center">
-                                <ArrowDownLeft className="w-4 h-4 mr-0.5" />+{qty} <span className="text-xs font-normal text-muted-foreground ml-1">{row.baseUnit || row.unit || ""}</span>
-                              </span>
+                              <div>
+                                <span className="text-emerald-600 dark:text-emerald-400 inline-flex items-center">
+                                  <ArrowDownLeft className="w-4 h-4 mr-0.5" />+{formatQtyNumber(displayQty)}{" "}
+                                  <span className={cn("text-xs font-normal ml-1", isConverted ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+                                    {displayUnit}
+                                  </span>
+                                </span>
+                                {isConverted && (
+                                  <div className="text-[10px] text-muted-foreground font-normal">
+                                    (Orig: +{formatQtyNumber(qty)} {baseUnitSymbol})
+                                  </div>
+                                )}
+                              </div>
                             ) : (
-                              <span className="text-rose-600 dark:text-rose-400 inline-flex items-center">
-                                <ArrowUpRight className="w-4 h-4 mr-0.5" />{qty} <span className="text-xs font-normal text-muted-foreground ml-1">{row.baseUnit || row.unit || ""}</span>
-                              </span>
+                              <div>
+                                <span className="text-rose-600 dark:text-rose-400 inline-flex items-center">
+                                  <ArrowUpRight className="w-4 h-4 mr-0.5" />{formatQtyNumber(displayQty)}{" "}
+                                  <span className={cn("text-xs font-normal ml-1", isConverted ? "font-semibold text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>
+                                    {displayUnit}
+                                  </span>
+                                </span>
+                                {isConverted && (
+                                  <div className="text-[10px] text-muted-foreground font-normal">
+                                    (Orig: {formatQtyNumber(qty)} {baseUnitSymbol})
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </td>
 
                           {/* Balance After */}
                           <td className="px-4 py-3 align-middle text-right font-mono font-bold text-sm text-foreground whitespace-nowrap">
-                            {Number(row.balanceAfter || 0)} <span className="text-xs font-normal text-muted-foreground">{row.baseUnit || row.unit || ""}</span>
+                            <div>
+                              <span>{formatQtyNumber(displayBalance)}</span>{" "}
+                              <span className={cn("text-xs font-normal", isConverted ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+                                {displayUnit}
+                              </span>
+                            </div>
+                            {isConverted && (
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                (Orig: {formatQtyNumber(balanceAfter)} {baseUnitSymbol})
+                              </div>
+                            )}
                           </td>
 
                           {/* Cost Rate */}

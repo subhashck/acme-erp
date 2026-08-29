@@ -14,7 +14,7 @@ import {
 import { items, user } from "../db/schema.ts";
 import { generateDocNumber } from "../services/sequence.ts";
 import { recordStockMovement } from "../services/stock-engine.ts";
-import { idParam, jsonBody, requireAdmin, resolveUnitId } from "./shared.ts";
+import { idParam, jsonBody, requireAdmin, resolveUnitId, convertItemQuantityToBase, getUnitConversionMultiplier } from "./shared.ts";
 import { z } from "zod";
 
 const app = new Hono<AuthEnv>();
@@ -431,8 +431,17 @@ export const transfersRoutes = app
 
     try {
       await db.transaction(async (tx) => {
-        // Record TRANSFER_OUT for each item from source store
+        // Record TRANSFER_OUT for each item from source store converting to base unit
         for (const item of transfer.items) {
+          const { baseQuantity, factor } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            Number(item.quantity),
+            item.unitId
+          );
+
+          const costPerBaseUnit = factor > 0 ? Number(item.unitRate || 0) / factor : Number(item.unitRate || 0);
+
           await recordStockMovement(tx, {
             storeId: transfer.fromStoreId,
             itemId: item.itemId,
@@ -440,8 +449,8 @@ export const transfersRoutes = app
             movementType: "TRANSFER_OUT",
             referenceType: "TRANSFER",
             referenceId: transfer.id,
-            quantityChange: -Number(item.quantity),
-            costPrice: Number(item.unitRate || 0),
+            quantityChange: -baseQuantity,
+            costPrice: costPerBaseUnit,
             userId: userId || null,
           });
         }
@@ -458,6 +467,7 @@ export const transfersRoutes = app
 
       return c.json({ success: true, message: "Transfer dispatched successfully and stock placed in transit" });
     } catch (err: any) {
+      console.error("FAILED TO DISPATCH STACK:", err);
       return c.json({ error: err.message || "Failed to dispatch transfer" }, 400);
     }
   })
@@ -480,8 +490,17 @@ export const transfersRoutes = app
 
     try {
       await db.transaction(async (tx) => {
-        // Record TRANSFER_IN for each item into destination store
+        // Record TRANSFER_IN for each item into destination store converting to base unit
         for (const item of transfer.items) {
+          const { baseQuantity, factor } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            Number(item.quantity),
+            item.unitId
+          );
+
+          const costPerBaseUnit = factor > 0 ? Number(item.unitRate || 0) / factor : Number(item.unitRate || 0);
+
           await recordStockMovement(tx, {
             storeId: transfer.toStoreId,
             itemId: item.itemId,
@@ -489,24 +508,36 @@ export const transfersRoutes = app
             movementType: "TRANSFER_IN",
             referenceType: "TRANSFER",
             referenceId: transfer.id,
-            quantityChange: Number(item.quantity),
-            costPrice: Number(item.unitRate || 0),
+            quantityChange: baseQuantity,
+            costPrice: costPerBaseUnit,
             userId: userId || null,
           });
 
           // Update linked requisition fulfilled quantities if present
           if (transfer.requisitionId) {
-            await tx
-              .update(stockRequisitionItems)
-              .set({
-                fulfilledQty: sql`${stockRequisitionItems.fulfilledQty} + ${Number(item.quantity)}`,
-              })
+            const reqItems = await tx
+              .select()
+              .from(stockRequisitionItems)
               .where(
                 and(
                   eq(stockRequisitionItems.requisitionId, transfer.requisitionId),
                   eq(stockRequisitionItems.itemId, item.itemId)
                 )
               );
+
+            for (const reqItem of reqItems) {
+              const reqUnitId = reqItem.unitId || (await resolveUnitId(tx, null, reqItem.unit));
+              const transferUnitId = item.unitId || (await resolveUnitId(tx, null, (item as any).unit));
+              const convFactor = await getUnitConversionMultiplier(tx, transferUnitId, reqUnitId);
+              const fulfilledInReqUnit = Number((Number(item.quantity) * convFactor).toFixed(4));
+
+              await tx
+                .update(stockRequisitionItems)
+                .set({
+                  fulfilledQty: sql`${stockRequisitionItems.fulfilledQty} + ${fulfilledInReqUnit}`,
+                })
+                .where(eq(stockRequisitionItems.id, reqItem.id));
+            }
           }
         }
 

@@ -8,10 +8,22 @@ import { format } from "date-fns";
 import {
   CalendarIcon,
   Plus,
+  Minus,
   Trash2,
   Save,
   UserPlus,
-  Package
+  Package,
+  Building2,
+  ShoppingCart,
+  Receipt,
+  Sparkles,
+  Info,
+  Loader2,
+  ChevronLeft,
+  CalendarCheck,
+  Tag,
+  Boxes,
+  Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,10 +36,12 @@ import { Field } from "./Field";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
 import { Label } from "../ui/label";
+import { Input } from "../ui/input";
 import { Autocomplete } from "../ui/autocomplete";
 import { AddItemDialog } from "./AddItemForm";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Calendar } from "./ui/calendar";
+import { Badge } from "../ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -158,7 +172,7 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
       form.setValue(`items.${lastIndex}.itemName` as const, newItem.name);
       form.setValue(`items.${lastIndex}.category` as const, newItem.category || newItem.itemTypeName || "");
       form.setValue(`items.${lastIndex}.unit` as const, newItem.unit || "");
-      form.setValue(`items.${lastIndex}.unitRate` as const, Number(newItem.rate || 0));
+      form.setValue(`items.${lastIndex}.unitRate` as const, mode === "new" ? 0 : Number(newItem.rate || 0));
       form.setValue(`items.${lastIndex}.gstPercent` as const, Number(newItem.gstPercent || 0));
     } else {
       append({
@@ -166,14 +180,13 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
         category: newItem.category || newItem.itemTypeName || "",
         unit: newItem.unit || "",
         orderedQty: 1,
-        unitRate: Number(newItem.rate || 0),
+        unitRate: mode === "new" ? 0 : Number(newItem.rate || 0),
         gstPercent: Number(newItem.gstPercent || 0),
       });
     }
   };
 
   // Populate form with server data in edit mode.
-  // Items from Postgres `numeric` columns come back as strings — coerce to numbers.
   const prevPoIdRef = React.useRef<number | undefined>(undefined);
   React.useEffect(() => {
     if (initialData && poId !== prevPoIdRef.current) {
@@ -206,26 +219,51 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
   // Real-time watch fields for calculations
   const watchedItems = useWatch({ control: form.control, name: "items" }) || [];
 
-  const { subtotal, totalGst, computedTotal } = React.useMemo(() => {
+  const { subtotal, totalGst, computedTotal, totalOrderedUnits, displayOrderedUnits } = React.useMemo(() => {
     let sub = 0;
     let gstSum = 0;
+    let totalUnits = 0;
+    const unitMap = new Map<string, number>();
 
     for (const item of watchedItems) {
       const qty = toNum(item?.orderedQty);
       const rate = toNum(item?.unitRate);
       const gst = toNum(item?.gstPercent);
+      const unit = item?.unit?.trim() || "";
 
       const lineBase = qty * rate;
       const lineGst = lineBase * (gst / 100);
 
       sub += lineBase;
       gstSum += lineGst;
+      totalUnits += qty;
+
+      if (qty > 0) {
+        const uLabel = unit || "Unit";
+        unitMap.set(uLabel, (unitMap.get(uLabel) || 0) + qty);
+      }
+    }
+
+    const unitParts: string[] = [];
+    unitMap.forEach((qty, u) => {
+      const formattedQty = qty % 1 === 0 ? qty : Number(qty.toFixed(2));
+      unitParts.push(`${formattedQty} ${u}`);
+    });
+
+    let displayUnits = "0 Units";
+    if (unitParts.length === 1) {
+      displayUnits = unitParts[0];
+    } else if (unitParts.length > 1) {
+      const totalFormatted = totalUnits % 1 === 0 ? totalUnits : Number(totalUnits.toFixed(2));
+      displayUnits = `${totalFormatted} Total (${unitParts.join(", ")})`;
     }
 
     return {
       subtotal: sub,
       totalGst: gstSum,
       computedTotal: sub + gstSum,
+      totalOrderedUnits: totalUnits,
+      displayOrderedUnits: displayUnits,
     };
   }, [watchedItems]);
 
@@ -242,17 +280,19 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
     },
     onSuccess: async (res) => {
       if (res.ok) {
-        toast.success(mode === "new" ? "Purchase order created" : "Purchase order updated");
+        toast.success(mode === "new" ? "Purchase order created successfully" : "Purchase order updated successfully");
         await queryClient.invalidateQueries({ queryKey: ["purchase-orders"] });
         if (poId) await queryClient.invalidateQueries({ queryKey: ["purchase-orders", String(poId)] });
 
-        const data = await res.json();
         navigate({ to: "/purchases/purchase-orders", search: { page: 1, limit: 10 } });
       } else {
         const errorData = await (res.json() as Promise<any>).catch(() => ({}));
         toast.error(errorData.error || "Failed to save purchase order");
       }
     },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to save purchase order");
+    }
   });
 
   const vendorMutation = useMutation({
@@ -316,12 +356,18 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
     }
   };
 
+  const formatCurrency = (val: number) => {
+    return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(val);
+  };
+
   return (
     <form onSubmit={form.handleSubmit(onSubmit as any, onFormError)} className="space-y-6">
       {/* Validation Error Banner */}
       {Object.keys(form.formState.errors).length > 0 && (
-        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive text-xs space-y-1">
-          <div className="font-semibold text-sm mb-1">Form Validation Errors</div>
+        <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-xl text-destructive text-xs space-y-1 shadow-xs animate-in fade-in duration-200">
+          <div className="font-semibold text-sm mb-1 flex items-center gap-2">
+            <Info className="h-4 w-4" /> Form Validation Errors
+          </div>
           <ul className="list-disc pl-5 space-y-0.5">
             {form.formState.errors.vendorId && <li>Vendor: {String(form.formState.errors.vendorId.message)}</li>}
             {form.formState.errors.poDate && <li>PO Date: {String(form.formState.errors.poDate.message)}</li>}
@@ -339,25 +385,47 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
           </ul>
         </div>
       )}
-      <Card>
-        <CardHeader>
-          <CardTitle>{mode === "new" ? "Create Purchase Order" : "Edit Purchase Order"}</CardTitle>
-          <CardDescription>Enter the PO header details</CardDescription>
+
+      {/* PO Header Details Card */}
+      <Card className="shadow-xs border">
+        <CardHeader className="pb-4 border-b bg-muted/10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Receipt className="h-4 w-4" />
+              </div>
+              <div>
+                <CardTitle className="text-base">
+                  {mode === "new" ? "New Purchase Order" : `Edit Purchase Order #${initialData?.poNo || poId}`}
+                </CardTitle>
+                <CardDescription className="text-xs">Specify PO number, order date, vendor, and terms</CardDescription>
+              </div>
+            </div>
+
+            {mode === "edit" && initialData?.poNo && (
+              <Badge variant="outline" className="font-mono text-xs px-2.5 py-1">
+                {initialData.poNo}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-6 md:grid-cols-3 items-end">
+        <CardContent className="pt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {/* PO Number */}
-          <div className="flex flex-col">
-            <Field
-              label="PO Number"
-              placeholder={mode === "new" ? "Custom PO No (or leave empty to auto-generate)" : "PO Number"}
+          <div className="flex flex-col space-y-1.5">
+            <Label className="text-xs font-semibold">PO Number</Label>
+            <Input
+              placeholder={mode === "new" ? "Auto-generated (or custom)" : "PO Number"}
               {...form.register("poNo")}
-              error={form.formState.errors.poNo?.message}
+              className="text-xs h-9 font-mono"
             />
+            {form.formState.errors.poNo && (
+              <p className="text-[11px] text-destructive">{form.formState.errors.poNo.message}</p>
+            )}
           </div>
 
           {/* PO Date */}
-          <div className="flex flex-col space-y-2">
-            <Label>PO Date <span className="text-destructive">*</span></Label>
+          <div className="flex flex-col space-y-1.5">
+            <Label className="text-xs font-semibold">PO Date <span className="text-destructive">*</span></Label>
             <Controller
               control={form.control}
               name="poDate"
@@ -368,12 +436,12 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                       <Button
                         variant="outline"
                         className={cn(
-                          "w-full justify-start text-left font-normal bg-background px-3",
+                          "w-full justify-start text-left font-normal bg-background px-3 h-9 text-xs shadow-2xs font-mono",
                           !field.value && "text-muted-foreground",
                           fieldState.error && "border-destructive"
                         )}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         {field.value ? format(new Date(field.value), "PPP") : <span>Pick PO date</span>}
                       </Button>
                     </PopoverTrigger>
@@ -385,15 +453,15 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                       />
                     </PopoverContent>
                   </Popover>
-                  {fieldState.error && <p className="text-xs text-destructive">{fieldState.error.message}</p>}
+                  {fieldState.error && <p className="text-[11px] text-destructive">{fieldState.error.message}</p>}
                 </>
               )}
             />
           </div>
 
           {/* Vendor */}
-          <div className="flex flex-col">
-            <Label>Vendor <span className="text-destructive">*</span></Label>
+          <div className="flex flex-col space-y-1.5 sm:col-span-2">
+            <Label className="text-xs font-semibold">Vendor <span className="text-destructive">*</span></Label>
             <div className="flex gap-2 items-start">
               <div className="flex-1">
                 <Controller
@@ -402,353 +470,488 @@ export function POForm({ mode, poId, initialData }: POFormProps) {
                   render={({ field, fieldState }) => (
                     <Autocomplete
                       label=""
-                      placeholder="Select a vendor..."
+                      placeholder="Search & select a vendor..."
                       value={field.value ? String(field.value) : ""}
                       options={vendorOptions}
                       onChange={(val) => field.onChange(val ? parseInt(val, 10) : 0)}
                       error={fieldState.error?.message}
+                      className="w-full"
                     />
                   )}
                 />
               </div>
               <Dialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" type="button" size="icon" className="shrink-0 mt-px" title="Add Vendor">
-                    <UserPlus className="h-4 w-4" />
+                  <Button variant="outline" type="button" size="icon" className="h-9 w-9 shrink-0 shadow-2xs" title="Create New Vendor">
+                    <UserPlus className="h-4 w-4 text-primary" />
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle>Add New Vendor</DialogTitle>
-                    <DialogDescription>Create a new vendor profile quickly.</DialogDescription>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-primary" /> Add New Vendor
+                    </DialogTitle>
+                    <DialogDescription>Create a new vendor profile instantly.</DialogDescription>
                   </DialogHeader>
-                  <div className="grid gap-4 py-4">
+                  <div className="grid gap-3.5 py-3">
                     <Field label="Vendor Name *" {...vendorForm.register("name")} error={vendorForm.formState.errors.name?.message} />
-                    <Field label="Contact Person" {...vendorForm.register("contactPerson")} />
-                    <Field label="Phone" {...vendorForm.register("phone")} />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Contact Person" {...vendorForm.register("contactPerson")} />
+                      <Field label="Phone" {...vendorForm.register("phone")} />
+                    </div>
                     <Field label="GST Number" {...vendorForm.register("gstNumber")} />
                     <Field label="Address" {...vendorForm.register("address")} />
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2 pt-2 border-t">
                     <Button variant="outline" type="button" onClick={() => setVendorDialogOpen(false)}>Cancel</Button>
                     <Button type="button" onClick={vendorForm.handleSubmit((values) => vendorMutation.mutate(values))} disabled={vendorMutation.isPending}>
-                      Save Vendor
+                      {vendorMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null} Save Vendor
                     </Button>
                   </div>
                 </DialogContent>
               </Dialog>
             </div>
           </div>
-
-          {/* Remarks */}
-          <div className="md:col-span-2">
-            <Field
-              label="Remarks"
-              {...form.register("remarks")}
-              placeholder="Any additional notes..."
-              error={form.formState.errors.remarks?.message}
-            />
-          </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-          <div>
-            <CardTitle>Item Details </CardTitle>
-            <CardDescription>Add items to be ordered.</CardDescription>
-          </div>
-          <AddItemDialog
-            open={addItemDialogOpen}
-            onOpenChange={setAddItemDialogOpen}
-            initialName={newItemInitialName}
-            onItemAdded={handleItemAdded}
-            trigger={
-              <Button type="button" variant="outline" className="h-8 px-3 text-xs gap-1.5">
-                <Plus className="h-3.5 w-3.5" /> New Item
-              </Button>
-            }
-          />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Grid Header (visible on lg screens) */}
-          <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 bg-muted/40 text-xs font-semibold text-muted-foreground uppercase rounded-md items-baseline">
-            <div className="col-span-3">Item Name *</div>
-            <div className="col-span-2">Category</div>
-            <div className="col-span-1">Unit</div>
-            <div className="col-span-1 text-right">Qty *</div>
-            <div className="col-span-2 text-right">Rate (₹) *</div>
-            <div className="col-span-1 text-right">GST %</div>
-            <div className="col-span-2 text-right pr-2">Line Value</div>
+      {/* Items Section */}
+      <Card className="shadow-xs border">
+        <CardHeader className="flex flex-wrap flex-row items-center justify-between space-y-0 pb-3.5 border-b bg-muted/20 gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Boxes className="h-4 w-4" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Line Items</CardTitle>
+              <CardDescription className="text-xs">Select catalog products, ordered quantities, unit rate, and tax</CardDescription>
+            </div>
           </div>
 
-          {/* Grid Rows */}
-          <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AddItemDialog
+              open={addItemDialogOpen}
+              onOpenChange={setAddItemDialogOpen}
+              initialName={newItemInitialName}
+              onItemAdded={handleItemAdded}
+              trigger={
+                <Button type="button" variant="outline" size="sm" className="h-8 px-2.5 text-xs gap-1.5 shadow-2xs">
+                  <Plus className="h-3.5 w-3.5 text-primary" /> New Product Master
+                </Button>
+              }
+            />
+            <Badge variant="secondary" className="font-mono text-xs py-1 px-2.5">
+              {fields.length} Item{fields.length > 1 ? "s" : ""}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          {/* Grid Header (Desktop) */}
+          <div className="hidden lg:grid grid-cols-[minmax(240px,5fr)_minmax(140px,2fr)_minmax(120px,1.5fr)_minmax(130px,1.6fr)_36px] gap-4 px-4 py-3 bg-muted/40 text-muted-foreground uppercase text-[10.5px] font-bold tracking-wider border-b">
+            <div>Item Name *</div>
+            <div>Category</div>
+            <div>Unit</div>
+            <div className="text-center">Qty *</div>
+            <div></div>
+          </div>
+
+          {/* Line Items List (Unified Grid System) */}
+          <div className="divide-y divide-border/60">
             {fields.map((field, index) => {
-              const qty = toNum(watchedItems[index]?.orderedQty);
-              const rate = toNum(watchedItems[index]?.unitRate);
-              const gst = toNum(watchedItems[index]?.gstPercent);
-              const lineValue = qty * rate * (1 + gst / 100);
+              const itemName = watchedItems[index]?.itemName;
+              const currentUnit = watchedItems[index]?.unit;
 
               return (
                 <div
                   key={field.id}
-                  className="grid grid-cols-12 gap-3 items-baseline p-3.5 rounded-lg border bg-card hover:bg-muted/5 transition-colors shadow-xs"
+                  className={cn(
+                    "p-3 sm:p-4 transition-colors relative focus-within:z-50",
+                    index % 2 === 1 && "bg-muted/5",
+                    "hover:bg-muted/10"
+                  )}
+                  style={{ zIndex: fields.length - index }}
                 >
-                  {/* Item Name */}
-                  <div className="col-span-12 lg:col-span-3">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Item Name *</label>
-                    <Controller
-                      control={form.control}
-                      name={`items.${index}.itemName` as const}
-                      render={({ field, fieldState }) => (
-                        <Autocomplete
-                          label=""
-                          placeholder="Type item name..."
-                          value={field.value || ""}
-                          options={itemOptions}
-                          onChange={(val) => {
-                            field.onChange(val);
-                            const selectedItem = itemsCatalog.find((it: any) => it.name === val);
-                            if (selectedItem) {
-                              const purUnit = selectedItem.purchaseUnit || selectedItem.unit || "";
-                              form.setValue(`items.${index}.unit` as const, purUnit);
-                              form.setValue(`items.${index}.unitRate` as const, Number(selectedItem.rate || 0));
-                              form.setValue(`items.${index}.category` as const, selectedItem.itemTypeName || "");
-                              form.setValue(`items.${index}.gstPercent` as const, Number(selectedItem.gstPercent || 0));
-                            }
-                          }}
-                          error={fieldState.error?.message}
-                          className="w-full"
-                        />
-                      )}
-                    />
-                  </div>
+                  {/* Desktop Grid Layout */}
+                  <div className="hidden lg:grid grid-cols-[minmax(240px,5fr)_minmax(140px,2fr)_minmax(120px,1.5fr)_minmax(130px,1.6fr)_36px] gap-4 items-start">
+                    {/* Item Name Autocomplete */}
+                    <div className="relative z-30 focus-within:z-50">
+                      <Controller
+                        control={form.control}
+                        name={`items.${index}.itemName` as const}
+                        render={({ field: itField, fieldState }) => (
+                          <Autocomplete
+                            label=""
+                            placeholder="Type product name..."
+                            value={itField.value || ""}
+                            options={itemOptions}
+                            onChange={(val) => {
+                              itField.onChange(val);
+                              const selectedItem = itemsCatalog.find((it: any) => it.name === val);
+                              if (selectedItem) {
+                                const purUnit = selectedItem.purchaseUnit || selectedItem.unit || "";
+                                form.setValue(`items.${index}.unit` as const, purUnit);
+                                form.setValue(`items.${index}.unitRate` as const, 0);
+                                form.setValue(`items.${index}.category` as const, selectedItem.itemTypeName || "");
+                                form.setValue(`items.${index}.gstPercent` as const, 0);
+                              }
+                            }}
+                            error={fieldState.error?.message}
+                            className="w-full relative z-50"
+                          />
+                        )}
+                      />
+                    </div>
 
-                  {/* Category */}
-                  <div className="col-span-6 sm:col-span-3 lg:col-span-2">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Category</label>
-                    <Field
-                      placeholder="Category"
-                      readOnly
-                      {...form.register(`items.${index}.category` as const)}
-                      className="w-full text-sm"
-                    />
-                  </div>
-
-                  {/* Unit */}
-                  <div className="col-span-6 sm:col-span-3 lg:col-span-1">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Unit</label>
-                    <select
-                      className="flex h-10 w-full rounded-md border bg-background px-2 py-1 text-xs outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
-                      value={watchedItems[index]?.unit || ""}
-                      onChange={(e) => {
-                        const newUnit = e.target.value;
-                        form.setValue(`items.${index}.unit` as const, newUnit);
-                        const itemName = watchedItems[index]?.itemName;
-                        const selectedItem = itemsCatalog.find((it: any) => it.name === itemName);
-                        if (selectedItem) {
-                          const baseUnit = selectedItem.purchaseUnit || selectedItem.unit || "unit";
-                          const tier = selectedItem.unitPrices?.find((up: any) => up.unit === newUnit);
-                          if (tier && Number(tier.costPrice) > 0) {
-                            form.setValue(`items.${index}.unitRate` as const, Number(tier.costPrice));
-                          } else if (newUnit === baseUnit) {
-                            form.setValue(`items.${index}.unitRate` as const, Number(selectedItem.rate || 0));
-                          } else {
-                            const factor = getConversionFactor(newUnit, baseUnit);
-                            if (factor > 0 && selectedItem.rate) {
-                              form.setValue(`items.${index}.unitRate` as const, Number((Number(selectedItem.rate) * factor).toFixed(2)));
-                            }
-                          }
-                        }
-                      }}
-                    >
-                      {(() => {
-                        const itemName = watchedItems[index]?.itemName;
-                        const item = itemsCatalog.find((it: any) => it.name === itemName);
-                        const currentUnit = watchedItems[index]?.unit;
-                        const unitsSet = new Set<string>();
-                        if (currentUnit) unitsSet.add(currentUnit);
-                        if (item?.unit) unitsSet.add(item.unit);
-                        if (item?.purchaseUnit) unitsSet.add(item.purchaseUnit);
-                        if (item?.saleUnit) unitsSet.add(item.saleUnit);
-                        if (item?.unitPrices && Array.isArray(item.unitPrices)) {
-                          item.unitPrices.forEach((up: any) => { if (up.unit) unitsSet.add(up.unit); });
-                        }
-                        (unitTypes as any[]).forEach((ut: any) => {
-                          const u = ut.symbol || ut.name;
-                          if (u) unitsSet.add(u);
-                        });
-                        const opts = Array.from(unitsSet);
-                        if (opts.length === 0) return <option value="">Unit</option>;
-                        return opts.map((u) => <option key={u} value={u}>{u}</option>);
-                      })()}
-                    </select>
-                  </div>
-
-                  {/* Qty */}
-                  <div className="col-span-4 sm:col-span-2 lg:col-span-1">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Qty *</label>
-                    <Field
-                      type="number"
-                      step="0.01"
-                      placeholder="Qty"
-                      {...form.register(`items.${index}.orderedQty` as const)}
-                      error={form.formState.errors.items?.[index]?.orderedQty?.message}
-                      className="w-full text-right"
-                    />
-                  </div>
-
-                  {/* Cost Rate */}
-                  <div className="col-span-4 sm:col-span-2 lg:col-span-2">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">Cost Rate (₹) *</label>
-                    <Field
-                      type="number"
-                      step="0.01"
-                      placeholder="Rate"
-                      {...form.register(`items.${index}.unitRate` as const)}
-                      error={form.formState.errors.items?.[index]?.unitRate?.message}
-                      className="w-full text-right"
-                    />
-                    {(() => {
-                      const itemName = watchedItems[index]?.itemName;
-                      const currentUnit = watchedItems[index]?.unit;
-                      const item = itemsCatalog.find((it: any) => it.name === itemName);
-                      if (!item) return null;
-
-                      let estSale = 0;
-
-                      // 1. Check item unitPrices tiers first for matching unit
-                      if (currentUnit && item.unitPrices && Array.isArray(item.unitPrices)) {
-                        const tier = item.unitPrices.find((up: any) => up.unit === currentUnit);
-                        if (tier) {
-                          if (Number(tier.salePrice) > 0) {
-                            estSale = Number(tier.salePrice);
-                          } else if (Number(tier.conversionFactor) > 0 && Number(item.salePrice) > 0) {
-                            estSale = Number((Number(item.salePrice) * Number(tier.conversionFactor)).toFixed(2));
-                          }
-                        }
-                      }
-
-                      // 2. Fallback to base sale price with unit conversion factor
-                      if (estSale <= 0) {
-                        const baseSalePrice = Number(item.salePrice || 0);
-                        const baseUnit = item.saleUnit || item.unit || "unit";
-                        if (baseSalePrice > 0) {
-                          if (!currentUnit || currentUnit === baseUnit) {
-                            estSale = baseSalePrice;
-                          } else {
-                            const factor = getConversionFactor(currentUnit, baseUnit);
-                            estSale = Number((baseSalePrice * factor).toFixed(2));
-                          }
-                        }
-                      }
-
-                      if (estSale <= 0) return null;
-                      const displayUnit = currentUnit || item.saleUnit || item.unit || "unit";
-
-                      return (
-                        <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold text-right mt-0.5">
-                          Est. Sale: ₹{estSale}/{displayUnit}
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* GST % */}
-                  <div className="col-span-4 sm:col-span-2 lg:col-span-1">
-                    <label className="text-xs text-muted-foreground font-medium mb-1 block lg:hidden">GST %</label>
-                    <Field
-                      type="number"
-                      step="0.01"
-                      placeholder="GST"
-                      {...form.register(`items.${index}.gstPercent` as const)}
-                      error={form.formState.errors.items?.[index]?.gstPercent?.message}
-                      className="w-full text-right"
-                    />
-                  </div>
-
-
-                  {/* Line Value & Delete Action */}
-                  <div className="col-span-12 lg:col-span-2 flex items-center justify-between lg:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/50">
-                    <div className="flex flex-col lg:items-end">
-                      <span className="text-[10px] uppercase text-muted-foreground font-semibold lg:hidden">Line Value</span>
-                      <span className="font-semibold text-sm text-foreground">
-                        {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(lineValue)}
+                    {/* Category */}
+                    <div className="min-w-0 mt-1">
+                      <span
+                        className="text-muted-foreground font-xs truncate w-full inline-block"
+                        title={watchedItems[index]?.category || "—"}
+                      >
+                        {watchedItems[index]?.category || "—"}
                       </span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      type="button"
-                      className="text-destructive hover:bg-destructive/10 shrink-0"
-                      onClick={() => remove(index)}
-                      disabled={fields.length === 1}
-                      title="Delete Row"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+
+                    {/* Unit */}
+                    <div>
+                      <select
+                        className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-ring font-medium"
+                        value={watchedItems[index]?.unit || ""}
+                        onChange={(e) => {
+                          const newUnit = e.target.value;
+                          form.setValue(`items.${index}.unit` as const, newUnit);
+                        }}
+                      >
+                        {(() => {
+                          const item = itemsCatalog.find((it: any) => it.name === itemName);
+                          const unitsSet = new Set<string>();
+                          if (currentUnit) unitsSet.add(currentUnit);
+                          if (item?.unit) unitsSet.add(item.unit);
+                          if (item?.purchaseUnit) unitsSet.add(item.purchaseUnit);
+                          if (item?.saleUnit) unitsSet.add(item.saleUnit);
+                          if (item?.unitPrices && Array.isArray(item.unitPrices)) {
+                            item.unitPrices.forEach((up: any) => {
+                              if (up.unit) unitsSet.add(up.unit);
+                            });
+                          }
+                          (unitTypes as any[]).forEach((ut: any) => {
+                            const u = ut.symbol || ut.name;
+                            if (u) unitsSet.add(u);
+                          });
+                          const opts = Array.from(unitsSet);
+                          if (opts.length === 0) return <option value="">Unit</option>;
+                          return opts.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ));
+                        })()}
+                      </select>
+                    </div>
+
+                    {/* Qty with Stepper */}
+                    <div>
+                      <Controller
+                        control={form.control}
+                        name={`items.${index}.orderedQty` as const}
+                        render={({ field: qtyField, fieldState }) => {
+                          const val = Number(qtyField.value) || 0;
+                          return (
+                            <div className="flex items-center">
+                              <button
+                                type="button"
+                                onClick={() => qtyField.onChange(Math.max(1, Number((val - 1).toFixed(2))))}
+                                disabled={val <= 1}
+                                className="h-8 w-7 shrink-0 flex items-center justify-center rounded-l-md border border-r-0 border-input bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                title="Decrease qty"
+                              >
+                                <Minus className="h-3 w-3" />
+                              </button>
+                              <Input
+                                type="number"
+                                step="any"
+                                min="0.01"
+                                value={qtyField.value === undefined || qtyField.value === null ? "" : qtyField.value}
+                                onChange={(e) => {
+                                  const text = e.target.value;
+                                  qtyField.onChange(text === "" ? "" : Number(text));
+                                }}
+                                onBlur={qtyField.onBlur}
+                                ref={qtyField.ref}
+                                placeholder="1"
+                                className={cn(
+                                  "w-full text-center h-8 text-xs font-mono font-semibold rounded-none px-1 border-input focus-visible:ring-1",
+                                  fieldState.error && "border-destructive ring-destructive"
+                                )}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => qtyField.onChange(Number((val + 1).toFixed(2)))}
+                                className="h-8 w-7 shrink-0 flex items-center justify-center rounded-r-md border border-l-0 border-input bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                title="Increase qty"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                            </div>
+                          );
+                        }}
+                      />
+                    </div>
+
+                    {/* Action */}
+                    <div className="text-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        type="button"
+                        className="h-7 w-7 text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 transition-colors"
+                        onClick={() => remove(index)}
+                        disabled={fields.length === 1}
+                        title="Remove item"
+                      >
+                        <Trash2Icon className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Mobile & Tablet Card Grid Layout (< lg) */}
+                  <div className="block lg:hidden space-y-3">
+                    {/* Header: Product Autocomplete + Delete */}
+                    <div className="flex items-start justify-between gap-2 border-b pb-2.5 relative z-30 focus-within:z-50">
+                      <div className="flex-1 relative z-30 focus-within:z-50">
+                        <Label className="text-[11px] text-muted-foreground mb-1 block">Product Name *</Label>
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.itemName` as const}
+                          render={({ field: itField, fieldState }) => (
+                            <Autocomplete
+                              label=""
+                              placeholder="Type product name..."
+                              value={itField.value || ""}
+                              options={itemOptions}
+                              onChange={(val) => {
+                                itField.onChange(val);
+                                const selectedItem = itemsCatalog.find((it: any) => it.name === val);
+                                if (selectedItem) {
+                                  const purUnit = selectedItem.purchaseUnit || selectedItem.unit || "";
+                                  form.setValue(`items.${index}.unit` as const, purUnit);
+                                  form.setValue(`items.${index}.unitRate` as const, 0);
+                                  form.setValue(`items.${index}.category` as const, selectedItem.itemTypeName || "");
+                                  form.setValue(`items.${index}.gstPercent` as const, 0);
+                                }
+                              }}
+                              error={fieldState.error?.message}
+                              className="w-full relative z-50"
+                            />
+                          )}
+                        />
+                      </div>
+                      {fields.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 mt-5"
+                          onClick={() => remove(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Mobile Form Inputs Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      {/* Category */}
+                      <div className="col-span-2 sm:col-span-1">
+                        <Label className="text-[11px] text-muted-foreground mb-1 block">Category</Label>
+                        <div className="h-9 flex items-center text-muted-foreground font-medium truncate">
+                          {watchedItems[index]?.category || "—"}
+                        </div>
+                      </div>
+
+                      {/* Unit */}
+                      <div>
+                        <Label className="text-[11px] text-muted-foreground mb-1 block">Unit</Label>
+                        <select
+                          className="flex h-9 w-full rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          value={watchedItems[index]?.unit || ""}
+                          onChange={(e) => {
+                            const newUnit = e.target.value;
+                            form.setValue(`items.${index}.unit` as const, newUnit);
+                          }}
+                        >
+                          {(() => {
+                            const item = itemsCatalog.find((it: any) => it.name === itemName);
+                            const unitsSet = new Set<string>();
+                            if (currentUnit) unitsSet.add(currentUnit);
+                            if (item?.unit) unitsSet.add(item.unit);
+                            if (item?.purchaseUnit) unitsSet.add(item.purchaseUnit);
+                            if (item?.saleUnit) unitsSet.add(item.saleUnit);
+                            if (item?.unitPrices && Array.isArray(item.unitPrices)) {
+                              item.unitPrices.forEach((up: any) => {
+                                if (up.unit) unitsSet.add(up.unit);
+                              });
+                            }
+                            (unitTypes as any[]).forEach((ut: any) => {
+                              const u = ut.symbol || ut.name;
+                              if (u) unitsSet.add(u);
+                            });
+                            const opts = Array.from(unitsSet);
+                            if (opts.length === 0) return <option value="">Unit</option>;
+                            return opts.map((u) => (
+                              <option key={u} value={u}>
+                                {u}
+                              </option>
+                            ));
+                          })()}
+                        </select>
+                      </div>
+
+                      {/* Qty with Stepper */}
+                      <div>
+                        <Label className="text-[11px] text-muted-foreground mb-1 block">Qty *</Label>
+                        <Controller
+                          control={form.control}
+                          name={`items.${index}.orderedQty` as const}
+                          render={({ field: qtyField, fieldState }) => {
+                            const val = Number(qtyField.value) || 0;
+                            return (
+                              <div className="flex items-center">
+                                <button
+                                  type="button"
+                                  onClick={() => qtyField.onChange(Math.max(1, Number((val - 1).toFixed(2))))}
+                                  disabled={val <= 1}
+                                  className="h-9 w-8 shrink-0 flex items-center justify-center rounded-l-md border border-r-0 border-input bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title="Decrease qty"
+                                >
+                                  <Minus className="h-3.5 w-3.5" />
+                                </button>
+                                <Input
+                                  type="number"
+                                  step="any"
+                                  min="0.01"
+                                  value={qtyField.value === undefined || qtyField.value === null ? "" : qtyField.value}
+                                  onChange={(e) => {
+                                    const text = e.target.value;
+                                    qtyField.onChange(text === "" ? "" : Number(text));
+                                  }}
+                                  onBlur={qtyField.onBlur}
+                                  ref={qtyField.ref}
+                                  placeholder="1"
+                                  className={cn(
+                                    "w-full text-center h-9 text-xs font-mono font-semibold rounded-none px-1 border-input focus-visible:ring-1",
+                                    fieldState.error && "border-destructive ring-destructive"
+                                  )}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => qtyField.onChange(Number((val + 1).toFixed(2)))}
+                                  className="h-9 w-8 shrink-0 flex items-center justify-center rounded-r-md border border-l-0 border-input bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                  title="Increase qty"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            );
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          {/* Total Summary Row & Buttons */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 rounded-lg bg-muted/30 border mt-4 gap-4">
-            <div className="flex flex-wrap gap-2 items-center">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => append({ itemName: "", category: "", unit: "", orderedQty: 1, unitRate: 0, gstPercent: 0 })}
-              >
-                <Plus className="h-4 w-4 mr-2" /> Add Line Item Row
-              </Button>
-              {/* <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setNewItemInitialName("");
-                  setAddItemDialogOpen(true);
-                }}
-              >
-                <Package className="h-4 w-4 mr-2 text-primary" /> Create New Item Master
-              </Button> */}
-            </div>
-
-            <div className="flex flex-col items-end gap-1 self-end sm:self-auto text-right">
-              <div className="flex items-center justify-between gap-6 text-xs text-muted-foreground">
-                <span>Subtotal (Excl. GST):</span>
-                <span className="font-semibold text-foreground">
-                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(subtotal)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-6 text-xs text-muted-foreground">
-                <span>Total GST:</span>
-                <span className="font-semibold text-foreground">
-                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalGst)}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-3 pt-1 border-t mt-1">
-                <span className="font-bold uppercase text-xs text-muted-foreground">Total Order Value:</span>
-                <span className="font-bold text-xl text-primary">
-                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(computedTotal)}
-                </span>
-              </div>
-            </div>
+          {/* Add Row Action */}
+          <div className="p-4 border-t bg-muted/10">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 shadow-2xs font-medium"
+              onClick={() => append({ itemName: "", category: "", unit: "", orderedQty: 1, unitRate: 0, gstPercent: 0 })}
+            >
+              <Plus className="h-4 w-4 text-primary" /> Add Line Item Row
+            </Button>
           </div>
-          {form.formState.errors.items?.root && (
-            <p className="text-sm text-destructive mt-2">{form.formState.errors.items.root.message}</p>
-          )}
         </CardContent>
       </Card>
 
-      <div className="flex justify-end gap-4">
-        <Button variant="outline" type="button" onClick={() => navigate({ to: "/purchases/purchase-orders", search: { page: 1, limit: 10 } })}>
-          Cancel
+      {/* Bottom Section: Notes & Financial Summary Card */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        <div className="md:col-span-7 space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground block">
+            Remarks &amp; Delivery Instructions
+          </Label>
+          <textarea
+            rows={5}
+            placeholder="Add terms, remarks, delivery instructions, packaging requirements, or quotation reference..."
+            {...form.register("remarks")}
+            className="w-full p-3 text-xs rounded-xl border bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 leading-relaxed resize-none"
+          />
+          {form.formState.errors.remarks && (
+            <p className="text-[11px] text-destructive">{form.formState.errors.remarks.message}</p>
+          )}
+        </div>
+
+        <div className="md:col-span-5">
+          <Card className="shadow-xs bg-muted/10 border-primary/20">
+            <CardHeader className="py-3 px-4 border-b bg-muted/20">
+              <CardTitle className="text-sm font-bold uppercase tracking-wider">Purchase Order Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 space-y-2 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Total Items</span>
+                <span className="font-mono font-medium text-foreground">{fields.length} Products</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Total Ordered Units</span>
+                <span className="font-mono font-medium text-foreground">{displayOrderedUnits}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground pt-1.5 border-t">
+                <span>Gross Subtotal</span>
+                <span className="font-mono font-medium">₹{subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Total GST</span>
+                <span className="font-mono font-medium">₹{totalGst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold pt-2 border-t text-primary">
+                <span>Total PO Value</span>
+                <span className="font-mono">₹{computedTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Form Submission Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+        <Button
+          variant="outline"
+          type="button"
+          className="shadow-xs"
+          onClick={() => navigate({ to: "/purchases/purchase-orders", search: { page: 1, limit: 10 } })}
+        >
+          <ChevronLeft className="h-4 w-4 mr-1.5" /> Cancel
         </Button>
-        <Button type="submit" disabled={mutation.isPending}>
-          <Save className="h-4 w-4 mr-2" /> {mode === "new" ? "Create PO" : "Save Changes"}
+
+        <Button
+          type="submit"
+          disabled={mutation.isPending}
+          className="shadow-xs gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90"
+        >
+          {mutation.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" /> {mode === "new" ? "Create Purchase Order" : "Save Changes"}
+            </>
+          )}
         </Button>
       </div>
     </form>

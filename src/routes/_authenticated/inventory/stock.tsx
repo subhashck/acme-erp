@@ -42,12 +42,19 @@ import * as React from "react";
 import { z } from "zod";
 import { cn } from "@/utils/cn";
 
+import { 
+  findUnit, 
+  getUnitConversionFactor, 
+  formatQtyNumber 
+} from "@/lib/unit-conversion";
+
 const stockSearchSchema = z.object({
   page: z.coerce.number().optional().catch(1),
   limit: z.coerce.number().optional().catch(20),
   storeId: z.string().optional().catch("all"),
   itemTypeId: z.string().optional().catch("all"),
   stockStatus: z.string().optional().catch("all"),
+  unitFilter: z.string().optional().catch("all"),
   search: z.string().optional().catch(""),
   expiringBefore: z.string().optional().catch(""),
   sortBy: z.string().optional().catch("itemName"),
@@ -68,6 +75,7 @@ function LiveStock() {
   const storeIdFilter = searchParams.storeId || "all";
   const itemTypeIdFilter = searchParams.itemTypeId || "all";
   const stockStatusFilter = searchParams.stockStatus || "all";
+  const unitFilter = searchParams.unitFilter || "all";
   const searchFilter = searchParams.search || "";
   const expiringBeforeFilter = searchParams.expiringBefore || "";
   const sortBy = searchParams.sortBy || "itemName";
@@ -108,6 +116,18 @@ function LiveStock() {
     () => client["item-types"].$get()
   );
 
+  // Fetch available unit types
+  const { data: unitTypesList = [] } = useRpcQuery<any[]>(
+    ["unit-types"],
+    () => client["unit-types"].$get()
+  );
+
+  // Fetch unit conversions
+  const { data: unitConversionsList = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
   // Fetch paginated stock data
   const { data: stockResponse, isLoading, refetch, isRefetching } = useRpcQuery<any>(
     ["inventory-stock", searchParams],
@@ -140,6 +160,7 @@ function LiveStock() {
     (storeIdFilter && storeIdFilter !== "all") ||
     (itemTypeIdFilter && itemTypeIdFilter !== "all") ||
     (stockStatusFilter && stockStatusFilter !== "all") ||
+    (unitFilter && unitFilter !== "all") ||
     expiringBeforeFilter ||
     sortBy !== "itemName" ||
     sortOrder !== "asc"
@@ -154,6 +175,7 @@ function LiveStock() {
         storeId: "all",
         itemTypeId: "all",
         stockStatus: "all",
+        unitFilter: "all",
         search: "",
         expiringBefore: "",
         sortBy: "itemName",
@@ -204,6 +226,7 @@ function LiveStock() {
   const getExpiryBadge = (expiryDateStr: string) => {
     if (!expiryDateStr) return <span className="text-muted-foreground text-xs">—</span>;
     const expiry = new Date(expiryDateStr);
+    if (isNaN(expiry.getTime())) return <span className="text-xs">{expiryDateStr}</span>;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 3600 * 24));
@@ -225,13 +248,13 @@ function LiveStock() {
     if (diffDays <= 90) {
       return (
         <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border-amber-300 font-medium text-xs whitespace-nowrap">
-          Expiring in {diffDays}d
+          Expiring in {diffDays}d ({expiryDateStr})
         </Badge>
       );
     }
     return (
-      <Badge variant="outline" className="bg-emerald-50/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 text-xs whitespace-nowrap">
-        {expiryDateStr}
+      <Badge variant="outline" className="text-emerald-700 dark:text-emerald-400 border-emerald-200 text-xs whitespace-nowrap">
+        {format(expiry, "MMM-yyyy")}
       </Badge>
     );
   };
@@ -248,7 +271,8 @@ function LiveStock() {
     const storeLabel = storeIdFilter === "all" ? "All Stores" : (storesList.find((s: any) => String(s.id) === storeIdFilter)?.name || storeIdFilter);
     const categoryLabel = itemTypeIdFilter === "all" ? "All Categories" : (itemTypesList.find((t: any) => String(t.id) === itemTypeIdFilter)?.name || itemTypeIdFilter);
     const statusLabel = stockStatusFilter === "all" ? "All Inventory" : stockStatusFilter.replace(/_/g, " ");
-    listRows.push([`Filters: Store [${storeLabel}] | Category [${categoryLabel}] | Status [${statusLabel}]`]);
+    const unitLabel = unitFilter === "all" ? "Original / Default Units" : unitFilter;
+    listRows.push([`Filters: Store [${storeLabel}] | Category [${categoryLabel}] | Unit [${unitLabel}] | Status [${statusLabel}]`]);
     listRows.push([]); // blank spacer
 
     // Headers
@@ -266,7 +290,7 @@ function LiveStock() {
       "Sale Unit",
       "Quantity On Hand",
       "Available Qty",
-      "Stock Base Unit",
+      "Stock Unit",
       "Stock Status",
     ];
     listRows.push(headers);
@@ -281,6 +305,15 @@ function LiveStock() {
       const costRate = Number(row.purchaseRate || 0);
       const mrpRate = Number(row.mrp || row.saleRate || 0);
       const reorderLvl = Number(row.reorderLevel || 0);
+      const baseUnit = row.purchaseUnit || row.baseUnit || row.unit || "unit";
+
+      const conv = unitFilter && unitFilter !== "all"
+        ? getUnitConversionFactor(baseUnit, unitFilter, unitTypesList, unitConversionsList)
+        : { convertible: false, factor: 1 };
+
+      const outOnHand = conv.convertible ? Number((qOnHand * conv.factor).toFixed(3)) : qOnHand;
+      const outAvail = conv.convertible ? Number((qAvail * conv.factor).toFixed(3)) : qAvail;
+      const outUnit = conv.convertible ? (conv.toUnit?.symbol || unitFilter) : baseUnit;
 
       let status = "In Stock";
       if (qOnHand <= 0) {
@@ -289,8 +322,8 @@ function LiveStock() {
         status = "Low Stock";
       }
 
-      totalOnHand += qOnHand;
-      totalAvailable += qAvail;
+      totalOnHand += outOnHand;
+      totalAvailable += outAvail;
 
       listRows.push([
         row.storeName || "Central Warehouse",
@@ -304,9 +337,9 @@ function LiveStock() {
         row.purchaseUnit || row.unit || "unit",
         mrpRate,
         row.saleUnit || row.unit || "unit",
-        qOnHand,
-        qAvail,
-        row.baseUnit || row.unit || "",
+        outOnHand,
+        outAvail,
+        outUnit,
         status,
       ]);
     });
@@ -493,9 +526,9 @@ function LiveStock() {
         {/* Search & Filter Toolbar */}
         <Card className="shadow-xs border-border">
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-3 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 xl:grid-cols-12 gap-3 items-center">
               {/* Search input */}
-              <div className="lg:col-span-4">
+              <div className="sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-3">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute left-3 top-2.5 text-muted-foreground pointer-events-none" />
                   <Input
@@ -518,7 +551,7 @@ function LiveStock() {
               </div>
 
               {/* Store Filter */}
-              <div className="lg:col-span-2">
+              <div className="xl:col-span-2">
                 <Select
                   value={storeIdFilter}
                   onValueChange={(val) =>
@@ -546,7 +579,7 @@ function LiveStock() {
               </div>
 
               {/* Category / Item Type Filter */}
-              <div className="lg:col-span-2">
+              <div className="xl:col-span-2">
                 <Select
                   value={itemTypeIdFilter}
                   onValueChange={(val) =>
@@ -573,8 +606,35 @@ function LiveStock() {
                 </Select>
               </div>
 
+              {/* Unit Conversion Filter */}
+              <div className="xl:col-span-2">
+                <Select
+                  value={unitFilter}
+                  onValueChange={(val) =>
+                    navigate({
+                      search: (prev) => ({
+                        ...prev,
+                        unitFilter: val,
+                      }),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 w-full bg-background text-xs">
+                    <SelectValue placeholder="Display Unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Original Units</SelectItem>
+                    {unitTypesList.map((u: any) => (
+                      <SelectItem key={u.id} value={u.symbol || u.name}>
+                        {u.name} ({u.symbol})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Stock Status Filter */}
-              <div className="lg:col-span-2">
+              <div className="xl:col-span-2">
                 <Select
                   value={stockStatusFilter}
                   onValueChange={(val) =>
@@ -603,7 +663,7 @@ function LiveStock() {
               </div>
 
               {/* Expiring Before Date (Shadcn Popover + Calendar) & Clear */}
-              <div className="lg:col-span-2 flex items-center gap-1.5">
+              <div className="xl:col-span-1 flex items-center gap-1.5">
                 <div className="relative flex-1">
                   <Popover>
                     <PopoverTrigger asChild>
@@ -617,8 +677,8 @@ function LiveStock() {
                         <CalendarIcon className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                         <span className="truncate">
                           {expiringBeforeFilter
-                            ? format(new Date(expiringBeforeFilter), "dd MMM yyyy")
-                            : "Expiring Before"}
+                            ? format(new Date(expiringBeforeFilter), "dd MMM")
+                            : "Expiry"}
                         </span>
                         {expiringBeforeFilter && (
                           <X
@@ -793,6 +853,16 @@ function LiveStock() {
                       const reorderLvl = Number(row.reorderLevel || 0);
                       const isOutOfStock = qtyOnHand <= 0;
                       const isLowStock = !isOutOfStock && reorderLvl > 0 && qtyOnHand <= reorderLvl;
+                      const baseUnitSymbol = row.purchaseUnit || row.baseUnit || row.unit || "unit";
+
+                      const conv = unitFilter && unitFilter !== "all"
+                        ? getUnitConversionFactor(baseUnitSymbol, unitFilter, unitTypesList, unitConversionsList)
+                        : { convertible: false, factor: 1 };
+
+                      const displayOnHand = conv.convertible ? Number((qtyOnHand * conv.factor).toFixed(3)) : qtyOnHand;
+                      const displayAvail = conv.convertible ? Number((availQty * conv.factor).toFixed(3)) : availQty;
+                      const displayUnit = conv.convertible ? (conv.toUnit?.symbol || unitFilter) : baseUnitSymbol;
+                      const isConverted = conv.convertible && displayUnit.toLowerCase() !== baseUnitSymbol.toLowerCase();
 
                       return (
                         <tr
@@ -866,12 +936,32 @@ function LiveStock() {
 
                           {/* On Hand Qty */}
                           <td className="px-4 py-3 align-middle text-right font-mono font-bold text-sm text-foreground">
-                            {qtyOnHand} <span className="text-xs font-normal text-muted-foreground">{row.baseUnit || row.unit || ""}</span>
+                            <div>
+                              <span>{formatQtyNumber(displayOnHand)}</span>{" "}
+                              <span className={cn("text-xs font-normal", isConverted ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+                                {displayUnit}
+                              </span>
+                            </div>
+                            {isConverted && (
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                (Orig: {formatQtyNumber(qtyOnHand)} {baseUnitSymbol})
+                              </div>
+                            )}
                           </td>
 
                           {/* Available Qty */}
                           <td className="px-4 py-3 align-middle text-right font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                            {availQty} <span className="text-xs font-normal text-muted-foreground">{row.baseUnit || row.unit || ""}</span>
+                            <div>
+                              <span>{formatQtyNumber(displayAvail)}</span>{" "}
+                              <span className={cn("text-xs font-normal", isConverted ? "font-semibold text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")}>
+                                {displayUnit}
+                              </span>
+                            </div>
+                            {isConverted && (
+                              <div className="text-[10px] text-muted-foreground font-normal">
+                                (Orig: {formatQtyNumber(availQty)} {baseUnitSymbol})
+                              </div>
+                            )}
                           </td>
 
                           {/* Stock Health Status */}

@@ -151,6 +151,50 @@ function TransfersList() {
     () => client.inventory.stores.$get()
   );
 
+  const { data: unitTypes = [] } = useRpcQuery<any[]>(
+    ["unit-types"],
+    () => client["unit-types"].$get()
+  );
+
+  const { data: unitConversions = [] } = useRpcQuery<any[]>(
+    ["unit-conversions"],
+    () => client["unit-conversions"].$get()
+  );
+
+  const getConversionFactor = React.useCallback(
+    (fromSymbol: string, toSymbol: string) => {
+      if (!fromSymbol || !toSymbol) return 1;
+      if (fromSymbol.toLowerCase() === toSymbol.toLowerCase()) return 1;
+      const fromU = (unitTypes as any[]).find(
+        (u) =>
+          (u.symbol || "").toLowerCase() === fromSymbol.toLowerCase() ||
+          (u.name || "").toLowerCase() === fromSymbol.toLowerCase()
+      );
+      const toU = (unitTypes as any[]).find(
+        (u) =>
+          (u.symbol || "").toLowerCase() === toSymbol.toLowerCase() ||
+          (u.name || "").toLowerCase() === toSymbol.toLowerCase()
+      );
+      if (!fromU || !toU || !(unitConversions as any[]) || (unitConversions as any[]).length === 0) return 1;
+
+      const fId = Number(fromU.id);
+      const tId = Number(toU.id);
+
+      const direct = (unitConversions as any[]).find(
+        (c: any) => Number(c.fromUnitId) === fId && Number(c.toUnitId) === tId
+      );
+      if (direct && Number(direct.multiplier) > 0) return Number(direct.multiplier);
+
+      const inverse = (unitConversions as any[]).find(
+        (c: any) => Number(c.fromUnitId) === tId && Number(c.toUnitId) === fId
+      );
+      if (inverse && Number(inverse.multiplier) > 0) return 1 / Number(inverse.multiplier);
+
+      return 1;
+    },
+    [unitTypes, unitConversions]
+  );
+
   // Fetch requisitions to allow fulfilling approved indents
   const { data: requisitionsResponse } = useRpcQuery<any>(
     ["inventory-requisitions-all"],
@@ -217,11 +261,19 @@ function TransfersList() {
     if (req.items && req.items.length > 0) {
       const newItems = req.items.map((it: any) => {
         const remainingQty = Math.max(0, Number(it.approvedQty ?? it.requestedQty) - Number(it.fulfilledQty || 0));
+        const indentUnit =
+          it.unit?.symbol ||
+          it.unit?.name ||
+          (typeof it.unit === "string" ? it.unit : "") ||
+          it.unitSymbol ||
+          it.unitName ||
+          it.item?.unit ||
+          "Box";
         return {
           itemId: it.itemId,
           batchId: 0,
           quantity: remainingQty > 0 ? remainingQty : Number(it.approvedQty ?? it.requestedQty),
-          unit: it.unit?.symbol || it.unit?.name || (typeof it.unit === "string" ? it.unit : "") || it.item?.unit || "Box",
+          unit: indentUnit,
           unitRate: 0,
         };
       });
@@ -268,7 +320,7 @@ function TransfersList() {
         param: { id: String(id) },
       });
       if (!res.ok) {
-        const err: any = await res.json();
+        const err: any = await res.json().catch(() => ({}));
         throw new Error(err.error || "Failed to dispatch transfer");
       }
       return res.json();
@@ -290,7 +342,7 @@ function TransfersList() {
         param: { id: String(id) },
       });
       if (!res.ok) {
-        const err: any = await res.json();
+        const err: any = await res.json().catch(() => ({}));
         throw new Error(err.error || "Failed to receive transfer");
       }
       return res.json();
@@ -820,7 +872,11 @@ function TransfersList() {
                                 const match = sourceStockList.find((s: any) => s.batchId === bId);
                                 if (match) {
                                   form.setValue(`items.${index}.itemId`, match.itemId);
-                                  form.setValue(`items.${index}.unit`, match.unit || "Box");
+                                  const currentUnit = form.getValues(`items.${index}.unit`);
+                                  const isFromIndent = Boolean(form.getValues("requisitionId"));
+                                  if (!isFromIndent || !currentUnit) {
+                                    form.setValue(`items.${index}.unit`, match.unit || match.baseUnit || "Box");
+                                  }
                                   form.setValue(`items.${index}.unitRate`, match.purchaseRate || 0);
                                 }
                               }}
@@ -834,11 +890,19 @@ function TransfersList() {
                                     No batches available in source store
                                   </SelectItem>
                                 ) : (
-                                  filteredStock.map((stock: any) => (
-                                    <SelectItem key={stock.id} value={String(stock.batchId)}>
-                                      {stock.itemName} &bull; Batch: {stock.batchNumber} &bull; Exp: {stock.expiryDate} (Avail: {stock.availableQty} {stock.unit})
-                                    </SelectItem>
-                                  ))
+                                  filteredStock.map((stock: any) => {
+                                    const rowUnit = form.watch(`items.${index}.unit`) || stock.unit || "unit";
+                                    const factor = getConversionFactor(stock.unit, rowUnit);
+                                    const availInRowUnit = Number((Number(stock.availableQty || 0) * factor).toFixed(2));
+                                    const showConv = factor !== 1 && stock.unit && rowUnit && stock.unit !== rowUnit;
+
+                                    return (
+                                      <SelectItem key={stock.id} value={String(stock.batchId)}>
+                                        {stock.itemName} &bull; Batch: {stock.batchNumber} &bull; Exp: {stock.expiryDate}{" "}
+                                        (Avail: {showConv ? `${availInRowUnit} ${rowUnit} / ${stock.availableQty} ${stock.unit}` : `${stock.availableQty} ${stock.unit}`})
+                                      </SelectItem>
+                                    );
+                                  })
                                 )}
                               </SelectContent>
                             </Select>
@@ -862,8 +926,49 @@ function TransfersList() {
                       />
                     </div>
 
-                    <div className="w-20 text-xs font-mono text-muted-foreground px-1 truncate">
-                      {form.watch(`items.${index}.unit`) || "Unit"}
+                    <div className="w-28">
+                      <select
+                        value={form.watch(`items.${index}.unit`) || "Unit"}
+                        onChange={(e) => {
+                          const newUnit = e.target.value;
+                          const oldUnit = form.getValues(`items.${index}.unit`);
+                          const currentQty = Number(form.getValues(`items.${index}.quantity`)) || 0;
+
+                          if (oldUnit && newUnit && oldUnit !== newUnit && currentQty > 0) {
+                            const factor = getConversionFactor(oldUnit, newUnit);
+                            if (factor > 0 && factor !== 1) {
+                              form.setValue(`items.${index}.quantity`, Number((currentQty * factor).toFixed(3)));
+                            }
+                          }
+                          form.setValue(`items.${index}.unit`, newUnit);
+                        }}
+                        className="w-full h-9 px-2 rounded-md border bg-background text-xs font-mono font-medium outline-none focus-visible:ring-1"
+                      >
+                        {(() => {
+                          const currentUnit = form.watch(`items.${index}.unit`);
+                          const itId = form.watch(`items.${index}.itemId`);
+                          const stockMatches = sourceStockList.filter((s: any) => s.itemId === itId);
+                          const unitsSet = new Set<string>();
+                          if (currentUnit) unitsSet.add(currentUnit);
+                          stockMatches.forEach((s: any) => {
+                            if (s.unit) unitsSet.add(s.unit);
+                            if (s.baseUnit) unitsSet.add(s.baseUnit);
+                            if (s.purchaseUnit) unitsSet.add(s.purchaseUnit);
+                            if (s.saleUnit) unitsSet.add(s.saleUnit);
+                          });
+                          (unitTypes as any[]).forEach((u: any) => {
+                            const sym = u.symbol || u.name;
+                            if (sym) unitsSet.add(sym);
+                          });
+                          const opts = Array.from(unitsSet);
+                          if (opts.length === 0) return <option value={currentUnit || "Unit"}>{currentUnit || "Unit"}</option>;
+                          return opts.map((u) => (
+                            <option key={u} value={u}>
+                              {u}
+                            </option>
+                          ));
+                        })()}
+                      </select>
                     </div>
 
                     {fields.length > 1 && (

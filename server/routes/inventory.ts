@@ -30,7 +30,7 @@ import {
 } from "../db/schema.ts";
 import { generateDocNumber } from "../services/sequence.ts";
 import { recordStockMovement } from "../services/stock-engine.ts";
-import { idParam, jsonBody, requireAdmin } from "./shared.ts";
+import { idParam, jsonBody, requireAdmin, convertItemQuantityToBase, resolveUnitId } from "./shared.ts";
 import { z } from "zod";
 
 const app = new Hono<AuthEnv>();
@@ -64,6 +64,8 @@ const adjustmentItemInput = z.object({
   batchId: z.number().int().positive("Batch is required"),
   systemQty: z.coerce.number().min(0),
   physicalQty: z.coerce.number().min(0),
+  unitId: z.coerce.number().int().positive().optional().nullable(),
+  unit: z.string().optional().nullable(),
   type: z.enum(["gain", "loss", "expired", "damaged"]).default("gain"),
 });
 
@@ -539,7 +541,7 @@ export const inventoryRoutes = app
           ilike(items.name, s),
           ilike(itemBatches.batchNumber, s),
           ilike(stockLedger.referenceType, s),
-          ilike(stockLedger.referenceId, s)
+          sql`${stockLedger.referenceId}::text ILIKE ${s}`
         )
       );
     }
@@ -698,6 +700,7 @@ export const inventoryRoutes = app
         adjustmentNo: stockAdjustments.adjustmentNo,
         storeId: stockAdjustments.storeId,
         storeName: stores.name,
+        storeCode: stores.code,
         reason: stockAdjustments.reason,
         status: stockAdjustments.status,
         createdBy: stockAdjustments.createdBy,
@@ -711,11 +714,16 @@ export const inventoryRoutes = app
 
     if (!adj) return c.json({ error: "Stock adjustment not found" }, 404);
 
+    const baseUnitAlias = alias(unitTypes, "adj_base_unit");
+    const itemUnitAlias = alias(unitTypes, "adj_item_unit");
+
     const itemsList = await db
       .select({
         id: stockAdjustmentItems.id,
         itemId: stockAdjustmentItems.itemId,
         itemName: items.name,
+        unitId: stockAdjustmentItems.unitId,
+        unit: sql<string>`COALESCE(${itemUnitAlias.symbol}, ${baseUnitAlias.symbol})`,
         batchId: stockAdjustmentItems.batchId,
         batchNumber: itemBatches.batchNumber,
         expiryDate: itemBatches.expiryDate,
@@ -726,6 +734,8 @@ export const inventoryRoutes = app
       })
       .from(stockAdjustmentItems)
       .leftJoin(items, eq(stockAdjustmentItems.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(itemUnitAlias, eq(stockAdjustmentItems.unitId, itemUnitAlias.id))
       .leftJoin(itemBatches, eq(stockAdjustmentItems.batchId, itemBatches.id))
       .where(eq(stockAdjustmentItems.adjustmentId, id));
 
@@ -753,6 +763,7 @@ export const inventoryRoutes = app
 
         for (const item of input.items) {
           const diff = item.physicalQty - item.systemQty;
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
           await tx.insert(stockAdjustmentItems).values({
             adjustmentId: adj.id,
             itemId: item.itemId,
@@ -760,6 +771,7 @@ export const inventoryRoutes = app
             systemQty: item.systemQty,
             physicalQty: item.physicalQty,
             differenceQty: diff,
+            unitId: resolvedUnitId || null,
             type: item.type as any,
           });
         }
@@ -795,7 +807,17 @@ export const inventoryRoutes = app
           const diff = Number(item.differenceQty);
           if (diff === 0) continue;
 
-          if (diff > 0) {
+          // Convert difference quantity to base unit if recorded with a custom unit type
+          const { baseQuantity } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            Math.abs(diff),
+            item.unitId
+          );
+
+          const quantityChange = diff > 0 ? baseQuantity : -baseQuantity;
+
+          if (quantityChange > 0) {
             await recordStockMovement(tx, {
               storeId: adj.storeId,
               itemId: item.itemId,
@@ -803,7 +825,7 @@ export const inventoryRoutes = app
               movementType: "ADJUSTMENT_ADD",
               referenceType: "STOCK_ADJUSTMENT",
               referenceId: adj.id,
-              quantityChange: diff,
+              quantityChange,
               userId: userId || null,
             });
           } else {
@@ -814,7 +836,7 @@ export const inventoryRoutes = app
               movementType: item.type === "damaged" || item.type === "expired" ? "DAMAGE" : "ADJUSTMENT_SUB",
               referenceType: "STOCK_ADJUSTMENT",
               referenceId: adj.id,
-              quantityChange: diff,
+              quantityChange,
               userId: userId || null,
             });
           }
@@ -962,6 +984,7 @@ export const inventoryRoutes = app
         vendorId: grns.vendorId,
         vendorName: vendors.name,
         status: grns.status,
+        discountAmount: grns.discountAmount,
         remarks: grns.remarks,
         createdAt: grns.createdAt,
       })
@@ -992,6 +1015,9 @@ export const inventoryRoutes = app
         receivedQty: grnItems.receivedQty,
         freeQty: grnItems.freeQty,
         unitRate: sql<number>`coalesce(${grnItems.unitRate}, ${poItems.unitRate}, ${items.rate}, 0)`,
+        discountPercent: sql<number>`coalesce(${grnItems.discountPercent}, 0)`,
+        discountAmount: sql<number>`coalesce(${grnItems.discountAmount}, 0)`,
+        taxableAmount: grnItems.taxableAmount,
         gstPercent: sql<number>`coalesce(${grnItems.gstPercent}, ${poItems.gstPercent}, ${items.gstPercent}, 0)`,
         poOrderedQty: sql<number>`coalesce(${poItems.orderedQty}, ${grnItems.receivedQty}, 0)`,
         notes: grnItems.notes,
