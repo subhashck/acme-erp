@@ -81,11 +81,21 @@ describe("Media Engine - SHA-256 Deduplication & WebP Processing", () => {
     expect(thumbBuffer.length).toBeLessThan(largeImageBuffer.length);
   });
 
-  it("sanitizes, deduplicates, and trims user tags safely", () => {
-    const { sanitizeTags } = require("../../server/services/media-engine.ts");
+  it("sanitizes, deduplicates, and trims user tags safely", async () => {
+    const { sanitizeTags } = await import("../../server/services/media-engine.ts");
     const rawTags = ["  Covers  ", "#doctors", "SURGERY_2026", "covers", "!", "health-tips"];
     const cleaned = sanitizeTags(rawTags);
 
     expect(cleaned).toEqual(["covers", "doctors", "surgery_2026", "health-tips"]);
+  });
+
+  it("exports multi-issue assignment functions", async () => {
+    const { assignMediaToIssue, unassignMediaFromIssue, updateMediaAsset } = await import(
+      "../../server/services/media-engine.ts"
+    );
+
+    expect(typeof assignMediaToIssue).toBe("function");
+    expect(typeof unassignMediaFromIssue).toBe("function");
+    expect(typeof updateMediaAsset).toBe("function");
   });
 });

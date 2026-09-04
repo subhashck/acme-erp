@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import sharp from "sharp";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
-import { magazineMedia } from "../db/schema-magazine.ts";
+import { magazineMedia, magazineIssueMedia, magazineIssues } from "../db/schema-magazine.ts";
 import { uploadToMinio, deleteFromMinio } from "../utils/minio.ts";
 
 export interface ProcessMediaOptions {
@@ -11,6 +11,7 @@ export interface ProcessMediaOptions {
   originalName: string;
   mimeType: string;
   issueId?: number | null;
+  issueIds?: number[];
   userId?: string | null;
   tags?: string[];
 }
@@ -31,6 +32,7 @@ export interface ProcessMediaResult {
   thumbnailUrl: string | null;
   tags: string[];
   issueId: number | null;
+  issueIds: number[];
   isDuplicate: boolean;
   savingsPercentage: number;
 }
@@ -62,20 +64,30 @@ export function calculateBufferHash(buffer: Buffer): string {
 /**
  * Processes an uploaded image:
  * 1. Checks SHA-256 hash to deduplicate existing files (0 bytes uploaded to MinIO if duplicate).
- * 2. If new, compresses/converts raster images to WebP via Sharp and generates a lightweight thumbnail.
- * 3. Uploads optimized WebP assets to MinIO and records metadata in PostgreSQL.
+ * 2. Automatically links existing deduplicated media to newly requested issues in magazine_issue_media.
+ * 3. If new, compresses/converts raster images to WebP via Sharp and generates a lightweight thumbnail.
+ * 4. Uploads optimized WebP assets to MinIO and records metadata in PostgreSQL.
  */
 export async function processAndStoreMedia({
   fileBuffer,
   originalName,
   mimeType,
   issueId,
+  issueIds,
   userId,
   tags,
 }: ProcessMediaOptions): Promise<ProcessMediaResult> {
   const fileHash = calculateBufferHash(fileBuffer);
   const originalSize = fileBuffer.length;
   const cleanTags = sanitizeTags(tags);
+
+  const targetIssueIds = new Set<number>();
+  if (issueId && !isNaN(Number(issueId))) targetIssueIds.add(Number(issueId));
+  if (Array.isArray(issueIds)) {
+    for (const id of issueIds) {
+      if (id && !isNaN(Number(id))) targetIssueIds.add(Number(id));
+    }
+  }
 
   // 1. Deduplication check in DB
   const [existing] = await db
@@ -85,6 +97,34 @@ export async function processAndStoreMedia({
     .limit(1);
 
   if (existing) {
+    // If target issues specified, associate this existing media with those issues
+    for (const tId of targetIssueIds) {
+      await db
+        .insert(magazineIssueMedia)
+        .values({ issueId: tId, mediaId: existing.id })
+        .onConflictDoNothing();
+    }
+
+    if (!existing.issueId && targetIssueIds.size > 0) {
+      await db
+        .update(magazineMedia)
+        .set({ issueId: Array.from(targetIssueIds)[0] })
+        .where(eq(magazineMedia.id, existing.id));
+    }
+
+    // Retrieve all linked issue IDs
+    const linked = await db
+      .select({ issueId: magazineIssueMedia.issueId })
+      .from(magazineIssueMedia)
+      .where(eq(magazineIssueMedia.mediaId, existing.id));
+
+    const finalIssueIds = Array.from(
+      new Set([
+        ...(existing.issueId ? [existing.issueId] : []),
+        ...linked.map((l) => l.issueId),
+      ])
+    );
+
     const savingsPercentage = existing.originalSize && existing.originalSize > 0
       ? Math.max(0, Math.round(((existing.originalSize - existing.fileSize) / existing.originalSize) * 100))
       : 0;
@@ -104,7 +144,8 @@ export async function processAndStoreMedia({
       url: existing.url,
       thumbnailUrl: existing.thumbnailUrl,
       tags: (existing.tags as string[]) || [],
-      issueId: existing.issueId,
+      issueId: existing.issueId || (finalIssueIds[0] ?? null),
+      issueIds: finalIssueIds,
       isDuplicate: true,
       savingsPercentage,
     };
@@ -120,77 +161,70 @@ export async function processAndStoreMedia({
   let thumbObjectKey: string | null = null;
   let width: number | null = null;
   let height: number | null = null;
+  let thumbBuffer: Buffer | null = null;
 
-  const baseName = path.parse(originalName).name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
-  const shortHash = fileHash.slice(0, 10);
+  const timestamp = Date.now();
+  const randomSuffix = crypto.randomBytes(4).toString("hex");
 
   if (isSvg) {
-    // Preserve SVG vector format
+    // Keep SVGs unrasterized
     finalBuffer = fileBuffer;
     finalMimeType = "image/svg+xml";
-    finalFileName = `${baseName}_${shortHash}.svg`;
-    mainObjectKey = `magazine/media/${shortHash}/${finalFileName}`;
-
-    await uploadToMinio(finalBuffer, mainObjectKey, finalMimeType);
+    finalFileName = `vector_${timestamp}_${randomSuffix}.svg`;
+    mainObjectKey = `magazine/media/${finalFileName}`;
   } else {
-    // Process raster image with Sharp into optimized WebP
-    const imageInstance = sharp(fileBuffer).rotate(); // Auto-orient based on EXIF
-    const metadata = await imageInstance.metadata();
+    // Compress and convert raster images to modern high-efficiency WebP
+    try {
+      const img = sharp(fileBuffer);
+      const metadata = await img.metadata();
+      width = metadata.width ?? null;
+      height = metadata.height ?? null;
 
-    width = metadata.width ?? null;
-    height = metadata.height ?? null;
+      finalBuffer = await sharp(fileBuffer)
+        .rotate()
+        .webp({ quality: 84, effort: 4 })
+        .toBuffer();
 
-    // Convert full image to WebP (max 2400px bounding box for high-density displays)
-    finalBuffer = await sharp(fileBuffer)
-      .rotate()
-      .resize({
-        width: 2400,
-        height: 2400,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .webp({ quality: 82, effort: 4 })
-      .toBuffer();
+      finalMimeType = "image/webp";
+      finalFileName = `med_${timestamp}_${randomSuffix}.webp`;
+      mainObjectKey = `magazine/media/${finalFileName}`;
 
-    // Read updated dimensions if resized
-    const processedMeta = await sharp(finalBuffer).metadata();
-    width = processedMeta.width ?? width;
-    height = processedMeta.height ?? height;
+      // Create responsive thumbnail (360x270 aspect fit for media grid gallery)
+      thumbBuffer = await sharp(fileBuffer)
+        .rotate()
+        .resize(360, 270, { fit: "cover", position: "center" })
+        .webp({ quality: 78, effort: 3 })
+        .toBuffer();
 
-    finalMimeType = "image/webp";
-    finalFileName = `${baseName}_${shortHash}.webp`;
-    mainObjectKey = `magazine/media/${shortHash}/${finalFileName}`;
+      thumbObjectKey = `magazine/media/thumb_${timestamp}_${randomSuffix}.webp`;
+    } catch (err: any) {
+      console.warn(`[Sharp Processing Fallback] Could not optimize image via sharp: ${err.message}. Storing original buffer.`);
+      finalBuffer = fileBuffer;
+      finalMimeType = mimeType || "application/octet-stream";
+      const ext = path.extname(originalName) || ".bin";
+      finalFileName = `raw_${timestamp}_${randomSuffix}${ext}`;
+      mainObjectKey = `magazine/media/${finalFileName}`;
+    }
+  }
 
-    // Generate responsive 360x270 thumbnail for fast media gallery browsing
-    const thumbBuffer = await sharp(fileBuffer)
-      .rotate()
-      .resize({
-        width: 360,
-        height: 270,
-        fit: "cover",
-        position: "center",
-      })
-      .webp({ quality: 75, effort: 3 })
-      .toBuffer();
+  // Upload to MinIO
+  await uploadToMinio(finalBuffer, mainObjectKey, finalMimeType);
 
-    thumbObjectKey = `magazine/media/${shortHash}/${baseName}_${shortHash}_thumb.webp`;
-
-    // Upload full WebP image and thumbnail to MinIO
-    await uploadToMinio(finalBuffer, mainObjectKey, finalMimeType);
+  if (thumbBuffer && thumbObjectKey) {
     await uploadToMinio(thumbBuffer, thumbObjectKey, "image/webp");
   }
 
-  const publicUrl = `/api/public/magazine/images/${encodeURIComponent(mainObjectKey)}`;
-  const publicThumbUrl = thumbObjectKey
-    ? `/api/public/magazine/images/${encodeURIComponent(thumbObjectKey)}`
-    : publicUrl;
-
+  const publicUrl = `/api/public/magazine/images/${mainObjectKey}`;
+  const publicThumbUrl = thumbObjectKey ? `/api/public/magazine/images/${thumbObjectKey}` : null;
   const fileSize = finalBuffer.length;
+
   const savingsPercentage = originalSize > 0
     ? Math.max(0, Math.round(((originalSize - fileSize) / originalSize) * 100))
     : 0;
 
   // 3. Store record in DB
+  const primaryIssueId = targetIssueIds.size > 0 ? Array.from(targetIssueIds)[0] : (issueId || null);
+
   const [created] = await db
     .insert(magazineMedia)
     .values({
@@ -207,10 +241,24 @@ export async function processAndStoreMedia({
       url: publicUrl,
       thumbnailUrl: publicThumbUrl,
       tags: cleanTags,
-      issueId: issueId || null,
+      issueId: primaryIssueId,
       uploadedBy: userId || null,
     })
     .returning();
+
+  for (const tId of targetIssueIds) {
+    await db
+      .insert(magazineIssueMedia)
+      .values({ issueId: tId, mediaId: created.id })
+      .onConflictDoNothing();
+  }
+
+  const finalIssueIds = Array.from(
+    new Set([
+      ...(created.issueId ? [created.issueId] : []),
+      ...Array.from(targetIssueIds),
+    ])
+  );
 
   return {
     id: created.id,
@@ -228,6 +276,7 @@ export async function processAndStoreMedia({
     thumbnailUrl: created.thumbnailUrl,
     tags: (created.tags as string[]) || [],
     issueId: created.issueId,
+    issueIds: finalIssueIds,
     isDuplicate: false,
     savingsPercentage,
   };
@@ -235,6 +284,7 @@ export async function processAndStoreMedia({
 
 /**
  * List media assets with search, filtering by tags/issue, and pagination.
+ * Supports multi-issue assignment queries and enriches each asset with assigned issues.
  */
 export async function listMediaAssets({
   page = 1,
@@ -269,7 +319,15 @@ export async function listMediaAssets({
   }
 
   if (issueId) {
-    conditions.push(eq(magazineMedia.issueId, issueId));
+    conditions.push(
+      or(
+        eq(magazineMedia.issueId, issueId),
+        sql`EXISTS (
+          SELECT 1 FROM "magazine"."magazine_issue_media" "mim"
+          WHERE "mim"."media_id" = "magazine_media"."id" AND "mim"."issue_id" = ${issueId}
+        )`
+      )
+    );
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -287,14 +345,48 @@ export async function listMediaAssets({
     .limit(pageSize)
     .offset(offset);
 
+  // Fetch issue links and issue details for all items in batch
+  const mediaIds = items.map((i) => i.id);
+  const mediaIssuesMap = new Map<number, { id: number; issueNo: string; title: string; slug: string }[]>();
+
+  if (mediaIds.length > 0) {
+    const issueLinks = await db
+      .select({
+        mediaId: magazineIssueMedia.mediaId,
+        issueId: magazineIssueMedia.issueId,
+        issueNo: magazineIssues.issueNo,
+        title: magazineIssues.title,
+        slug: magazineIssues.slug,
+      })
+      .from(magazineIssueMedia)
+      .innerJoin(magazineIssues, eq(magazineIssues.id, magazineIssueMedia.issueId))
+      .where(inArray(magazineIssueMedia.mediaId, mediaIds));
+
+    for (const link of issueLinks) {
+      const list = mediaIssuesMap.get(link.mediaId) || [];
+      list.push({ id: link.issueId, issueNo: link.issueNo, title: link.title, slug: link.slug });
+      mediaIssuesMap.set(link.mediaId, list);
+    }
+  }
+
   const data = items.map((item) => {
     const savingsPercentage = item.originalSize && item.originalSize > 0
       ? Math.max(0, Math.round(((item.originalSize - item.fileSize) / item.originalSize) * 100))
       : 0;
 
+    const assignedIssues = mediaIssuesMap.get(item.id) || [];
+    const assignedIssueIds = Array.from(
+      new Set([
+        ...(item.issueId ? [item.issueId] : []),
+        ...assignedIssues.map((i) => i.id),
+      ])
+    );
+
     return {
       ...item,
       tags: (item.tags as string[]) || [],
+      issueIds: assignedIssueIds,
+      issues: assignedIssues,
       savingsPercentage,
     };
   });
@@ -311,13 +403,15 @@ export async function listMediaAssets({
 }
 
 /**
- * Update media asset metadata (e.g. rename or update tags).
+ * Update media asset metadata (e.g. rename, update tags, or manage multi-issue assignments).
  */
 export async function updateMediaAsset(
   id: number,
   updates: {
     originalName?: string;
     tags?: string[];
+    issueId?: number | null;
+    issueIds?: number[];
   }
 ) {
   const setValues: Record<string, any> = {};
@@ -333,24 +427,74 @@ export async function updateMediaAsset(
     setValues.tags = sanitizeTags(updates.tags);
   }
 
-  if (Object.keys(setValues).length === 0) {
-    const [existing] = await db
-      .select()
-      .from(magazineMedia)
-      .where(eq(magazineMedia.id, id))
-      .limit(1);
-    return existing || null;
+  if (updates.issueId !== undefined) {
+    setValues.issueId = updates.issueId;
+    if (updates.issueId) {
+      await db
+        .insert(magazineIssueMedia)
+        .values({ issueId: updates.issueId, mediaId: id })
+        .onConflictDoNothing();
+    }
   }
 
-  setValues.updatedAt = new Date();
+  if (updates.issueIds !== undefined) {
+    const cleanIds = Array.from(new Set(updates.issueIds.filter((i) => i && !isNaN(Number(i)))));
+    if (cleanIds.length === 0) {
+      await db.delete(magazineIssueMedia).where(eq(magazineIssueMedia.mediaId, id));
+      setValues.issueId = null;
+    } else {
+      await db
+        .delete(magazineIssueMedia)
+        .where(
+          and(
+            eq(magazineIssueMedia.mediaId, id),
+            notInArray(magazineIssueMedia.issueId, cleanIds)
+          )
+        );
+      for (const iId of cleanIds) {
+        await db
+          .insert(magazineIssueMedia)
+          .values({ issueId: iId, mediaId: id })
+          .onConflictDoNothing();
+      }
+      setValues.issueId = cleanIds[0];
+    }
+  }
+
+  if (Object.keys(setValues).length > 0) {
+    setValues.updatedAt = new Date();
+    await db
+      .update(magazineMedia)
+      .set(setValues)
+      .where(eq(magazineMedia.id, id));
+  }
 
   const [updated] = await db
-    .update(magazineMedia)
-    .set(setValues)
+    .select()
+    .from(magazineMedia)
     .where(eq(magazineMedia.id, id))
-    .returning();
+    .limit(1);
 
   if (!updated) return null;
+
+  // Retrieve assigned issues
+  const issueLinks = await db
+    .select({
+      issueId: magazineIssueMedia.issueId,
+      issueNo: magazineIssues.issueNo,
+      title: magazineIssues.title,
+      slug: magazineIssues.slug,
+    })
+    .from(magazineIssueMedia)
+    .innerJoin(magazineIssues, eq(magazineIssues.id, magazineIssueMedia.issueId))
+    .where(eq(magazineIssueMedia.mediaId, id));
+
+  const assignedIssueIds = Array.from(
+    new Set([
+      ...(updated.issueId ? [updated.issueId] : []),
+      ...issueLinks.map((i) => i.issueId),
+    ])
+  );
 
   const savingsPercentage = updated.originalSize && updated.originalSize > 0
     ? Math.max(0, Math.round(((updated.originalSize - updated.fileSize) / updated.originalSize) * 100))
@@ -359,9 +503,47 @@ export async function updateMediaAsset(
   return {
     ...updated,
     tags: (updated.tags as string[]) || [],
+    issueIds: assignedIssueIds,
+    issues: issueLinks.map((i) => ({ id: i.issueId, issueNo: i.issueNo, title: i.title, slug: i.slug })),
     savingsPercentage,
   };
 }
+
+/**
+ * Assign an existing media asset to an issue.
+ */
+export async function assignMediaToIssue(mediaId: number, issueId: number) {
+  await db
+    .insert(magazineIssueMedia)
+    .values({ issueId, mediaId })
+    .onConflictDoNothing();
+
+  await db
+    .update(magazineMedia)
+    .set({ issueId })
+    .where(and(eq(magazineMedia.id, mediaId), sql`"issue_id" IS NULL`));
+}
+
+/**
+ * Unassign a media asset from an issue.
+ */
+export async function unassignMediaFromIssue(mediaId: number, issueId: number) {
+  await db
+    .delete(magazineIssueMedia)
+    .where(and(eq(magazineIssueMedia.mediaId, mediaId), eq(magazineIssueMedia.issueId, issueId)));
+
+  const [other] = await db
+    .select({ issueId: magazineIssueMedia.issueId })
+    .from(magazineIssueMedia)
+    .where(eq(magazineIssueMedia.mediaId, mediaId))
+    .limit(1);
+
+  await db
+    .update(magazineMedia)
+    .set({ issueId: other ? other.issueId : null })
+    .where(and(eq(magazineMedia.id, mediaId), eq(magazineMedia.issueId, issueId)));
+}
+
 
 /**
  * Retrieves all unique tags currently in use across all media assets.

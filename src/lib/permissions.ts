@@ -52,11 +52,18 @@ export function useUserPermissions() {
   const isHr = userRole === "hr" || (currentStaff?.role || "").toLowerCase() === "hr";
   const isAccounts = staffDept === "ACCOUNTS" || userRole === "accounts";
   const isAcon = staffDept === "ACON" || userRole === "acon";
+  const cleanStaffDept = (currentStaff?.departmentName || "").replace(/\s+/g, " ").trim().toUpperCase();
+  const isFrontOffice = cleanStaffDept === "FRONT OFFICE";
+  const isPurchaseAndStore = cleanStaffDept === "PURCHASE AND STORE" || cleanStaffDept === "PURCHASE & STORE" || cleanStaffDept.startsWith("PURCHASE AND STORE");
+  const isDispensary = cleanStaffDept === "DISPENSARY" || cleanStaffDept.startsWith("DISPENSARY");
+
 
   const canViewAccounts = isAdmin || isAccounts || isManagementApprover;
   const canViewHr = isAdmin || isHr || isManagementApprover;
   const canViewCollege = isAdmin || isAccounts || isAcon;
-  const canViewInventory = isAdmin || isAccounts || userRole === "inventory" || userRole === "store" || userRole === "pharmacist" || true;
+  const canViewFrontOffice = isAdmin || isFrontOffice;
+  const canViewInventory = isAdmin || isPurchaseAndStore || isDispensary;
+  const canViewPurchases = isAdmin || isAccounts || isPurchaseAndStore;
   const canManageStores = isAdmin || isManagementApprover;
   const canManageMagazine = isAdmin || userRole === "magazine_editor" || isHr || isMagazineEditor;
 
@@ -66,12 +73,17 @@ export function useUserPermissions() {
     isHr,
     isAccounts,
     isAcon,
+    isFrontOffice,
+    isPurchaseAndStore,
+    isDispensary,
     isManagementApprover,
     isMagazineEditor,
     canViewAccounts,
     canViewHr,
     canViewCollege,
+    canViewFrontOffice,
     canViewInventory,
+    canViewPurchases,
     canManageStores,
     canManageMagazine,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading || magazineAccessQuery.isLoading,

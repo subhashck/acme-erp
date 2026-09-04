@@ -38,6 +38,20 @@ export interface HospitalSettingsData {
   copyrightText?: string | null;
 }
 
+export interface MagazineMediaData {
+  id: number;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  width?: number | null;
+  height?: number | null;
+  url: string;
+  thumbnailUrl?: string | null;
+  tags?: string[] | null;
+  createdAt?: Date | string | null;
+}
+
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
@@ -277,20 +291,21 @@ export function enrichIframePermissions(html: string): string {
 export function renderMagazineHtml(
   issue: MagazineIssueData,
   sections: MagazineSectionData[],
-  hospital?: HospitalSettingsData | null
+  hospital?: HospitalSettingsData | null,
+  mediaAssets: MagazineMediaData[] = []
 ): string {
   const monthName = MONTH_NAMES[issue.issueMonth - 1] || `Month ${issue.issueMonth}`;
   const issueDateStr = `${monthName} ${issue.issueYear}`;
-  const hospitalName = hospital?.name || "ACME Hospital & Healthcare";
-  const hospitalTagline = hospital?.tagline || "Excellence in Medical Care, Research & Healthcare Innovation";
-  const hospitalAddress = hospital?.address || "123 Healthcare Ave, Medical District, Healthcare Campus";
-  const hospitalPhone = hospital?.phone || "+91 98765 43210";
-  const hospitalEmail = hospital?.email || "editorial@acmehospital.com";
-  const hospitalWebsite = hospital?.website || "www.acmehospital.com";
-  const hospitalEmergency = hospital?.emergencyPhone || "+91 98765 43211";
-  const hospitalOpd = hospital?.opdPhone || "+91 98765 43212";
-  const hospitalDivision = hospital?.editorialDivision || "ACME Healthcare Communications & Editorial Division";
-  const hospitalCopyright = hospital?.copyrightText || "ACME Monthly Electronic Magazine. All rights reserved.";
+  const hospitalName = hospital?.name?.trim() || "ACME Hospital & Healthcare";
+  const hospitalTagline = hospital?.tagline?.trim() || "";
+  const hospitalAddress = hospital?.address?.trim() || "";
+  const hospitalPhone = hospital?.phone?.trim() || "";
+  const hospitalEmail = hospital?.email?.trim() || "";
+  const hospitalWebsite = hospital?.website?.trim() || "";
+  const hospitalEmergency = hospital?.emergencyPhone?.trim() || "";
+  const hospitalOpd = hospital?.opdPhone?.trim() || "";
+  const hospitalDivision = hospital?.editorialDivision?.trim() || "";
+  const hospitalCopyright = hospital?.copyrightText?.trim() || "";
 
   const totalMinutes = sections.reduce((acc, sec) => acc + calculateReadingTime(sec.contentHtml || ""), 0);
 
@@ -321,8 +336,17 @@ export function renderMagazineHtml(
     nextFlipIndex += secPages.length;
   });
 
+  const hasGallery = Array.isArray(mediaAssets) && mediaAssets.length > 0;
+  const galleryPhotosPerPage = 4;
+  const galleryPageCount = hasGallery ? Math.ceil(mediaAssets.length / galleryPhotosPerPage) : 0;
+  const galleryStartFlipIndex = nextFlipIndex;
+  const galleryStartPageNum = galleryStartFlipIndex + 1;
+  const uniqueTags = hasGallery
+    ? Array.from(new Set(mediaAssets.flatMap((m) => m.tags || []))).filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    : [];
+
   // Prepare table of contents for scroll mode and drawer
-  const tocItemsHtml = sectionPaging.map((item, idx) => {
+  let tocItemsHtml = sectionPaging.map((item, idx) => {
     const sec = item.section;
     const anchor = `section-${sec.id}`;
     const readMins = calculateReadingTime(sec.contentHtml || "");
@@ -343,6 +367,24 @@ export function renderMagazineHtml(
       </a>
     `;
   }).join("");
+
+  if (hasGallery) {
+    tocItemsHtml += `
+      <a href="#gallery" class="toc-card group toc-gallery-card" data-section="gallery" onclick="handleTocClick('gallery', ${galleryStartFlipIndex}, event)">
+        <div class="toc-card-num" style="color:var(--primary);">★</div>
+        <div class="toc-card-body">
+          <h3 class="toc-card-title">Photo Gallery &amp; Highlights</h3>
+          <p class="toc-card-sub">Visual highlights and clinical moments from this edition</p>
+          <div class="toc-card-meta">
+            <span class="toc-card-time" style="color:var(--primary); font-weight:700;">${mediaAssets.length} Photos &bull; P.${galleryStartPageNum}</span>
+          </div>
+        </div>
+        <div class="toc-card-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </div>
+      </a>
+    `;
+  }
 
   // Prepare scroll mode section articles
   const scrollSectionsHtml = enrichedSections.map((sec, idx) => {
@@ -422,7 +464,7 @@ export function renderMagazineHtml(
 
         <div class="cover-main-box">
           <h1 class="cover-heading">${escapeHtml(issue.title)}</h1>
-          <p class="cover-subtext">${escapeHtml(issue.description || hospitalTagline)}</p>
+          ${(issue.description || hospitalTagline) ? `<p class="cover-subtext">${escapeHtml(issue.description || hospitalTagline)}</p>` : ""}
         </div>
 
         ${issue.coverImageUrl ? `
@@ -499,6 +541,14 @@ export function renderMagazineHtml(
                   <span class="toc-row-page">P.${item.startPageNum}</span>
                 </div>
               `).join("")}
+              ${hasGallery ? `
+                <div class="flip-toc-row gallery-toc-row" onclick="goToFlipPage(${galleryStartFlipIndex})">
+                  <span class="toc-row-num" style="color:var(--primary);">★</span>
+                  <span class="toc-row-title" style="font-weight:700; color:var(--primary);">Photo Gallery &amp; Highlights</span>
+                  <span class="toc-row-dots"></span>
+                  <span class="toc-row-page">P.${galleryStartPageNum}</span>
+                </div>
+              ` : ""}
             </div>
           </div>
         </div>
@@ -595,36 +645,108 @@ export function renderMagazineHtml(
     });
   });
 
+  // Photo Gallery Flip Pages
+  if (hasGallery) {
+    for (let gIdx = 0; gIdx < galleryPageCount; gIdx++) {
+      const pagePhotos = mediaAssets.slice(gIdx * galleryPhotosPerPage, (gIdx + 1) * galleryPhotosPerPage);
+      const pageNum = stPages.length + 1;
+      stPages.push({
+        density: "soft",
+        html: `
+          <div class="book-page-content standard-theme gallery-flip-page">
+            <div class="page-running-header">
+              <span>${escapeHtml(issue.title)} &bull; PHOTO GALLERY</span>
+              <span>PAGE ${gIdx + 1} OF ${galleryPageCount}</span>
+            </div>
+
+            <div class="page-inner-scroll">
+              <div class="flip-gallery-head">
+                <div class="flip-gallery-kicker">
+                  <span class="flip-gallery-badge">GALLERY</span>
+                  <span class="flip-gallery-count">${mediaAssets.length} TOTAL PHOTOS</span>
+                </div>
+                <h3 class="flip-gallery-title">Visual Highlights</h3>
+                <p class="flip-gallery-subtitle">Click on any photo to open full-resolution inspection.</p>
+              </div>
+
+              <div class="flip-gallery-grid">
+                ${pagePhotos.map((photo, pSubIdx) => {
+                  const overallIdx = gIdx * galleryPhotosPerPage + pSubIdx;
+                  return `
+                    <button type="button" class="flip-gallery-card" onclick="openLightbox(${overallIdx}, event)" onpointerdown="event.stopPropagation()" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+                      <div class="flip-gallery-img-box">
+                        <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+                        <div class="flip-gallery-card-hover">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                        </div>
+                      </div>
+                      <div class="flip-gallery-card-info">
+                        <span class="flip-gallery-card-name">${escapeHtml(photo.originalName)}</span>
+                        ${photo.tags && photo.tags.length > 0 ? `<span class="flip-gallery-tag">${escapeHtml(photo.tags[0])}</span>` : ""}
+                      </div>
+                    </button>
+                  `;
+                }).join("")}
+              </div>
+            </div>
+
+            <div class="page-running-footer">
+              <span>${escapeHtml(hospitalName)}</span>
+              <span class="page-num-indicator">— ${pageNum} —</span>
+            </div>
+          </div>
+        `,
+      });
+    }
+  }
+
   stPages.push({
     density: "hard",
     html: `
       <div class="book-page-content back-theme">
         <div class="back-brand-box">
-          <div class="back-crest">ACME</div>
+          ${hospital?.logoUrl ? `<img src="${escapeHtml(hospital.logoUrl)}" alt="${escapeHtml(hospitalName)}" class="back-logo-img" style="max-height: 56px; max-width: 140px; object-fit: contain; margin: 0 auto 0.75rem auto; display: block;" />` : `<div class="back-crest">ACME</div>`}
           <h2 class="back-hospital-title">${escapeHtml(hospitalName)}</h2>
-          <p class="back-hospital-tagline">${escapeHtml(hospitalTagline)}</p>
+          ${hospitalTagline ? `<p class="back-hospital-tagline">${escapeHtml(hospitalTagline)}</p>` : ""}
         </div>
 
-        <div class="back-info-card">
-          <div class="back-info-line">
-            <strong>Campus Location:</strong> ${escapeHtml(hospitalAddress)}
+        ${(hospitalAddress || hospitalEmergency || hospitalOpd || hospitalEmail || hospitalWebsite || hospitalPhone) ? `
+          <div class="back-info-card">
+            ${hospitalAddress ? `
+              <div class="back-info-line">
+                <strong>Campus Location:</strong> ${escapeHtml(hospitalAddress)}
+              </div>
+            ` : ""}
+            ${hospitalEmergency ? `
+              <div class="back-info-line">
+                <strong>24/7 Emergency:</strong> <span style="color: #ef4444; font-weight:700;">${escapeHtml(hospitalEmergency)}</span>
+              </div>
+            ` : ""}
+            ${hospitalOpd ? `
+              <div class="back-info-line">
+                <strong>OPD & Appointments:</strong> ${escapeHtml(hospitalOpd)}
+              </div>
+            ` : ""}
+            ${hospitalPhone ? `
+              <div class="back-info-line">
+                <strong>Hospital Line:</strong> ${escapeHtml(hospitalPhone)}
+              </div>
+            ` : ""}
+            ${hospitalEmail ? `
+              <div class="back-info-line">
+                <strong>Editorial Desk:</strong> ${escapeHtml(hospitalEmail)}
+              </div>
+            ` : ""}
+            ${hospitalWebsite ? `
+              <div class="back-info-line">
+                <strong>Web Portal:</strong> ${escapeHtml(hospitalWebsite)}
+              </div>
+            ` : ""}
           </div>
-          <div class="back-info-line">
-            <strong>24/7 Emergency:</strong> <span style="color: #ef4444; font-weight:700;">${escapeHtml(hospitalEmergency)}</span>
-          </div>
-          <div class="back-info-line">
-            <strong>OPD & Appointments:</strong> ${escapeHtml(hospitalOpd)}
-          </div>
-          <div class="back-info-line">
-            <strong>Editorial Desk:</strong> ${escapeHtml(hospitalEmail)}
-          </div>
-          <div class="back-info-line">
-            <strong>Web Portal:</strong> ${escapeHtml(hospitalWebsite)}
-          </div>
-        </div>
+        ` : ""}
 
         <div class="back-bottom-note">
-          <p>${escapeHtml(hospitalDivision)}</p>
+          ${hospitalDivision ? `<p>${escapeHtml(hospitalDivision)}</p>` : ""}
           <div class="back-edition-pill">${escapeHtml(issue.issueNo)} &bull; ${issueDateStr}</div>
         </div>
       </div>
@@ -641,6 +763,16 @@ export function renderMagazineHtml(
 <html lang="en" data-theme="dark" data-font="normal" data-mode="flip">
 <head>
   <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('magazine-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(issue.title)} | ${escapeHtml(hospitalName)} Electronic Magazine</title>
   <meta name="description" content="${escapeHtml(issue.description || `${issue.title} — ${issueDateStr} Edition`)}">
@@ -659,9 +791,10 @@ export function renderMagazineHtml(
 
   <style>
     /* ==========================================================================
-       CSS Variables & Themes
+       CSS Variables & Themes (Defaults strictly to Dark Luxury Theme)
        ========================================================================== */
-    :root {
+    :root,
+    html[data-theme="dark"] {
       --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-display: 'Playfair Display', Georgia, serif;
       --font-masthead: 'Cinzel', serif;
@@ -673,16 +806,37 @@ export function renderMagazineHtml(
       --radius-lg: 20px;
       --radius-xl: 28px;
       --radius-full: 9999px;
-    }
 
-    /* DARK LUXURY THEME */
-    html[data-theme="dark"] {
       --bg-page: #06090e;
       --bg-canvas: #0c121c;
-      --bg-card: #111a28;
-      --bg-card-hover: #162234;
-      --bg-elevated: #1a273b;
-      --bg-glass: rgba(12, 18, 28, 0.88);
+      --bg-card: #0e1624;
+      --bg-card-hover: #142033;
+      --bg-elevated: #152236;
+      --bg-glass: rgba(6, 9, 14, 0.94);
+
+      --page-bg: #0f172a;
+      --page-text: #e2e8f0;
+      --page-muted: #94a3b8;
+      --page-border: rgba(255, 255, 255, 0.09);
+      --page-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+      
+      --text-main: #f3f6fc;
+      --text-body: #d2dbe9;
+      --text-muted: #8b9bb4;
+      --text-dim: #5c6b84;
+
+      --border-main: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(56, 189, 248, 0.25);
+
+      --primary: #38bdf8;
+      --primary-rgb: 56, 189, 248;
+      --primary-glow: rgba(56, 189, 248, 0.2);
+      
+      --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+      --blockquote-bg: rgba(56, 189, 248, 0.06);
+      --blockquote-border: #38bdf8;
+      --blockquote-text: #e0f2fe;
+    }
 
       --page-bg: #0f172a;
       --page-text: #e2e8f0;
@@ -857,13 +1011,14 @@ export function renderMagazineHtml(
       transition: width 0.1s ease-out;
     }
 
-    /* Sticky Header */
+    /* Sticky Header - Dark Mode Default */
     .sticky-header {
       position: sticky;
       top: 0;
       z-index: 90;
       background: var(--bg-glass);
       backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--border-main);
       padding: 0.5rem 1.25rem;
       display: flex;
@@ -871,7 +1026,33 @@ export function renderMagazineHtml(
       justify-content: space-between;
       height: 52px;
       box-sizing: border-box;
-      transition: padding 0.2s ease;
+      transition: padding 0.2s ease, background 0.2s ease;
+    }
+
+    html[data-theme="dark"] .sticky-header {
+      background: rgba(6, 9, 14, 0.94);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="dark"] .sticky-header .control-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #f3f6fc;
+    }
+    html[data-theme="dark"] .sticky-header .control-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: var(--primary);
+    }
+    html[data-theme="dark"] .sticky-header .mode-toggle-group {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="dark"] .sticky-header .mode-btn.active {
+      background: rgba(255, 255, 255, 0.14);
+      color: var(--primary);
+    }
+    html[data-theme="dark"] .sticky-header .brand-issue-pill {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
     }
 
     .nav-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1 1 auto; margin-right: 0.5rem; }
@@ -2398,6 +2579,616 @@ export function renderMagazineHtml(
       transform: translateY(-2px);
     }
 
+    /* ==========================================================================
+       GALLERY & LIGHTBOX STYLES
+       ========================================================================== */
+    .nav-count-badge {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #fff;
+      background: var(--accent-gradient);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      margin-left: 0.25rem;
+      line-height: 1;
+    }
+
+    /* Flipbook Gallery Spread */
+    .gallery-flip-page {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .flip-gallery-head {
+      margin-bottom: 0.85rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 1px solid var(--page-border);
+    }
+    .flip-gallery-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+    }
+    .flip-gallery-badge {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      letter-spacing: 0.1em;
+    }
+    .flip-gallery-count {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--page-muted);
+      font-weight: 600;
+    }
+    .flip-gallery-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+      font-weight: 800;
+      margin-bottom: 0.2rem;
+      letter-spacing: -0.01em;
+    }
+    .flip-gallery-subtitle {
+      font-size: 0.76rem;
+      color: var(--page-muted);
+      margin: 0;
+    }
+    .flip-gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.65rem;
+      margin-top: 0.5rem;
+    }
+    .flip-gallery-card {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font: inherit;
+      color: inherit;
+      padding: 0;
+      margin: 0;
+      text-align: left;
+      width: 100%;
+    }
+    .flip-gallery-card * {
+      pointer-events: none;
+    }
+    .flip-gallery-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+    }
+    .flip-gallery-img-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      background: #000;
+    }
+    .flip-gallery-img-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+    .flip-gallery-card:hover .flip-gallery-img-box img {
+      transform: scale(1.06);
+    }
+    .flip-gallery-card-hover {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      color: #fff;
+    }
+    .flip-gallery-card:hover .flip-gallery-card-hover {
+      opacity: 1;
+    }
+    .flip-gallery-card-info {
+      padding: 0.4rem 0.55rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.35rem;
+      background: var(--bg-card);
+    }
+    .flip-gallery-card-name {
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    .flip-gallery-tag {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.1rem 0.35rem;
+      border-radius: var(--radius-full);
+      flex-shrink: 0;
+    }
+
+    /* Scroll Mode Photo Gallery Section */
+    .gallery-scroll-section {
+      background: var(--bg-card);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border-main);
+      padding: clamp(1.5rem, 4vw, 3rem);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+      margin-bottom: 4rem;
+      scroll-margin-top: 72px;
+    }
+    .gallery-section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-main);
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .gallery-head-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.2rem 0.65rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      display: inline-block;
+      margin-bottom: 0.5rem;
+    }
+    .gallery-head-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.4rem, 3.5vw, 2rem);
+      font-weight: 800;
+      margin-bottom: 0.35rem;
+      letter-spacing: -0.015em;
+    }
+    .gallery-head-sub {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .gallery-open-tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .gallery-open-tab-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+    .gallery-filter-container {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.75rem;
+      flex-wrap: wrap;
+    }
+    .gallery-filter-btn {
+      font-family: var(--font-ui);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.35rem 0.85rem;
+      border-radius: var(--radius-full);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .gallery-filter-btn:hover {
+      color: var(--text-main);
+      border-color: var(--primary);
+    }
+    .gallery-filter-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .gallery-scroll-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .gallery-scroll-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    .gallery-scroll-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--primary);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    }
+    .gallery-scroll-thumb-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      overflow: hidden;
+      background: #000;
+    }
+    .gallery-scroll-thumb-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+    }
+    .gallery-scroll-card:hover .gallery-scroll-thumb-box img {
+      transform: scale(1.08);
+    }
+    .gallery-scroll-hover-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.55);
+      backdrop-filter: blur(2px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      color: #fff;
+    }
+    .gallery-scroll-card:hover .gallery-scroll-hover-overlay {
+      opacity: 1;
+    }
+    .gallery-hover-icon {
+      background: var(--primary);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+    .gallery-hover-text {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .gallery-scroll-card-body {
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      flex: 1;
+    }
+    .gallery-scroll-card-title {
+      font-weight: 700;
+      font-size: 0.88rem;
+      line-height: 1.35;
+      color: var(--text-main);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .gallery-scroll-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+    .gallery-scroll-tag {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    /* Slide-over Gallery Drawer */
+    .gallery-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 100%;
+      max-width: 460px;
+      height: 100vh;
+      height: 100dvh;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border-main);
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+      z-index: 999;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .gallery-drawer.open {
+      transform: translateX(0);
+    }
+    .drawer-header-title-box {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .drawer-gallery-search {
+      padding: 0.85rem 1.25rem;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-main);
+    }
+    .drawer-gallery-search input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-main);
+      padding: 0.55rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.15s ease;
+    }
+    .drawer-gallery-search input:focus {
+      border-color: var(--primary);
+    }
+    .drawer-gallery-grid {
+      padding: 1.25rem;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.85rem;
+      flex: 1;
+    }
+    .drawer-gallery-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .drawer-gallery-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+    .drawer-gallery-card img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+    }
+    .drawer-gallery-card-label {
+      padding: 0.4rem 0.55rem;
+      font-size: 0.74rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Lightbox Modal */
+    .lightbox-modal {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+    }
+    .lightbox-modal.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .lightbox-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.9);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .lightbox-content {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(0.75rem, 2.5vw, 1.75rem);
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .lightbox-modal.open .lightbox-content > * {
+      pointer-events: auto;
+    }
+    .lightbox-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-counter {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.05em;
+    }
+    .lightbox-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lightbox-control-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f1f5f9;
+      border-radius: var(--radius-full);
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .lightbox-control-btn:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .lightbox-control-btn.close-btn {
+      padding: 0.4rem 0.5rem;
+    }
+    .lightbox-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      padding: 0.75rem 0;
+      gap: 0.75rem;
+    }
+    .lightbox-image-box {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+    .lightbox-image-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: var(--radius-md);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .lightbox-nav-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .lightbox-nav-btn:hover {
+      background: var(--primary);
+      transform: scale(1.08);
+    }
+    .lightbox-footer {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-caption {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.01em;
+    }
+    .lightbox-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .lightbox-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    @media (max-width: 600px) {
+      .lightbox-nav-btn {
+        width: 38px;
+        height: 38px;
+      }
+      .lightbox-content {
+        padding: 0.5rem;
+      }
+    }
+
     @media print {
       .sticky-header,
       .dock-toolbar,
@@ -2458,19 +3249,24 @@ export function renderMagazineHtml(
         <span class="nav-btn-label">Contents</span>
       </button>
 
+      <!-- Gallery Trigger Button -->
+      ${hasGallery ? `
+        <button onclick="handleGalleryButtonClick()" class="control-btn gallery-nav-btn" title="View Edition Photo Gallery (${mediaAssets.length} Photos)" id="headerGalleryBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+          <span class="nav-btn-label">Gallery</span>
+          <span class="nav-count-badge">${mediaAssets.length}</span>
+        </button>
+      ` : ""}
+
       <!-- Font Size Toggle -->
       <button onclick="cycleFontSize()" class="control-btn control-icon-btn" title="Change font size" id="fontBtn">
         <span style="font-family: var(--font-prose); font-weight: bold; font-size: 0.95rem;">A+</span>
       </button>
 
-      <!-- Theme Switcher (Dark / Light / Sepia) -->
+      <!-- Theme Switcher (Dark / Light / Sepia - Defaults to Dark Moon Icon) -->
       <button onclick="cycleTheme()" class="control-btn control-icon-btn" title="Toggle Theme (Dark / Light / Sepia)" id="themeBtn">
         <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="4"></circle>
-          <path d="M12 2v2"></path><path d="M12 20v2"></path>
-          <path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path>
-          <path d="M2 12h2"></path><path d="M20 12h2"></path>
-          <path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
         </svg>
       </button>
 
@@ -2565,7 +3361,7 @@ export function renderMagazineHtml(
         </div>
 
         <h1 class="cover-title">${escapeHtml(issue.title)}</h1>
-        <p class="cover-description">${escapeHtml(issue.description || hospitalTagline)}</p>
+        ${(issue.description || hospitalTagline) ? `<p class="cover-description">${escapeHtml(issue.description || hospitalTagline)}</p>` : ""}
 
         <div class="cover-meta-bar">
           <div class="meta-stat">
@@ -2636,10 +3432,62 @@ export function renderMagazineHtml(
     <div class="stories-container">
       ${scrollSectionsHtml}
     </div>
+
+    ${hasGallery ? `
+      <!-- Photo Gallery & Highlights Section -->
+      <section id="gallery" class="gallery-scroll-section">
+        <div class="gallery-section-head">
+          <div class="gallery-head-left">
+            <span class="gallery-head-badge">VISUAL ARCHIVE</span>
+            <h2 class="gallery-head-title">Photo Gallery &amp; Highlights</h2>
+            <p class="gallery-head-sub">Photographic coverage, clinical milestones, and hospital life (${mediaAssets.length} Photos)</p>
+          </div>
+          <div class="gallery-head-actions">
+            <a href="/magazine/view/${escapeHtml(issue.slug)}/gallery" target="_blank" rel="noopener" class="gallery-open-tab-btn" title="Open Standalone Gallery in New Tab">
+              <span>Full Gallery Page</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>
+        </div>
+
+        ${uniqueTags.length > 0 ? `
+          <div class="gallery-filter-container" id="scrollGalleryFilters">
+            <button class="gallery-filter-btn active" onclick="filterScrollGallery('all', this)">All (${mediaAssets.length})</button>
+            ${uniqueTags.map(t => `
+              <button class="gallery-filter-btn" onclick="filterScrollGallery('${escapeHtml(t)}', this)">${escapeHtml(t)}</button>
+            `).join("")}
+          </div>
+        ` : ""}
+
+        <div class="gallery-scroll-grid" id="scrollGalleryGrid">
+          ${mediaAssets.map((photo, pIdx) => `
+            <div class="gallery-scroll-card" data-tags="${escapeHtml((photo.tags || []).join(',').toLowerCase())}" onclick="openLightbox(${pIdx})">
+              <div class="gallery-scroll-thumb-box">
+                <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+                <div class="gallery-scroll-hover-overlay">
+                  <div class="gallery-hover-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                  </div>
+                  <span class="gallery-hover-text">Inspect Photo</span>
+                </div>
+              </div>
+              <div class="gallery-scroll-card-body">
+                <div class="gallery-scroll-card-title">${escapeHtml(photo.originalName)}</div>
+                ${photo.tags && photo.tags.length > 0 ? `
+                  <div class="gallery-scroll-tags">
+                    ${photo.tags.slice(0, 3).map(t => `<span class="gallery-scroll-tag">${escapeHtml(t)}</span>`).join("")}
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    ` : ""}
   </main>
 
   <!-- Slide-over Table of Contents Drawer -->
-  <div id="drawerOverlay" class="drawer-overlay" onclick="closeTocDrawer()"></div>
+  <div id="drawerOverlay" class="drawer-overlay" onclick="closeAllDrawers()"></div>
   <aside id="tocDrawer" class="toc-drawer" aria-label="Table of Contents Drawer">
     <div class="drawer-header">
       <h3 class="drawer-title">Contents</h3>
@@ -2652,6 +3500,73 @@ export function renderMagazineHtml(
     </div>
   </aside>
 
+  ${hasGallery ? `
+    <!-- Slide-over Photo Gallery Drawer -->
+    <aside id="galleryDrawer" class="gallery-drawer" aria-label="Photo Gallery Drawer">
+      <div class="drawer-header">
+        <div class="drawer-header-title-box">
+          <h3 class="drawer-title">Photo Gallery</h3>
+          <span class="nav-count-badge">${mediaAssets.length} Photos</span>
+        </div>
+        <button onclick="closeGalleryDrawer()" class="control-btn control-icon-btn" title="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="drawer-gallery-search">
+        <input type="text" id="drawerGallerySearchInput" placeholder="Search photos by title or tag..." oninput="searchDrawerGallery(this.value)" />
+      </div>
+      <div class="drawer-gallery-grid" id="drawerGalleryGrid">
+        ${mediaAssets.map((photo, pIdx) => `
+          <div class="drawer-gallery-card" data-title="${escapeHtml(photo.originalName.toLowerCase())}" data-tags="${escapeHtml((photo.tags || []).join(' ').toLowerCase())}" onclick="openLightboxFromDrawer(${pIdx})">
+            <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+            <div class="drawer-gallery-card-label">${escapeHtml(photo.originalName)}</div>
+          </div>
+        `).join("")}
+      </div>
+    </aside>
+
+    <!-- Full-Screen Interactive Lightbox Modal -->
+    <div id="lightboxModal" class="lightbox-modal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+      <div class="lightbox-content">
+        <div class="lightbox-top-bar">
+          <div class="lightbox-counter" id="lightboxCounter">Photo 1 of ${mediaAssets.length}</div>
+          <div class="lightbox-controls">
+            <a id="lightboxOriginalLink" href="#" target="_blank" rel="noopener" class="lightbox-control-btn" title="Open Full Resolution Asset">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>Original</span>
+            </a>
+            <button onclick="toggleLightboxFullscreen()" class="lightbox-control-btn" title="Toggle Fullscreen">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            </button>
+            <button onclick="closeLightbox()" class="lightbox-control-btn close-btn" title="Close Lightbox (Esc)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="lightbox-stage" id="lightboxStage">
+          <button class="lightbox-nav-btn prev-btn" onclick="lightboxPrev()" title="Previous Photo (Left Arrow)" aria-label="Previous">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+
+          <div class="lightbox-image-box" id="lightboxImageBox">
+            <img id="lightboxImg" src="" alt="" />
+          </div>
+
+          <button class="lightbox-nav-btn next-btn" onclick="lightboxNext()" title="Next Photo (Right Arrow)" aria-label="Next">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <div class="lightbox-footer">
+          <div class="lightbox-caption" id="lightboxCaption"></div>
+          <div class="lightbox-tags" id="lightboxTags"></div>
+        </div>
+      </div>
+    </div>
+  ` : ""}
+
   <!-- Toast Notification -->
   <div id="toast" class="toast-msg">Link copied to clipboard</div>
 
@@ -2661,9 +3576,9 @@ export function renderMagazineHtml(
       <div class="footer-main-grid">
         <!-- Col 1: Brand & Institutional Identity -->
         <div class="footer-col">
-          <div class="footer-brand-badge">ACME HEALTHCARE</div>
+          ${hospital?.logoUrl ? `<div style="margin-bottom: 0.65rem;"><img src="${escapeHtml(hospital.logoUrl)}" alt="${escapeHtml(hospitalName)}" style="max-height: 38px; max-width: 130px; object-fit: contain;" /></div>` : `<div class="footer-brand-badge">ACME HEALTHCARE</div>`}
           <div class="footer-hospital-title">${escapeHtml(hospitalName)}</div>
-          <p class="footer-hospital-tagline">${escapeHtml(hospitalTagline)}</p>
+          ${hospitalTagline ? `<p class="footer-hospital-tagline">${escapeHtml(hospitalTagline)}</p>` : ""}
           <div class="footer-meta-pill">${escapeHtml(issue.issueNo)} &bull; ${issueDateStr}</div>
         </div>
 
@@ -2705,27 +3620,43 @@ export function renderMagazineHtml(
         </div>
 
         <!-- Col 3: Coordinates & Clinical Helplines -->
-        <div class="footer-col">
-          <div class="footer-col-title">Campus & Emergency</div>
-          <div class="footer-contact-list">
-            <div class="footer-contact-item emergency">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-              <span>Emergency 24/7: ${escapeHtml(hospitalEmergency)}</span>
-            </div>
-            <div class="footer-contact-item">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-              <span>OPD Desk: ${escapeHtml(hospitalOpd)}</span>
-            </div>
-            <div class="footer-contact-item">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
-              <span>${escapeHtml(hospitalEmail)}</span>
-            </div>
-            <div class="footer-contact-item">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-              <span>${escapeHtml(hospitalAddress)}</span>
+        ${(hospitalEmergency || hospitalOpd || hospitalEmail || hospitalAddress || hospitalPhone) ? `
+          <div class="footer-col">
+            <div class="footer-col-title">Campus & Emergency</div>
+            <div class="footer-contact-list">
+              ${hospitalEmergency ? `
+                <div class="footer-contact-item emergency">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  <span>Emergency 24/7: ${escapeHtml(hospitalEmergency)}</span>
+                </div>
+              ` : ""}
+              ${hospitalOpd ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                  <span>OPD Desk: ${escapeHtml(hospitalOpd)}</span>
+                </div>
+              ` : ""}
+              ${hospitalPhone ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  <span>Phone: ${escapeHtml(hospitalPhone)}</span>
+                </div>
+              ` : ""}
+              ${hospitalEmail ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+                  <span>${escapeHtml(hospitalEmail)}</span>
+                </div>
+              ` : ""}
+              ${hospitalAddress ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                  <span>${escapeHtml(hospitalAddress)}</span>
+                </div>
+              ` : ""}
             </div>
           </div>
-        </div>
+        ` : ""}
 
         <!-- Col 4: Editorial Standards & Disclaimer -->
         <div class="footer-col">
@@ -2733,16 +3664,18 @@ export function renderMagazineHtml(
           <p class="footer-disclaimer-text">
             Articles in <em>${escapeHtml(issue.title)}</em> are compiled by clinical staff and research faculty for medical education and clinical updates.
           </p>
-          <p class="footer-disclaimer-text" style="margin-top: 0.25rem;">
-            ${escapeHtml(hospitalDivision)}
-          </p>
+          ${hospitalDivision ? `
+            <p class="footer-disclaimer-text" style="margin-top: 0.25rem;">
+              ${escapeHtml(hospitalDivision)}
+            </p>
+          ` : ""}
         </div>
       </div>
 
       <!-- Bottom Sub-bar -->
       <div class="footer-bottom-bar">
         <div>
-          &copy; ${new Date().getFullYear()} ${escapeHtml(hospitalName)}. ${escapeHtml(hospitalCopyright)}
+          &copy; ${new Date().getFullYear()} ${escapeHtml(hospitalName)}${hospitalCopyright ? `. ${escapeHtml(hospitalCopyright)}` : "."}
         </div>
         <div style="display: flex; align-items: center; gap: 1.25rem;">
           <div class="footer-status-indicator">
@@ -2959,6 +3892,7 @@ export function renderMagazineHtml(
           mobileScrollSupport: true,
           useMouseEvents: !isMobileDevice, // Disable mouse/touch tap-to-flip on mobile
           clickEventForward: !isMobileDevice,
+          disableFlipByClick: true,
           swipeDistance: 35,
           drawShadow: true,
           flippingTime: 1000,
@@ -3285,16 +4219,220 @@ export function renderMagazineHtml(
 
     // 10. Drawer Toggle
     function toggleTocDrawer() {
-      document.getElementById('drawerOverlay').classList.toggle('open');
-      document.getElementById('tocDrawer').classList.toggle('open');
+      closeGalleryDrawer();
+      const overlay = document.getElementById('drawerOverlay');
+      const drawer = document.getElementById('tocDrawer');
+      if (overlay && drawer) {
+        overlay.classList.toggle('open');
+        drawer.classList.toggle('open');
+      }
     }
 
     function closeTocDrawer() {
-      document.getElementById('drawerOverlay').classList.remove('open');
-      document.getElementById('tocDrawer').classList.remove('open');
+      const drawer = document.getElementById('tocDrawer');
+      if (drawer) drawer.classList.remove('open');
+      const galleryDrawer = document.getElementById('galleryDrawer');
+      if (!galleryDrawer || !galleryDrawer.classList.contains('open')) {
+        const overlay = document.getElementById('drawerOverlay');
+        if (overlay) overlay.classList.remove('open');
+      }
     }
 
-    // 11. Toast
+    function toggleGalleryDrawer() {
+      closeTocDrawer();
+      const overlay = document.getElementById('drawerOverlay');
+      const drawer = document.getElementById('galleryDrawer');
+      if (overlay && drawer) {
+        overlay.classList.toggle('open');
+        drawer.classList.toggle('open');
+      }
+    }
+
+    function closeGalleryDrawer() {
+      const drawer = document.getElementById('galleryDrawer');
+      if (drawer) drawer.classList.remove('open');
+      const tocDrawer = document.getElementById('tocDrawer');
+      if (!tocDrawer || !tocDrawer.classList.contains('open')) {
+        const overlay = document.getElementById('drawerOverlay');
+        if (overlay) overlay.classList.remove('open');
+      }
+    }
+
+    function closeAllDrawers() {
+      closeTocDrawer();
+      closeGalleryDrawer();
+    }
+
+    function searchDrawerGallery(val) {
+      const term = (val || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.drawer-gallery-card');
+      cards.forEach((card) => {
+        const title = (card.getAttribute('data-title') || '').toLowerCase();
+        const tags = (card.getAttribute('data-tags') || '').toLowerCase();
+        if (!term || title.includes(term) || tags.includes(term)) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function openLightboxFromDrawer(idx, e) {
+      closeGalleryDrawer();
+      openLightbox(idx, e);
+    }
+
+    function filterScrollGallery(tag, btn) {
+      if (btn && btn.parentElement) {
+        btn.parentElement.querySelectorAll('.gallery-filter-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const cleanTag = (tag || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.gallery-scroll-card');
+      cards.forEach((card) => {
+        const tags = (card.getAttribute('data-tags') || '').toLowerCase().split(',');
+        if (cleanTag === 'all' || tags.includes(cleanTag)) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function handleGalleryButtonClick() {
+      const currentMode = document.documentElement.getAttribute('data-mode');
+      if (currentMode === 'flip') {
+        goToFlipPage(${galleryStartFlipIndex});
+      } else {
+        const el = document.getElementById('gallery');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', '#gallery');
+        }
+      }
+    }
+
+    // 11. Lightbox Controller
+    const magazineMediaAssets = ${JSON.stringify(
+      mediaAssets.map((m) => ({
+        id: m.id,
+        originalName: m.originalName,
+        url: m.url,
+        thumbnailUrl: m.thumbnailUrl || m.url,
+        width: m.width || null,
+        height: m.height || null,
+        tags: m.tags || [],
+      }))
+    )};
+
+    let activeLightboxIndex = 0;
+    let isLightboxOpen = false;
+
+    function openLightbox(index, e) {
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+      }
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      if (index < 0) index = 0;
+      if (index >= magazineMediaAssets.length) index = magazineMediaAssets.length - 1;
+      activeLightboxIndex = index;
+      isLightboxOpen = true;
+
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      renderLightboxPhoto();
+    }
+
+    function closeLightbox() {
+      isLightboxOpen = false;
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function lightboxNext() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex + 1) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function lightboxPrev() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex - 1 + magazineMediaAssets.length) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function renderLightboxPhoto() {
+      const photo = magazineMediaAssets[activeLightboxIndex];
+      if (!photo) return;
+
+      const counter = document.getElementById('lightboxCounter');
+      if (counter) counter.innerText = 'Photo ' + (activeLightboxIndex + 1) + ' of ' + magazineMediaAssets.length;
+
+      const img = document.getElementById('lightboxImg');
+      if (img) {
+        img.src = photo.url;
+        img.alt = photo.originalName || 'Photo';
+      }
+
+      const caption = document.getElementById('lightboxCaption');
+      if (caption) caption.innerText = photo.originalName || '';
+
+      const origLink = document.getElementById('lightboxOriginalLink');
+      if (origLink) origLink.href = photo.url;
+
+      const tagsContainer = document.getElementById('lightboxTags');
+      if (tagsContainer) {
+        if (photo.tags && photo.tags.length) {
+          tagsContainer.innerHTML = photo.tags.map((t) => '<span class="lightbox-tag">#' + escapeClientHtml(t) + '</span>').join('');
+        } else {
+          tagsContainer.innerHTML = '';
+        }
+      }
+    }
+
+    function escapeClientHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function toggleLightboxFullscreen() {
+      const modal = document.getElementById('lightboxModal');
+      if (!document.fullscreenElement) {
+        if (modal && modal.requestFullscreen) modal.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Touch Swipe for Lightbox
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const stage = document.getElementById('lightboxStage');
+    if (stage) {
+      stage.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      stage.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 50) lightboxNext();
+        if (touchEndX > touchStartX + 50) lightboxPrev();
+      }, { passive: true });
+    }
+
+    // 12. Toast
     function showToast(msg) {
       const toast = document.getElementById('toast');
       toast.innerText = msg;
@@ -3302,7 +4440,7 @@ export function renderMagazineHtml(
       setTimeout(() => toast.classList.remove('show'), 2400);
     }
 
-    // 12. Share
+    // 13. Share
     async function shareMagazine() {
       const url = window.location.href;
       if (navigator.share) {
@@ -3319,9 +4457,17 @@ export function renderMagazineHtml(
       showToast('Link copied to clipboard!');
     }
 
-    // 13. Keyboard Navigation
+    // 14. Keyboard Navigation
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (isLightboxOpen) {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); lightboxNext(); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); return; }
+        return;
+      }
+
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
         e.preventDefault();
         flipNext();
@@ -3339,7 +4485,12 @@ export function renderMagazineHtml(
         flipNext();
       }
       if (e.key === 't' || e.key === 'T') toggleTocDrawer();
-      if (e.key === 'Escape') closeTocDrawer();
+      if (e.key === 'g' || e.key === 'G') {
+        if (${hasGallery}) toggleGalleryDrawer();
+      }
+      if (e.key === 'Escape') {
+        closeAllDrawers();
+      }
     });
 
     // Auto-init on load (ensures immediate initialization even if document is already ready)
@@ -3367,6 +4518,988 @@ export function renderMagazineHtml(
 
     window.addEventListener('resize', handleWindowResize);
     window.addEventListener('orientationchange', handleWindowResize);
+  </script>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Standalone Public Photo Gallery SSR Page (/magazine/:slug/gallery)
+// ---------------------------------------------------------------------------
+
+export function renderMagazineGalleryHtml(
+  issue: MagazineIssueData,
+  mediaAssets: MagazineMediaData[] = [],
+  hospital?: HospitalSettingsData | null
+): string {
+  const monthName = MONTH_NAMES[issue.issueMonth - 1] || `Month ${issue.issueMonth}`;
+  const issueDateStr = `${monthName} ${issue.issueYear}`;
+  const hospitalName = hospital?.name?.trim() || "ACME Hospital & Healthcare";
+  const hospitalTagline = hospital?.tagline?.trim() || "";
+  const hospitalEmergency = hospital?.emergencyPhone?.trim() || "";
+  const hospitalOpd = hospital?.opdPhone?.trim() || "";
+  const hospitalDivision = hospital?.editorialDivision?.trim() || "";
+  const hospitalAddress = hospital?.address?.trim() || "";
+
+  const uniqueTags = Array.from(
+    new Set(mediaAssets.flatMap((m) => m.tags || []))
+  ).filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+
+  const heroImage = issue.coverImageUrl || (mediaAssets.length > 0 ? mediaAssets[0].url : null);
+
+  return `<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('magazine-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(issue.title)} — Photo Gallery | ${escapeHtml(hospitalName)}</title>
+  <meta name="description" content="Visual highlights, clinical events, and photographic coverage from ${escapeHtml(issue.title)} (${issueDateStr}).">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${escapeHtml(issue.title)} — Photo Gallery">
+  <meta property="og:description" content="Explore photographic moments from ${escapeHtml(issue.title)}.">
+  ${heroImage ? `<meta property="og:image" content="${escapeHtml(heroImage)}">` : ""}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root,
+    html[data-theme="dark"] {
+      --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-masthead: 'Cinzel', serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-xl: 28px;
+      --radius-full: 9999px;
+
+      --bg-page: #06090e;
+      --bg-card: #0d121c;
+      --bg-elevated: #131b2a;
+      --border-main: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(56, 189, 248, 0.25);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.15);
+      --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+    }
+
+    html[data-theme="light"] {
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-elevated: #f1f5f9;
+      --border-main: rgba(0, 0, 0, 0.08);
+      --border-accent: rgba(2, 132, 199, 0.3);
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      --primary: #0284c7;
+      --primary-glow: rgba(2, 132, 199, 0.12);
+      --accent-gradient: linear-gradient(135deg, #0284c7 0%, #4f46e5 50%, #9333ea 100%);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Sticky Header */
+    .gallery-top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6, 9, 14, 0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-main);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    html[data-theme="dark"] .gallery-top-nav {
+      background: rgba(6, 9, 14, 0.94);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="dark"] .gallery-btn-icon,
+    html[data-theme="dark"] .gallery-back-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    html[data-theme="light"] .gallery-top-nav {
+      background: rgba(255, 255, 255, 0.85);
+    }
+
+    .gallery-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.45rem 0.95rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      transition: all 0.2s ease;
+    }
+    .gallery-back-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      transform: translateX(-2px);
+    }
+
+    .gallery-nav-center {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+    .gallery-nav-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .gallery-btn-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-main);
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .gallery-btn-icon:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Container */
+    .gallery-container {
+      width: 100%;
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+      flex: 1;
+    }
+
+    /* Hero Banner */
+    .gallery-hero {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-xl);
+      padding: clamp(2rem, 5vw, 3.5rem);
+      margin-bottom: 2.5rem;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+      position: relative;
+      overflow: hidden;
+    }
+    .gallery-hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .gallery-hero-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.25rem 0.75rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      letter-spacing: 0.1em;
+    }
+    .gallery-hero-org {
+      font-family: var(--font-masthead);
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 0.15em;
+    }
+    .gallery-hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+    .gallery-hero-desc {
+      font-size: clamp(0.95rem, 2vw, 1.15rem);
+      color: var(--text-muted);
+      max-width: 720px;
+      line-height: 1.6;
+    }
+
+    /* Filter Bar */
+    .gallery-filters {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    .gallery-filter-pill {
+      font-family: var(--font-ui);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.4rem 1rem;
+      border-radius: var(--radius-full);
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .gallery-filter-pill:hover {
+      color: var(--text-main);
+      border-color: var(--primary);
+    }
+    .gallery-filter-pill.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+    }
+
+    /* Masonry Photo Grid */
+    .gallery-masonry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .gallery-photo-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    .gallery-photo-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--primary);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+    }
+    .gallery-photo-thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 11;
+      overflow: hidden;
+      background: #000;
+    }
+    .gallery-photo-thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.45s ease;
+    }
+    .gallery-photo-card:hover .gallery-photo-thumb-wrap img {
+      transform: scale(1.08);
+    }
+    .gallery-photo-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.6);
+      backdrop-filter: blur(3px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      color: #fff;
+    }
+    .gallery-photo-card:hover .gallery-photo-overlay {
+      opacity: 1;
+    }
+    .gallery-zoom-badge {
+      background: var(--primary);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }
+    .gallery-zoom-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .gallery-photo-body {
+      padding: 1rem 1.15rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      flex: 1;
+    }
+    .gallery-photo-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      line-height: 1.35;
+      color: var(--text-main);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .gallery-photo-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-top: auto;
+      padding-top: 0.35rem;
+    }
+    .gallery-photo-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .gallery-photo-tag {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    /* Empty State */
+    .gallery-empty-state {
+      background: var(--bg-card);
+      border: 1px dashed var(--border-main);
+      border-radius: var(--radius-xl);
+      padding: 4rem 2rem;
+      text-align: center;
+      max-width: 600px;
+      margin: 2rem auto;
+    }
+    .gallery-empty-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--primary-glow);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.25rem;
+    }
+    .gallery-empty-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+    }
+    .gallery-empty-desc {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Lightbox Modal */
+    .lightbox-modal {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+    }
+    .lightbox-modal.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .lightbox-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .lightbox-content {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(0.75rem, 2.5vw, 1.75rem);
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .lightbox-modal.open .lightbox-content > * {
+      pointer-events: auto;
+    }
+    .lightbox-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-counter {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.05em;
+    }
+    .lightbox-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lightbox-control-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f1f5f9;
+      border-radius: var(--radius-full);
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .lightbox-control-btn:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .lightbox-control-btn.close-btn {
+      padding: 0.4rem 0.5rem;
+    }
+    .lightbox-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      padding: 0.75rem 0;
+      gap: 0.75rem;
+    }
+    .lightbox-image-box {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+    .lightbox-image-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: var(--radius-md);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .lightbox-nav-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .lightbox-nav-btn:hover {
+      background: var(--primary);
+      transform: scale(1.08);
+    }
+    .lightbox-footer {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-caption {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.01em;
+    }
+    .lightbox-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .lightbox-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    /* Footer */
+    .gallery-footer {
+      border-top: 1px solid var(--border-main);
+      background: var(--bg-card);
+      padding: 2.5rem 1.5rem;
+      margin-top: auto;
+    }
+    .gallery-footer-inner {
+      max-width: 1360px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .gallery-footer-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .gallery-footer-org {
+      font-family: var(--font-masthead);
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: 0.1em;
+    }
+
+    @media (max-width: 600px) {
+      .gallery-container { padding: 1.5rem 1rem 3rem; }
+      .gallery-hero { padding: 1.5rem 1.25rem; }
+      .gallery-masonry-grid { grid-template-columns: 1fr; }
+      .lightbox-nav-btn { width: 38px; height: 38px; }
+      .lightbox-content { padding: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Header -->
+  <header class="gallery-top-nav">
+    <a href="/magazine/view/${escapeHtml(issue.slug)}" class="gallery-back-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+      <span>Read Magazine</span>
+    </a>
+
+    <div class="gallery-nav-center">
+      <span>${escapeHtml(issue.issueNo)}</span>
+      <span>&bull;</span>
+      <span>${issueDateStr}</span>
+    </div>
+
+    <div class="gallery-nav-right">
+      <button onclick="cycleTheme()" class="gallery-btn-icon" title="Toggle Theme" id="themeBtn">
+        <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+
+      <button onclick="shareGallery()" class="gallery-btn-icon" title="Share Photo Gallery">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="gallery-container">
+    <!-- Hero Banner -->
+    <div class="gallery-hero">
+      <div class="gallery-hero-eyebrow">
+        <span class="gallery-hero-badge">PHOTO ARCHIVE &bull; ${mediaAssets.length} PHOTOS</span>
+        <span class="gallery-hero-org">${escapeHtml(hospitalName)}</span>
+      </div>
+      <h1 class="gallery-hero-title">${escapeHtml(issue.title)}</h1>
+      <p class="gallery-hero-desc">Curated photographic coverage, clinical highlights, medical achievements, and campus moments from the ${issueDateStr} edition.</p>
+    </div>
+
+    ${uniqueTags.length > 0 ? `
+      <!-- Filter Bar -->
+      <div class="gallery-filters" id="galleryFilters">
+        <button class="gallery-filter-pill active" onclick="filterGallery('all', this)">All (${mediaAssets.length})</button>
+        ${uniqueTags.map((tag) => `
+          <button class="gallery-filter-pill" onclick="filterGallery('${escapeHtml(tag)}', this)">${escapeHtml(tag)}</button>
+        `).join("")}
+      </div>
+    ` : ""}
+
+    ${mediaAssets.length === 0 ? `
+      <!-- Empty State -->
+      <div class="gallery-empty-state">
+        <div class="gallery-empty-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        </div>
+        <h2 class="gallery-empty-title">No Photos Published Yet</h2>
+        <p class="gallery-empty-desc">The editorial team has not attached photographic assets to this issue yet. Please check back soon or enjoy the articles in the reader.</p>
+        <a href="/magazine/view/${escapeHtml(issue.slug)}" class="gallery-back-btn" style="display:inline-flex;">Return to Reader</a>
+      </div>
+    ` : `
+      <!-- Photo Grid -->
+      <div class="gallery-masonry-grid" id="galleryGrid">
+        ${mediaAssets.map((photo, pIdx) => `
+          <div class="gallery-photo-card" data-tags="${escapeHtml((photo.tags || []).join(',').toLowerCase())}" onclick="openLightbox(${pIdx})">
+            <div class="gallery-photo-thumb-wrap">
+              <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+              <div class="gallery-photo-overlay">
+                <div class="gallery-zoom-badge">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </div>
+                <span class="gallery-zoom-label">View High-Res</span>
+              </div>
+            </div>
+            <div class="gallery-photo-body">
+              <div class="gallery-photo-title">${escapeHtml(photo.originalName)}</div>
+              <div class="gallery-photo-meta-row">
+                <div class="gallery-photo-tags">
+                  ${photo.tags && photo.tags.length > 0 ? photo.tags.slice(0, 3).map((t) => `<span class="gallery-photo-tag">#${escapeHtml(t)}</span>`).join("") : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `}
+  </main>
+
+  <!-- Full-Screen Interactive Lightbox Modal -->
+  <div id="lightboxModal" class="lightbox-modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+    <div class="lightbox-content">
+      <div class="lightbox-top-bar">
+        <div class="lightbox-counter" id="lightboxCounter">Photo 1 of ${mediaAssets.length}</div>
+        <div class="lightbox-controls">
+          <a id="lightboxOriginalLink" href="#" target="_blank" rel="noopener" class="lightbox-control-btn" title="Open Full Resolution Asset">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            <span>Original</span>
+          </a>
+          <button onclick="toggleLightboxFullscreen()" class="lightbox-control-btn" title="Toggle Fullscreen">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
+          <button onclick="closeLightbox()" class="lightbox-control-btn close-btn" title="Close Lightbox (Esc)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="lightbox-stage" id="lightboxStage">
+        <button class="lightbox-nav-btn prev-btn" onclick="lightboxPrev()" title="Previous Photo (Left Arrow)" aria-label="Previous">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+
+        <div class="lightbox-image-box" id="lightboxImageBox">
+          <img id="lightboxImg" src="" alt="" />
+        </div>
+
+        <button class="lightbox-nav-btn next-btn" onclick="lightboxNext()" title="Next Photo (Right Arrow)" aria-label="Next">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
+      <div class="lightbox-footer">
+        <div class="lightbox-caption" id="lightboxCaption"></div>
+        <div class="lightbox-tags" id="lightboxTags"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="gallery-footer">
+    <div class="gallery-footer-inner">
+      <div class="gallery-footer-brand">
+        <span class="gallery-footer-org">${escapeHtml(hospitalName)}</span>
+        ${hospitalDivision ? `<span>${escapeHtml(hospitalDivision)}</span>` : ""}
+        ${(hospitalEmergency || hospitalOpd) ? `
+          <span>
+            ${hospitalEmergency ? `Emergency: <strong style="color:#ef4444;">${escapeHtml(hospitalEmergency)}</strong>` : ""}
+            ${(hospitalEmergency && hospitalOpd) ? " &bull; " : ""}
+            ${hospitalOpd ? `OPD: ${escapeHtml(hospitalOpd)}` : ""}
+          </span>
+        ` : ""}
+      </div>
+      <div>
+        <span>${escapeHtml(issue.title)} &bull; ${escapeHtml(issue.issueNo)}</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Theme Switcher
+    const themes = ['dark', 'light'];
+    const savedTheme = localStorage.getItem('magazine-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+
+    function cycleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const nextTheme = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      localStorage.setItem('magazine-theme', nextTheme);
+      updateThemeIcon(nextTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      const icon = document.getElementById('themeIcon');
+      if (!icon) return;
+      if (theme === 'dark') {
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+      } else {
+        icon.innerHTML = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>';
+      }
+    }
+
+    async function shareGallery() {
+      const url = window.location.href;
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: '${escapeHtml(issue.title)} — Photo Gallery',
+            text: 'Explore photos from ${escapeHtml(issue.title)} (${issueDateStr})',
+            url: url
+          });
+          return;
+        } catch (err) {}
+      }
+      navigator.clipboard.writeText(url);
+      alert('Photo Gallery link copied to clipboard!');
+    }
+
+    // Filter
+    function filterGallery(tag, btn) {
+      if (btn && btn.parentElement) {
+        btn.parentElement.querySelectorAll('.gallery-filter-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const cleanTag = (tag || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.gallery-photo-card');
+      cards.forEach((card) => {
+        const tags = (card.getAttribute('data-tags') || '').toLowerCase().split(',');
+        if (cleanTag === 'all' || tags.includes(cleanTag)) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    // Lightbox
+    const magazineMediaAssets = ${JSON.stringify(
+      mediaAssets.map((m) => ({
+        id: m.id,
+        originalName: m.originalName,
+        url: m.url,
+        thumbnailUrl: m.thumbnailUrl || m.url,
+        width: m.width || null,
+        height: m.height || null,
+        tags: m.tags || [],
+      }))
+    )};
+
+    let activeLightboxIndex = 0;
+    let isLightboxOpen = false;
+
+    function openLightbox(index) {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      if (index < 0) index = 0;
+      if (index >= magazineMediaAssets.length) index = magazineMediaAssets.length - 1;
+      activeLightboxIndex = index;
+      isLightboxOpen = true;
+
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      renderLightboxPhoto();
+    }
+
+    function closeLightbox() {
+      isLightboxOpen = false;
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function lightboxNext() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex + 1) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function lightboxPrev() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex - 1 + magazineMediaAssets.length) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function renderLightboxPhoto() {
+      const photo = magazineMediaAssets[activeLightboxIndex];
+      if (!photo) return;
+
+      const counter = document.getElementById('lightboxCounter');
+      if (counter) counter.innerText = 'Photo ' + (activeLightboxIndex + 1) + ' of ' + magazineMediaAssets.length;
+
+      const img = document.getElementById('lightboxImg');
+      if (img) {
+        img.src = photo.url;
+        img.alt = photo.originalName || 'Photo';
+      }
+
+      const caption = document.getElementById('lightboxCaption');
+      if (caption) caption.innerText = photo.originalName || '';
+
+      const origLink = document.getElementById('lightboxOriginalLink');
+      if (origLink) origLink.href = photo.url;
+
+      const tagsContainer = document.getElementById('lightboxTags');
+      if (tagsContainer) {
+        if (photo.tags && photo.tags.length) {
+          tagsContainer.innerHTML = photo.tags.map((t) => '<span class="lightbox-tag">#' + escapeClientHtml(t) + '</span>').join('');
+        } else {
+          tagsContainer.innerHTML = '';
+        }
+      }
+    }
+
+    function escapeClientHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function toggleLightboxFullscreen() {
+      const modal = document.getElementById('lightboxModal');
+      if (!document.fullscreenElement) {
+        if (modal && modal.requestFullscreen) modal.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Touch Swipe
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const stage = document.getElementById('lightboxStage');
+    if (stage) {
+      stage.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      stage.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 50) lightboxNext();
+        if (touchEndX > touchStartX + 50) lightboxPrev();
+      }, { passive: true });
+    }
+
+    // Keyboard Navigation
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (isLightboxOpen) {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); lightboxNext(); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); return; }
+      }
+    });
+
+    // Check for ?photo= URL parameter on load
+    const urlParams = new URLSearchParams(window.location.search);
+    const photoParam = urlParams.get('photo');
+    if (photoParam) {
+      const photoIdx = parseInt(photoParam, 10);
+      if (!isNaN(photoIdx) && photoIdx >= 0 && photoIdx < magazineMediaAssets.length) {
+        openLightbox(photoIdx);
+      }
+    }
   </script>
 </body>
 </html>`;

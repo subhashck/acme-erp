@@ -100,7 +100,7 @@ function LiveStock() {
           }),
         });
       }
-    }, 350);
+    }, 500);
     return () => clearTimeout(timer);
   }, [localSearch, searchFilter, navigate]);
 

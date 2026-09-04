@@ -98,6 +98,25 @@ export async function createMagazineSchemaAndTables() {
     CREATE INDEX IF NOT EXISTS "idx_magazine_media_hash" ON "magazine"."magazine_media" ("file_hash");
     CREATE INDEX IF NOT EXISTS "idx_magazine_media_issue" ON "magazine"."magazine_media" ("issue_id");
     CREATE INDEX IF NOT EXISTS "idx_magazine_media_created" ON "magazine"."magazine_media" ("created_at");
+
+    -- 5. Magazine Issue Media (Many-to-Many Assignment)
+    CREATE TABLE IF NOT EXISTS "magazine"."magazine_issue_media" (
+      "id" SERIAL PRIMARY KEY,
+      "issue_id" INTEGER NOT NULL REFERENCES "magazine"."magazine_issues"("id") ON DELETE CASCADE,
+      "media_id" INTEGER NOT NULL REFERENCES "magazine"."magazine_media"("id") ON DELETE CASCADE,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT "unq_issue_media" UNIQUE ("issue_id", "media_id")
+    );
+
+    CREATE INDEX IF NOT EXISTS "idx_magazine_issue_media_issue" ON "magazine"."magazine_issue_media" ("issue_id");
+    CREATE INDEX IF NOT EXISTS "idx_magazine_issue_media_media" ON "magazine"."magazine_issue_media" ("media_id");
+
+    -- Backfill any existing magazine_media.issue_id into magazine_issue_media
+    INSERT INTO "magazine"."magazine_issue_media" ("issue_id", "media_id")
+    SELECT "issue_id", "id"
+    FROM "magazine"."magazine_media"
+    WHERE "issue_id" IS NOT NULL
+    ON CONFLICT ON CONSTRAINT "unq_issue_media" DO NOTHING;
   `;
 
   await pool.query(ddl);

@@ -41,6 +41,11 @@ export default defineConfig({
         target: "http://localhost:8787",
         changeOrigin: true,
         cookieDomainRewrite: "localhost",
+      },
+      "^/magazine/[^/]+/gallery": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
       }
     }
   }

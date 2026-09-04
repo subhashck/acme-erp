@@ -32,6 +32,7 @@ const itemsSearchSchema = z.object({
   limit: z.number().optional().catch(10),
   name: z.string().optional().catch(""),
   itemTypeId: z.string().optional().catch("all"),
+  isSaleable: z.string().optional().catch("all"),
 });
 
 export const Route = createFileRoute("/_authenticated/purchases/items")({
@@ -51,6 +52,7 @@ function Items() {
   const limit = searchParams.limit ?? 10;
   const nameFilter = searchParams.name || "";
   const itemTypeIdFilter = searchParams.itemTypeId || "all";
+  const isSaleableFilter = searchParams.isSaleable || "all";
 
   // Fetch items list with server side pagination
   const { data: itemsResponse, isLoading, refetch, isRefetching } = useRpcQuery<any>(
@@ -61,7 +63,8 @@ function Items() {
         limit: String(limit),
         name: nameFilter || undefined,
         itemTypeId: itemTypeIdFilter !== "all" ? itemTypeIdFilter : undefined,
-      }
+        isSaleable: isSaleableFilter !== "all" ? isSaleableFilter : undefined,
+      } as any
     })
   );
 
@@ -113,7 +116,11 @@ function Items() {
   const totalItems = itemsResponse?.total || 0;
   const totalPages = itemsResponse?.totalPages || 1;
 
-  const hasActiveFilters = !!(searchParams.name || (searchParams.itemTypeId && searchParams.itemTypeId !== "all"));
+  const hasActiveFilters = !!(
+    searchParams.name || 
+    (searchParams.itemTypeId && searchParams.itemTypeId !== "all") ||
+    (searchParams.isSaleable && searchParams.isSaleable !== "all")
+  );
 
   React.useEffect(() => {
     const handler = setTimeout(() => {
@@ -227,8 +234,19 @@ function Items() {
 
                         return (
                           <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
-                            <td className="px-6 py-4 font-semibold ">
-                              <div>{item.name}</div>
+                            <td className="px-6 py-4 font-semibold">
+                              <div className="flex items-center gap-2">
+                                <span>{item.name}</span>
+                                {item.isSaleable === false ? (
+                                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border-amber-300 dark:border-amber-800 text-[10px] px-1.5 py-0 font-normal">
+                                    Consumable
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0 text-muted-foreground border-slate-200">
+                                    Saleable
+                                  </Badge>
+                                )}
+                              </div>
                               {extraUnitPrices.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mt-1">
                                   {extraUnitPrices.map((up: any) => (
@@ -446,6 +464,19 @@ function Items() {
                   {itemTypes.map((t: any) => (
                     <option key={t.id} value={String(t.id)}>{t.name}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-muted-foreground tracking-wider block">Classification</label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={isSaleableFilter}
+                  onChange={(e) => navigate({ search: (prev: any) => ({ ...prev, isSaleable: e.target.value || "all", page: 1 }) })}
+                >
+                  <option value="all">All Items</option>
+                  <option value="true">Saleable Only</option>
+                  <option value="false">Internal Consumables Only</option>
                 </select>
               </div>
 

@@ -308,9 +308,67 @@ export async function createInventorySchemaAndTables() {
       "created_at" TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
+    -- 20. Consumption Vouchers
+    CREATE TABLE IF NOT EXISTS "inventory"."consumption_vouchers" (
+      "id" SERIAL PRIMARY KEY,
+      "voucher_no" TEXT NOT NULL UNIQUE,
+      "voucher_date" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "store_id" INTEGER NOT NULL REFERENCES "inventory"."stores"("id"),
+      "purpose" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'draft',
+      "posted_by" TEXT REFERENCES "public"."user"("id"),
+      "posted_at" TIMESTAMP,
+      "created_by" TEXT REFERENCES "public"."user"("id"),
+      "remarks" TEXT,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    -- 21. Consumption Voucher Items
+    CREATE TABLE IF NOT EXISTS "inventory"."consumption_voucher_items" (
+      "id" SERIAL PRIMARY KEY,
+      "voucher_id" INTEGER NOT NULL REFERENCES "inventory"."consumption_vouchers"("id") ON DELETE CASCADE,
+      "item_id" INTEGER NOT NULL REFERENCES "public"."items"("id"),
+      "batch_id" INTEGER NOT NULL REFERENCES "inventory"."item_batches"("id"),
+      "quantity" NUMERIC(12, 3) NOT NULL,
+      "unit_id" INTEGER NOT NULL REFERENCES "public"."unit_types"("id"),
+      "unit_rate" NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      "total_cost" NUMERIC(12, 2) NOT NULL DEFAULT 0
+    );
+
+    -- 22. Consumption Returns
+    CREATE TABLE IF NOT EXISTS "inventory"."consumption_returns" (
+      "id" SERIAL PRIMARY KEY,
+      "return_no" TEXT NOT NULL UNIQUE,
+      "return_date" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "original_voucher_id" INTEGER REFERENCES "inventory"."consumption_vouchers"("id"),
+      "store_id" INTEGER NOT NULL REFERENCES "inventory"."stores"("id"),
+      "reason" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'draft',
+      "posted_by" TEXT REFERENCES "public"."user"("id"),
+      "posted_at" TIMESTAMP,
+      "created_by" TEXT REFERENCES "public"."user"("id"),
+      "remarks" TEXT,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    -- 23. Consumption Return Items
+    CREATE TABLE IF NOT EXISTS "inventory"."consumption_return_items" (
+      "id" SERIAL PRIMARY KEY,
+      "return_id" INTEGER NOT NULL REFERENCES "inventory"."consumption_returns"("id") ON DELETE CASCADE,
+      "voucher_item_id" INTEGER REFERENCES "inventory"."consumption_voucher_items"("id"),
+      "item_id" INTEGER NOT NULL REFERENCES "public"."items"("id"),
+      "batch_id" INTEGER NOT NULL REFERENCES "inventory"."item_batches"("id"),
+      "returned_qty" NUMERIC(12, 3) NOT NULL,
+      "unit_id" INTEGER NOT NULL REFERENCES "public"."unit_types"("id"),
+      "unit_rate" NUMERIC(12, 2) NOT NULL DEFAULT 0
+    );
+
     -- -------------------------------------------------------------
     -- Idempotent Column Alterations (Ensure all columns exist)
     -- -------------------------------------------------------------
+    ALTER TABLE "public"."items" ADD COLUMN IF NOT EXISTS "is_saleable" BOOLEAN NOT NULL DEFAULT true;
     ALTER TABLE "inventory"."stock_requisition_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
     ALTER TABLE "inventory"."stock_transfer_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");
     ALTER TABLE "inventory"."stock_adjustment_items" ADD COLUMN IF NOT EXISTS "unit_id" INTEGER REFERENCES "public"."unit_types"("id");

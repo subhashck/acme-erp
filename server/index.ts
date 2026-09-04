@@ -5,12 +5,12 @@ import { logger } from "hono/logger";
 import { trimTrailingSlash } from "hono/trailing-slash";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { asc, eq, or, sql } from "drizzle-orm";
 import { auth, type AuthEnv } from "./auth.ts";
 import { db } from "./db/client.ts";
 import { user } from "./db/schema.ts";
-import { magazineIssues, magazineSections } from "./db/schema-magazine.ts";
-import { renderMagazineHtml } from "./services/magazine-ssr.ts";
+import { magazineIssues, magazineSections, magazineMedia } from "./db/schema-magazine.ts";
+import { renderMagazineHtml, renderMagazineGalleryHtml } from "./services/magazine-ssr.ts";
 import { api } from "./routes.ts";
 import { publicRoutes } from "./routes/public.ts";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -88,11 +88,96 @@ async function renderMagazineSsr(c: any) {
     .where(eq(magazineSections.issueId, issue.id))
     .orderBy(magazineSections.sortOrder, magazineSections.id);
 
+  const media = await db
+    .select({
+      id: magazineMedia.id,
+      fileName: magazineMedia.fileName,
+      originalName: magazineMedia.originalName,
+      mimeType: magazineMedia.mimeType,
+      fileSize: magazineMedia.fileSize,
+      width: magazineMedia.width,
+      height: magazineMedia.height,
+      url: magazineMedia.url,
+      thumbnailUrl: magazineMedia.thumbnailUrl,
+      tags: magazineMedia.tags,
+      createdAt: magazineMedia.createdAt,
+    })
+    .from(magazineMedia)
+    .where(
+      or(
+        eq(magazineMedia.issueId, issue.id),
+        sql`EXISTS (
+          SELECT 1 FROM "magazine"."magazine_issue_media" "mim"
+          WHERE "mim"."media_id" = "magazine_media"."id" AND "mim"."issue_id" = ${issue.id}
+        )`
+      )
+    )
+    .orderBy(asc(magazineMedia.id));
+
   const hospital = await getHospitalSettingsFromDb();
 
-  const html = renderMagazineHtml(issue as any, sections as any, hospital as any);
+  const html = renderMagazineHtml(issue as any, sections as any, hospital as any, media as any);
   return c.html(html);
 }
+
+async function renderMagazineGallerySsr(c: any) {
+  const slug = c.req.param("slug");
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return c.html(
+      `<!DOCTYPE html><html><head><title>Invalid Request</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}</style></head><body><h1>400 - Invalid Issue Slug</h1><p>The magazine slug format is invalid.</p></body></html>`,
+      400
+    );
+  }
+
+  const [issue] = await db
+    .select()
+    .from(magazineIssues)
+    .where(eq(magazineIssues.slug, slug))
+    .limit(1);
+
+  if (!issue || issue.status !== "published") {
+    return c.html(
+      `<!DOCTYPE html><html><head><title>Magazine Issue Not Found</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}a{color:#0284c7;text-decoration:none;font-weight:600;}</style></head><body><h1>404 - Magazine Issue Not Found</h1><p>The requested monthly edition is not published or does not exist.</p><p><a href="/">Return to Home</a></p></body></html>`,
+      404
+    );
+  }
+
+  const media = await db
+    .select({
+      id: magazineMedia.id,
+      fileName: magazineMedia.fileName,
+      originalName: magazineMedia.originalName,
+      mimeType: magazineMedia.mimeType,
+      fileSize: magazineMedia.fileSize,
+      width: magazineMedia.width,
+      height: magazineMedia.height,
+      url: magazineMedia.url,
+      thumbnailUrl: magazineMedia.thumbnailUrl,
+      tags: magazineMedia.tags,
+      createdAt: magazineMedia.createdAt,
+    })
+    .from(magazineMedia)
+    .where(
+      or(
+        eq(magazineMedia.issueId, issue.id),
+        sql`EXISTS (
+          SELECT 1 FROM "magazine"."magazine_issue_media" "mim"
+          WHERE "mim"."media_id" = "magazine_media"."id" AND "mim"."issue_id" = ${issue.id}
+        )`
+      )
+    )
+    .orderBy(asc(magazineMedia.id));
+
+  const hospital = await getHospitalSettingsFromDb();
+
+  const html = renderMagazineGalleryHtml(issue as any, media as any, hospital as any);
+  return c.html(html);
+}
+
+app.get("/magazine/view/:slug/gallery", renderMagazineGallerySsr);
+app.get("/magazine/ssr/:slug/gallery", renderMagazineGallerySsr);
+app.get("/magazine/:slug/gallery", renderMagazineGallerySsr);
 
 app.get("/magazine/view/:slug", renderMagazineSsr);
 app.get("/magazine/ssr/:slug", renderMagazineSsr);

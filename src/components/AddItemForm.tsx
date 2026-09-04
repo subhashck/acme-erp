@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { Select } from "../ui/select";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
+import { cn } from "@/utils/cn";
 import {
   Dialog,
   DialogContent,
@@ -40,6 +41,7 @@ const itemFormSchema = z.object({
   taxCategory: z.string().optional().default("taxable"),
   isNarcotic: z.boolean().optional().default(false),
   allowFractional: z.boolean().optional().default(false),
+  isSaleable: z.boolean().default(true),
 });
 
 export type ItemFormValues = z.infer<typeof itemFormSchema>;
@@ -107,6 +109,7 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
       taxCategory: editingItem?.taxCategory || "taxable",
       isNarcotic: !!editingItem?.isNarcotic,
       allowFractional: !!editingItem?.allowFractional,
+      isSaleable: editingItem?.isSaleable !== undefined ? !!editingItem.isSaleable : true,
     },
   });
 
@@ -163,6 +166,7 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
         taxCategory: editingItem.taxCategory || "taxable",
         isNarcotic: !!editingItem.isNarcotic,
         allowFractional: !!editingItem.allowFractional,
+        isSaleable: editingItem.isSaleable !== undefined ? !!editingItem.isSaleable : true,
       });
 
       if (editingItem.unitPrices && Array.isArray(editingItem.unitPrices)) {
@@ -296,6 +300,7 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
         taxCategory: data.taxCategory || "taxable",
         isNarcotic: !!data.isNarcotic,
         allowFractional: !!data.allowFractional,
+        isSaleable: data.isSaleable !== undefined ? !!data.isSaleable : true,
         unitPrices: unitPriceTiers.map((t) => ({
           unitId: t.unitId,
           costPrice: t.costPrice,
@@ -643,7 +648,30 @@ export function AddItemForm({ initialName = "", editingItem = null, onSuccess, o
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-6 pt-1">
+          <div className="flex flex-wrap items-center gap-4 pt-1">
+            <label className={cn(
+              "flex items-center gap-2.5 text-xs font-medium cursor-pointer px-3.5 py-2.5 rounded-lg border transition-colors",
+              form.watch("isSaleable") 
+                ? "bg-blue-50/50 border-blue-200 text-blue-900 dark:bg-blue-950/20 dark:border-blue-800 dark:text-blue-200" 
+                : "bg-amber-50/50 border-amber-200 text-amber-900 dark:bg-amber-950/20 dark:border-amber-800 dark:text-amber-200"
+            )}>
+              <input
+                type="checkbox"
+                {...form.register("isSaleable")}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="font-semibold block">
+                  {form.watch("isSaleable") ? "Saleable (Patient Billing)" : "Internal Consumable"}
+                </span>
+                <span className="text-[11px] opacity-80 block">
+                  {form.watch("isSaleable") 
+                    ? "Available in POS sales & patient billing" 
+                    : "Not for sale. Tracked for hospital consumption & department vouchers"}
+                </span>
+              </div>
+            </label>
+
             <label className="flex items-center gap-2.5 text-xs font-medium text-foreground cursor-pointer bg-background px-3 py-2 rounded-lg border">
               <input
                 type="checkbox"

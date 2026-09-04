@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { renderMagazineHtml } from "../../server/services/magazine-ssr";
+import {
+  renderMagazineHtml,
+  renderMagazineGalleryHtml,
+  type MagazineMediaData,
+} from "../../server/services/magazine-ssr";
 
 describe("Magazine SSR Engine", () => {
   it("correctly renders HTML containing tables without truncating or corrupting DOM structure", () => {
@@ -279,6 +283,159 @@ describe("Magazine SSR Engine", () => {
     expect(html).toContain("div[data-youtube-video]");
     expect(html).toContain(".yt-open-tab-btn");
   });
+
+  it("incorporates photo gallery spreads, header trigger, drawer, and lightbox when issue media assets exist", () => {
+    const mockMedia: MagazineMediaData[] = [
+      {
+        id: 1,
+        fileName: "cardio_surgery_01.webp",
+        originalName: "Cardiac Catheterization Suite",
+        mimeType: "image/webp",
+        fileSize: 142000,
+        width: 1920,
+        height: 1080,
+        url: "/api/public/magazine/images/magazine/media/abc/cardio_surgery_01.webp",
+        thumbnailUrl: "/api/public/magazine/images/magazine/media/abc/cardio_surgery_01_thumb.webp",
+        tags: ["clinical", "cardiology"],
+      },
+      {
+        id: 2,
+        fileName: "nursing_camp_02.webp",
+        originalName: "Community Health Outreach Camp",
+        mimeType: "image/webp",
+        fileSize: 128000,
+        width: 1600,
+        height: 1200,
+        url: "/api/public/magazine/images/magazine/media/def/nursing_camp_02.webp",
+        thumbnailUrl: "/api/public/magazine/images/magazine/media/def/nursing_camp_02_thumb.webp",
+        tags: ["events", "community"],
+      },
+    ];
+
+    const html = renderMagazineHtml(
+      {
+        id: 8,
+        issueNo: "ACME-MAG-2026-08",
+        title: "Community Outreach & Surgery",
+        slug: "community-outreach-2026-08",
+        issueMonth: 8,
+        issueYear: 2026,
+        status: "published",
+        createdAt: new Date(),
+      },
+      [
+        {
+          id: 108,
+          title: "Outreach Milestones",
+          contentHtml: "<p>Report on recent health camps across rural sectors.</p>",
+          sortOrder: 1,
+        },
+      ],
+      { name: "ACME Medical Institute" },
+      mockMedia
+    );
+
+    // 1. Flipbook spread checks
+    expect(html).toContain("gallery-flip-page");
+    expect(html).toContain("PHOTO GALLERY");
+    expect(html).toContain("Cardiac Catheterization Suite");
+    expect(html).toContain("Community Health Outreach Camp");
+    expect(html).toContain("gallery-toc-row");
+    expect(html).toContain("Photo Gallery &amp; Highlights");
+
+    // 2. Continuous Scroll view checks
+    expect(html).toContain('id="gallery"');
+    expect(html).toContain("gallery-scroll-section");
+    expect(html).toContain("gallery-scroll-card");
+    expect(html).toContain("VISUAL ARCHIVE");
+    expect(html).toContain("cardiology");
+    expect(html).toContain("community");
+
+    // 3. Header & drawer checks
+    expect(html).toContain("headerGalleryBtn");
+    expect(html).toContain("gallery-nav-btn");
+    expect(html).toContain("id=\"galleryDrawer\"");
+    expect(html).toContain("drawer-gallery-search");
+
+    // 4. Interactive Lightbox checks
+    expect(html).toContain("id=\"lightboxModal\"");
+    expect(html).toContain("lightbox-stage");
+    expect(html).toContain("lightbox-nav-btn");
+    expect(html).toContain("lightbox-counter");
+    expect(html).toContain("openLightbox");
+  });
+
+  it("omits photo gallery sections and controls when an issue has no media assets", () => {
+    const html = renderMagazineHtml(
+      {
+        id: 9,
+        issueNo: "ACME-MAG-2026-09",
+        title: "Policy & Standards",
+        slug: "policy-standards-2026-09",
+        issueMonth: 9,
+        issueYear: 2026,
+        status: "published",
+        createdAt: new Date(),
+      },
+      [
+        {
+          id: 109,
+          title: "New Standards",
+          contentHtml: "<p>Clinical compliance policies.</p>",
+          sortOrder: 1,
+        },
+      ],
+      null,
+      [] // No media
+    );
+
+    expect(html).not.toContain('<div class="page gallery-flip-page"');
+    expect(html).not.toContain('<section id="gallery"');
+    expect(html).not.toContain('id="headerGalleryBtn"');
+    expect(html).not.toContain('id="galleryDrawer"');
+    expect(html).not.toContain('class="toc-item gallery-toc-row"');
+  });
+
+  it("renders a dedicated standalone public photo gallery page via renderMagazineGalleryHtml", () => {
+    const mockMedia: MagazineMediaData[] = [
+      {
+        id: 11,
+        fileName: "pediatrics_wing_01.webp",
+        originalName: "Pediatric Intensive Care Unit",
+        mimeType: "image/webp",
+        fileSize: 185000,
+        width: 1920,
+        height: 1080,
+        url: "/api/public/magazine/images/magazine/media/ghi/pediatrics_wing_01.webp",
+        thumbnailUrl: "/api/public/magazine/images/magazine/media/ghi/pediatrics_wing_01_thumb.webp",
+        tags: ["pediatrics", "infrastructure"],
+      },
+    ];
+
+    const html = renderMagazineGalleryHtml(
+      {
+        id: 10,
+        issueNo: "ACME-MAG-2026-10",
+        title: "Pediatric Innovations",
+        slug: "pediatric-innovations-2026-10",
+        issueMonth: 10,
+        issueYear: 2026,
+        status: "published",
+        createdAt: new Date(),
+      },
+      mockMedia,
+      { name: "ACME Children's Hospital" }
+    );
+
+    expect(html).toBeDefined();
+    expect(html).toContain("Pediatric Innovations — Photo Gallery | ACME Children&#039;s Hospital");
+    expect(html).toContain("gallery-back-btn");
+    expect(html).toContain("/magazine/view/pediatric-innovations-2026-10");
+    expect(html).toContain("gallery-masonry-grid");
+    expect(html).toContain("Pediatric Intensive Care Unit");
+    expect(html).toContain("#pediatrics");
+    expect(html).toContain("id=\"lightboxModal\"");
+  });
 });
 
 describe("Magazine PDF Export Parser", () => {
@@ -338,4 +495,60 @@ describe("Magazine PDF Export Parser", () => {
     const allText = JSON.stringify(blocks);
     expect(allText).not.toContain("✂ Page Break");
   });
+
+  it("omits empty or null hospital fields from rendered magazine HTML and does not show fallback mock values", () => {
+    const html = renderMagazineHtml(
+      {
+        id: 2,
+        issueNo: "ACME-MAG-2026-02",
+        title: "Spring Medical Review",
+        slug: "spring-medical-review-2026-02",
+        issueMonth: 4,
+        issueYear: 2026,
+        status: "published",
+        createdAt: new Date(),
+      },
+      [
+        {
+          id: 102,
+          title: "Editorial Update",
+          contentHtml: "<p>General clinical notes.</p>",
+          sortOrder: 1,
+        },
+      ],
+      {
+        name: "Test Hospital",
+        // All optional fields explicitly null or empty
+        tagline: null,
+        address: null,
+        emergencyPhone: null,
+        opdPhone: null,
+        phone: null,
+        email: null,
+        website: null,
+        editorialDivision: null,
+        copyrightText: null,
+        logoUrl: null,
+      }
+    );
+
+    // Verify hospital name is present
+    expect(html).toContain("Test Hospital");
+
+    // Verify mock fallbacks are NOT rendered
+    expect(html).not.toContain("+91 98765 43211");
+    expect(html).not.toContain("+91 98765 43212");
+    expect(html).not.toContain("123 Healthcare Ave");
+    expect(html).not.toContain("editorial@acmehospital.com");
+    expect(html).not.toContain("www.acmehospital.com");
+    expect(html).not.toContain("Excellence in Medical Care, Research & Healthcare Innovation");
+    expect(html).not.toContain("ACME Healthcare Communications & Editorial Division");
+
+    // Verify contact cards/lines are not rendered in DOM
+    expect(html).not.toContain('class="back-info-card"');
+    expect(html).not.toContain("24/7 Emergency");
+    expect(html).not.toContain("OPD Desk");
+    expect(html).not.toContain("Campus Location");
+  });
 });
+

@@ -196,7 +196,7 @@ export function MagazineIssueEditor() {
     setIsUploadingCover(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("issueId", slug || id);
+    formData.append("issueId", String(id));
 
     try {
       const res = await fetch("/api/magazine/upload-image", {
@@ -457,17 +457,31 @@ export function MagazineIssueEditor() {
           </Button>
 
           {issue.status === "published" && (
-            <Button asChild variant="outline" size="sm">
-              <a
-                href={`/magazine/view/${issue.slug}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="gap-1.5 text-xs font-semibold"
-              >
-                <ExternalLink className="h-4 w-4" />
-                <span>Open Reader & Flipbook</span>
-              </a>
-            </Button>
+            <>
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={`/magazine/view/${issue.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gap-1.5 text-xs font-semibold"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span>Open Reader & Flipbook</span>
+                </a>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={`/magazine/view/${issue.slug}/gallery`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gap-1.5 text-xs font-semibold"
+                  title="View Public Photo Gallery"
+                >
+                  <ImageIcon className="h-4 w-4 text-sky-500" />
+                  <span>Public Gallery</span>
+                </a>
+              </Button>
+            </>
           )}
 
           {canManageMagazine && issue.status === "draft" && (
@@ -788,7 +802,7 @@ export function MagazineIssueEditor() {
                       <TiptapEditor
                         key={activeSection.id}
                         content={activeSection.contentJson && Object.keys(activeSection.contentJson).length > 0 ? activeSection.contentJson : activeSection.contentHtml}
-                        issueId={issue.slug || issue.id}
+                        issueId={issue.id}
                         onChange={({ html, json }) => {
                           setSections((prev) =>
                             prev.map((s) =>
@@ -824,17 +838,30 @@ export function MagazineIssueEditor() {
               </div>
 
               {issue.status === "published" && (
-                <Button asChild variant="outline" size="sm">
-                  <a
-                    href={`/magazine/view/${issue.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="gap-1.5 text-xs font-semibold"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    <span>Open Standalone Tab</span>
-                  </a>
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <a
+                      href={`/magazine/view/${issue.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="gap-1.5 text-xs font-semibold"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      <span>Open Standalone Tab</span>
+                    </a>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <a
+                      href={`/magazine/view/${issue.slug}/gallery`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="gap-1.5 text-xs font-semibold"
+                    >
+                      <ImageIcon className="h-3.5 w-3.5 text-sky-500" />
+                      <span>Public Gallery</span>
+                    </a>
+                  </Button>
+                </div>
               )}
             </CardHeader>
 

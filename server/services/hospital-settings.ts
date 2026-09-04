@@ -1,6 +1,7 @@
 import { db } from "../db/client.ts";
 import { hospitalSettings } from "../db/schema.ts";
 import { pool } from "../db/client.ts";
+import { eq } from "drizzle-orm";
 
 export interface HospitalDbSettings {
   id?: number;
@@ -66,10 +67,7 @@ export async function getHospitalSettingsFromDb(): Promise<HospitalDbSettings> {
 
     const rows = await db.select().from(hospitalSettings).limit(1);
     if (rows.length > 0 && rows[0]) {
-      return {
-        ...DEFAULT_SETTINGS,
-        ...rows[0],
-      };
+      return rows[0];
     }
 
     // Insert initial default row if empty
@@ -84,3 +82,36 @@ export async function getHospitalSettingsFromDb(): Promise<HospitalDbSettings> {
     return DEFAULT_SETTINGS;
   }
 }
+
+export async function updateHospitalSettingsInDb(
+  updates: Partial<HospitalDbSettings>
+): Promise<HospitalDbSettings> {
+  await ensureHospitalSettingsTable();
+
+  const { id: _id, ...validUpdates } = updates;
+  const cleanUpdates = {
+    ...validUpdates,
+    updatedAt: new Date(),
+  };
+
+  const rows = await db.select().from(hospitalSettings).limit(1);
+  if (rows.length > 0 && rows[0]) {
+    const [updated] = await db
+      .update(hospitalSettings)
+      .set(cleanUpdates)
+      .where(eq(hospitalSettings.id, rows[0].id))
+      .returning();
+    return updated || rows[0];
+  }
+
+  const [inserted] = await db
+    .insert(hospitalSettings)
+    .values({
+      ...DEFAULT_SETTINGS,
+      ...cleanUpdates,
+    })
+    .returning();
+
+  return inserted || DEFAULT_SETTINGS;
+}
+

@@ -91,6 +91,7 @@ export async function setup() {
       console.log("📦 Syncing Drizzle schema and module setups on restored database...");
       try {
         const migrationSql = `
+          ALTER TABLE items ADD COLUMN IF NOT EXISTS is_saleable boolean NOT NULL DEFAULT true;
           ALTER TABLE inventory.sales_invoice_items ADD COLUMN IF NOT EXISTS unit_id integer;
           ALTER TABLE inventory.sales_invoice_items ALTER COLUMN unit DROP NOT NULL;
           ALTER TABLE inventory.stock_transfer_items ADD COLUMN IF NOT EXISTS unit_id integer;
@@ -101,6 +102,10 @@ export async function setup() {
           `docker exec -i acme-erp-test-db psql -U postgres -d acme_erp_test -c "${migrationSql}"`,
           { stdio: "pipe", timeout: 15_000 }
         );
+        try {
+          execSync(`docker exec -i acme-erp-test-db psql -U postgres -d acme_erp_test -c "ALTER TYPE inventory.stock_movement_type ADD VALUE IF NOT EXISTS 'CONSUMPTION'"`, { stdio: "pipe", timeout: 5000 });
+          execSync(`docker exec -i acme-erp-test-db psql -U postgres -d acme_erp_test -c "ALTER TYPE inventory.stock_movement_type ADD VALUE IF NOT EXISTS 'CONSUMPTION_RETURN'"`, { stdio: "pipe", timeout: 5000 });
+        } catch {}
       } catch (colErr: any) {
         console.warn("Column migration notice:", colErr.stderr?.toString() || colErr.message);
       }
@@ -113,6 +118,12 @@ export async function setup() {
           env: { ...process.env, DATABASE_URL: dbUrl },
         });
         execSync("npx tsx server/db/setup-magazine-db.ts", {
+          cwd: rootDir,
+          stdio: "pipe",
+          timeout: 30_000,
+          env: { ...process.env, DATABASE_URL: dbUrl },
+        });
+        execSync("npx tsx server/db/setup-front-office-db.ts", {
           cwd: rootDir,
           stdio: "pipe",
           timeout: 30_000,

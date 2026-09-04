@@ -526,7 +526,7 @@ export const transfersRoutes = app
               );
 
             for (const reqItem of reqItems) {
-              const reqUnitId = reqItem.unitId || (await resolveUnitId(tx, null, reqItem.unit));
+              const reqUnitId = reqItem.unitId || (await resolveUnitId(tx, null, (reqItem as any).unit));
               const transferUnitId = item.unitId || (await resolveUnitId(tx, null, (item as any).unit));
               const convFactor = await getUnitConversionMultiplier(tx, transferUnitId, reqUnitId);
               const fulfilledInReqUnit = Number((Number(item.quantity) * convFactor).toFixed(4));

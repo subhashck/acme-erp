@@ -25,6 +25,7 @@ import { notificationsStore, notificationsActions } from "../../lib/notification
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../ui/card";
 import { Button } from "../../ui/button";
 import { cn } from "../../utils/cn";
+import { PublishedMagazineSection } from "../../components/PublishedMagazineSection";
 import * as React from "react";
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -50,14 +51,18 @@ function Dashboard() {
       pendingLeaves: number;
       attendanceToday: number;
       shiftsCount: number;
+      onLeaveOrOffToday: number;
+      deptOnLeaveOrOffToday: number;
+      userDepartmentName: string | null;
+      userDepartmentStaffCount: number;
+      isNursingSuper: boolean;
+      clinicalStaffCount: number;
+      clinicalDeptCount: number;
+      clinicalOnLeaveOrOffToday: number;
     }
   }>(["dashboard"], () => client.dashboard.$get(), {
-    enabled: isAdminOrHr
+    enabled: !!session.data
   });
-
-  const staffCount = data?.metrics.staff ?? 0;
-  const attendanceToday = data?.metrics.attendanceToday ?? 0;
-  const attendancePercent = staffCount > 0 ? Math.round((attendanceToday / staffCount) * 100) : 0;
 
   const punchStatusQuery = useRpcQuery<{ status: string; checkInTime?: string; checkOutTime?: string }>(
     ["my-punch-status"],
@@ -85,36 +90,79 @@ function Dashboard() {
     }
   });
 
-  const metrics = [
-    {
-      label: "Total Employees",
-      value: staffCount,
-      description: "Registered medical & support staff",
-      icon: Users,
-      colorClass: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30 border-teal-100 dark:border-teal-900/30"
-    },
-    {
-      label: "Active Departments",
-      value: data?.metrics.departments ?? 0,
-      description: "Operational hospital divisions",
-      icon: Landmark,
-      colorClass: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/30"
-    },
-    {
-      label: "Attendance Today",
-      value: `${attendanceToday} (${attendancePercent}%)`,
-      description: "Punch compliance for today",
-      icon: ClipboardCheck,
-      colorClass: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 border-emerald-100 dark:border-emerald-900/30"
-    },
-    {
-      label: "Pending Leaves",
-      value: data?.metrics.pendingLeaves ?? 0,
-      description: "Leave requests awaiting decision",
-      icon: CalendarClock,
-      colorClass: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30"
-    }
-  ];
+  const deptName = data?.metrics.userDepartmentName;
+  const isNursingSuper = Boolean(data?.metrics.isNursingSuper);
+
+  const metrics = isNursingSuper
+    ? [
+        {
+          label: "Clinical Staff",
+          value: data?.metrics.clinicalStaffCount ?? 0,
+          description: "Active personnel across clinical departments",
+          icon: Users,
+          colorClass: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30 border-teal-100 dark:border-teal-900/30"
+        },
+        {
+          label: "Clinical Departments",
+          value: data?.metrics.clinicalDeptCount ?? 0,
+          description: "Operational clinical hospital divisions",
+          icon: Landmark,
+          colorClass: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/30"
+        },
+        {
+          label: "Employees on Leave / Off Today",
+          value: data?.metrics.clinicalOnLeaveOrOffToday ?? 0,
+          description: "Clinical personnel on leave or scheduled off today",
+          icon: CalendarClock,
+          colorClass: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30"
+        }
+      ]
+    : isAdminOrHr
+    ? [
+        {
+          label: "Total Employees",
+          value: data?.metrics.staff ?? 0,
+          description: "Registered medical & support staff",
+          icon: Users,
+          colorClass: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30 border-teal-100 dark:border-teal-900/30"
+        },
+        {
+          label: "Active Departments",
+          value: data?.metrics.departments ?? 0,
+          description: "Operational hospital divisions",
+          icon: Landmark,
+          colorClass: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 border-indigo-100 dark:border-indigo-900/30"
+        },
+        {
+          label: "Employees on Leave / Off Today",
+          value: data?.metrics.onLeaveOrOffToday ?? 0,
+          description: "Hospital-wide approved leave or scheduled off",
+          icon: CalendarClock,
+          colorClass: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30"
+        }
+      ]
+    : [
+        ...(deptName
+          ? [
+              {
+                label: `${deptName} Department`,
+                value: data?.metrics.userDepartmentStaffCount ?? 0,
+                description: `Total active personnel in ${deptName}`,
+                icon: Users,
+                colorClass: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/30 border-teal-100 dark:border-teal-900/30"
+              }
+            ]
+          : []),
+        {
+          label: "Employees on Leave / Off Today",
+          value: data?.metrics.deptOnLeaveOrOffToday ?? 0,
+          description: deptName
+            ? `Colleagues on leave or scheduled off in ${deptName}`
+            : "Department colleagues on leave or scheduled off today",
+          icon: CalendarClock,
+          colorClass: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30"
+        }
+      ];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -132,7 +180,7 @@ function Dashboard() {
               Welcome back, {userName}!
             </h2>
             <p className="text-xs md:text-sm text-slate-350 leading-relaxed max-w-xl">
-              You are logged in with <span className="font-bold text-teal-400 capitalize">{userRole}</span> privilege levels. {isAdminOrHr ? "Monitor clinical staffing compliance, handle statutory payroll overrides, and evaluate roster schedules below." : "View your latest notifications, check your personal payslips, and request time off."}
+              You are logged in with <span className="font-bold text-teal-400 capitalize">{isNursingSuper ? "Nursing Superintendent" : userRole}</span> privilege levels. {isAdminOrHr ? "Monitor clinical staffing compliance, handle statutory payroll overrides, and evaluate roster schedules below." : isNursingSuper ? "Monitor clinical department staffing compliance, shift rosters, and personnel coverage below." : "View your latest notifications, check your personal payslips, and request time off."}
             </p>
           </div>
           <div className="shrink-0 flex gap-2">
@@ -189,9 +237,20 @@ function Dashboard() {
         </div>
       </div>
 
-      {/* Primary KPIs Metrics Grid (Only for HR / Admin) */}
-      {isAdminOrHr && (
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      {/* Latest Published Magazine Issues */}
+      <PublishedMagazineSection variant="dashboard" limit={3} />
+
+      {/* Primary KPIs Metrics Grid */}
+      <div
+        className={cn(
+          "grid gap-4",
+          metrics.length === 3
+            ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+            : metrics.length === 2
+            ? "grid-cols-1 sm:grid-cols-2"
+            : "grid-cols-1"
+        )}
+      >
           {metrics.map((metric) => (
             <Card key={metric.label} className="bg-card hover:shadow-md transition-all duration-300 border border-border">
               <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
@@ -213,81 +272,11 @@ function Dashboard() {
             </Card>
           ))}
         </div>
-      )}
 
       {/* Charts & Shortcuts Panel */}
       <div className="grid gap-6 xl:grid-cols-3">
-        {isAdminOrHr ? (
-          /* Weekly Attendance Flow Chart Card (Only for Admin/HR) */
-          <Card className="xl:col-span-2 shadow-sm border border-border bg-card">
-            <CardHeader className="border-b border-border/50 pb-4">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="text-teal-600 dark:text-teal-400 animate-pulse" size={18} />
-                Clinical Attendance Ratios
-              </CardTitle>
-              <CardDescription>Monitored check-in ratios plotted across active hospital departments.</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {/* Custom SVG Line Chart */}
-              <div className="w-full h-[220px] relative">
-                <svg className="w-full h-full" viewBox="0 0 600 220" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#14b8a6" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#14b8a6" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  {/* Dotted Grid Lines */}
-                  <line x1="50" y1="20" x2="570" y2="20" stroke="currentColor" strokeOpacity="0.08" strokeDasharray="3,3" />
-                  <line x1="50" y1="70" x2="570" y2="70" stroke="currentColor" strokeOpacity="0.08" strokeDasharray="3,3" />
-                  <line x1="50" y1="120" x2="570" y2="120" stroke="currentColor" strokeOpacity="0.08" strokeDasharray="3,3" />
-                  <line x1="50" y1="170" x2="570" y2="170" stroke="currentColor" strokeOpacity="0.08" strokeDasharray="3,3" />
-                  
-                  {/* Chart Path Shadow Fill */}
-                  <path
-                    d="M 50 180 Q 130 110, 210 130 T 370 60 T 530 80 T 570 50 L 570 170 L 50 170 Z"
-                    fill="url(#chartGrad)"
-                  />
-                  {/* Curved Line Path */}
-                  <path
-                    d="M 50 180 Q 130 110, 210 130 T 370 60 T 530 80 T 570 50"
-                    fill="none"
-                    stroke="#14b8a6"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                  />
-                  
-                  {/* Coordinate Dots */}
-                  <circle cx="50" cy="180" r="5" fill="#0f766e" stroke="#fff" strokeWidth="1.5" />
-                  <circle cx="170" cy="115" r="5" fill="#0f766e" stroke="#fff" strokeWidth="1.5" />
-                  <circle cx="290" cy="95" r="5" fill="#0f766e" stroke="#fff" strokeWidth="1.5" />
-                  <circle cx="410" cy="55" r="5" fill="#0f766e" stroke="#fff" strokeWidth="1.5" />
-                  <circle cx="530" cy="80" r="5" fill="#0f766e" stroke="#fff" strokeWidth="1.5" />
-                  <circle cx="570" cy="50" r="5" fill="#0f766e" stroke="#fff" strokeWidth="1.5" />
-                </svg>
-                
-                {/* Chart Legend Labels */}
-                <div className="absolute left-[50px] bottom-1 right-[20px] flex justify-between text-[10px] text-muted-foreground font-mono">
-                  <span>Emergency</span>
-                  <span>ICU Ward</span>
-                  <span>General Clinic</span>
-                  <span>Pediatrics</span>
-                  <span>Outpatient</span>
-                  <span>Cardiology</span>
-                </div>
-                <div className="absolute left-[8px] top-0 h-[190px] flex flex-col justify-between text-[9px] text-muted-foreground font-mono">
-                  <span>100%</span>
-                  <span>75%</span>
-                  <span>50%</span>
-                  <span>25%</span>
-                  <span>0%</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          /* Recent Notifications Card (For Regular Staff) */
-          <Card className="xl:col-span-2 shadow-sm border border-border bg-card">
+        {/* Recent Notifications Card */}
+        <Card className="xl:col-span-2 shadow-sm border border-border bg-card">
             <CardHeader className="border-b border-border/50 pb-4 flex flex-row items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
@@ -355,7 +344,6 @@ function Dashboard() {
               )}
             </CardContent>
           </Card>
-        )}
 
         {/* Quick Action Console */}
         <Card className="xl:col-span-1 border border-border bg-card">
@@ -433,6 +421,53 @@ function Dashboard() {
                       </Link>
                     </>
                   )}
+                </>
+              ) : isNursingSuper ? (
+                <>
+                  <Link to="/hr/roster" className="block">
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/65 transition-colors cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-teal-50 dark:bg-teal-950/20 text-teal-600 dark:text-teal-400 flex items-center justify-center border border-teal-100 dark:border-teal-900/30">
+                          <CalendarClock size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-foreground">Clinical Shift Rosters</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Manage nursing shifts & duties</p>
+                        </div>
+                      </div>
+                      <ArrowRight size={14} className="text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </Link>
+
+                  <Link to="/hr/attendance" className="block">
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/65 transition-colors cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-100 dark:border-emerald-900/30">
+                          <ClipboardCheck size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-foreground">Clinical Attendance Logs</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Track daily shift attendance</p>
+                        </div>
+                      </div>
+                      <ArrowRight size={14} className="text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </Link>
+
+                  <Link to="/hr/leaves" className="block">
+                    <div className="flex items-center justify-between p-3.5 rounded-xl border border-border bg-muted/20 hover:bg-muted/65 transition-colors cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-100 dark:border-amber-900/30">
+                          <CheckCircle size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-foreground">Review Leave Requests</p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">Evaluate nursing leaves</p>
+                        </div>
+                      </div>
+                      <ArrowRight size={14} className="text-muted-foreground group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </Link>
                 </>
               ) : (
                 <>

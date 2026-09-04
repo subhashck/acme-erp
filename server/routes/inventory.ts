@@ -14,6 +14,10 @@ import {
   purchaseInvoices,
   purchaseInvoiceItems,
   purchaseInvoicePayments,
+  consumptionVouchers,
+  consumptionVoucherItems,
+  consumptionReturns,
+  consumptionReturnItems,
 } from "../db/schema-inventory.ts";
 import {
   items,
@@ -30,7 +34,7 @@ import {
 } from "../db/schema.ts";
 import { generateDocNumber } from "../services/sequence.ts";
 import { recordStockMovement } from "../services/stock-engine.ts";
-import { idParam, jsonBody, requireAdmin, convertItemQuantityToBase, resolveUnitId } from "./shared.ts";
+import { idParam, jsonBody, requireAdmin, convertItemQuantityToBase, resolveUnitId, canPostConsumptionVoucher } from "./shared.ts";
 import { z } from "zod";
 
 const app = new Hono<AuthEnv>();
@@ -166,6 +170,43 @@ const purchaseInvoicePaymentInput = z
     referenceNo: data.referenceNo || null,
     remarks: data.remarks || data.notes || null,
   }));
+
+const consumptionVoucherItemInput = z.object({
+  itemId: z.coerce.number().int().positive("Item is required"),
+  batchId: z.coerce.number().int().positive("Batch is required"),
+  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
+  unitId: z.coerce.number().optional().nullable(),
+  unit: z.string().optional(),
+  unitRate: z.coerce.number().min(0).optional().default(0),
+  totalCost: z.coerce.number().min(0).optional().default(0),
+});
+
+const consumptionVoucherInput = z.object({
+  storeId: z.coerce.number().int().positive("Store is required"),
+  purpose: z.string().min(2, "Purpose / department reason is required"),
+  remarks: z.string().optional().nullable(),
+  voucherDate: z.string().optional().nullable(),
+  items: z.array(consumptionVoucherItemInput).min(1, "At least one item is required"),
+});
+
+const consumptionReturnItemInput = z.object({
+  voucherItemId: z.coerce.number().optional().nullable(),
+  itemId: z.coerce.number().int().positive("Item is required"),
+  batchId: z.coerce.number().int().positive("Batch is required"),
+  returnedQty: z.coerce.number().positive("Returned quantity must be greater than 0"),
+  unitId: z.coerce.number().optional().nullable(),
+  unit: z.string().optional(),
+  unitRate: z.coerce.number().min(0).optional().default(0),
+});
+
+const consumptionReturnInput = z.object({
+  storeId: z.coerce.number().int().positive("Store is required"),
+  originalVoucherId: z.coerce.number().optional().nullable(),
+  reason: z.string().min(2, "Return reason is required"),
+  remarks: z.string().optional().nullable(),
+  returnDate: z.string().optional().nullable(),
+  items: z.array(consumptionReturnItemInput).min(1, "At least one item is required"),
+});
 
 // ---------------------------------------------------------------------------
 // Stores CRUD
@@ -333,6 +374,9 @@ export const inventoryRoutes = app
     if (query.itemTypeId && query.itemTypeId !== "all") {
       conditions.push(eq(items.itemTypeId, parseInt(query.itemTypeId, 10)));
     }
+    if (query.isSaleable !== undefined && query.isSaleable !== "" && query.isSaleable !== "all") {
+      conditions.push(eq(items.isSaleable, query.isSaleable === "true"));
+    }
     if (query.search && query.search.trim()) {
       const s = `%${query.search.trim()}%`;
       conditions.push(
@@ -441,6 +485,7 @@ export const inventoryRoutes = app
         saleUnitName: saleUnitAlias.name,
         itemTypeId: items.itemTypeId,
         itemTypeName: itemTypes.name,
+        isSaleable: items.isSaleable,
         batchId: storeBatchStock.batchId,
         batchNumber: itemBatches.batchNumber,
         batchBarcode: itemBatches.barcode,
@@ -1516,4 +1561,683 @@ export const inventoryRoutes = app
       .having(sql`coalesce(sum(${storeBatchStock.quantityOnHand}), 0) <= ${items.reorderLevel}`);
 
     return c.json(reorderItems);
+  })
+
+  // ---------------------------------------------------------------------------
+  // Internal Consumptions & Returns
+  // ---------------------------------------------------------------------------
+
+  .get("/inventory/consumptions/can-post", async (c) => {
+    const query = c.req.query();
+    const storeId = query.storeId ? parseInt(query.storeId, 10) : 0;
+    if (!storeId) return c.json({ canPost: false });
+    const canPost = await canPostConsumptionVoucher(c, storeId);
+    return c.json({ canPost });
+  })
+
+  .get("/inventory/consumptions", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(consumptionVouchers.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(consumptionVouchers.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(consumptionVouchers.voucherNo, `%${query.search}%`),
+          ilike(consumptionVouchers.purpose, `%${query.search}%`),
+          ilike(consumptionVouchers.remarks, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(consumptionVouchers.voucherDate, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(consumptionVouchers.voucherDate, end));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(consumptionVouchers)
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const createdByUser = alias(user, "cv_created_user");
+    const postedByUser = alias(user, "cv_posted_user");
+
+    const rows = await db
+      .select({
+        id: consumptionVouchers.id,
+        voucherNo: consumptionVouchers.voucherNo,
+        voucherDate: consumptionVouchers.voucherDate,
+        storeId: consumptionVouchers.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        purpose: consumptionVouchers.purpose,
+        status: consumptionVouchers.status,
+        remarks: consumptionVouchers.remarks,
+        createdBy: consumptionVouchers.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionVouchers.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionVouchers.postedAt,
+        createdAt: consumptionVouchers.createdAt,
+        totalCost: sql<number>`COALESCE((SELECT SUM(total_cost) FROM inventory.consumption_voucher_items WHERE voucher_id = ${consumptionVouchers.id}), 0)`,
+        itemCount: sql<number>`COALESCE((SELECT COUNT(*) FROM inventory.consumption_voucher_items WHERE voucher_id = ${consumptionVouchers.id}), 0)`,
+      })
+      .from(consumptionVouchers)
+      .leftJoin(stores, eq(consumptionVouchers.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(createdByUser, eq(consumptionVouchers.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionVouchers.postedBy, postedByUser.id))
+      .where(whereClause)
+      .orderBy(desc(consumptionVouchers.voucherDate), desc(consumptionVouchers.id))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+
+  .get("/inventory/consumptions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const createdByUser = alias(user, "cv_detail_created_user");
+    const postedByUser = alias(user, "cv_detail_posted_user");
+
+    const [voucher] = await db
+      .select({
+        id: consumptionVouchers.id,
+        voucherNo: consumptionVouchers.voucherNo,
+        voucherDate: consumptionVouchers.voucherDate,
+        storeId: consumptionVouchers.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        purpose: consumptionVouchers.purpose,
+        status: consumptionVouchers.status,
+        remarks: consumptionVouchers.remarks,
+        createdBy: consumptionVouchers.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionVouchers.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionVouchers.postedAt,
+        createdAt: consumptionVouchers.createdAt,
+      })
+      .from(consumptionVouchers)
+      .leftJoin(stores, eq(consumptionVouchers.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(createdByUser, eq(consumptionVouchers.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionVouchers.postedBy, postedByUser.id))
+      .where(eq(consumptionVouchers.id, id));
+
+    if (!voucher) return c.json({ error: "Consumption voucher not found" }, 404);
+
+    const baseUnitAlias = alias(unitTypes, "cv_base_unit");
+    const itemUnitAlias = alias(unitTypes, "cv_item_unit");
+
+    const itemsList = await db
+      .select({
+        id: consumptionVoucherItems.id,
+        itemId: consumptionVoucherItems.itemId,
+        itemName: items.name,
+        unitId: consumptionVoucherItems.unitId,
+        unit: sql<string>`COALESCE(${itemUnitAlias.symbol}, ${baseUnitAlias.symbol})`,
+        batchId: consumptionVoucherItems.batchId,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        purchaseRate: itemBatches.purchaseRate,
+        quantity: consumptionVoucherItems.quantity,
+        unitRate: consumptionVoucherItems.unitRate,
+        totalCost: consumptionVoucherItems.totalCost,
+        availableQty: sql<number>`COALESCE((SELECT available_qty FROM inventory.store_batch_stock WHERE store_id = ${voucher.storeId} AND batch_id = ${consumptionVoucherItems.batchId}), 0)`,
+      })
+      .from(consumptionVoucherItems)
+      .leftJoin(items, eq(consumptionVoucherItems.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(itemUnitAlias, eq(consumptionVoucherItems.unitId, itemUnitAlias.id))
+      .leftJoin(itemBatches, eq(consumptionVoucherItems.batchId, itemBatches.id))
+      .where(eq(consumptionVoucherItems.voucherId, id));
+
+    const totalCost = itemsList.reduce((sum, item) => sum + Number(item.totalCost || 0), 0);
+
+    return c.json({ ...voucher, totalCost, items: itemsList });
+  })
+
+  .post("/inventory/consumptions", async (c) => {
+    const input = await jsonBody(c, consumptionVoucherInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    try {
+      const createdVoucher = await db.transaction(async (tx) => {
+        const voucherNo = await generateDocNumber(tx, "CVCH");
+
+        const [vch] = await tx
+          .insert(consumptionVouchers)
+          .values({
+            voucherNo,
+            storeId: input.storeId,
+            purpose: input.purpose,
+            remarks: input.remarks || null,
+            voucherDate: input.voucherDate ? new Date(input.voucherDate) : new Date(),
+            status: "draft",
+            createdBy: userId || null,
+          })
+          .returning();
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          const rate = Number(item.unitRate) || 0;
+          const cost = Number(item.totalCost) || (Number(item.quantity) * rate);
+
+          await tx.insert(consumptionVoucherItems).values({
+            voucherId: vch.id,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            quantity: item.quantity,
+            unitId: resolvedUnitId || 1,
+            unitRate: rate,
+            totalCost: cost,
+          });
+        }
+
+        return vch;
+      });
+
+      return c.json(createdVoucher, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to create consumption voucher" }, 400);
+    }
+  })
+
+  .patch("/inventory/consumptions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, consumptionVoucherInput);
+
+    const [existing] = await db
+      .select()
+      .from(consumptionVouchers)
+      .where(eq(consumptionVouchers.id, id));
+
+    if (!existing) return c.json({ error: "Consumption voucher not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft vouchers can be edited" }, 400);
+    }
+
+    try {
+      const updatedVoucher = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(consumptionVouchers)
+          .set({
+            storeId: input.storeId,
+            purpose: input.purpose,
+            remarks: input.remarks || null,
+            voucherDate: input.voucherDate ? new Date(input.voucherDate) : existing.voucherDate,
+            updatedAt: new Date(),
+          })
+          .where(eq(consumptionVouchers.id, id))
+          .returning();
+
+        await tx.delete(consumptionVoucherItems).where(eq(consumptionVoucherItems.voucherId, id));
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          const rate = Number(item.unitRate) || 0;
+          const cost = Number(item.totalCost) || (Number(item.quantity) * rate);
+
+          await tx.insert(consumptionVoucherItems).values({
+            voucherId: id,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            quantity: item.quantity,
+            unitId: resolvedUnitId || 1,
+            unitRate: rate,
+            totalCost: cost,
+          });
+        }
+
+        return updated;
+      });
+
+      return c.json(updatedVoucher);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to update consumption voucher" }, 400);
+    }
+  })
+
+  .post("/inventory/consumptions/:id/post", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const voucher = await db.query.consumptionVouchers.findFirst({
+      where: eq(consumptionVouchers.id, id),
+      with: {
+        items: true,
+      },
+    });
+
+    if (!voucher) return c.json({ error: "Consumption voucher not found" }, 404);
+    if (voucher.status !== "draft") {
+      return c.json({ error: `Voucher cannot be posted from '${voucher.status}' status` }, 400);
+    }
+
+    // Check Dept Head / Subhead / Admin permission
+    const allowed = await canPostConsumptionVoucher(c, voucher.storeId);
+    if (!allowed) {
+      return c.json({
+        error: "Forbidden: Only the Department Head or Subhead (or Admin) can post this consumption voucher."
+      }, 403);
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of voucher.items) {
+          const qty = Number(item.quantity);
+          if (qty <= 0) continue;
+
+          // Convert quantity to base unit if custom unit
+          const { baseQuantity } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            qty,
+            item.unitId
+          );
+
+          await recordStockMovement(tx, {
+            storeId: voucher.storeId,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            movementType: "CONSUMPTION",
+            referenceType: "CONSUMPTION_VOUCHER",
+            referenceId: voucher.id,
+            quantityChange: -baseQuantity,
+            costPrice: Number(item.unitRate) || 0,
+            userId: userId || null,
+          });
+        }
+
+        await tx
+          .update(consumptionVouchers)
+          .set({
+            status: "posted",
+            postedBy: userId || null,
+            postedAt: new Date(),
+          })
+          .where(eq(consumptionVouchers.id, id));
+      });
+
+      return c.json({ success: true, message: "Consumption voucher successfully posted and stock updated" });
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to post consumption voucher" }, 400);
+    }
+  })
+
+  .delete("/inventory/consumptions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [existing] = await db.select().from(consumptionVouchers).where(eq(consumptionVouchers.id, id));
+    if (!existing) return c.json({ error: "Consumption voucher not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft vouchers can be deleted" }, 400);
+    }
+    await db.delete(consumptionVouchers).where(eq(consumptionVouchers.id, id));
+    return c.json({ success: true });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Consumption Returns
+  // ---------------------------------------------------------------------------
+
+  .get("/inventory/consumption-returns", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(consumptionReturns.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(consumptionReturns.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(consumptionReturns.returnNo, `%${query.search}%`),
+          ilike(consumptionReturns.reason, `%${query.search}%`),
+          ilike(consumptionReturns.remarks, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(consumptionReturns.returnDate, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(consumptionReturns.returnDate, end));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(consumptionReturns)
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const createdByUser = alias(user, "cr_created_user");
+    const postedByUser = alias(user, "cr_posted_user");
+    const origVoucher = alias(consumptionVouchers, "cr_orig_vch");
+
+    const rows = await db
+      .select({
+        id: consumptionReturns.id,
+        returnNo: consumptionReturns.returnNo,
+        returnDate: consumptionReturns.returnDate,
+        originalVoucherId: consumptionReturns.originalVoucherId,
+        originalVoucherNo: origVoucher.voucherNo,
+        storeId: consumptionReturns.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        reason: consumptionReturns.reason,
+        status: consumptionReturns.status,
+        remarks: consumptionReturns.remarks,
+        createdBy: consumptionReturns.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionReturns.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionReturns.postedAt,
+        createdAt: consumptionReturns.createdAt,
+        itemCount: sql<number>`COALESCE((SELECT COUNT(*) FROM inventory.consumption_return_items WHERE return_id = ${consumptionReturns.id}), 0)`,
+      })
+      .from(consumptionReturns)
+      .leftJoin(stores, eq(consumptionReturns.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(origVoucher, eq(consumptionReturns.originalVoucherId, origVoucher.id))
+      .leftJoin(createdByUser, eq(consumptionReturns.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionReturns.postedBy, postedByUser.id))
+      .where(whereClause)
+      .orderBy(desc(consumptionReturns.returnDate), desc(consumptionReturns.id))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+
+  .get("/inventory/consumption-returns/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const createdByUser = alias(user, "cr_detail_created_user");
+    const postedByUser = alias(user, "cr_detail_posted_user");
+    const origVoucher = alias(consumptionVouchers, "cr_detail_orig_vch");
+
+    const [returnDoc] = await db
+      .select({
+        id: consumptionReturns.id,
+        returnNo: consumptionReturns.returnNo,
+        returnDate: consumptionReturns.returnDate,
+        originalVoucherId: consumptionReturns.originalVoucherId,
+        originalVoucherNo: origVoucher.voucherNo,
+        storeId: consumptionReturns.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        reason: consumptionReturns.reason,
+        status: consumptionReturns.status,
+        remarks: consumptionReturns.remarks,
+        createdBy: consumptionReturns.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionReturns.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionReturns.postedAt,
+        createdAt: consumptionReturns.createdAt,
+      })
+      .from(consumptionReturns)
+      .leftJoin(stores, eq(consumptionReturns.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(origVoucher, eq(consumptionReturns.originalVoucherId, origVoucher.id))
+      .leftJoin(createdByUser, eq(consumptionReturns.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionReturns.postedBy, postedByUser.id))
+      .where(eq(consumptionReturns.id, id));
+
+    if (!returnDoc) return c.json({ error: "Consumption return not found" }, 404);
+
+    const baseUnitAlias = alias(unitTypes, "cr_base_unit");
+    const itemUnitAlias = alias(unitTypes, "cr_item_unit");
+
+    const itemsList = await db
+      .select({
+        id: consumptionReturnItems.id,
+        voucherItemId: consumptionReturnItems.voucherItemId,
+        itemId: consumptionReturnItems.itemId,
+        itemName: items.name,
+        unitId: consumptionReturnItems.unitId,
+        unit: sql<string>`COALESCE(${itemUnitAlias.symbol}, ${baseUnitAlias.symbol})`,
+        batchId: consumptionReturnItems.batchId,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        returnedQty: consumptionReturnItems.returnedQty,
+        unitRate: consumptionReturnItems.unitRate,
+      })
+      .from(consumptionReturnItems)
+      .leftJoin(items, eq(consumptionReturnItems.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(itemUnitAlias, eq(consumptionReturnItems.unitId, itemUnitAlias.id))
+      .leftJoin(itemBatches, eq(consumptionReturnItems.batchId, itemBatches.id))
+      .where(eq(consumptionReturnItems.returnId, id));
+
+    return c.json({ ...returnDoc, items: itemsList });
+  })
+
+  .post("/inventory/consumption-returns", async (c) => {
+    const input = await jsonBody(c, consumptionReturnInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    try {
+      const createdReturn = await db.transaction(async (tx) => {
+        const returnNo = await generateDocNumber(tx, "CRET");
+
+        const [ret] = await tx
+          .insert(consumptionReturns)
+          .values({
+            returnNo,
+            originalVoucherId: input.originalVoucherId || null,
+            storeId: input.storeId,
+            reason: input.reason,
+            remarks: input.remarks || null,
+            returnDate: input.returnDate ? new Date(input.returnDate) : new Date(),
+            status: "draft",
+            createdBy: userId || null,
+          })
+          .returning();
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          await tx.insert(consumptionReturnItems).values({
+            returnId: ret.id,
+            voucherItemId: item.voucherItemId || null,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            returnedQty: item.returnedQty,
+            unitId: resolvedUnitId || 1,
+            unitRate: Number(item.unitRate) || 0,
+          });
+        }
+
+        return ret;
+      });
+
+      return c.json(createdReturn, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to create consumption return" }, 400);
+    }
+  })
+
+  .patch("/inventory/consumption-returns/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, consumptionReturnInput);
+
+    const [existing] = await db
+      .select()
+      .from(consumptionReturns)
+      .where(eq(consumptionReturns.id, id));
+
+    if (!existing) return c.json({ error: "Consumption return not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft returns can be edited" }, 400);
+    }
+
+    try {
+      const updatedReturn = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(consumptionReturns)
+          .set({
+            storeId: input.storeId,
+            originalVoucherId: input.originalVoucherId || null,
+            reason: input.reason,
+            remarks: input.remarks || null,
+            returnDate: input.returnDate ? new Date(input.returnDate) : existing.returnDate,
+            updatedAt: new Date(),
+          })
+          .where(eq(consumptionReturns.id, id))
+          .returning();
+
+        await tx.delete(consumptionReturnItems).where(eq(consumptionReturnItems.returnId, id));
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          await tx.insert(consumptionReturnItems).values({
+            returnId: id,
+            voucherItemId: item.voucherItemId || null,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            returnedQty: item.returnedQty,
+            unitId: resolvedUnitId || 1,
+            unitRate: Number(item.unitRate) || 0,
+          });
+        }
+
+        return updated;
+      });
+
+      return c.json(updatedReturn);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to update consumption return" }, 400);
+    }
+  })
+
+  .post("/inventory/consumption-returns/:id/post", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const returnDoc = await db.query.consumptionReturns.findFirst({
+      where: eq(consumptionReturns.id, id),
+      with: {
+        items: true,
+      },
+    });
+
+    if (!returnDoc) return c.json({ error: "Consumption return not found" }, 404);
+    if (returnDoc.status !== "draft") {
+      return c.json({ error: `Return cannot be posted from '${returnDoc.status}' status` }, 400);
+    }
+
+    const allowed = await canPostConsumptionVoucher(c, returnDoc.storeId);
+    if (!allowed) {
+      return c.json({
+        error: "Forbidden: Only the Department Head or Subhead (or Admin) can post this consumption return."
+      }, 403);
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of returnDoc.items) {
+          const qty = Number(item.returnedQty);
+          if (qty <= 0) continue;
+
+          const { baseQuantity } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            qty,
+            item.unitId
+          );
+
+          await recordStockMovement(tx, {
+            storeId: returnDoc.storeId,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            movementType: "CONSUMPTION_RETURN",
+            referenceType: "CONSUMPTION_RETURN",
+            referenceId: returnDoc.id,
+            quantityChange: baseQuantity, // positive = stock in
+            costPrice: Number(item.unitRate) || 0,
+            userId: userId || null,
+          });
+        }
+
+        await tx
+          .update(consumptionReturns)
+          .set({
+            status: "posted",
+            postedBy: userId || null,
+            postedAt: new Date(),
+          })
+          .where(eq(consumptionReturns.id, id));
+      });
+
+      return c.json({ success: true, message: "Consumption return successfully posted and stock restored" });
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to post consumption return" }, 400);
+    }
+  })
+
+  .delete("/inventory/consumption-returns/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [existing] = await db.select().from(consumptionReturns).where(eq(consumptionReturns.id, id));
+    if (!existing) return c.json({ error: "Consumption return not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft returns can be deleted" }, 400);
+    }
+    await db.delete(consumptionReturns).where(eq(consumptionReturns.id, id));
+    return c.json({ success: true });
   });
