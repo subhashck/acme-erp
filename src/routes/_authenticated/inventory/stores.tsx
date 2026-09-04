@@ -16,7 +16,8 @@ import {
   Trash2, 
   Loader2,
   RefreshCw,
-  Warehouse
+  Warehouse,
+  Building2,
 } from "lucide-react";
 import * as React from "react";
 import { z } from "zod";
@@ -42,6 +43,7 @@ const storeFormSchema = z.object({
   name: z.string().min(2, "Store name must be at least 2 characters"),
   code: z.string().min(2, "Code must be at least 2 characters").toUpperCase(),
   type: z.enum(["central", "retail_pharmacy", "ward", "college", "lab"]),
+  departmentId: z.coerce.number().positive().optional().nullable(),
   location: z.string().optional().nullable().or(z.literal("")),
   isDefault: z.boolean().default(false),
   active: z.boolean().default(true),
@@ -62,12 +64,22 @@ function Stores() {
     () => client.inventory.stores.$get()
   );
 
+  const { data: departmentsResponse = [] } = useRpcQuery<any>(
+    ["masters-departments-all"],
+    () => client.masters.departments.$get()
+  );
+
+  const departmentsList: any[] = Array.isArray(departmentsResponse)
+    ? departmentsResponse
+    : (departmentsResponse as any)?.data || [];
+
   const form = useForm<StoreFormValues>({
     resolver: zodResolver(storeFormSchema) as any,
     defaultValues: {
       name: "",
       code: "",
       type: "retail_pharmacy",
+      departmentId: null,
       location: "",
       isDefault: false,
       active: true,
@@ -80,6 +92,7 @@ function Stores() {
         name: editingStore.name || "",
         code: editingStore.code || "",
         type: editingStore.type || "retail_pharmacy",
+        departmentId: editingStore.departmentId ? Number(editingStore.departmentId) : null,
         location: editingStore.location || "",
         isDefault: !!editingStore.isDefault,
         active: editingStore.active !== false,
@@ -89,6 +102,7 @@ function Stores() {
         name: "",
         code: "",
         type: "retail_pharmacy",
+        departmentId: null,
         location: "",
         isDefault: false,
         active: true,
@@ -194,6 +208,20 @@ function Stores() {
           </Badge>
         );
       },
+    },
+    {
+      id: "department",
+      label: "Department",
+      render: (row) => (
+        row.departmentName ? (
+          <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-slate-200">
+            <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <span>{String(row.departmentName)}</span>
+          </div>
+        ) : (
+          <span className="text-slate-400 italic text-xs">Unlinked</span>
+        )
+      ),
     },
     {
       id: "location",
@@ -330,6 +358,34 @@ function Stores() {
                       <SelectItem value="lab">Laboratory Store</SelectItem>
                     </SelectContent>
                   </Select>
+                </Field>
+              )}
+            />
+
+            <Controller
+              control={form.control}
+              name="departmentId"
+              render={({ field }) => (
+                <Field label="Linked Department (Cost Center)" error={form.formState.errors.departmentId?.message}>
+                  <Select
+                    value={field.value ? String(field.value) : "none"}
+                    onValueChange={(val) => field.onChange(val === "none" ? null : Number(val))}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select linked department..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— No Department (Central / General) —</SelectItem>
+                      {departmentsList.map((d: any) => (
+                        <SelectItem key={d.id} value={String(d.id)}>
+                          {d.name} {d.headName ? `(Head: ${d.headName})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Linking a department enables internal consumable vouchers and approval workflow by the department head/subhead.
+                  </p>
                 </Field>
               )}
             />

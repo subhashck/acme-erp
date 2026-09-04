@@ -4,7 +4,8 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { db } from "../db/client.ts";
 import { auth, type AuthEnv } from "../auth.ts";
-import { staff, patients, managementApprovers, departments, staffDepartments, unitTypes, unitConversions, items } from "../db/schema.ts";
+import { staff, patients, managementApprovers, departments, staffDepartments, unitTypes, unitConversions, items, departmentLeaders } from "../db/schema.ts";
+import { stores } from "../db/schema-inventory.ts";
 
 // ---------------------------------------------------------------------------
 // Simple helpers
@@ -307,6 +308,61 @@ export const requireCollegeAccess = async (c: Context<AuthEnv>, next: any) => {
   await next();
 };
 
+export const hasFrontOfficeAccess = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) return false;
+
+  const userRole = (session.user.role || "").trim().toLowerCase();
+  if (userRole === "admin") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const staffRole = (currentStaff.role || "").trim().toLowerCase();
+  if (staffRole === "admin") return true;
+
+  const isFrontOfficeDept = (name: string) =>
+    (name || "").replace(/\s+/g, " ").trim().toUpperCase() === "FRONT OFFICE";
+
+  // Check active department assignment in staffDepartments
+  const activeStaffDepts = await db
+    .select({ name: departments.name })
+    .from(staffDepartments)
+    .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+    .where(
+      and(
+        eq(staffDepartments.staffId, currentStaff.staffId),
+        eq(staffDepartments.status, "Active")
+      )
+    )
+    .execute();
+
+  if (activeStaffDepts.some((d) => isFrontOfficeDept(d.name))) return true;
+
+  // Fallback: check direct departmentId on currentStaff if set
+  if (currentStaff.departmentId) {
+    const [dept] = await db
+      .select({ name: departments.name })
+      .from(departments)
+      .where(eq(departments.id, currentStaff.departmentId))
+      .execute();
+    if (dept && isFrontOfficeDept(dept.name)) return true;
+  }
+
+  return false;
+};
+
+export const requireFrontOfficeAccess = async (c: Context<AuthEnv>, next: any) => {
+  const allowed = await hasFrontOfficeAccess(c);
+  if (!allowed) {
+    return c.json(
+      { error: "Forbidden: Access to Front Office Module is restricted to Admin and Front Office department staff." },
+      403
+    );
+  }
+  await next();
+};
+
 export const hasInventoryAccess = async (c: Context<AuthEnv>): Promise<boolean> => {
   const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
   if (!session?.user) return false;
@@ -318,9 +374,18 @@ export const hasInventoryAccess = async (c: Context<AuthEnv>): Promise<boolean> 
   if (!currentStaff) return false;
 
   const staffRole = (currentStaff.role || "").trim().toLowerCase();
-  if (staffRole === "admin" || staffRole === "inventory" || staffRole === "store" || staffRole === "pharmacist") return true;
+  const dept = (currentStaff.departmentName || "").replace(/\s+/g, " ").trim().toUpperCase();
+  if (
+    dept === "PURCHASE AND STORE" ||
+    dept === "PURCHASE & STORE" ||
+    dept.startsWith("PURCHASE AND STORE") ||
+    dept === "DISPENSARY" ||
+    dept.startsWith("DISPENSARY")
+  ) {
+    return true;
+  }
 
-  return true;
+  return false;
 };
 
 export const requireInventoryAccess = async (c: Context<AuthEnv>, next: any) => {
@@ -332,6 +397,48 @@ export const requireInventoryAccess = async (c: Context<AuthEnv>, next: any) => 
     );
   }
   await next();
+};
+
+export const canPostConsumptionVoucher = async (
+  c: Context<AuthEnv>,
+  storeId: number
+): Promise<boolean> => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) return false;
+
+  const userRole = (session.user.role || "").trim().toLowerCase();
+  if (userRole === "admin") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const staffRole = (currentStaff.role || "").trim().toLowerCase();
+  if (staffRole === "admin") return true;
+
+  // Look up store to find its department
+  const [store] = await db
+    .select({ id: stores.id, departmentId: stores.departmentId })
+    .from(stores)
+    .where(eq(stores.id, storeId))
+    .limit(1);
+
+  if (!store || !store.departmentId) {
+    return userRole === "admin" || staffRole === "admin" || userRole === "inventory" || staffRole === "inventory";
+  }
+
+  // Look up departmentLeaders for this department
+  const [leader] = await db
+    .select()
+    .from(departmentLeaders)
+    .where(eq(departmentLeaders.departmentId, store.departmentId))
+    .limit(1);
+
+  if (!leader) return false;
+
+  const isHead = leader.headStaffId != null && leader.headStaffId === currentStaff.staffId;
+  const isSubhead = leader.subheadStaffId != null && leader.subheadStaffId === currentStaff.staffId;
+
+  return isHead || isSubhead;
 };
 
 export const isSupervisorOf = (

@@ -98,6 +98,18 @@ export const magazineMedia = magazineSchema.table("magazine_media", {
   idxMediaCreated: index("idx_magazine_media_created").on(t.createdAt),
 }));
 
+// 5. Magazine Issue Media (Many-to-Many Assignment)
+export const magazineIssueMedia = magazineSchema.table("magazine_issue_media", {
+  id: serial("id").primaryKey(),
+  issueId: integer("issue_id").notNull().references(() => magazineIssues.id, { onDelete: "cascade" }),
+  mediaId: integer("media_id").notNull().references(() => magazineMedia.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  unqIssueMedia: unique("unq_issue_media").on(t.issueId, t.mediaId),
+  idxIssueMediaIssue: index("idx_magazine_issue_media_issue").on(t.issueId),
+  idxIssueMediaMedia: index("idx_magazine_issue_media_media").on(t.mediaId),
+}));
+
 // Relations
 export const magazineEditorsRelations = relations(magazineEditors, ({ one }) => ({
   user: one(user, {
@@ -117,6 +129,7 @@ export const magazineIssuesRelations = relations(magazineIssues, ({ one, many })
   }),
   sections: many(magazineSections),
   media: many(magazineMedia),
+  issueMedia: many(magazineIssueMedia),
 }));
 
 export const magazineSectionsRelations = relations(magazineSections, ({ one }) => ({
@@ -126,14 +139,27 @@ export const magazineSectionsRelations = relations(magazineSections, ({ one }) =
   }),
 }));
 
-export const magazineMediaRelations = relations(magazineMedia, ({ one }) => ({
+export const magazineMediaRelations = relations(magazineMedia, ({ one, many }) => ({
   issue: one(magazineIssues, {
     fields: [magazineMedia.issueId],
     references: [magazineIssues.id],
   }),
+  issueMedia: many(magazineIssueMedia),
   uploader: one(user, {
     fields: [magazineMedia.uploadedBy],
     references: [user.id],
   }),
 }));
+
+export const magazineIssueMediaRelations = relations(magazineIssueMedia, ({ one }) => ({
+  issue: one(magazineIssues, {
+    fields: [magazineIssueMedia.issueId],
+    references: [magazineIssues.id],
+  }),
+  media: one(magazineMedia, {
+    fields: [magazineIssueMedia.mediaId],
+    references: [magazineMedia.id],
+  }),
+}));
+
 

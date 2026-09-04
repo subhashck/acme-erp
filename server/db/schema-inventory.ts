@@ -42,6 +42,19 @@ export const stockMovementTypeEnum = inventorySchema.enum("stock_movement_type",
   "ADJUSTMENT_ADD",
   "ADJUSTMENT_SUB",
   "DAMAGE",
+  "CONSUMPTION",
+  "CONSUMPTION_RETURN",
+]);
+
+export const consumptionVoucherStatusEnum = inventorySchema.enum("consumption_voucher_status", [
+  "draft",
+  "posted",
+  "cancelled",
+]);
+
+export const consumptionReturnStatusEnum = inventorySchema.enum("consumption_return_status", [
+  "draft",
+  "posted",
 ]);
 
 export const requisitionStatusEnum = inventorySchema.enum("requisition_status", [
@@ -404,6 +417,61 @@ export const purchaseInvoicePayments = inventorySchema.table("purchase_invoice_p
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// 20. Consumption Vouchers
+export const consumptionVouchers = inventorySchema.table("consumption_vouchers", {
+  id: serial("id").primaryKey(),
+  voucherNo: text("voucher_no").notNull().unique(),
+  voucherDate: timestamp("voucher_date").notNull().defaultNow(),
+  storeId: integer("store_id").notNull().references(() => stores.id),
+  purpose: text("purpose").notNull(),
+  status: consumptionVoucherStatusEnum("status").notNull().default("draft"),
+  postedBy: text("posted_by").references(() => user.id),
+  postedAt: timestamp("posted_at"),
+  createdBy: text("created_by").references(() => user.id),
+  remarks: text("remarks"),
+  ...timestamps,
+});
+
+// 21. Consumption Voucher Items
+export const consumptionVoucherItems = inventorySchema.table("consumption_voucher_items", {
+  id: serial("id").primaryKey(),
+  voucherId: integer("voucher_id").notNull().references(() => consumptionVouchers.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull().references(() => items.id),
+  batchId: integer("batch_id").notNull().references(() => itemBatches.id),
+  quantity: numeric("quantity", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
+  unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  totalCost: numeric("total_cost", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+});
+
+// 22. Consumption Returns
+export const consumptionReturns = inventorySchema.table("consumption_returns", {
+  id: serial("id").primaryKey(),
+  returnNo: text("return_no").notNull().unique(),
+  returnDate: timestamp("return_date").notNull().defaultNow(),
+  originalVoucherId: integer("original_voucher_id").references(() => consumptionVouchers.id),
+  storeId: integer("store_id").notNull().references(() => stores.id),
+  reason: text("reason").notNull(),
+  status: consumptionReturnStatusEnum("status").notNull().default("draft"),
+  postedBy: text("posted_by").references(() => user.id),
+  postedAt: timestamp("posted_at"),
+  createdBy: text("created_by").references(() => user.id),
+  remarks: text("remarks"),
+  ...timestamps,
+});
+
+// 23. Consumption Return Items
+export const consumptionReturnItems = inventorySchema.table("consumption_return_items", {
+  id: serial("id").primaryKey(),
+  returnId: integer("return_id").notNull().references(() => consumptionReturns.id, { onDelete: "cascade" }),
+  voucherItemId: integer("voucher_item_id").references(() => consumptionVoucherItems.id),
+  itemId: integer("item_id").notNull().references(() => items.id),
+  batchId: integer("batch_id").notNull().references(() => itemBatches.id),
+  returnedQty: numeric("returned_qty", { precision: 12, scale: 3, mode: "number" }).notNull(),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
+  unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+});
+
 // Relations Definitions
 export const storesRelations = relations(stores, ({ one, many }) => ({
   department: one(departments, { fields: [stores.departmentId], references: [departments.id] }),
@@ -534,3 +602,35 @@ export const purchaseInvoicePaymentsRelations = relations(purchaseInvoicePayment
   invoice: one(purchaseInvoices, { fields: [purchaseInvoicePayments.invoiceId], references: [purchaseInvoices.id] }),
   createdByUser: one(user, { fields: [purchaseInvoicePayments.createdBy], references: [user.id] }),
 }));
+
+export const consumptionVouchersRelations = relations(consumptionVouchers, ({ one, many }) => ({
+  store: one(stores, { fields: [consumptionVouchers.storeId], references: [stores.id] }),
+  createdByUser: one(user, { fields: [consumptionVouchers.createdBy], references: [user.id], relationName: "consumptionCreatedByUser" }),
+  postedByUser: one(user, { fields: [consumptionVouchers.postedBy], references: [user.id], relationName: "consumptionPostedByUser" }),
+  items: many(consumptionVoucherItems),
+  returns: many(consumptionReturns),
+}));
+
+export const consumptionVoucherItemsRelations = relations(consumptionVoucherItems, ({ one }) => ({
+  voucher: one(consumptionVouchers, { fields: [consumptionVoucherItems.voucherId], references: [consumptionVouchers.id] }),
+  item: one(items, { fields: [consumptionVoucherItems.itemId], references: [items.id] }),
+  batch: one(itemBatches, { fields: [consumptionVoucherItems.batchId], references: [itemBatches.id] }),
+  unit: one(unitTypes, { fields: [consumptionVoucherItems.unitId], references: [unitTypes.id] }),
+}));
+
+export const consumptionReturnsRelations = relations(consumptionReturns, ({ one, many }) => ({
+  originalVoucher: one(consumptionVouchers, { fields: [consumptionReturns.originalVoucherId], references: [consumptionVouchers.id] }),
+  store: one(stores, { fields: [consumptionReturns.storeId], references: [stores.id] }),
+  createdByUser: one(user, { fields: [consumptionReturns.createdBy], references: [user.id], relationName: "consumptionReturnCreatedByUser" }),
+  postedByUser: one(user, { fields: [consumptionReturns.postedBy], references: [user.id], relationName: "consumptionReturnPostedByUser" }),
+  items: many(consumptionReturnItems),
+}));
+
+export const consumptionReturnItemsRelations = relations(consumptionReturnItems, ({ one }) => ({
+  return: one(consumptionReturns, { fields: [consumptionReturnItems.returnId], references: [consumptionReturns.id] }),
+  voucherItem: one(consumptionVoucherItems, { fields: [consumptionReturnItems.voucherItemId], references: [consumptionVoucherItems.id] }),
+  item: one(items, { fields: [consumptionReturnItems.itemId], references: [items.id] }),
+  batch: one(itemBatches, { fields: [consumptionReturnItems.batchId], references: [itemBatches.id] }),
+  unit: one(unitTypes, { fields: [consumptionReturnItems.unitId], references: [unitTypes.id] }),
+}));
+

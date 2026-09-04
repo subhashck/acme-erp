@@ -40,6 +40,7 @@ import {
   Settings,
   Download,
   Images,
+  Building2,
 } from "lucide-react";
 import * as React from "react";
 import { MediaLibraryDialog } from "@/components/magazine/MediaLibraryDialog";
@@ -286,7 +287,9 @@ export function MagazineDashboard() {
     setIsUploadingEditCover(true);
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("issueId", editSlug || String(editingId || "cover"));
+    if (editingId) {
+      formData.append("issueId", String(editingId));
+    }
 
     try {
       const res = await fetch("/api/magazine/upload-image", {
@@ -412,6 +415,15 @@ export function MagazineDashboard() {
       description="Manage and publish hospital monthly electronic magazine editions with rich-text stories and SSR distribution."
       action={
         <div className="flex items-center gap-2">
+          {canManageMagazine && (
+            <Link to="/magazine/settings">
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Building2 className="h-4 w-4 text-muted-foreground" />
+                <span>Hospital Info</span>
+              </Button>
+            </Link>
+          )}
+
           {isAdmin && (
             <Link to="/magazine/editors">
               <Button variant="outline" size="sm" className="gap-1.5">
@@ -673,6 +685,20 @@ export function MagazineDashboard() {
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                               <span>Read</span>
+                            </a>
+                          </Button>
+                        )}
+
+                        {isPublished && (
+                          <Button asChild size="sm" variant="outline" className="h-8 gap-1 text-xs text-sky-500 hover:text-sky-400">
+                            <a
+                              href={`/magazine/view/${issue.slug}/gallery`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Open public photo gallery"
+                            >
+                              <ImageIcon className="h-3.5 w-3.5" />
+                              <span className="hidden md:inline">Gallery</span>
                             </a>
                           </Button>
                         )}
@@ -1100,6 +1126,7 @@ export function MagazineDashboard() {
             ? "Magazine Media Assets Library"
             : "Select Issue Cover Image"
         }
+        issueId={mediaLibraryPurpose === "editCover" && editingId ? editingId : undefined}
       />
     </ModuleLayout>
   );

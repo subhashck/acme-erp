@@ -1007,6 +1007,7 @@ export const items = sqliteTable("items", {
   taxCategory: text("tax_category").default("taxable"),
   isNarcotic: boolean("is_narcotic").default(false),
   allowFractional: boolean("allow_fractional").default(false),
+  isSaleable: boolean("is_saleable").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
 });
@@ -1578,6 +1579,54 @@ export const nursingReferrerPaymentAllocationsRelations = relations(nursingRefer
   applicant: one(nursingApplicants, { fields: [nursingReferrerPaymentAllocations.applicantId], references: [nursingApplicants.id] }),
 }));
 
+export const frontOfficeDailyReports = sqliteTable("front_office_daily_reports", {
+  id: serial("id").primaryKey(),
+  reportDate: date("report_date").notNull(),
+  shiftLabel: text("shift_label").notNull().default("Full Day"),
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  consultationFileName: text("consultation_file_name"),
+  procedureFileName: text("procedure_file_name"),
+  radiologyFileName: text("radiology_file_name"),
+  totalPatients: integer("total_patients").notNull().default(0),
+  totalBill: numeric("total_bill", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalCollected: numeric("total_collected", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalPending: numeric("total_pending", { precision: 12, scale: 2 }).notNull().default("0"),
+  realizationRate: numeric("realization_rate", { precision: 5, scale: 2 }).default("0"),
+  totalExpenses: numeric("total_expenses", { precision: 12, scale: 2 }).notNull().default("0"),
+  netCollections: numeric("net_collections", { precision: 12, scale: 2 }).notNull().default("0"),
+  patientMix: text("patient_mix"),
+  summaryData: jsonb("summary_data"),
+  patientData: jsonb("patient_data"),
+  createdBy: text("created_by").references(() => user.id),
+  ...timestamps,
+});
 
+export const frontOfficeDailyReportsRelations = relations(frontOfficeDailyReports, ({ one }) => ({
+  createdByUser: one(user, { fields: [frontOfficeDailyReports.createdBy], references: [user.id] }),
+}));
 
+export const frontOfficeShifts = sqliteTable("front_office_shifts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  ...timestamps,
+});
+
+export const docterzApiConfig = sqliteTable("docterz_api_config", {
+  id: serial("id").primaryKey(),
+  authorization: text("authorization").notNull(),
+  apiKey: text("api_key").notNull(),
+  appKey: text("app_key").notNull().default("79ca90b3"),
+  clinicId: text("clinic_id").notNull().default("5760"),
+  doctorIds: text("doctor_ids").notNull().default("[11299,11300,11301,11302,11600,11601]"),
+  baseUrl: text("base_url").notNull().default("https://api.docterz.in/admin/reports/clinic/consultation_report"),
+  referer: text("referer").notNull().default("https://web.docterz.in/"),
+  isActive: boolean("is_active").notNull().default(true),
+  updatedBy: text("updated_by").references(() => user.id),
+  ...timestamps,
+});
 

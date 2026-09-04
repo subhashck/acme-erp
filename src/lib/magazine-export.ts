@@ -310,13 +310,13 @@ export async function exportMagazineToPDF(
 
   const monthName = MONTH_NAMES[issue.issueMonth - 1] || `Month ${issue.issueMonth}`;
   const issueDateStr = `${monthName} ${issue.issueYear}`;
-  const hospitalName = hospitalSettings?.name || "ACME Hospital & Healthcare";
-  const hospitalTagline = hospitalSettings?.tagline || "Excellence in Medical Care, Research & Healthcare Innovation";
-  const hospitalAddress = hospitalSettings?.address || "123 Healthcare Ave, Medical District, Healthcare Campus";
-  const emergencyPhone = hospitalSettings?.emergencyPhone || "+91 98765 43211";
-  const opdPhone = hospitalSettings?.opdPhone || "+91 98765 43212";
-  const email = hospitalSettings?.email || "editorial@acmehospital.com";
-  const website = hospitalSettings?.website || "www.acmehospital.com";
+  const hospitalName = hospitalSettings?.name?.trim() || "ACME Hospital & Healthcare";
+  const hospitalTagline = hospitalSettings?.tagline?.trim() || "";
+  const hospitalAddress = hospitalSettings?.address?.trim() || "";
+  const emergencyPhone = hospitalSettings?.emergencyPhone?.trim() || "";
+  const opdPhone = hospitalSettings?.opdPhone?.trim() || "";
+  const email = hospitalSettings?.email?.trim() || "";
+  const website = hospitalSettings?.website?.trim() || "";
 
   const sections = issue.sections || [];
   const totalMinutes = sections.reduce((acc, s) => acc + calculateReadingTime(s.contentHtml || ""), 0);
@@ -815,40 +815,47 @@ export async function exportMagazineToPDF(
   doc.setTextColor(255, 255, 255);
   doc.text(hospitalName, pageWidth / 2, 88, { align: "center" });
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(148, 163, 184);
-  doc.text(hospitalTagline, pageWidth / 2, 96, { align: "center" });
+  if (hospitalTagline) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(148, 163, 184);
+    doc.text(hospitalTagline, pageWidth / 2, 96, { align: "center" });
+  }
 
   // Contact Info Box
-  const infoBoxY = 120;
-  doc.setFillColor(30, 41, 59); // Slate 800
-  doc.roundedRect(marginX + 10, infoBoxY, contentWidth - 20, 95, 4, 4, "F");
+  const hasContacts = emergencyPhone || opdPhone || email || hospitalAddress || website;
+  if (hasContacts) {
+    const contactRows: { label: string; value: string; isAlert?: boolean }[] = [];
+    if (emergencyPhone) contactRows.push({ label: "24/7 Emergency Helpline:", value: emergencyPhone, isAlert: true });
+    if (opdPhone) contactRows.push({ label: "OPD Appointments & Enquiries:", value: opdPhone });
+    if (email) contactRows.push({ label: "Editorial & Communications Desk:", value: email });
+    if (hospitalAddress) contactRows.push({ label: "Campus Address:", value: hospitalAddress });
+    if (website) contactRows.push({ label: "Online Web Portal:", value: website });
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(56, 189, 248);
-  doc.text("HOSPITAL & EDITORIAL CONTACT", marginX + 18, infoBoxY + 14);
+    const infoBoxY = 120;
+    const boxHeight = 24 + contactRows.length * 13;
+    doc.setFillColor(30, 41, 59); // Slate 800
+    doc.roundedRect(marginX + 10, infoBoxY, contentWidth - 20, boxHeight, 4, 4, "F");
 
-  let cY = infoBoxY + 26;
-  const addContactRow = (label: string, value: string, isAlert = false) => {
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(148, 163, 184);
-    doc.text(label, marginX + 18, cY);
+    doc.setFontSize(11);
+    doc.setTextColor(56, 189, 248);
+    doc.text("HOSPITAL & EDITORIAL CONTACT", marginX + 18, infoBoxY + 14);
 
-    doc.setFont("helvetica", isAlert ? "bold" : "normal");
-    doc.setFontSize(9);
-    doc.setTextColor(isAlert ? 248 : 241, isAlert ? 113 : 245, isAlert ? 113 : 249);
-    doc.text(value, marginX + 18, cY + 5);
-    cY += 13;
-  };
+    let cY = infoBoxY + 26;
+    for (const row of contactRows) {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(row.label, marginX + 18, cY);
 
-  addContactRow("24/7 Emergency Helpline:", emergencyPhone, true);
-  addContactRow("OPD Appointments & Enquiries:", opdPhone);
-  addContactRow("Editorial & Communications Desk:", email);
-  addContactRow("Campus Address:", hospitalAddress);
-  addContactRow("Online Web Portal:", website);
+      doc.setFont("helvetica", row.isAlert ? "bold" : "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(row.isAlert ? 248 : 241, row.isAlert ? 113 : 245, row.isAlert ? 113 : 249);
+      doc.text(row.value, marginX + 18, cY + 5);
+      cY += 13;
+    }
+  }
 
   // Bottom Copyright Note
   doc.setFont("helvetica", "normal");

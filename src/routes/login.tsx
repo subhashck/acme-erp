@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { PublishedMagazineSection } from "../components/PublishedMagazineSection";
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -41,8 +42,8 @@ function Login() {
 
   return (
     <main className="grid min-h-screen place-items-center bg-background px-4 py-8 text-foreground">
-      <div className="w-full max-w-sm animate-page-transition">
-        <div className="mb-6 flex items-center justify-center gap-3">
+      <div className="w-full max-w-md animate-page-transition space-y-6">
+        <div className="flex items-center justify-center gap-3">
           <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground">
             <Activity size={24} />
           </div>
@@ -73,7 +74,9 @@ function Login() {
             </form>
           </CardContent>
         </Card>
-        {/* <p className="mt-4 text-center text-xs text-muted-foreground">Seed admin: admin@acmehospital.local / Admin@12345</p> */}
+
+        {/* Latest Published Magazine Issues */}
+        <PublishedMagazineSection variant="login" limit={3} />
       </div>
     </main>
   );

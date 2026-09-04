@@ -31,9 +31,17 @@ import {
   Edit2,
   Plus,
   SlidersHorizontal,
+  BookOpen,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/utils/cn";
+
+export interface MediaAssetIssue {
+  id: number;
+  issueNo: string;
+  title: string;
+  slug?: string;
+}
 
 export interface MediaAsset {
   id: number;
@@ -51,6 +59,8 @@ export interface MediaAsset {
   thumbnailUrl: string | null;
   tags: string[];
   issueId: number | null;
+  issueIds?: number[];
+  issues?: MediaAssetIssue[];
   savingsPercentage?: number;
   createdAt: string;
 }
@@ -110,11 +120,34 @@ export function MediaLibraryDialog({
   const [isUploading, setIsUploading] = React.useState(false);
   const [uploadTags, setUploadTags] = React.useState<string[]>([]);
   const [uploadTagInput, setUploadTagInput] = React.useState("");
+  const [uploadIssueIds, setUploadIssueIds] = React.useState<number[]>([]);
   const [uploadFeedback, setUploadFeedback] = React.useState<{
     successCount: number;
     duplicateCount: number;
     savedBytes: number;
   } | null>(null);
+
+  // Fetch Available Magazine Issues for Multi-Issue Assignment
+  const issuesQuery = useQuery<{
+    data: { id: number; issueNo: string; title: string; issueMonth: number; issueYear: number }[];
+  }>({
+    queryKey: ["magazine-issues-picker-list"],
+    queryFn: async () => {
+      const res = await fetch("/api/magazine/issues?pageSize=100");
+      if (!res.ok) return { data: [] };
+      return res.json();
+    },
+    enabled: isOpen,
+  });
+  const allIssues = issuesQuery.data?.data || [];
+
+  const parsedIssueId = issueId && !isNaN(Number(issueId)) ? Number(issueId) : undefined;
+
+  React.useEffect(() => {
+    if (parsedIssueId && uploadIssueIds.length === 0) {
+      setUploadIssueIds([parsedIssueId]);
+    }
+  }, [parsedIssueId]);
 
   // Rename and Tag Editing State for Selected Media
   const [isEditingName, setIsEditingName] = React.useState(false);
@@ -157,7 +190,6 @@ export function MediaLibraryDialog({
   });
 
   // Fetch Media Assets
-  const parsedIssueId = issueId && !isNaN(Number(issueId)) ? Number(issueId) : undefined;
   const queryParams = new URLSearchParams({
     page: String(page),
     pageSize: "24",
@@ -193,15 +225,17 @@ export function MediaLibraryDialog({
       id,
       originalName,
       tags,
+      issueId,
     }: {
       id: number;
       originalName?: string;
       tags?: string[];
+      issueId?: number | null;
     }) => {
       const res = await fetch(`/api/magazine/media/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ originalName, tags }),
+        body: JSON.stringify({ originalName, tags, issueId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -218,6 +252,38 @@ export function MediaLibraryDialog({
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to update asset");
+    },
+  });
+
+  // Fast Single-Issue Assign/Unassign Mutation
+  const toggleIssueAssignmentMutation = useMutation({
+    mutationFn: async ({
+      mediaId,
+      targetIssueId,
+      assigned,
+    }: {
+      mediaId: number;
+      targetIssueId: number;
+      assigned: boolean;
+    }) => {
+      const res = await fetch(`/api/magazine/media/${mediaId}/assign-issue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ issueId: targetIssueId, assigned }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to update issue assignment");
+      }
+      return res.json();
+    },
+    onSuccess: (updatedAsset: MediaAsset) => {
+      toast.success("Issue assignment updated");
+      setSelectedMedia(updatedAsset);
+      queryClient.invalidateQueries({ queryKey: ["magazine-media"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update issue assignment");
     },
   });
 
@@ -302,8 +368,12 @@ export function MediaLibraryDialog({
         const file = files[i];
         const formData = new FormData();
         formData.append("file", file);
-        if (parsedIssueId) {
+        if (uploadIssueIds.length > 0) {
+          formData.append("issueIds", JSON.stringify(uploadIssueIds));
+          formData.append("issueId", String(uploadIssueIds[0]));
+        } else if (parsedIssueId) {
           formData.append("issueId", String(parsedIssueId));
+          formData.append("issueIds", JSON.stringify([parsedIssueId]));
         }
         if (uploadTags.length > 0) {
           formData.append("tags", JSON.stringify(uploadTags));
@@ -686,9 +756,16 @@ export function MediaLibraryDialog({
                               </span>
                               <div className="flex items-center justify-between text-[10px] text-muted-foreground font-mono mt-0.5">
                                 <span>{formatBytes(asset.fileSize)}</span>
-                                {asset.width && asset.height && (
-                                  <span>{asset.width}×{asset.height}</span>
-                                )}
+                                <div className="flex items-center gap-1">
+                                  {asset.issueIds && asset.issueIds.length > 1 && (
+                                    <span className="bg-primary/15 text-primary font-bold px-1.5 py-0.2 rounded text-[9px]">
+                                      {asset.issueIds.length} Issues
+                                    </span>
+                                  )}
+                                  {asset.width && asset.height && (
+                                    <span>{asset.width}×{asset.height}</span>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
@@ -917,6 +994,146 @@ export function MediaLibraryDialog({
                       )}
                     </div>
 
+                    {/* Issue Assignment & Multi-Issue Management */}
+                    <div className="space-y-2.5 text-xs bg-background/80 p-3 rounded-lg border border-border">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-1">
+                          <Layers className="h-3 w-3 text-primary" />
+                          Assigned Editions:
+                        </label>
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          {selectedMedia.issueIds?.length || (selectedMedia.issueId ? 1 : 0)} Edition(s)
+                        </span>
+                      </div>
+
+                      {/* Badges of currently assigned issues */}
+                      <div className="flex flex-wrap gap-1.5 min-h-[24px]">
+                        {selectedMedia.issues && selectedMedia.issues.length > 0 ? (
+                          selectedMedia.issues.map((iss) => (
+                            <span
+                              key={iss.id}
+                              className={cn(
+                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border",
+                                iss.id === parsedIssueId
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 font-bold"
+                                  : "bg-muted text-foreground border-border"
+                              )}
+                              title={iss.title}
+                            >
+                              <span>{iss.issueNo}</span>
+                              <button
+                                type="button"
+                                disabled={toggleIssueAssignmentMutation.isPending}
+                                onClick={() =>
+                                  toggleIssueAssignmentMutation.mutate({
+                                    mediaId: selectedMedia.id,
+                                    targetIssueId: iss.id,
+                                    assigned: false,
+                                  })
+                                }
+                                className="hover:text-destructive p-0.5 rounded"
+                                title={`Unassign from ${iss.issueNo}`}
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </span>
+                          ))
+                        ) : selectedMedia.issueId ? (
+                          <Badge variant="outline" className="text-[10px] font-mono border-primary/40 text-primary">
+                            Issue #{selectedMedia.issueId}
+                          </Badge>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground italic">
+                            Not assigned to any edition
+                          </span>
+                        )}
+                      </div>
+
+                      {/* 1-Click Action for current edition context */}
+                      {parsedIssueId && (
+                        <div className="pt-2 border-t border-border flex flex-col gap-1.5">
+                          {selectedMedia.issueIds?.includes(parsedIssueId) || selectedMedia.issueId === parsedIssueId ? (
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                                <Check className="h-3 w-3" />
+                                Included in This Edition
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={toggleIssueAssignmentMutation.isPending}
+                                onClick={() =>
+                                  toggleIssueAssignmentMutation.mutate({
+                                    mediaId: selectedMedia.id,
+                                    targetIssueId: parsedIssueId,
+                                    assigned: false,
+                                  })
+                                }
+                                className="h-6 px-1.5 text-[10px] text-destructive hover:bg-destructive/10"
+                                title="Remove from this edition gallery"
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={toggleIssueAssignmentMutation.isPending}
+                              onClick={() =>
+                                toggleIssueAssignmentMutation.mutate({
+                                  mediaId: selectedMedia.id,
+                                  targetIssueId: parsedIssueId,
+                                  assigned: true,
+                                })
+                              }
+                              className="h-7 text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10 gap-1.5"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              <span>Assign to Current Issue (#{parsedIssueId})</span>
+                            </Button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Dropdown / selector to assign to any other issue */}
+                      {allIssues.length > 0 && (
+                        <div className="pt-2 border-t border-border/60">
+                          <label className="text-[10px] font-semibold text-muted-foreground block mb-1">
+                            Assign to another edition:
+                          </label>
+                          <select
+                            className="w-full h-7 px-2 text-[11px] rounded border border-border bg-background text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                            value=""
+                            disabled={toggleIssueAssignmentMutation.isPending}
+                            onChange={(e) => {
+                              const targetId = Number(e.target.value);
+                              if (targetId && !isNaN(targetId)) {
+                                toggleIssueAssignmentMutation.mutate({
+                                  mediaId: selectedMedia.id,
+                                  targetIssueId: targetId,
+                                  assigned: true,
+                                });
+                              }
+                            }}
+                          >
+                            <option value="" disabled>
+                              + Select edition to assign...
+                            </option>
+                            {allIssues
+                              .filter((iss) => !(selectedMedia.issueIds?.includes(iss.id) || selectedMedia.issueId === iss.id))
+                              .map((iss) => (
+                                <option key={iss.id} value={iss.id}>
+                                  {iss.issueNo} — {iss.title}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Quick Link & Action Buttons */}
                     <div className="flex flex-col gap-1.5">
                       <Button
@@ -1006,6 +1223,52 @@ export function MediaLibraryDialog({
         {activeTab === "upload" && (
           <div className="flex-1 p-8 flex flex-col items-center justify-center overflow-y-auto">
             <div className="w-full max-w-xl flex flex-col gap-4">
+              {/* Target Edition(s) Picker for Upload */}
+              <div className="bg-primary/10 p-3.5 rounded-2xl border border-primary/25 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-bold text-foreground">
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    <span>Assign to Edition(s) on Upload</span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    {uploadIssueIds.length} selected
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Uploaded images will be assigned to all selected editions and automatically appear in their Public Photo Galleries.
+                </p>
+
+                {allIssues.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {allIssues.map((iss) => {
+                      const isSelected = uploadIssueIds.includes(iss.id);
+                      return (
+                        <button
+                          key={iss.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setUploadIssueIds(uploadIssueIds.filter((id) => id !== iss.id));
+                            } else {
+                              setUploadIssueIds([...uploadIssueIds, iss.id]);
+                            }
+                          }}
+                          className={cn(
+                            "px-2.5 py-1 rounded-md text-[11px] font-mono border transition-all flex items-center gap-1.5",
+                            isSelected
+                              ? "bg-primary text-primary-foreground border-primary font-bold shadow-sm"
+                              : "bg-background/80 text-muted-foreground border-border hover:border-primary/50"
+                          )}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                          <span>{iss.issueNo}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               {/* Optional Pre-Upload Tags */}
               <div className="bg-muted/30 p-4 rounded-2xl border border-border">
                 <label className="text-xs font-bold text-foreground flex items-center gap-1 mb-1.5">

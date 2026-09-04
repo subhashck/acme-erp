@@ -84,7 +84,7 @@ function StockLedger() {
   // Debounced search sync to URL
   React.useEffect(() => {
     const timer = setTimeout(() => {
-      if (localSearch !== searchFilter) {
+      if (localSearch !== (searchFilter || "")) {
         navigate({
           search: (prev) => ({
             ...prev,
@@ -93,7 +93,7 @@ function StockLedger() {
           }),
         });
       }
-    }, 350);
+    }, 500);
     return () => clearTimeout(timer);
   }, [localSearch, searchFilter, navigate]);
 

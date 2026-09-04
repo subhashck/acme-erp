@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   Building,
+  Building2,
   Percent,
   Coins,
   Syringe,
@@ -278,6 +279,11 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
+  if (pathname === "/front-office" || pathname.startsWith("/front-office/")) {
+    items.push({ label: "Front Office", to: "/front-office" });
+    return items;
+  }
+
   return items;
 };
 
@@ -300,7 +306,7 @@ export function Shell() {
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewInventory, canManageMagazine } = useUserPermissions();
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine } = useUserPermissions();
   const displayName = currentStaff?.name || session.data?.user?.name;
 
   React.useEffect(() => {
@@ -457,6 +463,18 @@ export function Shell() {
                   </span>
                 )}
               </Link>
+
+              {/* Front Office */}
+              {canViewFrontOffice && (
+                <Link
+                  to={"/front-office" as any}
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                >
+                  <Building2 size={18} />
+                  <span>Front Office</span>
+                </Link>
+              )}
 
               {/* Collapsible Nursing College group */}
               {canViewCollege && (
@@ -804,92 +822,94 @@ export function Shell() {
               )}
 
               {/* Collapsible Purchases group */}
-              <div className="flex flex-col">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setPurchasesOpen(!purchasesOpen);
-                  }}
-                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
-                >
-                  <div className="flex items-center gap-3">
-                    <ShoppingCart size={18} />
-                    <span>Purchases</span>
-                  </div>
-                  {purchasesOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                {purchasesOpen && (
-                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                    <Link
-                      to="/purchases/purchase-orders"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Purchase Orders
-                    </Link>
-                    <Link
-                      to="/purchases/grns"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Goods Receipt Notes
-                    </Link>
-                    <Link
-                      to="/purchases/bills"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Bills & Invoices
-                    </Link>
-
-                    {/* Collapsible Purchases Masters subgroup */}
-                    <div className="flex flex-col">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPurchasesMastersOpen(!purchasesMastersOpen);
-                        }}
-                        className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
-                      >
-                        <span>Masters</span>
-                        {purchasesMastersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                      </button>
-                      {purchasesMastersOpen && (
-                        <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
-                          <Link
-                            to="/purchases/vendors"
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                          >
-                            Suppliers & Vendors
-                          </Link>
-                          <Link
-                            to="/purchases/items"
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                          >
-                            Items
-                          </Link>
-                          <Link
-                            to="/purchases/item-types"
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                          >
-                            Item Types
-                          </Link>
-                          <Link
-                            to="/purchases/unit-types"
-                            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                            activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                          >
-                            Unit Types
-                          </Link>
-                        </div>
-                      )}
+              {canViewPurchases && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPurchasesOpen(!purchasesOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShoppingCart size={18} />
+                      <span>Purchases</span>
                     </div>
-                  </div>
-                )}
-              </div>
+                    {purchasesOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {purchasesOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to="/purchases/purchase-orders"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Purchase Orders
+                      </Link>
+                      <Link
+                        to="/purchases/grns"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Goods Receipt Notes
+                      </Link>
+                      <Link
+                        to="/purchases/bills"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Bills & Invoices
+                      </Link>
+
+                      {/* Collapsible Purchases Masters subgroup */}
+                      <div className="flex flex-col">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPurchasesMastersOpen(!purchasesMastersOpen);
+                          }}
+                          className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
+                        >
+                          <span>Masters</span>
+                          {purchasesMastersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {purchasesMastersOpen && (
+                          <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
+                            <Link
+                              to="/purchases/vendors"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Suppliers & Vendors
+                            </Link>
+                            <Link
+                              to="/purchases/items"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Items
+                            </Link>
+                            <Link
+                              to="/purchases/item-types"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Item Types
+                            </Link>
+                            <Link
+                              to="/purchases/unit-types"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Unit Types
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Collapsible Inventory group */}
               {canViewInventory && (
@@ -972,6 +992,20 @@ export function Shell() {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Stock Adjustments
+                      </Link>
+                      <Link
+                        to={"/inventory/consumptions" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Consumptions
+                      </Link>
+                      <Link
+                        to={"/inventory/consumption-returns" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Consumption Returns
                       </Link>
                       <Link
                         to={"/inventory/reports" as any}
@@ -1177,6 +1211,17 @@ export function Shell() {
                 </Link>
               )}
 
+              {canViewFrontOffice && (
+                <Link
+                  to={"/front-office" as any}
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Front Office"
+                >
+                  <Building2 size={20} />
+                </Link>
+              )}
+
               <div className="w-8 h-px bg-border my-2" />
 
               <Link
@@ -1278,61 +1323,65 @@ export function Shell() {
                 </>
               )}
 
-              <div className="w-8 h-px bg-border my-2" />
+              {canViewPurchases && (
+                <>
+                  <div className="w-8 h-px bg-border my-2" />
 
-              <Link
-                to="/purchases/purchase-orders"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Purchase Orders"
-              >
-                <ShoppingCart size={20} />
-              </Link>
+                  <Link
+                    to="/purchases/purchase-orders"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Purchase Orders"
+                  >
+                    <ShoppingCart size={20} />
+                  </Link>
 
-              <Link
-                to="/purchases/vendors"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Suppliers & Vendors"
-              >
-                <ShoppingBag size={20} />
-              </Link>
+                  <Link
+                    to="/purchases/vendors"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Suppliers & Vendors"
+                  >
+                    <ShoppingBag size={20} />
+                  </Link>
 
-              <Link
-                to="/purchases/bills"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Bills & Invoices"
-              >
-                <Receipt size={20} />
-              </Link>
+                  <Link
+                    to="/purchases/bills"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Bills & Invoices"
+                  >
+                    <Receipt size={20} />
+                  </Link>
 
-              <Link
-                to="/purchases/items"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Items Master"
-              >
-                <Package size={20} />
-              </Link>
+                  <Link
+                    to="/purchases/items"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Items Master"
+                  >
+                    <Package size={20} />
+                  </Link>
 
-              <Link
-                to="/purchases/item-types"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Item Types Master"
-              >
-                <Layers size={20} />
-              </Link>
+                  <Link
+                    to="/purchases/item-types"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Item Types Master"
+                  >
+                    <Layers size={20} />
+                  </Link>
 
-              <Link
-                to="/purchases/unit-types"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Unit Types Master"
-              >
-                <Scale size={20} />
-              </Link>
+                  <Link
+                    to="/purchases/unit-types"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Unit Types Master"
+                  >
+                    <Scale size={20} />
+                  </Link>
+                </>
+              )}
 
               {session.data?.user.role === "admin" && (
                 <>

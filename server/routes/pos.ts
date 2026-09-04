@@ -80,7 +80,10 @@ export const posRoutes = app
       return c.json([]);
     }
 
-    const conditions = [sql`${storeBatchStock.quantityOnHand} > 0`];
+    const conditions = [
+      sql`${storeBatchStock.quantityOnHand} > 0`,
+      eq(items.isSaleable, true),
+    ];
     if (storeId) {
       conditions.push(eq(storeBatchStock.storeId, storeId));
     }

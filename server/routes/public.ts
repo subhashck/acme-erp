@@ -7,7 +7,7 @@
  */
 
 import { Hono } from "hono";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
 import {
   dailyClosingReports,
@@ -26,9 +26,10 @@ import {
 import {
   magazineIssues,
   magazineSections,
+  magazineMedia,
 } from "../db/schema-magazine.ts";
 import { getDocumentStream } from "../utils/upload.ts";
-import { renderMagazineHtml } from "../services/magazine-ssr.ts";
+import { renderMagazineHtml, renderMagazineGalleryHtml } from "../services/magazine-ssr.ts";
 import { getHospitalSettingsFromDb } from "../services/hospital-settings.ts";
 
 // ---------------------------------------------------------------------------
@@ -305,9 +306,89 @@ export const publicRoutes = new Hono()
       .where(eq(magazineSections.issueId, issue.id))
       .orderBy(magazineSections.sortOrder, magazineSections.id);
 
+    const media = await db
+      .select({
+        id: magazineMedia.id,
+        fileName: magazineMedia.fileName,
+        originalName: magazineMedia.originalName,
+        mimeType: magazineMedia.mimeType,
+        fileSize: magazineMedia.fileSize,
+        width: magazineMedia.width,
+        height: magazineMedia.height,
+        url: magazineMedia.url,
+        thumbnailUrl: magazineMedia.thumbnailUrl,
+        tags: magazineMedia.tags,
+        createdAt: magazineMedia.createdAt,
+      })
+      .from(magazineMedia)
+      .where(eq(magazineMedia.issueId, issue.id))
+      .orderBy(asc(magazineMedia.id));
+
     return c.json({
       ...issue,
       sections,
+      media,
+    });
+  })
+
+  /**
+   * GET /public/magazine/:slug/gallery
+   * Returns media assets associated with a published magazine issue.
+   */
+  .get("/public/magazine/:slug/gallery", async (c) => {
+    const slug = c.req.param("slug");
+
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      return c.json({ error: "Invalid issue slug format" }, 400);
+    }
+
+    const [issue] = await db
+      .select()
+      .from(magazineIssues)
+      .where(eq(magazineIssues.slug, slug))
+      .limit(1);
+
+    if (!issue || issue.status !== "published") {
+      return c.json({ error: "Magazine issue not found or not published" }, 404);
+    }
+
+    const media = await db
+      .select({
+        id: magazineMedia.id,
+        fileName: magazineMedia.fileName,
+        originalName: magazineMedia.originalName,
+        mimeType: magazineMedia.mimeType,
+        fileSize: magazineMedia.fileSize,
+        width: magazineMedia.width,
+        height: magazineMedia.height,
+        url: magazineMedia.url,
+        thumbnailUrl: magazineMedia.thumbnailUrl,
+        tags: magazineMedia.tags,
+        createdAt: magazineMedia.createdAt,
+      })
+      .from(magazineMedia)
+      .where(
+        or(
+          eq(magazineMedia.issueId, issue.id),
+          sql`EXISTS (
+            SELECT 1 FROM "magazine"."magazine_issue_media" "mim"
+            WHERE "mim"."media_id" = "magazine_media"."id" AND "mim"."issue_id" = ${issue.id}
+          )`
+        )
+      )
+      .orderBy(asc(magazineMedia.id));
+
+    return c.json({
+      issue: {
+        id: issue.id,
+        issueNo: issue.issueNo,
+        title: issue.title,
+        slug: issue.slug,
+        issueMonth: issue.issueMonth,
+        issueYear: issue.issueYear,
+      },
+      total: media.length,
+      media,
     });
   })
 
@@ -353,9 +434,94 @@ export const publicRoutes = new Hono()
       .where(eq(magazineSections.issueId, issue.id))
       .orderBy(magazineSections.sortOrder, magazineSections.id);
 
+    const media = await db
+      .select({
+        id: magazineMedia.id,
+        fileName: magazineMedia.fileName,
+        originalName: magazineMedia.originalName,
+        mimeType: magazineMedia.mimeType,
+        fileSize: magazineMedia.fileSize,
+        width: magazineMedia.width,
+        height: magazineMedia.height,
+        url: magazineMedia.url,
+        thumbnailUrl: magazineMedia.thumbnailUrl,
+        tags: magazineMedia.tags,
+        createdAt: magazineMedia.createdAt,
+      })
+      .from(magazineMedia)
+      .where(
+        or(
+          eq(magazineMedia.issueId, issue.id),
+          sql`EXISTS (
+            SELECT 1 FROM "magazine"."magazine_issue_media" "mim"
+            WHERE "mim"."media_id" = "magazine_media"."id" AND "mim"."issue_id" = ${issue.id}
+          )`
+        )
+      )
+      .orderBy(asc(magazineMedia.id));
+
     const hospital = await getHospitalSettingsFromDb();
 
-    const html = renderMagazineHtml(issue as any, sections as any, hospital as any);
+    const html = renderMagazineHtml(issue as any, sections as any, hospital as any, media as any);
+    return c.html(html);
+  })
+
+  /**
+   * GET /public/magazine/view/:slug/gallery
+   * Returns fully rendered standalone public Photo Gallery HTML page.
+   */
+  .get("/public/magazine/view/:slug/gallery", async (c) => {
+    const slug = c.req.param("slug");
+
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      return c.html(
+        `<!DOCTYPE html><html><head><title>Invalid Request</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}</style></head><body><h1>400 - Invalid Issue Slug</h1><p>The magazine slug format is invalid.</p></body></html>`,
+        400
+      );
+    }
+
+    const [issue] = await db
+      .select()
+      .from(magazineIssues)
+      .where(eq(magazineIssues.slug, slug))
+      .limit(1);
+
+    if (!issue || issue.status !== "published") {
+      return c.html(
+        `<!DOCTYPE html><html><head><title>Magazine Issue Not Found</title><style>body{font-family:sans-serif;text-align:center;padding:4rem;color:#334155;}a{color:#0284c7;text-decoration:none;font-weight:600;}</style></head><body><h1>404 - Magazine Issue Not Found</h1><p>The requested monthly edition is not published or does not exist.</p><p><a href="/">Return to Home</a></p></body></html>`,
+        404
+      );
+    }
+
+    const media = await db
+      .select({
+        id: magazineMedia.id,
+        fileName: magazineMedia.fileName,
+        originalName: magazineMedia.originalName,
+        mimeType: magazineMedia.mimeType,
+        fileSize: magazineMedia.fileSize,
+        width: magazineMedia.width,
+        height: magazineMedia.height,
+        url: magazineMedia.url,
+        thumbnailUrl: magazineMedia.thumbnailUrl,
+        tags: magazineMedia.tags,
+        createdAt: magazineMedia.createdAt,
+      })
+      .from(magazineMedia)
+      .where(
+        or(
+          eq(magazineMedia.issueId, issue.id),
+          sql`EXISTS (
+            SELECT 1 FROM "magazine"."magazine_issue_media" "mim"
+            WHERE "mim"."media_id" = "magazine_media"."id" AND "mim"."issue_id" = ${issue.id}
+          )`
+        )
+      )
+      .orderBy(asc(magazineMedia.id));
+
+    const hospital = await getHospitalSettingsFromDb();
+
+    const html = renderMagazineGalleryHtml(issue as any, media as any, hospital as any);
     return c.html(html);
   })
 
@@ -365,6 +531,14 @@ export const publicRoutes = new Hono()
    */
   .get("/public/magazine/ssr/:slug", async (c) => {
     return c.redirect(`/api/public/magazine/view/${c.req.param("slug")}`);
+  })
+
+  /**
+   * GET /public/magazine/ssr/:slug/gallery
+   * Alias for /public/magazine/view/:slug/gallery
+   */
+  .get("/public/magazine/ssr/:slug/gallery", async (c) => {
+    return c.redirect(`/api/public/magazine/view/${c.req.param("slug")}/gallery`);
   })
 
   /**

@@ -18,7 +18,13 @@ import {
   updateMediaAsset,
   deleteMediaAsset,
   getAllMediaTags,
+  assignMediaToIssue,
+  unassignMediaFromIssue,
 } from "../services/media-engine.ts";
+import {
+  getHospitalSettingsFromDb,
+  updateHospitalSettingsInDb,
+} from "../services/hospital-settings.ts";
 
 export const requireMagazineAccess = async (c: any, next: any) => {
   const session = c.get("session");
@@ -798,18 +804,42 @@ export const magazineRoutes = new Hono<AuthEnv>()
       z.object({
         originalName: z.string().min(1, "Name cannot be empty").optional(),
         tags: z.array(z.string()).optional(),
+        issueId: z.number().nullable().optional(),
+        issueIds: z.array(z.number()).optional(),
       })
     );
 
     const updated = await updateMediaAsset(id, {
       originalName: body.originalName,
       tags: body.tags,
+      issueId: body.issueId,
+      issueIds: body.issueIds,
     });
 
     if (!updated) {
       return c.json({ error: "Media asset not found" }, 404);
     }
 
+    return c.json(updated);
+  })
+
+  .post("/magazine/media/:id/assign-issue", requireMagazineAccess, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const body = await jsonBody(
+      c,
+      z.object({
+        issueId: z.number(),
+        assigned: z.boolean().default(true),
+      })
+    );
+
+    if (body.assigned) {
+      await assignMediaToIssue(id, body.issueId);
+    } else {
+      await unassignMediaFromIssue(id, body.issueId);
+    }
+
+    const updated = await updateMediaAsset(id, {});
     return c.json(updated);
   })
 
@@ -845,6 +875,17 @@ export const magazineRoutes = new Hono<AuthEnv>()
 
       const issueIdStr = formData.get("issueId");
       const issueId = issueIdStr && !isNaN(Number(issueIdStr)) ? Number(issueIdStr) : null;
+
+      const issueIdsJson = formData.get("issueIds") ? String(formData.get("issueIds")) : null;
+      let issueIds: number[] | undefined;
+      if (issueIdsJson) {
+        try {
+          issueIds = JSON.parse(issueIdsJson).map(Number).filter((n: number) => !isNaN(n));
+        } catch {
+          issueIds = issueIdsJson.split(",").map((s) => Number(s.trim())).filter((n) => !isNaN(n));
+        }
+      }
+
       const tagsJson = formData.get("tags") ? String(formData.get("tags")) : null;
       let tags: string[] | undefined;
       if (tagsJson) {
@@ -862,6 +903,7 @@ export const magazineRoutes = new Hono<AuthEnv>()
         originalName: file.name,
         mimeType: file.type,
         issueId,
+        issueIds,
         userId: session.user.id,
         tags,
       });
@@ -882,4 +924,47 @@ export const magazineRoutes = new Hono<AuthEnv>()
     }
 
     return c.json({ success: true });
-  });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Magazine Hospital Info & Branding Settings
+  // ---------------------------------------------------------------------------
+  .get("/magazine/settings", requireMagazineAccess, async (c) => {
+    try {
+      const settings = await getHospitalSettingsFromDb();
+      return c.json(settings);
+    } catch (err: any) {
+      console.error("[Get Magazine Hospital Settings Error]:", err);
+      return c.json({ error: err.message || "Failed to fetch settings" }, 500);
+    }
+  })
+
+  .put(
+    "/magazine/settings",
+    requireMagazineAccess,
+    async (c) => {
+      try {
+        const updateHospitalSettingsSchema = z.object({
+          name: z.string().min(1, "Hospital name is required").max(255),
+          tagline: z.string().nullable().optional(),
+          logoUrl: z.string().nullable().optional(),
+          phone: z.string().nullable().optional(),
+          email: z.string().nullable().optional(),
+          website: z.string().nullable().optional(),
+          address: z.string().nullable().optional(),
+          emergencyPhone: z.string().nullable().optional(),
+          opdPhone: z.string().nullable().optional(),
+          editorialDivision: z.string().nullable().optional(),
+          copyrightText: z.string().nullable().optional(),
+        });
+
+        const body = await jsonBody(c, updateHospitalSettingsSchema);
+        const updated = await updateHospitalSettingsInDb(body);
+        return c.json(updated);
+      } catch (err: any) {
+        console.error("[Update Magazine Hospital Settings Error]:", err);
+        return c.json({ error: err.message || "Failed to update hospital settings" }, 500);
+      }
+    }
+  );
+

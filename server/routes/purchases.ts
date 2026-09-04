@@ -1372,6 +1372,9 @@ export const purchasesRoutes = app
     if (query.itemTypeId && query.itemTypeId !== "all") {
       conditions.push(eq(items.itemTypeId, parseInt(query.itemTypeId, 10)));
     }
+    if (query.isSaleable !== undefined && query.isSaleable !== "all" && query.isSaleable !== "") {
+      conditions.push(eq(items.isSaleable, query.isSaleable === "true"));
+    }
 
     let countQuery = db.select({ count: sql<number>`count(*)` }).from(items);
 
@@ -1412,6 +1415,7 @@ export const purchasesRoutes = app
         taxCategory: items.taxCategory,
         isNarcotic: items.isNarcotic,
         allowFractional: items.allowFractional,
+        isSaleable: items.isSaleable,
         createdAt: items.createdAt,
         updatedAt: items.updatedAt,
       })
@@ -1495,6 +1499,7 @@ export const purchasesRoutes = app
         taxCategory: z.string().optional().default("taxable"),
         isNarcotic: z.boolean().optional().default(false),
         allowFractional: z.boolean().optional().default(false),
+        isSaleable: z.boolean().optional().default(true),
         unitPrices: z
           .array(
             z.object({
@@ -1570,6 +1575,7 @@ export const purchasesRoutes = app
         taxCategory: z.string().optional(),
         isNarcotic: z.boolean().optional(),
         allowFractional: z.boolean().optional(),
+        isSaleable: z.boolean().optional(),
         unitPrices: z
           .array(
             z.object({

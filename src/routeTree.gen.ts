@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedMagazineIndexRouteImport } from './routes/_authenticated/magazine/index'
+import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
@@ -32,6 +33,7 @@ import { Route as AuthenticatedMastersManagementApproversRouteImport } from './r
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
 import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
+import { Route as AuthenticatedMagazineSettingsRouteImport } from './routes/_authenticated/magazine/settings'
 import { Route as AuthenticatedMagazineEditorsRouteImport } from './routes/_authenticated/magazine/editors'
 import { Route as AuthenticatedMagazineIdRouteImport } from './routes/_authenticated/magazine/$id'
 import { Route as AuthenticatedInventoryStoresRouteImport } from './routes/_authenticated/inventory/stores'
@@ -76,6 +78,8 @@ import { Route as AuthenticatedInventoryRequisitionsIndexRouteImport } from './r
 import { Route as AuthenticatedInventoryReportsIndexRouteImport } from './routes/_authenticated/inventory/reports/index'
 import { Route as AuthenticatedInventoryPurchaseInvoicesIndexRouteImport } from './routes/_authenticated/inventory/purchase-invoices/index'
 import { Route as AuthenticatedInventoryInvoicesIndexRouteImport } from './routes/_authenticated/inventory/invoices/index'
+import { Route as AuthenticatedInventoryConsumptionsIndexRouteImport } from './routes/_authenticated/inventory/consumptions/index'
+import { Route as AuthenticatedInventoryConsumptionReturnsIndexRouteImport } from './routes/_authenticated/inventory/consumption-returns/index'
 import { Route as AuthenticatedInventoryAdjustmentsIndexRouteImport } from './routes/_authenticated/inventory/adjustments/index'
 import { Route as AuthenticatedCollegeReportsIndexRouteImport } from './routes/_authenticated/college/reports/index'
 import { Route as AuthenticatedAccountsReportsIndexRouteImport } from './routes/_authenticated/accounts/reports/index'
@@ -130,6 +134,12 @@ const AuthenticatedMagazineIndexRoute =
   AuthenticatedMagazineIndexRouteImport.update({
     id: '/magazine/',
     path: '/magazine/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFrontOfficeIndexRoute =
+  AuthenticatedFrontOfficeIndexRouteImport.update({
+    id: '/front-office/',
+    path: '/front-office/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedCollegeIndexRoute =
@@ -225,6 +235,12 @@ const AuthenticatedMastersBanksRoute =
   AuthenticatedMastersBanksRouteImport.update({
     id: '/masters/banks',
     path: '/masters/banks',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMagazineSettingsRoute =
+  AuthenticatedMagazineSettingsRouteImport.update({
+    id: '/magazine/settings',
+    path: '/magazine/settings',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedMagazineEditorsRoute =
@@ -485,6 +501,18 @@ const AuthenticatedInventoryInvoicesIndexRoute =
     path: '/inventory/invoices/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedInventoryConsumptionsIndexRoute =
+  AuthenticatedInventoryConsumptionsIndexRouteImport.update({
+    id: '/inventory/consumptions/',
+    path: '/inventory/consumptions/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryConsumptionReturnsIndexRoute =
+  AuthenticatedInventoryConsumptionReturnsIndexRouteImport.update({
+    id: '/inventory/consumption-returns/',
+    path: '/inventory/consumption-returns/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedInventoryAdjustmentsIndexRoute =
   AuthenticatedInventoryAdjustmentsIndexRouteImport.update({
     id: '/inventory/adjustments/',
@@ -643,6 +671,7 @@ export interface FileRoutesByFullPath {
   '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
   '/magazine/$id': typeof AuthenticatedMagazineIdRoute
   '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
+  '/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -659,6 +688,7 @@ export interface FileRoutesByFullPath {
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
+  '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
   '/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
@@ -675,6 +705,8 @@ export interface FileRoutesByFullPath {
   '/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
   '/college/reports/': typeof AuthenticatedCollegeReportsIndexRoute
   '/inventory/adjustments/': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/inventory/consumption-returns/': typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  '/inventory/consumptions/': typeof AuthenticatedInventoryConsumptionsIndexRoute
   '/inventory/invoices/': typeof AuthenticatedInventoryInvoicesIndexRoute
   '/inventory/purchase-invoices/': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
   '/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
@@ -730,6 +762,7 @@ export interface FileRoutesByTo {
   '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
   '/magazine/$id': typeof AuthenticatedMagazineIdRoute
   '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
+  '/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -745,6 +778,7 @@ export interface FileRoutesByTo {
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
+  '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
   '/magazine': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
@@ -761,6 +795,8 @@ export interface FileRoutesByTo {
   '/accounts/reports': typeof AuthenticatedAccountsReportsIndexRoute
   '/college/reports': typeof AuthenticatedCollegeReportsIndexRoute
   '/inventory/adjustments': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/inventory/consumption-returns': typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  '/inventory/consumptions': typeof AuthenticatedInventoryConsumptionsIndexRoute
   '/inventory/invoices': typeof AuthenticatedInventoryInvoicesIndexRoute
   '/inventory/purchase-invoices': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
   '/inventory/reports': typeof AuthenticatedInventoryReportsIndexRoute
@@ -818,6 +854,7 @@ export interface FileRoutesById {
   '/_authenticated/inventory/stores': typeof AuthenticatedInventoryStoresRoute
   '/_authenticated/magazine/$id': typeof AuthenticatedMagazineIdRoute
   '/_authenticated/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
+  '/_authenticated/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -834,6 +871,7 @@ export interface FileRoutesById {
   '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
+  '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
   '/_authenticated/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
@@ -850,6 +888,8 @@ export interface FileRoutesById {
   '/_authenticated/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
   '/_authenticated/college/reports/': typeof AuthenticatedCollegeReportsIndexRoute
   '/_authenticated/inventory/adjustments/': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/_authenticated/inventory/consumption-returns/': typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  '/_authenticated/inventory/consumptions/': typeof AuthenticatedInventoryConsumptionsIndexRoute
   '/_authenticated/inventory/invoices/': typeof AuthenticatedInventoryInvoicesIndexRoute
   '/_authenticated/inventory/purchase-invoices/': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
   '/_authenticated/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
@@ -907,6 +947,7 @@ export interface FileRouteTypes {
     | '/inventory/stores'
     | '/magazine/$id'
     | '/magazine/editors'
+    | '/magazine/settings'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -923,6 +964,7 @@ export interface FileRouteTypes {
     | '/purchases/vendors'
     | '/shared/report/$token'
     | '/college/'
+    | '/front-office/'
     | '/magazine/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
@@ -939,6 +981,8 @@ export interface FileRouteTypes {
     | '/accounts/reports/'
     | '/college/reports/'
     | '/inventory/adjustments/'
+    | '/inventory/consumption-returns/'
+    | '/inventory/consumptions/'
     | '/inventory/invoices/'
     | '/inventory/purchase-invoices/'
     | '/inventory/reports/'
@@ -994,6 +1038,7 @@ export interface FileRouteTypes {
     | '/inventory/stores'
     | '/magazine/$id'
     | '/magazine/editors'
+    | '/magazine/settings'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -1009,6 +1054,7 @@ export interface FileRouteTypes {
     | '/purchases/vendors'
     | '/shared/report/$token'
     | '/college'
+    | '/front-office'
     | '/magazine'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
@@ -1025,6 +1071,8 @@ export interface FileRouteTypes {
     | '/accounts/reports'
     | '/college/reports'
     | '/inventory/adjustments'
+    | '/inventory/consumption-returns'
+    | '/inventory/consumptions'
     | '/inventory/invoices'
     | '/inventory/purchase-invoices'
     | '/inventory/reports'
@@ -1081,6 +1129,7 @@ export interface FileRouteTypes {
     | '/_authenticated/inventory/stores'
     | '/_authenticated/magazine/$id'
     | '/_authenticated/magazine/editors'
+    | '/_authenticated/magazine/settings'
     | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
@@ -1097,6 +1146,7 @@ export interface FileRouteTypes {
     | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
     | '/_authenticated/college/'
+    | '/_authenticated/front-office/'
     | '/_authenticated/magazine/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
@@ -1113,6 +1163,8 @@ export interface FileRouteTypes {
     | '/_authenticated/accounts/reports/'
     | '/_authenticated/college/reports/'
     | '/_authenticated/inventory/adjustments/'
+    | '/_authenticated/inventory/consumption-returns/'
+    | '/_authenticated/inventory/consumptions/'
     | '/_authenticated/inventory/invoices/'
     | '/_authenticated/inventory/purchase-invoices/'
     | '/_authenticated/inventory/reports/'
@@ -1182,6 +1234,13 @@ declare module '@tanstack/react-router' {
       path: '/magazine'
       fullPath: '/magazine/'
       preLoaderRoute: typeof AuthenticatedMagazineIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/': {
+      id: '/_authenticated/front-office/'
+      path: '/front-office'
+      fullPath: '/front-office/'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/college/': {
@@ -1294,6 +1353,13 @@ declare module '@tanstack/react-router' {
       path: '/masters/banks'
       fullPath: '/masters/banks'
       preLoaderRoute: typeof AuthenticatedMastersBanksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/settings': {
+      id: '/_authenticated/magazine/settings'
+      path: '/magazine/settings'
+      fullPath: '/magazine/settings'
+      preLoaderRoute: typeof AuthenticatedMagazineSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/magazine/editors': {
@@ -1604,6 +1670,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInventoryInvoicesIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/inventory/consumptions/': {
+      id: '/_authenticated/inventory/consumptions/'
+      path: '/inventory/consumptions'
+      fullPath: '/inventory/consumptions/'
+      preLoaderRoute: typeof AuthenticatedInventoryConsumptionsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/consumption-returns/': {
+      id: '/_authenticated/inventory/consumption-returns/'
+      path: '/inventory/consumption-returns'
+      fullPath: '/inventory/consumption-returns/'
+      preLoaderRoute: typeof AuthenticatedInventoryConsumptionReturnsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/inventory/adjustments/': {
       id: '/_authenticated/inventory/adjustments/'
       path: '/inventory/adjustments'
@@ -1808,6 +1888,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInventoryStoresRoute: typeof AuthenticatedInventoryStoresRoute
   AuthenticatedMagazineIdRoute: typeof AuthenticatedMagazineIdRoute
   AuthenticatedMagazineEditorsRoute: typeof AuthenticatedMagazineEditorsRoute
+  AuthenticatedMagazineSettingsRoute: typeof AuthenticatedMagazineSettingsRoute
   AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
@@ -1823,6 +1904,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPurchasesUnitTypesRoute: typeof AuthenticatedPurchasesUnitTypesRoute
   AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
   AuthenticatedCollegeIndexRoute: typeof AuthenticatedCollegeIndexRoute
+  AuthenticatedFrontOfficeIndexRoute: typeof AuthenticatedFrontOfficeIndexRoute
   AuthenticatedMagazineIndexRoute: typeof AuthenticatedMagazineIndexRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
@@ -1837,6 +1919,8 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
   AuthenticatedCollegeReportsIndexRoute: typeof AuthenticatedCollegeReportsIndexRoute
   AuthenticatedInventoryAdjustmentsIndexRoute: typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  AuthenticatedInventoryConsumptionReturnsIndexRoute: typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  AuthenticatedInventoryConsumptionsIndexRoute: typeof AuthenticatedInventoryConsumptionsIndexRoute
   AuthenticatedInventoryInvoicesIndexRoute: typeof AuthenticatedInventoryInvoicesIndexRoute
   AuthenticatedInventoryPurchaseInvoicesIndexRoute: typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
   AuthenticatedInventoryReportsIndexRoute: typeof AuthenticatedInventoryReportsIndexRoute
@@ -1897,6 +1981,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInventoryStoresRoute: AuthenticatedInventoryStoresRoute,
   AuthenticatedMagazineIdRoute: AuthenticatedMagazineIdRoute,
   AuthenticatedMagazineEditorsRoute: AuthenticatedMagazineEditorsRoute,
+  AuthenticatedMagazineSettingsRoute: AuthenticatedMagazineSettingsRoute,
   AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
@@ -1916,6 +2001,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPurchasesUnitTypesRoute: AuthenticatedPurchasesUnitTypesRoute,
   AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
   AuthenticatedCollegeIndexRoute: AuthenticatedCollegeIndexRoute,
+  AuthenticatedFrontOfficeIndexRoute: AuthenticatedFrontOfficeIndexRoute,
   AuthenticatedMagazineIndexRoute: AuthenticatedMagazineIndexRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
@@ -1937,6 +2023,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCollegeReportsIndexRoute: AuthenticatedCollegeReportsIndexRoute,
   AuthenticatedInventoryAdjustmentsIndexRoute:
     AuthenticatedInventoryAdjustmentsIndexRoute,
+  AuthenticatedInventoryConsumptionReturnsIndexRoute:
+    AuthenticatedInventoryConsumptionReturnsIndexRoute,
+  AuthenticatedInventoryConsumptionsIndexRoute:
+    AuthenticatedInventoryConsumptionsIndexRoute,
   AuthenticatedInventoryInvoicesIndexRoute:
     AuthenticatedInventoryInvoicesIndexRoute,
   AuthenticatedInventoryPurchaseInvoicesIndexRoute:
