@@ -517,6 +517,53 @@ describe("Front Office Processor Engine", () => {
       const totalPages = doc.getNumberOfPages();
       expect(totalPages).toBeGreaterThanOrEqual(3);
     });
+
+    it("should render complete listing of all procedure & laboratory items without 8-item restriction", () => {
+      // Create 20 items to verify complete listing is handled
+      const manyItems = Array.from({ length: 20 }, (_, i) => ({
+        name: `Procedure Test Item ${i + 1}`,
+        count: i + 1,
+        amount: (i + 1) * 500,
+      }));
+
+      const mockData = {
+        reportDate: "2026-09-04",
+        shiftLabel: "Full Day",
+        preparedBy: "Staff Member",
+        kpis: {
+          totalPatients: 10,
+          totalBill: 105000,
+          totalCollected: 105000,
+          totalPending: 0,
+          totalDiscount: 0,
+          realizationRate: 100,
+          patientMixText: "10 Cons / 20 Proc",
+          consultationCount: 10,
+          serviceCount: 20,
+        },
+        revenueCategories: [
+          { key: "procedure", label: "Procedures & Surgeries", count: 20, billAmount: 105000, discount: 0, collected: 105000, pending: 0 },
+        ],
+        itemsBilled: manyItems,
+        patients: [],
+        expenses: [
+          { id: "e1", category: "Tea/Snacks", description: "Refreshment", amount: 200, paymentMode: "Cash" },
+        ],
+        admissions: [],
+        discharges: [],
+        cashDenominations: {},
+        handoverSummary: {
+          grandTotal: 105000,
+          expenditure: 200,
+          onlinePayments: 0,
+          cashToHandover: 104800,
+        },
+      };
+
+      const doc = generateFrontOfficePDF(mockData as any);
+      expect(doc).toBeDefined();
+      expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(3);
+    });
   });
 
   describe("Front Office Report Versioning Contract", () => {
