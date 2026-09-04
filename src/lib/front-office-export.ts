@@ -1,5 +1,5 @@
 import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import autoTable, { type RowInput } from "jspdf-autotable";
 import {
   type CompiledPatient,
   type FrontOfficeSummaryKPIs,
@@ -232,21 +232,32 @@ export function generateFrontOfficePDF(data: FrontOfficeExportData): jsPDF {
 
   y = (doc as any).lastAutoTable.finalY + 7;
 
-  // 3. Procedure & Lab Items Breakdown
+  // 3. Procedure & Lab Items Breakdown (Complete Listing)
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   doc.setTextColor(30, 41, 59);
-  doc.text("Top Procedure & Laboratory Items", 14, y);
+  doc.text("Procedure & Laboratory Items", 14, y);
   y += 3.5;
 
   const itemsTotalCount = data.itemsBilled.reduce((s, i) => s + i.count, 0);
   const itemsTotalAmount = data.itemsBilled.reduce((s, i) => s + i.amount, 0);
 
-  const itemRows = data.itemsBilled.slice(0, 8).map((item) => [
-    { content: item.name, styles: { halign: "left" as const } },
-    { content: formatNumber(item.count), styles: { halign: "right" as const } },
-    { content: formatPdfMoney(item.amount), styles: { halign: "right" as const } },
-  ]);
+  const itemRows: RowInput[] =
+    data.itemsBilled.length > 0
+      ? data.itemsBilled.map((item) => [
+          { content: item.name, styles: { halign: "left" as const } },
+          { content: formatNumber(item.count), styles: { halign: "right" as const } },
+          { content: formatPdfMoney(item.amount), styles: { halign: "right" as const } },
+        ])
+      : [
+          [
+            {
+              content: "No procedure or laboratory items recorded",
+              colSpan: 3,
+              styles: { halign: "center" as const, fontStyle: "italic" as const, textColor: "#64748b" },
+            },
+          ],
+        ];
 
   autoTable(doc, {
     startY: y,
@@ -266,6 +277,8 @@ export function generateFrontOfficePDF(data: FrontOfficeExportData): jsPDF {
       ],
     ],
     theme: "plain",
+    showHead: "everyPage",
+    showFoot: "lastPage",
     headStyles: {
       fillColor: [248, 250, 252],
       textColor: [15, 23, 42],
@@ -305,83 +318,89 @@ export function generateFrontOfficePDF(data: FrontOfficeExportData): jsPDF {
   const netCollections = Number(data.kpis.totalCollected || 0) - totalExpenses;
 
   if (expenses.length > 0) {
-    y = (doc as any).lastAutoTable.finalY + 7;
+    let expY = (doc as any).lastAutoTable.finalY + 7;
 
-    if (y < 235) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9.5);
-      doc.setTextColor(30, 41, 59);
-      doc.text(`Front Office Petty Cash & Outflows (${expenses.length} Entries)`, 14, y);
-      y += 3.5;
-
-      const expRows = expenses.slice(0, 6).map((e, idx) => [
-        { content: String(idx + 1), styles: { halign: "center" as const } },
-        { content: e.category, styles: { halign: "left" as const, fontStyle: "bold" as const } },
-        { content: e.description || "—", styles: { halign: "left" as const } },
-        { content: e.paymentMode || "Cash", styles: { halign: "center" as const } },
-        { content: e.voucherNumber || "—", styles: { halign: "center" as const } },
-        { content: formatPdfMoney(e.amount), styles: { halign: "right" as const } },
-      ]);
-
-      autoTable(doc, {
-        startY: y,
-        head: [
-          [
-            { content: "Sr", styles: { halign: "center" } },
-            { content: "Category", styles: { halign: "left" } },
-            { content: "Description", styles: { halign: "left" } },
-            { content: "Mode", styles: { halign: "center" } },
-            { content: "Voucher #", styles: { halign: "center" } },
-            { content: "Amount (Rs.)", styles: { halign: "right" } },
-          ],
-        ],
-        body: expRows,
-        foot: [
-          [
-            {
-              content: `Total Outflows: ${formatPdfMoney(totalExpenses)}   |   Net Shift Handover: ${formatPdfMoney(netCollections)}`,
-              colSpan: 6,
-              styles: { halign: "right", fontStyle: "bold", textColor: "#15803d" },
-            },
-          ],
-        ],
-        theme: "plain",
-        headStyles: {
-          fillColor: [248, 250, 252],
-          textColor: [15, 23, 42],
-          fontStyle: "bold",
-          fontSize: 7.5,
-          cellPadding: 2,
-          lineWidth: { bottom: 0.35 },
-          lineColor: [148, 163, 184],
-        },
-        bodyStyles: {
-          fontSize: 7.5,
-          cellPadding: 2,
-          textColor: [15, 23, 42],
-          lineWidth: { bottom: 0.1 },
-          lineColor: [226, 232, 240],
-        },
-        footStyles: {
-          fillColor: false,
-          textColor: [15, 23, 42],
-          fontStyle: "bold",
-          fontSize: 7.5,
-          cellPadding: 2,
-          lineWidth: { top: 0.35 },
-          lineColor: [148, 163, 184],
-        },
-        columnStyles: {
-          0: { cellWidth: 8, halign: "center" },
-          1: { cellWidth: 42, halign: "left" },
-          2: { cellWidth: 60, halign: "left" },
-          3: { cellWidth: 20, halign: "center" },
-          4: { cellWidth: 24, halign: "center" },
-          5: { cellWidth: 28, halign: "right" },
-        },
-        margin: { left: 14, right: 14 },
-      });
+    // If remaining space on the current page is too small, start on a new page
+    if (expY > 250) {
+      doc.addPage();
+      expY = 16;
     }
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Front Office Petty Cash & Outflows (${expenses.length} Entries)`, 14, expY);
+    expY += 3.5;
+
+    const expRows = expenses.map((e, idx) => [
+      { content: String(idx + 1), styles: { halign: "center" as const } },
+      { content: e.category, styles: { halign: "left" as const, fontStyle: "bold" as const } },
+      { content: e.description || "—", styles: { halign: "left" as const } },
+      { content: e.paymentMode || "Cash", styles: { halign: "center" as const } },
+      { content: e.voucherNumber || "—", styles: { halign: "center" as const } },
+      { content: formatPdfMoney(e.amount), styles: { halign: "right" as const } },
+    ]);
+
+    autoTable(doc, {
+      startY: expY,
+      head: [
+        [
+          { content: "Sr", styles: { halign: "center" } },
+          { content: "Category", styles: { halign: "left" } },
+          { content: "Description", styles: { halign: "left" } },
+          { content: "Mode", styles: { halign: "center" } },
+          { content: "Voucher #", styles: { halign: "center" } },
+          { content: "Amount (Rs.)", styles: { halign: "right" } },
+        ],
+      ],
+      body: expRows,
+      foot: [
+        [
+          {
+            content: `Total Outflows: ${formatPdfMoney(totalExpenses)}   |   Net Shift Handover: ${formatPdfMoney(netCollections)}`,
+            colSpan: 6,
+            styles: { halign: "right", fontStyle: "bold", textColor: "#15803d" },
+          },
+        ],
+      ],
+      theme: "plain",
+      showHead: "everyPage",
+      showFoot: "lastPage",
+      headStyles: {
+        fillColor: [248, 250, 252],
+        textColor: [15, 23, 42],
+        fontStyle: "bold",
+        fontSize: 7.5,
+        cellPadding: 2,
+        lineWidth: { bottom: 0.35 },
+        lineColor: [148, 163, 184],
+      },
+      bodyStyles: {
+        fontSize: 7.5,
+        cellPadding: 2,
+        textColor: [15, 23, 42],
+        lineWidth: { bottom: 0.1 },
+        lineColor: [226, 232, 240],
+      },
+      footStyles: {
+        fillColor: false,
+        textColor: [15, 23, 42],
+        fontStyle: "bold",
+        fontSize: 7.5,
+        cellPadding: 2,
+        lineWidth: { top: 0.35 },
+        lineColor: [148, 163, 184],
+      },
+      columnStyles: {
+        0: { cellWidth: 8, halign: "center" },
+        1: { cellWidth: 42, halign: "left" },
+        2: { cellWidth: 60, halign: "left" },
+        3: { cellWidth: 20, halign: "center" },
+        4: { cellWidth: 24, halign: "center" },
+        5: { cellWidth: 28, halign: "right" },
+      },
+      margin: { left: 14, right: 14 },
+    });
   }
 
   // -------------------------------------------------------------------------
