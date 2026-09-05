@@ -10,14 +10,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, subYears, startOfDay } from "date-fns";
 import { cn } from "@/utils/cn";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/attendance")({
-  component: () => (
-    <CollegeAccessGuard>
-      <AttendanceMarkingPage />
-    </CollegeAccessGuard>
-  ),
+  component: AttendanceMarkingPage,
 });
 
 interface StudentAttendanceItem {

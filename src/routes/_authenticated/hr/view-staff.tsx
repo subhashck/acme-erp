@@ -9,7 +9,6 @@ import { ModuleLayout } from "../../../components/ModuleLayout";
 import type { StaffRow } from "../../../types";
 import { z } from "zod";
 import { cn } from "../../../lib/utils";
-import { authClient } from "../../../services/auth";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -26,7 +25,7 @@ function ViewStaff() {
   const { staffId, version } = Route.useSearch();
   const navigate = useNavigate();
 
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
   
   const currentUserId = session.data?.user?.id;

@@ -11,7 +11,6 @@ import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import { useUserPermissions } from "../../../lib/permissions";
 import { exportRosterToExcel } from "../../../lib/roster-export";
 import { Button } from "../../../ui/button";
@@ -135,7 +134,7 @@ function DatePickerField({
 function Roster() {
   const navigate = useNavigate();
   const { departmentId } = Route.useSearch();
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
 
   const [showForm, setShowForm] = React.useState(false);
   const [showTable, setShowTable] = React.useState(false);

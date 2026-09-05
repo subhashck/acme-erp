@@ -9,7 +9,6 @@ import { ModuleLayout } from "../../../components/ModuleLayout";
 import { DataTable } from "../../../components/DataTable";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import type { StaffRow, LeaveTypeRow, LeaveRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -123,7 +122,7 @@ function LeaveManagement() {
   const [sortOrder, setSortOrder] = useState("desc");
   const limit = 10;
 
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const isAdmin = session.data?.user?.role === "admin";
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());

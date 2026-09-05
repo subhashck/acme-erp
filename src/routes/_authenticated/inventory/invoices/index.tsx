@@ -47,7 +47,6 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { cn } from "@/utils/cn";
 import { useHospitalSettings } from "@/lib/settings";
-import { authClient } from "@/services/auth";
 import { printPosReceiptPDF, downloadPosReceiptPDF } from "../pos";
 
 const invoiceSearchSchema = z.object({
@@ -71,8 +70,8 @@ function InvoicesList() {
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
 
   const hospitalSettings = useHospitalSettings();
-  const session = authClient.useSession();
-  const currentUserName = session?.data?.user?.name || "Cashier";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const currentUserName = session?.data?.user?.name || session?.user?.name || "Cashier";
 
   React.useEffect(() => {
     const timer = setTimeout(() => {

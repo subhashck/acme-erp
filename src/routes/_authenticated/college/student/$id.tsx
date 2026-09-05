@@ -43,14 +43,8 @@ import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/student/$id")({
-  component: () => (
-    <CollegeAccessGuard>
-      <StudentProfilePage />
-    </CollegeAccessGuard>
-  ),
+  component: StudentProfilePage,
 });
 
 const generateStudentProfilePDF = (student: any) => {

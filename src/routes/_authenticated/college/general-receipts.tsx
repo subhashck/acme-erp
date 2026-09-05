@@ -58,8 +58,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-import { authClient } from "@/services/auth";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -67,11 +65,7 @@ import { cn } from "@/lib/utils";
 // Route Definition
 // ---------------------------------------------------------------------------
 export const Route = createFileRoute("/_authenticated/college/general-receipts")({
-  component: () => (
-    <CollegeAccessGuard>
-      <GeneralReceiptsPage />
-    </CollegeAccessGuard>
-  ),
+  component: GeneralReceiptsPage,
 });
 
 // ---------------------------------------------------------------------------
@@ -470,8 +464,8 @@ export const openWhatsAppGeneralReceipt = (phone: string, text: string) => {
 // ---------------------------------------------------------------------------
 export default function GeneralReceiptsPage() {
   const queryClient = useQueryClient();
-  const session = authClient.useSession();
-  const currentUserName = session.data?.user?.name || "Cashier / Accounts Officer";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const currentUserName = session?.data?.user?.name || session?.user?.name || "Cashier / Accounts Officer";
 
   // Filter & Pagination States
   const [page, setPage] = React.useState(1);

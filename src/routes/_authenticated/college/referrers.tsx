@@ -55,7 +55,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
@@ -63,11 +62,7 @@ import { cn } from "@/lib/utils";
 // Route Definition
 // ---------------------------------------------------------------------------
 export const Route = createFileRoute("/_authenticated/college/referrers")({
-  component: () => (
-    <CollegeAccessGuard>
-      <ReferrersMasterPage />
-    </CollegeAccessGuard>
-  ),
+  component: ReferrersMasterPage,
 });
 
 // ---------------------------------------------------------------------------

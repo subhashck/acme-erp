@@ -1,4 +1,4 @@
-import { Link, Outlet, useRouter, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useRouter, useLocation, useRouteContext } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import {
   Activity,
@@ -52,7 +52,7 @@ import { notificationsStore, notificationsActions } from "../lib/notifications-s
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { chatStore, chatActions } from "../lib/chat-store";
-import { useUserPermissions } from "../lib/permissions";
+import { useUserPermissions, PermissionsProvider } from "../lib/permissions";
 
 const getBreadcrumbs = (pathname: string) => {
   const items = [{ label: "Dashboard", to: "/" }];
@@ -288,10 +288,18 @@ const getBreadcrumbs = (pathname: string) => {
 };
 
 export function Shell() {
+  const context = useRouteContext({ from: "/_authenticated" }) as { session?: any };
+  return (
+    <PermissionsProvider session={context?.session}>
+      <ShellContent session={context?.session} />
+    </PermissionsProvider>
+  );
+}
+
+function ShellContent({ session }: { session: any }) {
   const router = useRouter();
   const location = useLocation();
   // const search = useStore(uiStore, (state) => state.search);
-  const session = authClient.useSession();
   const hospital = useHospitalSettings();
   const [collegeOpen, setCollegeOpen] = React.useState(false);
   const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
@@ -307,7 +315,7 @@ export function Shell() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine } = useUserPermissions();
-  const displayName = currentStaff?.name || session.data?.user?.name;
+  const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
 
   React.useEffect(() => {
     if (location.pathname.startsWith("/college")) setCollegeOpen(true);

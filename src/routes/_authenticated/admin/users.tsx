@@ -62,9 +62,9 @@ interface UserRecord {
 }
 
 function UserManagementPage() {
-  const [selectedUser, setSelectedUser] = React.useState<UserRecord | null>(null);
   const queryClient = useQueryClient();
-  const { data: currentSession } = authClient.useSession();
+  const [selectedUser, setSelectedUser] = React.useState<UserRecord | null>(null);
+  const { session: currentSession } = Route.useRouteContext() as { session?: any };
   const isAdmin = currentSession?.user.role === "admin";
 
   // Create User state

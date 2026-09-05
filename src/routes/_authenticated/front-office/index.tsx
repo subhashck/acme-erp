@@ -67,7 +67,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format, parseISO } from "date-fns";
 import { FrontOfficeAccessGuard } from "@/components/FrontOfficeAccessGuard";
 import { DocterzConfigDialog } from "@/components/DocterzConfigDialog";
-import { authClient } from "@/services/auth";
 import {
   type ConsultationRow,
   type ProcedureRow,
@@ -143,7 +142,7 @@ const FRONT_OFFICE_EXPENSE_CATEGORIES = [
 
 function FrontOfficePage() {
   const queryClient = useQueryClient();
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const currentUserName = session?.data?.user?.name || "Front Office Staff";
   const currentUserRole = session?.data?.user?.role || "";
   const isAdmin = currentUserRole === "admin";

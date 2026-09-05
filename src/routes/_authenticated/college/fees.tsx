@@ -63,15 +63,8 @@ import {
   createDefaultFrequencyRows,
 } from "./fee-structures";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-import { authClient } from "@/services/auth";
-
 export const Route = createFileRoute("/_authenticated/college/fees")({
-  component: () => (
-    <CollegeAccessGuard>
-      <FeeManagementPage />
-    </CollegeAccessGuard>
-  ),
+  component: FeeManagementPage,
 });
 
 export const getAcademicYear = (dateStr?: string): string => {
@@ -723,8 +716,8 @@ export const shareReceiptPDFViaWhatsApp = async (
 
 function FeeManagementPage() {
   const queryClient = useQueryClient();
-  const session = authClient.useSession();
-  const currentUserName = session.data?.user?.name || session.data?.user?.email || "Cashier / Accounts Officer";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const currentUserName = session?.data?.user?.name || session?.data?.user?.email || session?.user?.name || "Cashier / Accounts Officer";
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = React.useState(false);
   const [pendingPayload, setPendingPayload] = React.useState<any>(null);

@@ -31,14 +31,8 @@ import { Button } from "@/ui/button";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/fee-dues")({
-  component: () => (
-    <CollegeAccessGuard>
-      <StudentFeeDueTrackingPage />
-    </CollegeAccessGuard>
-  ),
+  component: StudentFeeDueTrackingPage,
 });
 
 const formatFeeComponentName = (name: string): string => {

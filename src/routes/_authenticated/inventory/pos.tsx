@@ -60,7 +60,6 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { useHospitalSettings, type HospitalSettings } from "@/lib/settings";
-import { authClient } from "@/services/auth";
 
 export const Route = createFileRoute("/_authenticated/inventory/pos")({
   component: PosTerminal,
@@ -681,8 +680,8 @@ function PosTerminal() {
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   const hospitalSettings = useHospitalSettings();
-  const session = authClient.useSession();
-  const currentUserName = session?.data?.user?.name || "Cashier";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const currentUserName = session?.data?.user?.name || session?.user?.name || "Cashier";
 
   // Fetch stores
   const { data: storesList = [] } = useRpcQuery<any[]>(

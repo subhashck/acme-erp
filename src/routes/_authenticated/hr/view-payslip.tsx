@@ -26,7 +26,6 @@ import {
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { useRpcQuery, queryClient } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import { Button } from "../../../ui/button";
 import { Badge } from "../../../ui/badge";
 import { useSystemSettings, useHospitalSettings } from "../../../lib/settings";
@@ -100,7 +99,7 @@ function ViewPayslipPage() {
   const { currencySymbol } = useSystemSettings();
   const hospital = useHospitalSettings();
   const fmt = (n: number) => `${currencySymbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const currentUserEmail = session.data?.user.email || "Unknown User";
   const isHrOrAdmin = session.data?.user.role === "admin" || session.data?.user.role === "hr";
 

@@ -11,14 +11,8 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "@/utils/cn";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/courses")({
-  component: () => (
-    <CollegeAccessGuard>
-      <CoursesAndBatchesPage />
-    </CollegeAccessGuard>
-  ),
+  component: CoursesAndBatchesPage,
 });
 
 interface Course {
