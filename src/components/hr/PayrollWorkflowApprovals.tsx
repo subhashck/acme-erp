@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouteContext } from "@tanstack/react-router";
 import {
   CheckCircle2,
   DollarSign,
@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { useRpcQuery, queryClient } from "../../lib/query";
 import { client } from "../../services/rpc";
-import { authClient } from "../../services/auth";
 import { useSystemSettings } from "../../lib/settings";
 import { Button } from "../../ui/button";
 import { Badge } from "../../ui/badge";
@@ -62,7 +61,7 @@ export interface PayslipRow extends Record<string, unknown> {
 }
 
 export function PayrollWorkflowApprovals() {
-  const session = authClient.useSession();
+  const { session } = useRouteContext({ from: "/_authenticated" }) as { session?: any };
   const { currencySymbol } = useSystemSettings();
   const fmt = (n: number) => `${currencySymbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 

@@ -20,7 +20,6 @@ import { useStore } from "@tanstack/react-store";
 import { useMutation } from "@tanstack/react-query";
 import { useRpcQuery, queryClient } from "../../lib/query";
 import { client } from "../../services/rpc";
-import { authClient } from "../../services/auth";
 import { notificationsStore, notificationsActions } from "../../lib/notifications-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../ui/card";
 import { Button } from "../../ui/button";
@@ -33,7 +32,7 @@ export const Route = createFileRoute("/_authenticated/")({
 });
 
 function Dashboard() {
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const userName = session.data?.user.name || "Administrator";
   const userRole = session.data?.user.role || "staff";
   const isAdminOrHr = userRole === "admin" || userRole === "hr";

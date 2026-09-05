@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, Trash2, Shield, UserCheck, AlertCircle } from "lucide-react";
@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { ModuleLayout } from "@/components/ModuleLayout";
 import { DataTable, type ColumnDef } from "@/components/DataTable";
 import { queryClient } from "@/lib/query";
-import { authClient } from "@/services/auth";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Autocomplete } from "@/ui/autocomplete";
@@ -27,7 +26,7 @@ type NursingSuperRow = {
 };
 
 function NursingSupers() {
-  const session = authClient.useSession();
+  const { session } = useRouteContext({ from: "/_authenticated" }) as { session?: any };
   const isAdmin = session.data?.user?.role === "admin";
 
   const [selectedStaffId, setSelectedStaffId] = React.useState("");

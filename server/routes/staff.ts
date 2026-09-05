@@ -20,6 +20,52 @@ import { code, idParam, jsonBody, staffInput } from "./shared.ts";
 
 export const staffRoutes = new Hono<AuthEnv>()
   /**
+   * GET /staff/me
+   * Returns current authenticated user's active staff profile with department and role.
+   */
+  .get("/staff/me", async (c) => {
+    const session = c.get("session");
+    if (!session?.user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const userEmail = session.user.email?.trim().toLowerCase();
+    const userId = session.user.id;
+
+    const rows = await db
+      .select({
+        staffId: staff.staffId,
+        employeeCode: staff.employeeCode,
+        name: staff.name,
+        role: staff.role,
+        departmentId: staffDepartments.departmentId,
+        departmentName: departments.name,
+        phone: staff.phone,
+        email: staff.email,
+        status: staff.status,
+        userId: staff.userId,
+        active: staff.active,
+        isExecutive: staff.isExecutive,
+      })
+      .from(staff)
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
+      )
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(
+        and(
+          eq(staff.active, true),
+          sql`(${staff.userId} = ${userId} OR LOWER(TRIM(${staff.email})) = ${userEmail})`
+        )
+      )
+      .limit(1);
+
+    return c.json(rows[0] || null);
+  })
+
+  /**
    * GET /hr/staff
    * Returns all active staff records (latest version for each employee).
    */

@@ -30,14 +30,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { EditStudentModal, StudentProfileData, ExamDetail } from "@/components/EditStudentModal";
 import { cn } from "@/utils/cn";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/students")({
-  component: () => (
-    <CollegeAccessGuard>
-      <StudentDirectoryPage />
-    </CollegeAccessGuard>
-  ),
+  component: StudentDirectoryPage,
 });
 
 interface Student {

@@ -37,14 +37,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/fee-structures")({
-  component: () => (
-    <CollegeAccessGuard>
-      <FeeStructureMasterPage />
-    </CollegeAccessGuard>
-  ),
+  component: FeeStructureMasterPage,
 });
 
 export interface ComponentFrequencyRow {

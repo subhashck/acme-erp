@@ -8,16 +8,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Field } from "@/components/Field";
 import { toast } from "sonner";
-import { authClient } from "@/services/auth";
-
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 
 export const Route = createFileRoute("/_authenticated/college/subjects")({
-  component: () => (
-    <CollegeAccessGuard>
-      <SubjectsMasterPage />
-    </CollegeAccessGuard>
-  ),
+  component: SubjectsMasterPage,
 });
 
 interface Subject {
@@ -36,8 +29,8 @@ interface Subject {
 
 function SubjectsMasterPage() {
   const queryClient = useQueryClient();
-  const session = authClient.useSession();
-  const isAdmin = session.data?.user?.role === "admin";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const isAdmin = session?.data?.user?.role === "admin" || session?.user?.role === "admin";
 
   const [selectedSemester, setSelectedSemester] = React.useState<number>(0);
   const [selectedCourseId, setSelectedCourseId] = React.useState<number>(0);

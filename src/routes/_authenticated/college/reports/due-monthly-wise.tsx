@@ -38,18 +38,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/ui/input";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/_authenticated/college/reports/due-monthly-wise")({
-  component: () => (
-    <CollegeAccessGuard>
-      <DueReportPeriodicPage />
-    </CollegeAccessGuard>
-  ),
+  component: DueReportPeriodicPage,
 });
 
 interface StudentDrillDown {

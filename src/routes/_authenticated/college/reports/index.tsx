@@ -1,13 +1,7 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/reports/")({
-  component: () => (
-    <CollegeAccessGuard>
-      <CollegeReportsIndex />
-    </CollegeAccessGuard>
-  ),
+  component: CollegeReportsIndex,
 });
 
 function CollegeReportsIndex() {

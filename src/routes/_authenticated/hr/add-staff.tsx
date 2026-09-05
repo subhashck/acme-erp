@@ -17,7 +17,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/
 import { Calendar } from "../../../components/ui/calendar";
 import { Label } from "../../../ui/label";
 import { format, isValid, parseISO } from "date-fns";
-import { authClient } from "../../../services/auth";
 import CurrencyFormat from "react-currency-format";
 
 function safeParseDate(value: string | Date | undefined | null): Date | undefined {
@@ -263,10 +262,10 @@ function AddStaff() {
     name: "familyMembers"
   });
 
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
 
-  const isLoading = rolesQuery.isLoading || deptsQuery.isLoading || banksQuery.isLoading || (isEditing && (staffQuery.isLoading || hrProfileQuery.isLoading)) || session.isPending;
+  const isLoading = rolesQuery.isLoading || deptsQuery.isLoading || banksQuery.isLoading || (isEditing && (staffQuery.isLoading || hrProfileQuery.isLoading));
 
   const hasInitialized = React.useRef(false);
 

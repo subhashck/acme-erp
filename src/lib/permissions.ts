@@ -1,32 +1,54 @@
 import * as React from "react";
 import { authClient } from "../services/auth";
 import { useRpcQuery } from "./query";
-import { client } from "../services/rpc";
 
 interface ManagementApprover {
   staffId: number;
   active: boolean;
 }
 
-export function useUserPermissions() {
-  const session = authClient.useSession();
+export interface UserPermissions {
+  currentStaff: any;
+  isAdmin: boolean;
+  isHr: boolean;
+  isAccounts: boolean;
+  isAcon: boolean;
+  isFrontOffice: boolean;
+  isPurchaseAndStore: boolean;
+  isDispensary: boolean;
+  isManagementApprover: boolean;
+  isMagazineEditor: boolean;
+  canViewAccounts: boolean;
+  canViewHr: boolean;
+  canViewCollege: boolean;
+  canViewFrontOffice: boolean;
+  canViewInventory: boolean;
+  canViewPurchases: boolean;
+  canManageStores: boolean;
+  canManageMagazine: boolean;
+  isLoading: boolean;
+}
 
-  const staffQuery = useRpcQuery<any[]>(["staff"], () => client.hr.staff.$get());
+const PermissionsContext = React.createContext<UserPermissions | null>(null);
 
-  const currentStaff = React.useMemo(() => {
-    if (!staffQuery.data || !session.data?.user) return undefined;
-    const userEmail = session.data.user.email?.trim().toLowerCase();
-    const userId = session.data.user.id;
-    return staffQuery.data.find(
-      (s: any) =>
-        (userEmail && s.email && s.email.trim().toLowerCase() === userEmail) ||
-        (userId && s.userId && s.userId === userId)
-    );
-  }, [staffQuery.data, session.data?.user]);
+function useUserPermissionsInternal(providedSession?: any): UserPermissions {
+  const hookSession = authClient.useSession();
+  const session = providedSession || hookSession;
+  const user = session?.user || session?.data?.user;
+  const userId = user?.id;
+
+  const staffQuery = useRpcQuery<any>(
+    ["current-staff"],
+    () => fetch("/api/staff/me"),
+    { staleTime: 10 * 60 * 1000 }
+  );
+
+  const currentStaff = staffQuery.data || undefined;
 
   const managementApproversQuery = useRpcQuery<ManagementApprover[]>(
     ["masters-management-approvers"],
-    () => fetch("/api/masters/management-approvers")
+    () => fetch("/api/masters/management-approvers"),
+    { staleTime: 10 * 60 * 1000 }
   );
 
   const isManagementApprover = React.useMemo(() => {
@@ -39,13 +61,14 @@ export function useUserPermissions() {
   }, [currentStaff?.staffId, managementApproversQuery.data]);
 
   const magazineAccessQuery = useRpcQuery<{ isEditor: boolean; isAdmin: boolean }>(
-    ["magazine-my-access", session.data?.user?.id],
-    () => fetch("/api/magazine/my-access")
+    ["magazine-my-access", userId],
+    () => fetch("/api/magazine/my-access"),
+    { staleTime: 10 * 60 * 1000, enabled: !!userId }
   );
 
   const isMagazineEditor = magazineAccessQuery.data?.isEditor ?? false;
 
-  const userRole = (session.data?.user?.role || "").trim().toLowerCase();
+  const userRole = (user?.role || "").trim().toLowerCase();
   const staffDept = (currentStaff?.departmentName || "").trim().toUpperCase();
 
   const isAdmin = userRole === "admin";
@@ -54,9 +77,11 @@ export function useUserPermissions() {
   const isAcon = staffDept === "ACON" || userRole === "acon";
   const cleanStaffDept = (currentStaff?.departmentName || "").replace(/\s+/g, " ").trim().toUpperCase();
   const isFrontOffice = cleanStaffDept === "FRONT OFFICE";
-  const isPurchaseAndStore = cleanStaffDept === "PURCHASE AND STORE" || cleanStaffDept === "PURCHASE & STORE" || cleanStaffDept.startsWith("PURCHASE AND STORE");
+  const isPurchaseAndStore =
+    cleanStaffDept === "PURCHASE AND STORE" ||
+    cleanStaffDept === "PURCHASE & STORE" ||
+    cleanStaffDept.startsWith("PURCHASE AND STORE");
   const isDispensary = cleanStaffDept === "DISPENSARY" || cleanStaffDept.startsWith("DISPENSARY");
-
 
   const canViewAccounts = isAdmin || isAccounts || isManagementApprover;
   const canViewHr = isAdmin || isHr || isManagementApprover;
@@ -88,5 +113,24 @@ export function useUserPermissions() {
     canManageMagazine,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading || magazineAccessQuery.isLoading,
   };
+}
+
+export function PermissionsProvider({
+  children,
+  session,
+}: {
+  children: React.ReactNode;
+  session?: any;
+}) {
+  const permissions = useUserPermissionsInternal(session);
+  return React.createElement(PermissionsContext.Provider, { value: permissions }, children);
+}
+
+export function useUserPermissions(): UserPermissions {
+  const context = React.useContext(PermissionsContext);
+  if (context) {
+    return context;
+  }
+  return useUserPermissionsInternal();
 }
 

@@ -59,15 +59,9 @@ const entranceMeritScoreSchema = z.coerce
   .max(100, "Score must be a valid percentage between 0% and 100%");
 
 import { Switch } from "@/components/ui/switch";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-import { authClient } from "@/services/auth";
 
 export const Route = createFileRoute("/_authenticated/college/admissions")({
-  component: () => (
-    <CollegeAccessGuard>
-      <AdmissionsPage />
-    </CollegeAccessGuard>
-  ),
+  component: AdmissionsPage,
 });
 
 export interface ExamDetail {
@@ -1736,8 +1730,8 @@ export function ApplicantFormPanels({
 }
 
 function AdmissionsPage() {
-  const session = authClient.useSession();
-  const currentUserName = session.data?.user?.name || session.data?.user?.email || "System User";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const currentUserName = session?.data?.user?.name || session?.data?.user?.email || session?.user?.name || "System User";
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [courseFilter, setCourseFilter] = React.useState<number>(0);

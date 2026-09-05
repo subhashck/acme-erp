@@ -40,7 +40,6 @@ import { format } from "date-fns";
 import { cn } from "../../../../utils/cn";
 import { toNum } from "../../../../utils/math";
 import { useHospitalSettings } from "@/lib/settings";
-import { authClient } from "@/services/auth";
 import { printPurchaseOrderPDF, downloadPurchaseOrderPDF } from "@/lib/po-export";
 
 // Schema for payment creation validation in frontend
@@ -62,7 +61,7 @@ function PurchaseOrderDetailRoute() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const hospitalSettings = useHospitalSettings();
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const [paymentDialogOpen, setPaymentDialogOpen] = React.useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = React.useState(false);
 

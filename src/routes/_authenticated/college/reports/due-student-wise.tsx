@@ -34,18 +34,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/_authenticated/college/reports/due-student-wise")({
-  component: () => (
-    <CollegeAccessGuard>
-      <DueReportStudentWisePage />
-    </CollegeAccessGuard>
-  ),
+  component: DueReportStudentWisePage,
 });
 
 interface StudentDueRow {

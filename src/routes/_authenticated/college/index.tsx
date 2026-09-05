@@ -25,14 +25,8 @@ import {
   Bar 
 } from "recharts";
 import { toNum } from "@/utils/math";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/")({
-  component: () => (
-    <CollegeAccessGuard>
-      <CollegeDashboard />
-    </CollegeAccessGuard>
-  ),
+  component: CollegeDashboard,
 });
 
 function CollegeDashboard() {

@@ -31,14 +31,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, startOfDay } from "date-fns";
 
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
-
 export const Route = createFileRoute("/_authenticated/college/academic-schedules")({
-  component: () => (
-    <CollegeAccessGuard>
-      <AcademicSchedulesPage />
-    </CollegeAccessGuard>
-  ),
+  component: AcademicSchedulesPage,
 });
 
 interface BatchSummary {

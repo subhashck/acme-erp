@@ -45,19 +45,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format, parseISO } from "date-fns";
-import { CollegeAccessGuard } from "@/components/CollegeAccessGuard";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { authClient } from "@/services/auth";
 
 export const Route = createFileRoute("/_authenticated/college/reports/daily-income-expenses")({
-  component: () => (
-    <CollegeAccessGuard>
-      <DailyIncomeExpensesReportPage />
-    </CollegeAccessGuard>
-  ),
+  component: DailyIncomeExpensesReportPage,
 });
 
 interface IncomeRow {
@@ -106,8 +100,8 @@ interface ReportData {
 }
 
 export default function DailyIncomeExpensesReportPage() {
-  const session = authClient.useSession();
-  const userName = session.data?.user?.name || "ACON Accounts";
+  const { session } = Route.useRouteContext() as { session?: any };
+  const userName = session?.data?.user?.name || session?.user?.name || "ACON Accounts";
 
   const todayStr = new Date().toISOString().split("T")[0];
   const [startDate, setStartDate] = React.useState(todayStr);

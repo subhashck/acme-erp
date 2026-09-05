@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouteContext } from "@tanstack/react-router";
 import { ModuleLayout } from "@/components/ModuleLayout";
 import { useRpcQuery, queryClient } from "@/lib/query";
 import { useForm, Controller } from "react-hook-form";
@@ -98,7 +98,7 @@ function PurchaseOrders() {
   const [isExportingPdfId, setIsExportingPdfId] = React.useState<number | null>(null);
 
   const hospitalSettings = useHospitalSettings();
-  const session = authClient.useSession();
+  const { session } = useRouteContext({ from: "/_authenticated" }) as { session?: any };
 
   const handlePrintPo = async (poId: number) => {
     try {

@@ -3,7 +3,6 @@ import { useStore } from "@tanstack/react-store";
 import { createFileRoute } from "@tanstack/react-router";
 import { Send, Hash, Users, Globe, Building2, User, Radio, PenSquare, Search, X } from "lucide-react";
 import { chatStore, chatActions, type ChatChannel } from "@/lib/chat-store";
-import { authClient } from "@/services/auth";
 import { useRpcQuery } from "@/lib/query";
 import { client } from "@/services/rpc";
 import { ModuleLayout } from "@/components/ModuleLayout";
@@ -16,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/communication")({
 });
 
 function CommunicationPage() {
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const currentUser = session.data?.user;
   const store = useStore(chatStore);
   const [inputText, setInputText] = useState("");

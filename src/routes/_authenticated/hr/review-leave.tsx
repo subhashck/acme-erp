@@ -6,7 +6,6 @@ import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import type { StaffRow, LeaveDetailRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -229,7 +228,7 @@ export const Route = createFileRoute("/_authenticated/hr/review-leave")({
 function ReviewLeave() {
   const navigate = useNavigate();
   const { leaveId } = Route.useSearch();
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const [reviewerNote, setReviewerNote] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [forwardToStaffId, setForwardToStaffId] = React.useState<number | "">("");
