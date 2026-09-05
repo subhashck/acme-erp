@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, lte, inArray, isNotNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { auth, type AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -28,6 +28,8 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
     }
     const startDate = c.req.query("startDate");
     const endDate = c.req.query("endDate");
+    const basis = c.req.query("basis") || "accrual";
+    const isCashBasis = basis === "cash";
 
     if (!startDate || !endDate) {
       return c.json({ error: "startDate and endDate are required (YYYY-MM-DD)" }, 400);
@@ -96,6 +98,7 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
     if (reports.length === 0) {
       return c.json({
         period: { startDate, endDate },
+        basis,
         reportCount: 0,
         summary: { totalIncome: 0, totalCashExpenditure: 0, totalBankExpenditure: 0, totalExpenditure: 0, netBalance: 0, avgDailyIncome: 0, avgDailyExpenditure: 0 },
         incomeByHead: [],
@@ -384,55 +387,96 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
     const discountsReturnsTotal = allDiscounts.reduce((s, a) => s + parseFloat(a.amount || "0"), 0);
 
     // =========================================================================
-    // Bank Expenses — fetch for months overlapping the date range
+    // Bank Expenses — fetch based on basis (accrual vs cash)
     // =========================================================================
-    const startMonth = startDate.slice(0, 7); // "YYYY-MM"
-    const endMonth = endDate.slice(0, 7);
-    const monthsInRange: string[] = [];
-    {
-      const [sy, sm] = startMonth.split("-").map(Number);
-      const [ey, em] = endMonth.split("-").map(Number);
-      let cy = sy, cm = sm;
-      while (cy < ey || (cy === ey && cm <= em)) {
-        monthsInRange.push(`${cy}-${String(cm).padStart(2, "0")}`);
-        cm++;
-        if (cm > 12) { cm = 1; cy++; }
+    let allBankExpenses: any[] = [];
+    if (isCashBasis) {
+      // In Cash Basis: only bank expenses whose payment/clearance date falls within the report date range
+      allBankExpenses = await db
+        .select({
+          id: monthlyBankExpenses.id,
+          month: monthlyBankExpenses.month,
+          category: monthlyBankExpenses.category,
+          label: monthlyBankExpenses.label,
+          vendorId: monthlyBankExpenses.vendorId,
+          vendorName: vendors.name,
+          amount: monthlyBankExpenses.amount,
+          paymentMode: monthlyBankExpenses.paymentMode,
+          paymentDate: monthlyBankExpenses.paymentDate,
+          chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
+          referenceNo: monthlyBankExpenses.referenceNo,
+          bankName: monthlyBankExpenses.bankName,
+          narration: monthlyBankExpenses.narration,
+          isRecurring: monthlyBankExpenses.isRecurring,
+          isSalaryAuto: monthlyBankExpenses.isSalaryAuto,
+        })
+        .from(monthlyBankExpenses)
+        .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
+        .where(
+          and(
+            gte(monthlyBankExpenses.paymentDate, startDate),
+            lte(monthlyBankExpenses.paymentDate, endDate),
+            isNotNull(monthlyBankExpenses.paymentDate)
+          )
+        )
+        .orderBy(asc(monthlyBankExpenses.paymentDate), asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
+        .execute();
+    } else {
+      // In Accrual Basis: fetch for all months overlapping the date range
+      const startMonth = startDate.slice(0, 7); // "YYYY-MM"
+      const endMonth = endDate.slice(0, 7);
+      const monthsInRange: string[] = [];
+      {
+        const [sy, sm] = startMonth.split("-").map(Number);
+        const [ey, em] = endMonth.split("-").map(Number);
+        let cy = sy, cm = sm;
+        while (cy < ey || (cy === ey && cm <= em)) {
+          monthsInRange.push(`${cy}-${String(cm).padStart(2, "0")}`);
+          cm++;
+          if (cm > 12) { cm = 1; cy++; }
+        }
       }
+
+      allBankExpenses = monthsInRange.length > 0
+        ? await db
+            .select({
+              id: monthlyBankExpenses.id,
+              month: monthlyBankExpenses.month,
+              category: monthlyBankExpenses.category,
+              label: monthlyBankExpenses.label,
+              vendorId: monthlyBankExpenses.vendorId,
+              vendorName: vendors.name,
+              amount: monthlyBankExpenses.amount,
+              paymentMode: monthlyBankExpenses.paymentMode,
+              paymentDate: monthlyBankExpenses.paymentDate,
+              chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
+              referenceNo: monthlyBankExpenses.referenceNo,
+              bankName: monthlyBankExpenses.bankName,
+              narration: monthlyBankExpenses.narration,
+              isRecurring: monthlyBankExpenses.isRecurring,
+              isSalaryAuto: monthlyBankExpenses.isSalaryAuto,
+            })
+            .from(monthlyBankExpenses)
+            .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
+            .where(inArray(monthlyBankExpenses.month, monthsInRange))
+            .orderBy(asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
+            .execute()
+        : [];
     }
 
-    const allBankExpenses = monthsInRange.length > 0
-      ? await db
-          .select({
-            id: monthlyBankExpenses.id,
-            month: monthlyBankExpenses.month,
-            category: monthlyBankExpenses.category,
-            label: monthlyBankExpenses.label,
-            vendorId: monthlyBankExpenses.vendorId,
-            vendorName: vendors.name,
-            amount: monthlyBankExpenses.amount,
-            paymentMode: monthlyBankExpenses.paymentMode,
-            paymentDate: monthlyBankExpenses.paymentDate,
-            chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
-            referenceNo: monthlyBankExpenses.referenceNo,
-            bankName: monthlyBankExpenses.bankName,
-            narration: monthlyBankExpenses.narration,
-            isRecurring: monthlyBankExpenses.isRecurring,
-            isSalaryAuto: monthlyBankExpenses.isSalaryAuto,
-          })
-          .from(monthlyBankExpenses)
-          .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
-          .where(inArray(monthlyBankExpenses.month, monthsInRange))
-          .orderBy(asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
-          .execute()
-      : [];
-
-    // Group bank expenses by category
+    // Group bank expenses by category & map by paymentDate for cash daily trends
     const bankByCategoryMap = new Map<string, { code: string; label: string; total: number; isExcluded: boolean; entries: any[] }>();
+    const dailyBankExpenditureMap = new Map<string, number>();
+
     for (const exp of allBankExpenses) {
       const cat = exp.category;
       const exclusionCode = `BANK_${cat}`;
       const isExcluded = activeExcludedSet.has(exclusionCode);
       const amt = parseFloat(exp.amount || "0");
+
+      if (isCashBasis && exp.paymentDate && !isExcluded) {
+        dailyBankExpenditureMap.set(exp.paymentDate, (dailyBankExpenditureMap.get(exp.paymentDate) || 0) + amt);
+      }
 
       if (!bankByCategoryMap.has(cat)) {
         bankByCategoryMap.set(cat, {
@@ -496,10 +540,11 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
     const netBalance = totalIncome - totalExpenditure;
     const reportCount = reports.length;
 
-    // Daily trends filtered dynamically per report date
+    // Daily trends filtered dynamically per report date (including cleared bank expenses in cash mode)
     const dailyTrends = reports.map((r) => {
       const inc = parseFloat(r.totalIncome || "0");
-      const exp = (dailyExpenditureMap.get(r.reportDate) || 0) + (dailyStaffAdvancesMap.get(r.reportDate) || 0);
+      const bankExp = isCashBasis ? (dailyBankExpenditureMap.get(r.reportDate) || 0) : 0;
+      const exp = (dailyExpenditureMap.get(r.reportDate) || 0) + (dailyStaffAdvancesMap.get(r.reportDate) || 0) + bankExp;
       return {
         date: r.reportDate,
         income: Math.round(inc * 100) / 100,
@@ -510,6 +555,7 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
 
     return c.json({
       period: { startDate, endDate },
+      basis,
       reportCount,
       summary: {
         totalIncome: Math.round(totalIncome * 100) / 100,
