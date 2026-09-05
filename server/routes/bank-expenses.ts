@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { auth, type AuthEnv } from "../auth.ts";
@@ -80,23 +80,17 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
     const userId = session?.user?.id;
 
     const body = await c.req.json();
-    const targetMonth = z.string().regex(/^\d{4}-\d{2}$/).parse(body.month);
+    const targetMonth = z.string().regex(/^\d{4}-\d{2}$/).parse(body.month || body.targetMonth);
 
-    // Compute previous month
-    const [year, mon] = targetMonth.split("-").map(Number);
-    const prevDate = new Date(year, mon - 2, 1); // month is 0-indexed; mon-1 is current, mon-2 is prev
+    const [tYear, tMonth] = targetMonth.split("-").map(Number);
+    const prevDate = new Date(tYear, tMonth - 2, 1);
     const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}`;
 
-    // Fetch recurring entries from previous month
+    // Fetch recurring items from previous month
     const prevEntries = await db
       .select()
       .from(monthlyBankExpenses)
-      .where(
-        and(
-          eq(monthlyBankExpenses.month, prevMonth),
-          eq(monthlyBankExpenses.isRecurring, true)
-        )
-      )
+      .where(and(eq(monthlyBankExpenses.month, prevMonth), eq(monthlyBankExpenses.isRecurring, true)))
       .execute();
 
     if (prevEntries.length === 0) {
@@ -160,6 +154,16 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
     if (!month) {
       return c.json({ error: "month query parameter required (YYYY-MM)" }, 400);
     }
+    const basis = c.req.query("basis") || "accrual";
+    const isCashBasis = basis === "cash";
+
+    const whereClause = isCashBasis
+      ? like(monthlyBankExpenses.paymentDate, `${month}%`)
+      : eq(monthlyBankExpenses.month, month);
+
+    const orderByClause = isCashBasis
+      ? [asc(monthlyBankExpenses.paymentDate), asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label)]
+      : [asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label)];
 
     const rows = await db
       .select({
@@ -183,11 +187,70 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
       })
       .from(monthlyBankExpenses)
       .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
-      .where(eq(monthlyBankExpenses.month, month))
-      .orderBy(asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
+      .where(whereClause)
+      .orderBy(...orderByClause)
       .execute();
 
-    return c.json(rows);
+    const pageParam = c.req.query("page");
+    const pageSizeParam = c.req.query("pageSize") || c.req.query("limit");
+    const search = (c.req.query("search") || "").trim().toLowerCase();
+    const category = c.req.query("category");
+    const status = c.req.query("status"); // "all" | "paid" | "pending"
+
+    let filtered = rows;
+    if (category && category !== "all") {
+      filtered = filtered.filter((r) => r.category === category);
+    }
+    if (status && status !== "all") {
+      if (status === "paid") {
+        filtered = filtered.filter((r) => Boolean(r.paymentDate));
+      } else if (status === "pending") {
+        filtered = filtered.filter((r) => !r.paymentDate);
+      }
+    }
+    if (search) {
+      filtered = filtered.filter((r) =>
+        (r.label || "").toLowerCase().includes(search) ||
+        (r.vendorName || "").toLowerCase().includes(search) ||
+        (r.referenceNo || "").toLowerCase().includes(search) ||
+        (r.bankName || "").toLowerCase().includes(search) ||
+        (r.paymentDate || "").toLowerCase().includes(search) ||
+        (r.chequeIssueDate || "").toLowerCase().includes(search)
+      );
+    }
+
+    const totalAmount = filtered.reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+    const paidAmount = filtered
+      .filter((e) => Boolean(e.paymentDate))
+      .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+    const pendingAmount = totalAmount - paidAmount;
+
+    if (pageParam !== undefined || pageSizeParam !== undefined) {
+      const page = Math.max(1, Number(pageParam) || 1);
+      const pageSize = Math.min(100, Math.max(1, Number(pageSizeParam) || 20));
+      const totalRecords = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+      const safePage = Math.min(page, totalPages);
+      const offset = (safePage - 1) * pageSize;
+      const paginatedRows = filtered.slice(offset, offset + pageSize);
+
+      return c.json({
+        data: paginatedRows,
+        pagination: {
+          page: safePage,
+          pageSize,
+          totalRecords,
+          totalPages,
+        },
+        summary: {
+          totalAmount: Math.round(totalAmount * 100) / 100,
+          paidAmount: Math.round(paidAmount * 100) / 100,
+          pendingAmount: Math.round(pendingAmount * 100) / 100,
+        },
+      });
+    }
+
+    return c.json(filtered);
   })
 
   .post("/accounts/bank-expenses", async (c) => {

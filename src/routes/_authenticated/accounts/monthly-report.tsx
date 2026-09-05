@@ -23,9 +23,10 @@ import {
   X,
 } from "lucide-react";
 import * as React from "react";
-import { format, startOfMonth, subMonths, endOfMonth, addMonths } from "date-fns";
+import { format, startOfMonth, subMonths, endOfMonth, addMonths, parseISO } from "date-fns";
 import { z } from "zod";
 import { Calendar } from "../../../components/ui/calendar";
+import { Switch } from "../../../components/ui/switch";
 import {
   Popover,
   PopoverContent,
@@ -65,6 +66,7 @@ const reportSearchSchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   exclude: z.string().optional(),
+  basis: z.enum(["accrual", "cash"]).optional(),
 });
 
 export const Route = createFileRoute("/_authenticated/accounts/monthly-report")(
@@ -676,9 +678,29 @@ function MonthlyReport() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const excludeStr = search.exclude;
+  const selectedBasis = search.basis || "accrual";
 
-  const [startDate, setStartDate] = React.useState<Date>(monthStart);
-  const [endDate, setEndDate] = React.useState<Date>(today);
+  // Parse dates from URL search params or fallback to current month
+  const startDate = React.useMemo(() => {
+    if (search.startDate) {
+      try {
+        const d = parseISO(search.startDate);
+        if (!isNaN(d.getTime())) return d;
+      } catch {}
+    }
+    return monthStart;
+  }, [search.startDate]);
+
+  const endDate = React.useMemo(() => {
+    if (search.endDate) {
+      try {
+        const d = parseISO(search.endDate);
+        if (!isNaN(d.getTime())) return d;
+      } catch {}
+    }
+    return today;
+  }, [search.endDate]);
+
   const [startPickerOpen, setStartPickerOpen] = React.useState(false);
   const [endPickerOpen, setEndPickerOpen] = React.useState(false);
   const [pharmacyExpanded, setPharmacyExpanded] = React.useState(false);
@@ -689,35 +711,63 @@ function MonthlyReport() {
     entries: Array<any>;
   } | null>(null);
 
+  const handleDateRangeChange = (newStart: Date, newEnd: Date) => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        startDate: format(newStart, "yyyy-MM-dd"),
+        endDate: format(newEnd, "yyyy-MM-dd"),
+      }),
+      replace: true,
+    });
+  };
+
   const handlePreviousMonth = () => {
     const prev = subMonths(startDate, 1);
-    setStartDate(startOfMonth(prev));
-    setEndDate(endOfMonth(prev));
+    handleDateRangeChange(startOfMonth(prev), endOfMonth(prev));
   };
 
   const handleNextMonth = () => {
     const next = addMonths(startDate, 1);
     const nStart = startOfMonth(next);
     const nEnd = endOfMonth(next);
-    setStartDate(nStart);
-    setEndDate(nEnd > today ? today : nEnd);
+    handleDateRangeChange(nStart, nEnd > today && format(nStart, "yyyy-MM") === format(today, "yyyy-MM") ? today : nEnd);
   };
 
   const handleThisMonth = () => {
-    setStartDate(monthStart);
-    setEndDate(today);
+    handleDateRangeChange(monthStart, today);
+  };
+
+  const handleMonthPickerChange = (monthStr: string) => {
+    if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
+      const d = parseISO(`${monthStr}-01`);
+      const mEnd = endOfMonth(d);
+      handleDateRangeChange(startOfMonth(d), mEnd > today && format(d, "yyyy-MM") === format(today, "yyyy-MM") ? today : mEnd);
+    }
+  };
+
+  const handleBasisChange = (newBasis: "accrual" | "cash") => {
+    navigate({
+      search: (old: any) => ({
+        ...old,
+        basis: newBasis,
+      }),
+      replace: true,
+    });
   };
 
   const startStr = format(startDate, "yyyy-MM-dd");
   const endStr = format(endDate, "yyyy-MM-dd");
+  const selectedMonthStr = format(startDate, "yyyy-MM");
 
   const reportQuery = useRpcQuery<any>(
-    ["monthly-report", startStr, endStr, excludeStr ?? "default"],
+    ["monthly-report", startStr, endStr, selectedBasis, excludeStr ?? "default"],
     () =>
       (client["daily-closing"] as any)["monthly-report"].$get({
         query: {
           startDate: startStr,
           endDate: endStr,
+          basis: selectedBasis,
           ...(excludeStr !== undefined ? { excludedCategories: excludeStr } : {}),
         },
       })
@@ -877,8 +927,35 @@ function MonthlyReport() {
         </div>
 
         {/* Date Range Picker & Quick Month Navigation */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Quick Month Preset Buttons */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Accounting Basis Switch */}
+          <div className="flex items-center gap-2 bg-muted/40 px-3 py-1 rounded-lg border border-border/50 text-xs">
+            <span
+              className={cn(
+                "font-medium select-none cursor-pointer",
+                selectedBasis === "accrual" ? "text-foreground font-bold" : "text-muted-foreground"
+              )}
+              onClick={() => handleBasisChange("accrual")}
+            >
+              Accrual
+            </span>
+            <Switch
+              checked={selectedBasis === "cash"}
+              onCheckedChange={(checked) => handleBasisChange(checked ? "cash" : "accrual")}
+              title="Toggle Cash vs Accrual Accounting Basis"
+            />
+            <span
+              className={cn(
+                "font-medium select-none cursor-pointer",
+                selectedBasis === "cash" ? "text-teal-700 dark:text-teal-400 font-bold" : "text-muted-foreground"
+              )}
+              onClick={() => handleBasisChange("cash")}
+            >
+              Cash Basis
+            </span>
+          </div>
+
+          {/* Quick Month Preset Buttons & Month Picker */}
           <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border border-border/50">
             <Button
               variant="outline"
@@ -905,6 +982,13 @@ function MonthlyReport() {
             >
               <ChevronRight size={13} />
             </Button>
+            <input
+              type="month"
+              value={selectedMonthStr}
+              onChange={(e) => handleMonthPickerChange(e.target.value)}
+              className="h-7 px-2 text-xs rounded border border-input bg-background font-medium focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              title="Jump to specific month"
+            />
           </div>
 
           {/* Start Date */}
@@ -925,8 +1009,8 @@ function MonthlyReport() {
                 selected={startDate}
                 onSelect={(d: any) => {
                   if (d) {
-                    setStartDate(d);
-                    if (d > endDate) setEndDate(d);
+                    const nextEnd = d > endDate ? d : endDate;
+                    handleDateRangeChange(d, nextEnd);
                   }
                   setStartPickerOpen(false);
                 }}
@@ -955,12 +1039,12 @@ function MonthlyReport() {
                 selected={endDate}
                 onSelect={(d: any) => {
                   if (d) {
-                    setEndDate(d);
-                    if (d < startDate) setStartDate(d);
+                    const nextStart = d < startDate ? d : startDate;
+                    handleDateRangeChange(nextStart, d);
                   }
                   setEndPickerOpen(false);
                 }}
-                disabled={{ before: startDate, after: today }}
+                disabled={{ before: startDate }}
               />
             </PopoverContent>
           </Popover>
@@ -978,6 +1062,16 @@ function MonthlyReport() {
 
       {/* Period & Exclusion Badges */}
       <div className="flex flex-wrap items-center gap-2">
+        <Badge
+          className={cn(
+            "text-xs font-semibold px-2.5 py-0.5 rounded-full border",
+            selectedBasis === "cash"
+              ? "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30"
+              : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+          )}
+        >
+          {selectedBasis === "cash" ? "Cash Basis" : "Accrual Basis"}
+        </Badge>
         <Badge className="text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30">
           {periodLabel}
         </Badge>
@@ -1065,7 +1159,7 @@ function MonthlyReport() {
                 <CardDescription className="font-bold text-blue-600 dark:text-blue-400 flex items-center justify-between text-[10px] uppercase tracking-wider">
                   <span className="flex items-center gap-1.5"><Coins size={13} /> Bank Expenditure</span>
                   <a
-                    href={`/accounts/bank-expenses?month=${startStr.slice(0, 7)}`}
+                    href={`/accounts/bank-expenses?month=${startStr.slice(0, 7)}&basis=${selectedBasis}`}
                     className="text-[9px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                   >
                     Manage →

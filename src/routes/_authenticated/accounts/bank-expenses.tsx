@@ -4,6 +4,8 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Coins,
   Copy,
   CreditCard,
@@ -45,11 +47,18 @@ import {
   PopoverTrigger,
 } from "../../../components/ui/popover";
 import { Calendar } from "../../../components/ui/calendar";
+import { Switch } from "../../../components/ui/switch";
 import { toast } from "sonner";
 import { cn } from "../../../utils/cn";
 
 const searchSchema = z.object({
   month: z.string().optional(),
+  basis: z.enum(["accrual", "cash"]).optional(),
+  page: z.coerce.number().optional().catch(1),
+  pageSize: z.coerce.number().optional().catch(20),
+  search: z.string().optional().catch(""),
+  category: z.string().optional().catch("all"),
+  status: z.enum(["all", "paid", "pending"]).optional().catch("all"),
 });
 
 export const Route = createFileRoute("/_authenticated/accounts/bank-expenses")({
@@ -72,30 +81,129 @@ function BankExpensesPage() {
   const today = new Date();
   const defaultMonth = format(today, "yyyy-MM");
   const selectedMonth = search.month || defaultMonth;
+  const selectedBasis = search.basis || "accrual";
+  const currentPage = Math.max(1, Number(search.page) || 1);
+  const currentPageSize = Math.max(1, Number(search.pageSize) || 20);
+  const searchCategory = search.category || "all";
+  const searchStatus = search.status || "all";
+  const urlSearch = search.search || "";
+
+  // Local state for debounced search input
+  const [localSearch, setLocalSearch] = React.useState(urlSearch);
+
+  React.useEffect(() => {
+    setLocalSearch(urlSearch);
+  }, [urlSearch]);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearch !== urlSearch) {
+        navigate({
+          search: {
+            ...search,
+            search: localSearch || undefined,
+            page: 1,
+          },
+          replace: true,
+        });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [localSearch, urlSearch, navigate, search]);
 
   // Month navigation
   const handlePrevMonth = () => {
     const d = parseISO(`${selectedMonth}-01`);
     const prev = subMonths(d, 1);
-    navigate({ search: { month: format(prev, "yyyy-MM") }, replace: true });
+    navigate({ search: { ...search, month: format(prev, "yyyy-MM"), page: 1 }, replace: true });
   };
 
   const handleNextMonth = () => {
     const d = parseISO(`${selectedMonth}-01`);
     const next = addMonths(d, 1);
-    navigate({ search: { month: format(next, "yyyy-MM") }, replace: true });
+    navigate({ search: { ...search, month: format(next, "yyyy-MM"), page: 1 }, replace: true });
   };
 
   const handleThisMonth = () => {
-    navigate({ search: { month: defaultMonth }, replace: true });
+    navigate({ search: { ...search, month: defaultMonth, page: 1 }, replace: true });
+  };
+
+  const handleMonthChange = (newMonth: string) => {
+    if (newMonth && /^\d{4}-\d{2}$/.test(newMonth)) {
+      navigate({ search: { ...search, month: newMonth, page: 1 }, replace: true });
+    }
+  };
+
+  const handleBasisChange = (newBasis: "accrual" | "cash") => {
+    navigate({ search: { ...search, basis: newBasis, page: 1 }, replace: true });
+  };
+
+  const handleCategoryChange = (cat: string) => {
+    navigate({
+      search: {
+        ...search,
+        category: cat === "all" ? undefined : cat,
+        page: 1,
+      },
+      replace: true,
+    });
+  };
+
+  const handleStatusChange = (st: "all" | "paid" | "pending") => {
+    navigate({
+      search: {
+        ...search,
+        status: st === "all" ? undefined : st,
+        page: 1,
+      },
+      replace: true,
+    });
+  };
+
+  const handlePageChange = (newPage: number) => {
+    navigate({
+      search: {
+        ...search,
+        page: newPage,
+      },
+      replace: true,
+    });
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    navigate({
+      search: {
+        ...search,
+        pageSize: newSize,
+        page: 1,
+      },
+      replace: true,
+    });
   };
 
   // Queries
-  const expensesQuery = useRpcQuery<any[]>(
-    ["bank-expenses", selectedMonth],
+  const expensesQuery = useRpcQuery<any>(
+    [
+      "bank-expenses",
+      selectedMonth,
+      selectedBasis,
+      currentPage,
+      currentPageSize,
+      urlSearch,
+      searchCategory,
+      searchStatus,
+    ],
     () =>
       (client.accounts as any)["bank-expenses"].$get({
-        query: { month: selectedMonth },
+        query: {
+          month: selectedMonth,
+          basis: selectedBasis,
+          page: String(currentPage),
+          pageSize: String(currentPageSize),
+          search: urlSearch || undefined,
+          category: searchCategory !== "all" ? searchCategory : undefined,
+          status: searchStatus !== "all" ? searchStatus : undefined,
+        },
       })
   );
 
@@ -119,7 +227,38 @@ function BankExpensesPage() {
     () => (client["daily-closing"] as any)["expense-catalog"].$get()
   );
 
-  const expenses = expensesQuery.data || [];
+  const queryResult = expensesQuery.data;
+  const expenses: any[] = Array.isArray(queryResult)
+    ? queryResult
+    : queryResult?.data || [];
+
+  const pagination = !Array.isArray(queryResult) && queryResult?.pagination
+    ? queryResult.pagination
+    : {
+        page: currentPage,
+        pageSize: currentPageSize,
+        totalRecords: expenses.length,
+        totalPages: Math.max(1, Math.ceil(expenses.length / currentPageSize)),
+      };
+
+  const serverSummary = !Array.isArray(queryResult) ? queryResult?.summary : null;
+
+  const totalAmount = React.useMemo(() => {
+    if (serverSummary?.totalAmount !== undefined) return Number(serverSummary.totalAmount);
+    return expenses.reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+  }, [serverSummary, expenses]);
+
+  const paidAmount = React.useMemo(() => {
+    if (serverSummary?.paidAmount !== undefined) return Number(serverSummary.paidAmount);
+    return expenses
+      .filter((e) => Boolean(e.paymentDate))
+      .reduce((s, e) => s + parseFloat(e.amount || "0"), 0);
+  }, [serverSummary, expenses]);
+
+  const pendingAmount = React.useMemo(() => {
+    if (serverSummary?.pendingAmount !== undefined) return Number(serverSummary.pendingAmount);
+    return totalAmount - paidAmount;
+  }, [serverSummary, totalAmount, paidAmount]);
   const vendors = vendorsQuery.data || [];
   const bankAccounts = bankAccountsQuery.data || [];
 
@@ -182,40 +321,7 @@ function BankExpensesPage() {
     ]);
   }, [expCatalogQuery.data, formCategory]);
 
-  // Filter state
-  const [searchTerm, setSearchTerm] = React.useState("");
-  const [categoryFilter, setCategoryFilter] = React.useState("all");
 
-  const filteredExpenses = React.useMemo(() => {
-    return expenses.filter((e) => {
-      const matchSearch =
-        !searchTerm ||
-        e.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (e.vendorName && e.vendorName.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (e.referenceNo && e.referenceNo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (e.bankName && e.bankName.toLowerCase().includes(searchTerm.toLowerCase()));
-
-      const matchCat = categoryFilter === "all" || e.category === categoryFilter;
-
-      return matchSearch && matchCat;
-    });
-  }, [expenses, searchTerm, categoryFilter]);
-
-  // Statistics
-  const totalAmount = React.useMemo(
-    () => expenses.reduce((s, e) => s + parseFloat(e.amount || "0"), 0),
-    [expenses]
-  );
-
-  const paidAmount = React.useMemo(
-    () =>
-      expenses
-        .filter((e) => Boolean(e.paymentDate))
-        .reduce((s, e) => s + parseFloat(e.amount || "0"), 0),
-    [expenses]
-  );
-
-  const pendingAmount = totalAmount - paidAmount;
 
   // Dialog states
   const [isFormOpen, setIsFormOpen] = React.useState(false);
@@ -269,7 +375,14 @@ function BankExpensesPage() {
     setFormVendorId("none");
     setFormAmount("");
     setFormPaymentMode("");
-    setFormPaymentDate(format(today, "yyyy-MM-dd"));
+    // If viewing current calendar month, default clearance date to today.
+    // If cash basis is active in another month, default to 1st of that month.
+    // Otherwise in accrual mode for other months, leave empty (pending clearance) to prevent accidental misdating.
+    if (selectedBasis === "cash") {
+      setFormPaymentDate(selectedMonth === defaultMonth ? format(today, "yyyy-MM-dd") : `${selectedMonth}-01`);
+    } else {
+      setFormPaymentDate(selectedMonth === defaultMonth ? format(today, "yyyy-MM-dd") : "");
+    }
     setFormChequeIssueDate("");
     setFormReferenceNo("");
     setFormBankName("");
@@ -394,19 +507,49 @@ function BankExpensesPage() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage fixed monthly outflows, bank vendor payables, utility bills, and salary disbursements for {monthLabel}.
+            {selectedBasis === "cash"
+              ? `Cash basis view: Displaying expenses disbursed / cleared in ${monthLabel}.`
+              : `Accrual basis view: Manage fixed monthly outflows, bank vendor payables, utility bills, and salary disbursements for ${monthLabel}.`}
           </p>
         </div>
 
         {/* Navigation & Action Bar */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Month Quick Nav */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Basis Switch */}
+          <div className="flex items-center gap-2 bg-muted/40 px-3 py-1 rounded-lg border border-border/50 text-xs">
+            <span
+              className={cn(
+                "font-medium select-none cursor-pointer",
+                selectedBasis === "accrual" ? "text-foreground font-bold" : "text-muted-foreground"
+              )}
+              onClick={() => handleBasisChange("accrual")}
+            >
+              Accrual
+            </span>
+            <Switch
+              checked={selectedBasis === "cash"}
+              onCheckedChange={(checked) => handleBasisChange(checked ? "cash" : "accrual")}
+              title="Toggle Cash vs Accrual Basis"
+            />
+            <span
+              className={cn(
+                "font-medium select-none cursor-pointer",
+                selectedBasis === "cash" ? "text-teal-700 dark:text-teal-400 font-bold" : "text-muted-foreground"
+              )}
+              onClick={() => handleBasisChange("cash")}
+            >
+              Cash Basis
+            </span>
+          </div>
+
+          {/* Month Quick Nav & Direct Picker */}
           <div className="flex items-center gap-1 bg-muted/40 p-1 rounded-lg border border-border/50">
             <Button
               variant="outline"
               size="sm"
               onClick={handlePrevMonth}
               className="h-8 px-2 text-xs font-semibold cursor-pointer"
+              title="Previous Month"
             >
               <ChevronLeft size={13} />
               Prev
@@ -416,6 +559,7 @@ function BankExpensesPage() {
               size="sm"
               onClick={handleThisMonth}
               className="h-8 px-2.5 text-xs font-semibold cursor-pointer"
+              title="Current Month"
             >
               This Month
             </Button>
@@ -424,10 +568,18 @@ function BankExpensesPage() {
               size="sm"
               onClick={handleNextMonth}
               className="h-8 px-2 text-xs font-semibold cursor-pointer"
+              title="Next Month"
             >
               Next
               <ChevronRight size={13} />
             </Button>
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => handleMonthChange(e.target.value)}
+              className="h-8 px-2 text-xs rounded border border-input bg-background font-medium focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              title="Jump to specific month"
+            />
           </div>
 
           <Button
@@ -459,7 +611,7 @@ function BankExpensesPage() {
         <Card className="border border-border/60 bg-linear-to-br from-blue-500/5 to-indigo-500/5 shadow-xs">
           <CardHeader className="pb-1">
             <CardDescription className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 text-[10px] uppercase tracking-wider">
-              <CreditCard size={13} /> Total Bank Outflow ({monthLabel})
+              <CreditCard size={13} /> Total Outflow ({selectedBasis === "cash" ? "Cash Basis" : monthLabel})
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -468,6 +620,7 @@ function BankExpensesPage() {
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
               {expenses.length} entry{expenses.length !== 1 ? "ies" : ""} recorded
+              {selectedBasis === "cash" ? " (cleared in month)" : ""}
             </p>
           </CardContent>
         </Card>
@@ -484,7 +637,7 @@ function BankExpensesPage() {
               {fmt(paidAmount)}
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              Completed bank transfers & cheque clearing
+              {selectedBasis === "cash" ? "100% realized bank payments" : "Completed bank transfers & cheque clearing"}
             </p>
           </CardContent>
         </Card>
@@ -493,15 +646,17 @@ function BankExpensesPage() {
         <Card className="border border-border/60 bg-linear-to-br from-amber-500/5 to-orange-500/5 shadow-xs">
           <CardHeader className="pb-1">
             <CardDescription className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5 text-[10px] uppercase tracking-wider">
-              <TrendingDown size={13} /> Scheduled / Pending Outflow
+              <TrendingDown size={13} /> {selectedBasis === "cash" ? "Cash Mode Realized" : "Scheduled / Pending Outflow"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-extrabold tracking-tight text-amber-700 dark:text-amber-350">
-              {fmt(pendingAmount)}
+              {selectedBasis === "cash" ? fmt(paidAmount) : fmt(pendingAmount)}
             </div>
             <p className="text-[10px] text-muted-foreground mt-1">
-              Awaiting payment date or reference clearance
+              {selectedBasis === "cash"
+                ? "Showing only settled disbursements"
+                : "Awaiting payment date or reference clearance"}
             </p>
           </CardContent>
         </Card>
@@ -514,13 +669,13 @@ function BankExpensesPage() {
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
               <Input
-                placeholder="Search label, vendor, bank, reference no..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search label, vendor, bank, ref #, date..."
+                value={localSearch}
+                onChange={(e) => setLocalSearch(e.target.value)}
                 className="pl-9 h-9 text-xs"
               />
             </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <Select value={searchCategory} onValueChange={handleCategoryChange}>
               <SelectTrigger className="w-48 h-9 text-xs">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
@@ -533,10 +688,20 @@ function BankExpensesPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={searchStatus} onValueChange={(val: any) => handleStatusChange(val)}>
+              <SelectTrigger className="w-44 h-9 text-xs">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="paid">Disbursed / Cleared</SelectItem>
+                <SelectItem value="pending">Pending Clearance</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="text-xs text-muted-foreground font-semibold shrink-0">
-            Showing {filteredExpenses.length} of {expenses.length} entries
+            Total {pagination.totalRecords} {pagination.totalRecords === 1 ? "entry" : "entries"}
           </div>
         </CardContent>
       </Card>
@@ -548,11 +713,17 @@ function BankExpensesPage() {
             <div className="py-16 text-center text-sm text-muted-foreground">
               Loading bank expenses…
             </div>
-          ) : filteredExpenses.length === 0 ? (
+          ) : expenses.length === 0 ? (
             <div className="py-16 flex flex-col items-center justify-center text-muted-foreground gap-2">
               <CreditCard className="size-10 opacity-30" />
-              <p className="font-semibold text-sm">No bank expenses found for {monthLabel}</p>
-              <p className="text-xs">Click "Add Bank Expense" or "Copy Prev Month" to populate.</p>
+              <p className="font-semibold text-sm">
+                No bank expenses found for {monthLabel} ({selectedBasis === "cash" ? "Cash Basis" : "Accrual Basis"})
+              </p>
+              <p className="text-xs">
+                {selectedBasis === "cash"
+                  ? "No transactions have a clearance date recorded in this month."
+                  : "Click \"Add Bank Expense\" or \"Copy Prev Month\" to populate."}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -572,7 +743,7 @@ function BankExpensesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {filteredExpenses.map((e) => {
+                  {expenses.map((e) => {
                     const catObj = allCategories.find((c) => c.code === e.category);
                     const isPaid = Boolean(e.paymentDate);
 
@@ -677,6 +848,82 @@ function BankExpensesPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {pagination.totalRecords > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-border/60 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span>Rows per page:</span>
+                <Select
+                  value={String(pagination.pageSize)}
+                  onValueChange={(val) => handlePageSizeChange(Number(val))}
+                >
+                  <SelectTrigger className="w-18 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="font-semibold ml-2">
+                  Showing {(pagination.page - 1) * pagination.pageSize + 1} to{" "}
+                  {Math.min(pagination.page * pagination.pageSize, pagination.totalRecords)} of{" "}
+                  {pagination.totalRecords} entries
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() => handlePageChange(1)}
+                  className="h-8 px-2 cursor-pointer"
+                  title="First Page"
+                >
+                  <ChevronsLeft className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  className="h-8 px-2 cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+
+                <div className="px-3 font-semibold text-foreground">
+                  Page {pagination.page} of {pagination.totalPages}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  className="h-8 px-2 cursor-pointer"
+                  title="Next Page"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => handlePageChange(pagination.totalPages)}
+                  className="h-8 px-2 cursor-pointer"
+                  title="Last Page"
+                >
+                  <ChevronsRight className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -820,7 +1067,18 @@ function BankExpensesPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="font-semibold block mb-1">Cheque Issue Date</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold block text-xs">Cheque Issue Date</label>
+                        {formChequeIssueDate && (
+                          <button
+                            type="button"
+                            onClick={() => setFormChequeIssueDate("")}
+                            className="text-[10px] text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
@@ -847,11 +1105,35 @@ function BankExpensesPage() {
                               setFormChequeIssueDate(date ? format(date, "yyyy-MM-dd") : "")
                             }
                           />
+                          {formChequeIssueDate && (
+                            <div className="p-2 border-t border-border/50 flex justify-end">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-muted-foreground hover:text-destructive cursor-pointer"
+                                onClick={() => setFormChequeIssueDate("")}
+                              >
+                                Clear Date
+                              </Button>
+                            </div>
+                          )}
                         </PopoverContent>
                       </Popover>
                     </div>
                     <div>
-                      <label className="font-semibold block mb-1">Clearance Date</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold block text-xs">Clearance Date</label>
+                        {formPaymentDate && (
+                          <button
+                            type="button"
+                            onClick={() => setFormPaymentDate("")}
+                            className="text-[10px] text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button
@@ -878,6 +1160,19 @@ function BankExpensesPage() {
                               setFormPaymentDate(date ? format(date, "yyyy-MM-dd") : "")
                             }
                           />
+                          {formPaymentDate && (
+                            <div className="p-2 border-t border-border/50 flex justify-end">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-muted-foreground hover:text-destructive cursor-pointer"
+                                onClick={() => setFormPaymentDate("")}
+                              >
+                                Clear Date
+                              </Button>
+                            </div>
+                          )}
                         </PopoverContent>
                       </Popover>
                     </div>
