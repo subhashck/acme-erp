@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
-import { Plus, Edit2, ChevronDown, ChevronUp, Users, CalendarDays, Download, Clock, Trash2, Calendar as CalendarIcon, Palmtree } from "lucide-react";
+import { Plus, Edit2, ChevronDown, ChevronUp, Users, CalendarDays, Download, Clock, Trash2, Calendar as CalendarIcon, Palmtree, ChevronLeft, ChevronRight, Check, X, Eye, EyeOff } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { format, addDays, differenceInCalendarDays, parseISO } from "date-fns";
@@ -147,6 +147,14 @@ function Roster() {
   const [filterShift, setFilterShift] = React.useState("");
   const [filterActive, setFilterActive] = React.useState(false);
   const [staffSearch, setStaffSearch] = React.useState("");
+  const [selectedStaffId, setSelectedStaffId] = React.useState<number | null>(null);
+  const [mobileDayIndex, setMobileDayIndex] = React.useState<number>(0);
+  const [isMobileStaffPoolOpen, setIsMobileStaffPoolOpen] = React.useState<boolean>(true);
+  const [visibleShiftIds, setVisibleShiftIds] = React.useState<number[]>([]);
+
+  // Swipe gesture tracking for mobile day pager
+  const touchStartX = React.useRef<number | null>(null);
+  const touchStartY = React.useRef<number | null>(null);
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const deptsQuery = useRpcQuery<DepartmentRow[]>(["masters-departments"], () => client.masters.departments.$get());
@@ -224,6 +232,47 @@ function Roster() {
     }
   };
 
+  const handleTapAssign = async (staffId: number, date: string, shiftId: number) => {
+    await handleDropStaff(staffId, date, shiftId);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartX.current = null;
+    touchStartY.current = null;
+
+    if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      if (deltaX < 0) {
+        // Swipe left -> Next day
+        setMobileDayIndex((curr) => {
+          if (curr < 7) {
+            return curr + 1;
+          } else {
+            setWeekOffset((w) => w + 1);
+            return 0;
+          }
+        });
+      } else {
+        // Swipe right -> Prev day
+        setMobileDayIndex((curr) => {
+          if (curr > 0) {
+            return curr - 1;
+          } else {
+            setWeekOffset((w) => w - 1);
+            return 7;
+          }
+        });
+      }
+    }
+  };
+
   const nursingSupersQuery = useQuery<any[]>({
     queryKey: ["masters-nursing-supers"],
     queryFn: async () => {
@@ -255,6 +304,86 @@ function Roster() {
   const shifts = shiftsQuery.data ?? [];
   const todayStr = today();
   const week = rollingWeek(weekOffset * 7 - 1, 8);
+
+  // Sync visible shift IDs from localStorage
+  React.useEffect(() => {
+    if (shifts.length === 0) return;
+    const storageKey = departmentId ? `roster_visible_shifts_${departmentId}` : `roster_visible_shifts`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const validIds = parsed.filter((id) => shifts.some((s) => s.id === id));
+          if (validIds.length > 0) {
+            setVisibleShiftIds(validIds);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load shift preferences", e);
+    }
+    // Default: all active shifts visible
+    setVisibleShiftIds(shifts.filter((s) => s.active).map((s) => s.id));
+  }, [departmentId, shifts]);
+
+  const toggleShiftVisibility = (shiftId: number) => {
+    setVisibleShiftIds((prev) => {
+      const next = prev.includes(shiftId)
+        ? prev.filter((id) => id !== shiftId)
+        : [...prev, shiftId];
+      if (next.length === 0) {
+        toast.info("At least one shift must remain visible");
+        return prev;
+      }
+      try {
+        const storageKey = departmentId ? `roster_visible_shifts_${departmentId}` : `roster_visible_shifts`;
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch (e) {
+        console.error("Failed to save shift preferences", e);
+      }
+      return next;
+    });
+  };
+
+  const selectAllShifts = () => {
+    const allIds = shifts.filter((s) => s.active).map((s) => s.id);
+    setVisibleShiftIds(allIds);
+    try {
+      const storageKey = departmentId ? `roster_visible_shifts_${departmentId}` : `roster_visible_shifts`;
+      localStorage.setItem(storageKey, JSON.stringify(allIds));
+    } catch (e) {}
+  };
+
+  const sortShiftsByStartTime = (a: ShiftRow, b: ShiftRow) => {
+    const timeA = a.startTime || "";
+    const timeB = b.startTime || "";
+    if (timeA && timeB) {
+      const cmp = timeA.localeCompare(timeB);
+      if (cmp !== 0) return cmp;
+    } else if (timeA) {
+      return -1;
+    } else if (timeB) {
+      return 1;
+    }
+    return (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+  };
+
+  const displayShifts = React.useMemo(() => {
+    const list = visibleShiftIds.length === 0 ? shifts : shifts.filter((s) => visibleShiftIds.includes(s.id));
+    return [...list].sort(sortShiftsByStartTime);
+  }, [shifts, visibleShiftIds]);
+
+  // Set initial mobile day index to today (or day 0 if today not in week)
+  React.useEffect(() => {
+    const todayIndex = week.indexOf(todayStr);
+    if (todayIndex !== -1) {
+      setMobileDayIndex(todayIndex);
+    } else {
+      setMobileDayIndex(0);
+    }
+  }, [weekOffset, todayStr]);
 
   // Auto-select department when data arrives
   React.useEffect(() => {
@@ -361,6 +490,7 @@ function Roster() {
 
   const deptStaff = (staffQuery.data ?? []).filter((s) => s.departmentId === departmentId);
   const filteredDeptStaff = deptStaff.filter((s) => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
+  const selectedStaff = deptStaff.find((s) => s.staffId === selectedStaffId);
 
   // Build a dept-scoped map: staffId → unique initials label.
   // If two staff share the same initials, disambiguate with -1, -2, ... suffix.
@@ -400,28 +530,31 @@ function Roster() {
       description="Who's on duty today, what's coming up this week, and shift assignments at a glance."
       action={
         departmentId ? (
-          <div className="flex gap-2 items-center flex-wrap">
+          <div className="flex gap-2 items-center flex-wrap sm:flex-nowrap w-full sm:w-auto">
             {canAssign && (
-              <Button onClick={() => {
-                if (showForm) {
-                  setEditingId(null);
-                  form.reset({ departmentId: departmentId || 0, shiftId: 0, startDate: todayStr, endDate: isoDate(7), notes: "" });
-                }
-                setShowForm((v) => !v);
-              }}>
+              <Button
+                className="w-full sm:w-auto"
+                onClick={() => {
+                  if (showForm) {
+                    setEditingId(null);
+                    form.reset({ departmentId: departmentId || 0, shiftId: 0, startDate: todayStr, endDate: isoDate(7), notes: "" });
+                  }
+                  setShowForm((v) => !v);
+                }}
+              >
                 {showForm ? <><span className="text-lg leading-none">×</span> Cancel</> : <><Plus size={16} /> Add Assignment</>}
               </Button>
             )}
 
-            <div className="flex gap-1.5 items-center ml-2">
+            <div className="flex gap-1.5 items-center w-full sm:w-auto sm:ml-2">
               <MonthPicker
                 value={exportMonth}
                 onChange={setExportMonth}
-                className="w-[180px] h-10"
+                className="flex-1 sm:w-[180px] h-10"
                 placeholder="Export Month"
               />
-              <Button variant="outline" onClick={handleExport}>
-                <Download size={16} /> Export Excel
+              <Button variant="outline" className="shrink-0" onClick={handleExport}>
+                <Download size={16} /> <span className="hidden sm:inline">Export Excel</span><span className="sm:hidden">Excel</span>
               </Button>
             </div>
           </div>
@@ -429,14 +562,18 @@ function Roster() {
       }
     >
       {/* ── Department Pills ── */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-2 px-2 sm:mx-0 sm:px-0 sm:flex-wrap">
         {departments.map((dept) => {
           const active = departmentId === dept.id;
           return (
             <button
               key={dept.id}
-              onClick={() => { navigate({ to: "/hr/roster", search: { departmentId: dept.id } }); setShowForm(false); }}
-              className={`px-4 py-1.5 rounded-full border transition-all duration-155 outline-none cursor-pointer text-sm font-medium ${active
+              onClick={() => {
+                navigate({ to: "/hr/roster", search: { departmentId: dept.id } });
+                setShowForm(false);
+                setSelectedStaffId(null);
+              }}
+              className={`px-4 py-1.5 rounded-full border transition-all duration-155 outline-none cursor-pointer text-sm font-medium shrink-0 ${active
                 ? "bg-primary text-primary-foreground font-bold border-primary"
                 : "border-border bg-card text-muted-foreground hover:text-foreground"
                 }`}
@@ -622,19 +759,19 @@ function Roster() {
                   )} — {selectedDept?.name}
                 </span>
                 {viewMode === "daily" && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end">
                     <Button
                       variant="outline"
                       onClick={() => setWeekOffset((v) => v - 1)}
-                      className="px-3 py-1.5 h-8 text-xs"
+                      className="px-2.5 sm:px-3 py-1.5 h-8 text-xs flex items-center gap-1"
                     >
-                      ← Prev Week
+                      <ChevronLeft size={14} /> <span className="hidden sm:inline">Prev Week</span><span className="sm:hidden">Prev</span>
                     </Button>
                     {weekOffset !== 0 && (
                       <Button
                         variant="ghost"
                         onClick={() => setWeekOffset(0)}
-                        className="px-3 py-1.5 h-8 text-xs text-primary"
+                        className="px-2 sm:px-3 py-1.5 h-8 text-xs text-primary font-bold"
                       >
                         Today
                       </Button>
@@ -642,14 +779,14 @@ function Roster() {
                     <Button
                       variant="outline"
                       onClick={() => setWeekOffset((v) => v + 1)}
-                      className="px-3 py-1.5 h-8 text-xs"
+                      className="px-2.5 sm:px-3 py-1.5 h-8 text-xs flex items-center gap-1"
                     >
-                      Next Week →
+                      <span className="hidden sm:inline">Next Week</span><span className="sm:hidden">Next</span> <ChevronRight size={14} />
                     </Button>
                   </div>
                 )}
                 {viewMode === "monthly" && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end">
                     <Button
                       variant="outline"
                       onClick={() => {
@@ -657,15 +794,15 @@ function Roster() {
                         const prev = new Date(Date.UTC(y, m - 2, 1));
                         setExportMonth(`${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`);
                       }}
-                      className="px-3 py-1.5 h-8 text-xs"
+                      className="px-2.5 sm:px-3 py-1.5 h-8 text-xs flex items-center gap-1"
                     >
-                      ← Prev
+                      <ChevronLeft size={14} /> <span className="hidden sm:inline">Prev Month</span><span className="sm:hidden">Prev</span>
                     </Button>
                     {exportMonth !== currentYearMonth() && (
                       <Button
                         variant="ghost"
                         onClick={() => setExportMonth(currentYearMonth())}
-                        className="px-3 py-1.5 h-8 text-xs text-primary"
+                        className="px-2 sm:px-3 py-1.5 h-8 text-xs text-primary font-bold"
                       >
                         This Month
                       </Button>
@@ -677,27 +814,31 @@ function Roster() {
                         const next = new Date(Date.UTC(y, m, 1));
                         setExportMonth(`${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`);
                       }}
-                      className="px-3 py-1.5 h-8 text-xs"
+                      className="px-2.5 sm:px-3 py-1.5 h-8 text-xs flex items-center gap-1"
                     >
-                      Next →
+                      <span className="hidden sm:inline">Next Month</span><span className="sm:hidden">Next</span> <ChevronRight size={14} />
                     </Button>
                   </div>
                 )}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Shift legend */}
-              <div className="flex gap-2 flex-wrap mb-3.5">
-                {viewMode === "monthly" && <span className="text-xs text-muted-foreground mr-1 self-center">Drag shift to assign:</span>}
-                {shifts.filter(s => s.active).map((shiftData) => {
+              {/* Shift legend with visibility toggles */}
+              <div className="flex gap-2 flex-wrap items-center mb-3.5">
+                <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5 mr-1">
+                  <Eye size={13} className="text-primary" /> Shifts:
+                </span>
+                {shifts.filter((s) => s.active).slice().sort(sortShiftsByStartTime).map((shiftData) => {
                   const name = shiftData.name;
                   const cfg = getShiftConfig(name);
                   const Icon = cfg.Icon;
+                  const isVisible = visibleShiftIds.includes(shiftData.id);
                   const isDraggable = viewMode === "monthly" && canAssign;
 
                   return (
-                    <span
+                    <button
                       key={name}
+                      type="button"
                       draggable={isDraggable}
                       onDragStart={
                         isDraggable
@@ -707,13 +848,33 @@ function Roster() {
                           }
                           : undefined
                       }
-                      className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-0.5 border ${isDraggable ? "cursor-grab active:cursor-grabbing hover:opacity-80 transition-opacity" : ""
-                        } ${cfg.textColorClass} ${cfg.bgClass} ${cfg.borderClass}`}
+                      onClick={() => toggleShiftVisibility(shiftData.id)}
+                      title={`Click to ${isVisible ? "hide" : "show"} ${name} shift (saved to preferences)`}
+                      className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2.5 py-0.5 border transition-all cursor-pointer select-none ${
+                        isVisible
+                          ? `${cfg.textColorClass} ${cfg.bgClass} ${cfg.borderClass} shadow-2xs`
+                          : "opacity-40 grayscale border-dashed border-border bg-muted/40 text-muted-foreground line-through hover:opacity-75"
+                      } ${isDraggable ? "active:cursor-grabbing" : ""}`}
                     >
-                      <Icon size={11} /> {name}
-                    </span>
+                      <Icon size={11} />
+                      <span>{name}</span>
+                      {isVisible ? (
+                        <Check size={10} className="opacity-70 ml-0.5" />
+                      ) : (
+                        <EyeOff size={10} className="opacity-60 ml-0.5" />
+                      )}
+                    </button>
                   );
                 })}
+                {visibleShiftIds.length < shifts.filter((s) => s.active).length && (
+                  <button
+                    type="button"
+                    onClick={selectAllShifts}
+                    className="text-xs text-primary hover:underline font-semibold cursor-pointer border-0 bg-transparent px-1 py-0.5"
+                  >
+                    Show all ({shifts.filter((s) => s.active).length})
+                  </button>
+                )}
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-500 bg-amber-500/10 border border-dashed border-amber-500/30 rounded-full px-2.5 py-0.5 ml-auto">
                   ⚠ No cover
                 </span>
@@ -721,97 +882,350 @@ function Roster() {
 
               {viewMode === "daily" ? (
                 <>
-                  {/* ── Staff Pool (Horizontal List) ── */}
-                  <div className="border border-border rounded-xl mb-4 bg-muted/10">
-                    <div className="p-3 border-b border-border flex flex-row items-center justify-between flex-wrap gap-4">
-                      <div>
-                        <h3 className="text-sm font-semibold flex items-center gap-2 m-0">
-                          <Users size={16} className="text-primary" />
-                          Staff Pool
+                  {/* ─────────────────────────────────────────────────────────────
+                      DESKTOP DAILY VIEW (Persistent Sticky Staff Pool + 7-Day Grid)
+                     ───────────────────────────────────────────────────────────── */}
+                  <div className="hidden md:flex gap-4 items-start">
+                    {/* Left: Sticky Staff Pool Sidebar */}
+                    <div className="w-64 min-w-[240px] max-w-[260px] shrink-0 sticky top-4 max-h-[calc(100vh-140px)] flex flex-col border border-border rounded-2xl bg-card p-3 shadow-xs">
+                      <div className="flex items-center justify-between gap-1 mb-2 px-1">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5 m-0">
+                          <Users size={14} className="text-primary" /> Staff Pool
                         </h3>
-                        <p className="text-xs text-muted-foreground mt-0.5 mb-0">Drag staff from here to assign them to shifts on the calendar below</p>
+                        <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+                          {filteredDeptStaff.length}
+                        </span>
                       </div>
-                      <div className="w-full sm:w-60">
+
+                      <div className="mb-2">
                         <input
                           type="text"
                           placeholder="Search staff..."
                           value={staffSearch}
                           onChange={(e) => setStaffSearch(e.target.value)}
-                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-border outline-none bg-background text-foreground focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                          className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-border outline-none bg-background text-foreground focus:ring-1 focus:ring-primary focus:border-primary transition-all"
                         />
                       </div>
-                    </div>
-                    <div className="p-3">
-                      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+
+                      {/* Active selection banner if a staff is selected */}
+                      {selectedStaff && (
+                        <div className="mb-2 p-2 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-1">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[10px] uppercase tracking-wider font-extrabold text-primary m-0">Selected for tap-assign</p>
+                            <p className="text-xs font-bold text-foreground truncate m-0">{selectedStaff.name}</p>
+                            <p className="text-[9px] text-muted-foreground m-0">Click any shift slot to assign</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStaffId(null)}
+                            className="w-6 h-6 rounded-lg bg-background/80 hover:bg-background text-muted-foreground hover:text-foreground flex items-center justify-center border border-border cursor-pointer transition-colors shrink-0"
+                            title="Deselect staff"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
+
+                      {!selectedStaff && canAssign && (
+                        <div className="mb-2 px-2 py-1.5 rounded-lg bg-muted/40 border border-border/50 text-[10px] text-muted-foreground flex items-center gap-1.5">
+                          <span>Click staff to tap-assign, or drag directly onto shifts</span>
+                        </div>
+                      )}
+
+                      {/* Scrollable Staff List */}
+                      <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5 scrollbar-thin">
                         {filteredDeptStaff.length > 0 ? (
-                          filteredDeptStaff.map((member) => (
-                            <div
-                              key={member.staffId}
-                              draggable={canAssign}
-                              onDragStart={(e) => {
-                                if (!canAssign) return;
-                                e.dataTransfer.setData("staffId", member.staffId.toString());
-                                e.dataTransfer.effectAllowed = "move";
-                              }}
-                              className={`flex items-center gap-2 p-2 rounded-xl border border-border bg-card transition-all duration-150 min-w-[190px] shrink-0 group ${
-                                canAssign ? "hover:bg-muted hover:border-border cursor-grab active:cursor-grabbing shadow-xs hover:shadow-sm" : "opacity-75"
-                              }`}
-                            >
-                              {/* Visual indicator for drag handle */}
-                              {canAssign && (
-                                <div className="text-muted-foreground/60 group-hover:text-muted-foreground transition-colors shrink-0">
-                                  <svg width="8" height="12" viewBox="0 0 8 12" fill="none" className="stroke-current">
-                                    <circle cx="2" cy="2" r="1" fill="currentColor" />
-                                    <circle cx="2" cy="6" r="1" fill="currentColor" />
-                                    <circle cx="2" cy="10" r="1" fill="currentColor" />
-                                    <circle cx="6" cy="2" r="1" fill="currentColor" />
-                                    <circle cx="6" cy="6" r="1" fill="currentColor" />
-                                    <circle cx="6" cy="10" r="1" fill="currentColor" />
-                                  </svg>
+                          filteredDeptStaff.map((member) => {
+                            const isSelected = selectedStaffId === member.staffId;
+                            const isOffToday = checkIsOffDay(member.staffId, todayStr);
+                            return (
+                              <div
+                                key={member.staffId}
+                                draggable={canAssign}
+                                onDragStart={(e) => {
+                                  if (!canAssign) return;
+                                  e.dataTransfer.setData("staffId", member.staffId.toString());
+                                  e.dataTransfer.effectAllowed = "move";
+                                }}
+                                onClick={() => {
+                                  if (!canAssign) return;
+                                  setSelectedStaffId((curr) => (curr === member.staffId ? null : member.staffId));
+                                }}
+                                className={`flex items-center gap-2 p-2 rounded-xl border transition-all duration-150 group select-none ${
+                                  isSelected
+                                    ? "border-primary bg-primary/10 ring-2 ring-primary/30 shadow-xs"
+                                    : "border-border bg-background hover:bg-muted/50 hover:border-border"
+                                } ${canAssign ? "cursor-pointer" : "opacity-75"}`}
+                              >
+                                {/* Initials avatar */}
+                                <div
+                                  className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                    isSelected
+                                      ? "bg-primary text-primary-foreground font-black"
+                                      : "bg-muted text-foreground"
+                                  }`}
+                                >
+                                  {initialsMap?.get(member.staffId) ??
+                                    member.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                                 </div>
-                              )}
 
-                              {/* Initial circle */}
-                              <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center font-bold text-xs text-foreground shrink-0">
-                                {initialsMap?.get(member.staffId) ?? member.name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()}
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-1">
-                                  <p className="text-xs font-semibold text-foreground truncate m-0">{member.name}</p>
-                                  {checkIsOffDay(member.staffId, todayStr) && (
-                                    <span className="text-[9px] font-extrabold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded-md px-1 py-0.2 shrink-0">
-                                      OFF
-                                    </span>
-                                  )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <p className={`text-xs font-semibold truncate m-0 ${isSelected ? "text-primary font-bold" : "text-foreground"}`}>
+                                      {member.name}
+                                    </p>
+                                    {isOffToday && (
+                                      <span className="text-[8px] font-extrabold text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded-md px-1 py-0.2 shrink-0">
+                                        OFF
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground truncate m-0">{member.role}</p>
                                 </div>
-                                <p className="text-[10px] text-muted-foreground truncate m-0">{member.role}</p>
+
+                                {isSelected && (
+                                  <div className="w-4 h-4 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0">
+                                    <Check size={10} />
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         ) : (
-                          <p className="text-center text-xs text-muted-foreground/60 py-2 w-full m-0">No staff found</p>
+                          <p className="text-center text-xs text-muted-foreground/60 py-6 m-0">No staff found</p>
                         )}
                       </div>
                     </div>
+
+                    {/* Right: 7-Day Grid */}
+                    <div className="flex-1 overflow-x-auto min-w-0">
+                      <div className="flex gap-2 min-w-[720px] pb-2">
+                        {weeklyData.map(({ date, rosters: dayRosters }) => (
+                          <DayColumn
+                            key={date}
+                            date={date}
+                            rosters={dayRosters}
+                            shifts={displayShifts}
+                            onDropStaff={handleDropStaff}
+                            onDeleteRoster={deleteRoster}
+                            canAssign={canAssign}
+                            initialsMap={initialsMap}
+                            offStaffList={deptStaff.filter((s) => checkIsOffDay(s.staffId, date))}
+                            selectedStaffId={selectedStaffId}
+                            onTapAssign={handleTapAssign}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                  <div className="flex gap-2 min-w-175">
-                    {weeklyData.map(({ date, rosters: dayRosters }) => (
-                      <DayColumn
-                        key={date}
-                        date={date}
-                        rosters={dayRosters}
-                        shifts={shifts}
-                        onDropStaff={handleDropStaff}
-                        onDeleteRoster={deleteRoster}
-                        canAssign={canAssign}
-                        initialsMap={initialsMap}
-                        offStaffList={deptStaff.filter((s) => checkIsOffDay(s.staffId, date))}
-                      />
-                    ))}
-                  </div>
+                  {/* ─────────────────────────────────────────────────────────────
+                      MOBILE DAILY VIEW (Day Pager with Swipe Gestures + Staff Pool)
+                     ───────────────────────────────────────────────────────────── */}
+                  <div className="md:hidden flex flex-col gap-3">
+                    {/* Mobile Day Pager Navigation Bar */}
+                    <div className="flex flex-col gap-2 bg-muted/20 border border-border rounded-2xl p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileDayIndex((curr) => {
+                              if (curr > 0) return curr - 1;
+                              setWeekOffset((w) => w - 1);
+                              return weeklyData.length - 1;
+                            });
+                          }}
+                          className="w-9 h-9 rounded-xl border border-border bg-card flex items-center justify-center text-foreground hover:bg-muted active:scale-95 transition-all cursor-pointer shrink-0"
+                          aria-label="Previous day"
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+
+                        {/* Current day indicator */}
+                        <div className="text-center flex-1 min-w-0">
+                          {weeklyData[mobileDayIndex] && (() => {
+                            const curDate = weeklyData[mobileDayIndex].date;
+                            const isCurToday = curDate === todayStr;
+                            const dObj = new Date(curDate + "T00:00:00");
+                            return (
+                              <div className="flex flex-col items-center">
+                                <div className="flex items-center gap-1.5 justify-center flex-wrap">
+                                  <span className="text-sm font-bold text-foreground">
+                                    {dObj.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                                  </span>
+                                  {isCurToday && (
+                                    <span className="text-[9px] font-black text-primary-foreground bg-primary rounded-full px-2 py-0.5">
+                                      TODAY
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-muted-foreground">Swipe left/right to change day</span>
+                              </div>
+                            );
+                          })()}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMobileDayIndex((curr) => {
+                              if (curr < weeklyData.length - 1) return curr + 1;
+                              setWeekOffset((w) => w + 1);
+                              return 0;
+                            });
+                          }}
+                          className="w-9 h-9 rounded-xl border border-border bg-card flex items-center justify-center text-foreground hover:bg-muted active:scale-95 transition-all cursor-pointer shrink-0"
+                          aria-label="Next day"
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                      </div>
+
+                      {/* Dot indicators for each day in week */}
+                      <div className="flex items-center justify-center gap-1.5 pt-1">
+                        {weeklyData.map((d, i) => {
+                          const isCur = i === mobileDayIndex;
+                          const isTod = d.date === todayStr;
+                          return (
+                            <button
+                              key={d.date}
+                              type="button"
+                              onClick={() => setMobileDayIndex(i)}
+                              className={`h-2 rounded-full transition-all cursor-pointer border-0 ${
+                                isCur
+                                  ? "w-6 bg-primary"
+                                  : isTod
+                                  ? "w-2.5 bg-primary/40"
+                                  : "w-2 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                              }`}
+                              aria-label={`Go to day ${i + 1}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Selected Staff Sticky / Notification Banner on Mobile */}
+                    {selectedStaff && (
+                      <div className="p-3 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-between gap-2 shadow-xs sticky top-2 z-10 backdrop-blur-md">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] uppercase tracking-wider font-extrabold text-primary m-0">Ready to Assign</p>
+                          <p className="text-sm font-bold text-foreground truncate m-0">{selectedStaff.name}</p>
+                          <p className="text-[10px] text-muted-foreground m-0">Tap any shift below to assign</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStaffId(null)}
+                          className="px-2.5 py-1 rounded-lg bg-background text-xs font-semibold text-foreground border border-border hover:bg-muted cursor-pointer shrink-0"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Single Day Column container with touch swipe gestures */}
+                    <div
+                      onTouchStart={handleTouchStart}
+                      onTouchEnd={handleTouchEnd}
+                      className="touch-pan-y"
+                    >
+                      {weeklyData[mobileDayIndex] && (
+                        <DayColumn
+                          date={weeklyData[mobileDayIndex].date}
+                          rosters={weeklyData[mobileDayIndex].rosters}
+                          shifts={displayShifts}
+                          onDropStaff={handleDropStaff}
+                          onDeleteRoster={deleteRoster}
+                          canAssign={canAssign}
+                          initialsMap={initialsMap}
+                          offStaffList={deptStaff.filter((s) => checkIsOffDay(s.staffId, weeklyData[mobileDayIndex].date))}
+                          selectedStaffId={selectedStaffId}
+                          onTapAssign={handleTapAssign}
+                          isMobile={true}
+                        />
+                      )}
+                    </div>
+
+                    {/* Mobile Collapsible Staff Pool */}
+                    <div className="border border-border rounded-2xl bg-card overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setIsMobileStaffPoolOpen((v) => !v)}
+                        className="w-full p-3.5 flex items-center justify-between bg-muted/20 border-b border-border text-left cursor-pointer hover:bg-muted/30 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Users size={16} className="text-primary" />
+                          <span className="text-sm font-semibold text-foreground">
+                            Staff Pool ({deptStaff.length})
+                          </span>
+                        </div>
+                        {isMobileStaffPoolOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+
+                      {isMobileStaffPoolOpen && (
+                        <div className="p-3 flex flex-col gap-2.5">
+                          <div>
+                            <input
+                              type="text"
+                              placeholder="Search staff to assign..."
+                              value={staffSearch}
+                              onChange={(e) => setStaffSearch(e.target.value)}
+                              className="w-full px-3 py-2 text-xs rounded-xl border border-border outline-none bg-background text-foreground focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-0.5 scrollbar-thin">
+                            {filteredDeptStaff.length > 0 ? (
+                              filteredDeptStaff.map((member) => {
+                                const isSelected = selectedStaffId === member.staffId;
+                                const isOffToday = checkIsOffDay(member.staffId, todayStr);
+                                return (
+                                  <button
+                                    key={member.staffId}
+                                    type="button"
+                                    onClick={() => {
+                                      if (!canAssign) return;
+                                      setSelectedStaffId((curr) => (curr === member.staffId ? null : member.staffId));
+                                    }}
+                                    className={`p-2 rounded-xl border text-left flex items-center gap-2 transition-all cursor-pointer ${
+                                      isSelected
+                                        ? "border-primary bg-primary/10 ring-2 ring-primary/40 shadow-xs"
+                                        : "border-border bg-background hover:bg-muted/40"
+                                    } ${canAssign ? "" : "opacity-70 pointer-events-none"}`}
+                                  >
+                                    <div
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                        isSelected
+                                          ? "bg-primary text-primary-foreground font-black"
+                                          : "bg-muted text-foreground"
+                                      }`}
+                                    >
+                                      {initialsMap?.get(member.staffId) ??
+                                        member.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`text-xs font-semibold truncate m-0 ${isSelected ? "text-primary font-bold" : "text-foreground"}`}>
+                                        {member.name}
+                                      </p>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-[9px] text-muted-foreground truncate">{member.role}</span>
+                                        {isOffToday && (
+                                          <span className="text-[7px] font-black text-amber-600 dark:text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded px-1 shrink-0">
+                                            OFF
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <p className="col-span-2 text-center text-xs text-muted-foreground/60 py-4 m-0">No staff found</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               ) : (
@@ -819,7 +1233,7 @@ function Roster() {
                   <MonthlyTableView
                     exportMonth={exportMonth}
                     rosters={rosters}
-                    shifts={shifts}
+                    shifts={displayShifts}
                     allStaff={deptStaff}
                     isOffDay={checkIsOffDay}
                     onDropShift={handleDropStaff}
@@ -898,61 +1312,116 @@ function Roster() {
                         No assignments matched your search filters.
                       </p>
                     ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full border-collapse text-sm">
-                          <thead>
-                            <tr className="bg-muted/50 text-left">
-                              {["Staff", "Shift", "Date", "Notes", ""].map((h) => (
-                                <th key={h} className="px-3.5 py-2.5 font-semibold text-muted-foreground text-xs">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredRosters.map((r) => {
-                              const isToday = isActiveToday(r, todayStr);
-                              return (
-                                <tr
-                                  key={r.id}
-                                  className={`border-b border-border transition-colors duration-100 ${isToday ? "bg-primary/5 text-foreground" : "bg-card text-foreground"
-                                    }`}
-                                >
-                                  <td className="px-3.5 py-2.5 font-semibold">
-                                    {r.staffName}
+                      <>
+                        {/* Mobile Card List for All Assignments */}
+                        <div className="md:hidden flex flex-col divide-y divide-border">
+                          {filteredRosters.map((r) => {
+                            const isToday = isActiveToday(r, todayStr);
+                            return (
+                              <div
+                                key={r.id}
+                                className={`p-3 flex flex-col gap-2 transition-colors ${
+                                  isToday ? "bg-primary/5" : "bg-card"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="text-sm font-bold text-foreground truncate">{r.staffName}</span>
                                     {isToday && (
-                                      <span className="ml-1.5 text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">
+                                      <span className="text-[9px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5 shrink-0">
                                         ON DUTY
                                       </span>
                                     )}
-                                  </td>
-                                  <td className="px-3.5 py-2.5">
-                                    <ShiftBadge shift={r.shift} />
-                                  </td>
-                                  <td className="px-3.5 py-2.5 text-muted-foreground">{r.date}</td>
-                                  <td className="px-3.5 py-2.5 text-muted-foreground/60 italic">{r.notes || "—"}</td>
-                                  <td className="px-3.5 py-2.5 flex gap-1.5">
-                                    <button
-                                      onClick={() => handleEdit(r)}
-                                      title="Edit assignment"
-                                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border bg-card text-primary cursor-pointer hover:bg-muted transition-all duration-155"
-                                    >
-                                      <Edit2 size={14} />
-                                    </button>
-                                    <button
-                                      onClick={() => deleteRoster(r.id)}
-                                      disabled={deletingId === r.id}
-                                      title="Remove assignment"
-                                      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive cursor-pointer hover:bg-destructive/20 transition-all duration-150 ${deletingId === r.id ? "opacity-50" : "opacity-100"
-                                        }`}
-                                    >
-                                      <Trash2 size={14} />
-                                    </button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                  </div>
+                                  <ShiftBadge shift={r.shift} />
+                                </div>
+
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span className="font-medium text-foreground">{r.date}</span>
+                                  {r.notes && <span className="italic truncate max-w-[160px]">{r.notes}</span>}
+                                </div>
+
+                                <div className="flex items-center justify-end gap-2 pt-1 border-t border-border/40">
+                                  <button
+                                    onClick={() => handleEdit(r)}
+                                    title="Edit assignment"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-border bg-card text-primary cursor-pointer hover:bg-muted transition-colors"
+                                  >
+                                    <Edit2 size={12} /> Edit
+                                  </button>
+                                  <button
+                                    onClick={() => deleteRoster(r.id)}
+                                    disabled={deletingId === r.id}
+                                    title="Remove assignment"
+                                    className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg border border-destructive/20 bg-destructive/10 text-destructive cursor-pointer hover:bg-destructive/20 transition-colors ${
+                                      deletingId === r.id ? "opacity-50" : "opacity-100"
+                                    }`}
+                                  >
+                                    <Trash2 size={12} /> Delete
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <table className="w-full border-collapse text-sm">
+                            <thead>
+                              <tr className="bg-muted/50 text-left">
+                                {["Staff", "Shift", "Date", "Notes", ""].map((h) => (
+                                  <th key={h} className="px-3.5 py-2.5 font-semibold text-muted-foreground text-xs">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredRosters.map((r) => {
+                                const isToday = isActiveToday(r, todayStr);
+                                return (
+                                  <tr
+                                    key={r.id}
+                                    className={`border-b border-border transition-colors duration-100 ${isToday ? "bg-primary/5 text-foreground" : "bg-card text-foreground"
+                                      }`}
+                                  >
+                                    <td className="px-3.5 py-2.5 font-semibold">
+                                      {r.staffName}
+                                      {isToday && (
+                                        <span className="ml-1.5 text-[10px] font-bold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">
+                                          ON DUTY
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-3.5 py-2.5">
+                                      <ShiftBadge shift={r.shift} />
+                                    </td>
+                                    <td className="px-3.5 py-2.5 text-muted-foreground">{r.date}</td>
+                                    <td className="px-3.5 py-2.5 text-muted-foreground/60 italic">{r.notes || "—"}</td>
+                                    <td className="px-3.5 py-2.5 flex gap-1.5">
+                                      <button
+                                        onClick={() => handleEdit(r)}
+                                        title="Edit assignment"
+                                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-border bg-card text-primary cursor-pointer hover:bg-muted transition-all duration-155"
+                                      >
+                                        <Edit2 size={14} />
+                                      </button>
+                                      <button
+                                        onClick={() => deleteRoster(r.id)}
+                                        disabled={deletingId === r.id}
+                                        title="Remove assignment"
+                                        className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border border-destructive/20 bg-destructive/10 text-destructive cursor-pointer hover:bg-destructive/20 transition-all duration-150 ${deletingId === r.id ? "opacity-50" : "opacity-100"
+                                          }`}
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
                     )}
                   </>
                 )}

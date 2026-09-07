@@ -4,30 +4,30 @@ import type { RosterRow } from "../types";
 
 // ── Shift configuration ──────────────────────────────────────────────────────
 
-export const SHIFT_CONFIG: Record<string, { 
-  colorClass: string; 
-  bgClass: string; 
-  borderClass: string; 
-  textColorClass: string; 
-  gradientClass: string; 
-  Icon: React.ComponentType<{ size?: number; className?: string }> 
+export const SHIFT_CONFIG: Record<string, {
+  colorClass: string;
+  bgClass: string;
+  borderClass: string;
+  textColorClass: string;
+  gradientClass: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>
 }> = {
-  Morning:   { colorClass: "text-sky-500 dark:text-sky-400", bgClass: "bg-sky-50 dark:bg-sky-950/20", borderClass: "border-sky-200 dark:border-sky-900/30", textColorClass: "text-sky-700 dark:text-sky-400", gradientClass: "from-sky-50 to-white dark:from-sky-950/20 dark:to-card", Icon: Sunrise },
+  Morning: { colorClass: "text-sky-500 dark:text-sky-400", bgClass: "bg-sky-50 dark:bg-sky-950/20", borderClass: "border-sky-200 dark:border-sky-900/30", textColorClass: "text-sky-700 dark:text-sky-400", gradientClass: "from-sky-50 to-white dark:from-sky-950/20 dark:to-card", Icon: Sunrise },
   Afternoon: { colorClass: "text-emerald-600 dark:text-emerald-400", bgClass: "bg-emerald-50 dark:bg-emerald-950/20", borderClass: "border-emerald-200 dark:border-emerald-900/30", textColorClass: "text-emerald-800 dark:text-emerald-400", gradientClass: "from-emerald-50 to-white dark:from-emerald-950/20 dark:to-card", Icon: Sun },
-  Evening:   { colorClass: "text-orange-600 dark:text-orange-400", bgClass: "bg-orange-50 dark:bg-orange-950/20", borderClass: "border-orange-200 dark:border-orange-900/30", textColorClass: "text-orange-800 dark:text-orange-400", gradientClass: "from-orange-50 to-white dark:from-orange-950/20 dark:to-card", Icon: Sunset },
-  Night:     { colorClass: "text-purple-600 dark:text-purple-400", bgClass: "bg-purple-50 dark:bg-purple-950/20", borderClass: "border-purple-200 dark:border-purple-900/30", textColorClass: "text-purple-800 dark:text-purple-400", gradientClass: "from-purple-50 to-white dark:from-purple-950/20 dark:to-card", Icon: Moon },
-  Leave:     { colorClass: "text-rose-600 dark:text-rose-400", bgClass: "bg-rose-50 dark:bg-rose-950/20", borderClass: "border-rose-200 dark:border-rose-900/30", textColorClass: "text-rose-800 dark:text-rose-400", gradientClass: "from-rose-50 to-white dark:from-rose-950/20 dark:to-card", Icon: Palmtree },
+  Evening: { colorClass: "text-orange-600 dark:text-orange-400", bgClass: "bg-orange-50 dark:bg-orange-950/20", borderClass: "border-orange-200 dark:border-orange-900/30", textColorClass: "text-orange-800 dark:text-orange-400", gradientClass: "from-orange-50 to-white dark:from-orange-950/20 dark:to-card", Icon: Sunset },
+  Night: { colorClass: "text-purple-600 dark:text-purple-400", bgClass: "bg-purple-50 dark:bg-purple-950/20", borderClass: "border-purple-200 dark:border-purple-900/30", textColorClass: "text-purple-800 dark:text-purple-400", gradientClass: "from-purple-50 to-white dark:from-purple-950/20 dark:to-card", Icon: Moon },
+  Leave: { colorClass: "text-rose-600 dark:text-rose-400", bgClass: "bg-rose-50 dark:bg-rose-950/20", borderClass: "border-rose-200 dark:border-rose-900/30", textColorClass: "text-rose-800 dark:text-rose-400", gradientClass: "from-rose-50 to-white dark:from-rose-950/20 dark:to-card", Icon: Palmtree },
   "Half Day Leave": { colorClass: "text-rose-500 dark:text-rose-400", bgClass: "bg-rose-50/80 dark:bg-rose-950/30", borderClass: "border-rose-200 dark:border-rose-900/40", textColorClass: "text-rose-700 dark:text-rose-300", gradientClass: "from-rose-50/80 to-white dark:from-rose-950/30 dark:to-card", Icon: Palmtree },
 };
 
 export const getShiftConfig = (shift: string) =>
-  SHIFT_CONFIG[shift] ?? { 
-    colorClass: "text-slate-550 dark:text-slate-400", 
-    bgClass: "bg-slate-50 dark:bg-slate-900/30", 
-    borderClass: "border-slate-200 dark:border-slate-800/50", 
-    textColorClass: "text-slate-700 dark:text-slate-400", 
-    gradientClass: "from-slate-50 to-white dark:from-slate-900/20 dark:to-card", 
-    Icon: Clock 
+  SHIFT_CONFIG[shift] ?? {
+    colorClass: "text-slate-550 dark:text-slate-400",
+    bgClass: "bg-slate-50 dark:bg-slate-900/30",
+    borderClass: "border-slate-200 dark:border-slate-800/50",
+    textColorClass: "text-slate-700 dark:text-slate-400",
+    gradientClass: "from-slate-50 to-white dark:from-slate-900/20 dark:to-card",
+    Icon: Clock
   };
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ export const today = () => new Date().toISOString().split("T")[0];
 export const currentYearMonth = () => new Date().toISOString().slice(0, 7);
 
 export const isoDate = (offsetDays = 0) => {
-  const d = new Date(); 
+  const d = new Date();
   d.setDate(d.getDate() + offsetDays);
   return d.toISOString().split("T")[0];
 };
