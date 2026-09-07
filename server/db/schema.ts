@@ -367,8 +367,8 @@ export const leaveRequests = sqliteTable("leave_requests", {
   staffId: integer("staff_id").notNull(), // stable staffId, no FK
   leaveType: text("leave_type").notNull(),
   isHalfDay: boolean("is_half_day").notNull().default(false),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("Pending"),
   reviewedAt: timestamp("reviewed_at"),

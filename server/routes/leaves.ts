@@ -143,8 +143,8 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const input = leaveRequestInput.parse(rawInput);
 
     // Check for overlapping leaves
-    const reqStart = new Date(input.startDate);
-    const reqEnd = new Date(input.endDate);
+    const reqStart = input.startDate;
+    const reqEnd = input.endDate;
 
     const existingLeaves = await db
       .select()
@@ -218,8 +218,8 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .values({
         ...input,
         requestNo,
-        startDate: new Date(input.startDate),
-        endDate: new Date(input.endDate),
+        startDate: input.startDate,
+        endDate: input.endDate,
         status: "Pending",
         approverIds: JSON.stringify(computedApproverIds),
         supportingDocument: supportingDocumentPath,
@@ -266,6 +266,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         id: leaveRequests.id,
         requestNo: leaveRequests.requestNo,
         leaveType: leaveRequests.leaveType,
+        isHalfDay: leaveRequests.isHalfDay,
         startDate: leaveRequests.startDate,
         endDate: leaveRequests.endDate,
         reason: leaveRequests.reason,
@@ -420,6 +421,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         id: leaveRequests.id,
         requestNo: leaveRequests.requestNo,
         leaveType: leaveRequests.leaveType,
+        isHalfDay: leaveRequests.isHalfDay,
         startDate: leaveRequests.startDate,
         endDate: leaveRequests.endDate,
         reason: leaveRequests.reason,
@@ -709,17 +711,12 @@ export const leavesRoutes = new Hono<AuthEnv>()
         .then((res: any) => res[0]);
 
       if (leaveShift && activeDept) {
-        // Fix for one day gap: use local date string instead of toISOString() which returns UTC
-        const getLocalDateStr = (d: string | Date) => {
-          const date = new Date(d);
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-
-        const startDateStr = getLocalDateStr(leaveRequest.startDate);
-        const endDateStr = getLocalDateStr(leaveRequest.endDate);
+        const startDateStr = typeof leaveRequest.startDate === "string"
+          ? leaveRequest.startDate.slice(0, 10)
+          : new Date(leaveRequest.startDate).toISOString().slice(0, 10);
+        const endDateStr = typeof leaveRequest.endDate === "string"
+          ? leaveRequest.endDate.slice(0, 10)
+          : new Date(leaveRequest.endDate).toISOString().slice(0, 10);
 
         // Expand the leave date range to individual per-day roster rows
         const leaveDates: string[] = [];

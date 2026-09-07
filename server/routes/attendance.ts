@@ -79,7 +79,7 @@ export const attendanceRoutes = new Hono<AuthEnv>()
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateTimestamp} AND ${leaveRequests.endDate} >= ${dateTimestamp}`
+        sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${date} AND ${leaveRequests.endDate} >= ${date}`
       )
       .execute();
     const leaveMap = new Map(approvedLeaves.map((l) => [l.staffId, l]));

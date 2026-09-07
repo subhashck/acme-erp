@@ -48,6 +48,8 @@ interface PayslipRow extends Record<string, unknown> {
   status: string;
   paymentMode?: string;
   bankName?: string | null;
+  accountNumber?: string | null;
+  ifscCode?: string | null;
   chequeNumber?: string | null;
   chequeDate?: string | null;
   createdAt: string;
@@ -96,16 +98,20 @@ function PayrollPage() {
 
   const { currencySymbol } = useSystemSettings();
   const [activeTab, setActiveTab] = React.useState<"payslips" | "salaries" | "workflow" | "security-deposit">("payslips");
-  const [selectedMonth, setSelectedMonth] = React.useState(() => {
+  const getPreviousMonth = () => {
     const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
+  };
+
+  const [selectedMonth, setSelectedMonth] = React.useState(getPreviousMonth);
 
   const [generating, setGenerating] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
   const [generationResult, setGenerationResult] = React.useState<{ success: boolean; message: string } | null>(null);
   const [showSuperseded, setShowSuperseded] = React.useState(false);
-  const [filterMonth, setFilterMonth] = React.useState("");
+  const [filterMonth, setFilterMonth] = React.useState(getPreviousMonth);
   const [showForm, setShowForm] = React.useState(false);
 
   const [selectedDeptId, setSelectedDeptId] = React.useState<string>("");
@@ -405,6 +411,10 @@ function PayrollPage() {
   }, [payslipsQuery.data, showSuperseded, filterMonth]);
 
   const handleExport = () => {
+    if (!filterMonth) {
+      alert("Please select a specific month to export. Payroll export is restricted to a particular month.");
+      return;
+    }
     setExporting(true);
     try {
       exportPayrollToExcel({ payslips: filteredPayslips, filterMonth });
@@ -740,16 +750,24 @@ function PayrollPage() {
                   </label>
                 </div>
 
-                <Button
-                  onClick={handleExport}
-                  disabled={exporting || filteredPayslips.length === 0}
-                  variant="outline"
-                  size="default"
-                  className="gap-2 text-xs h-9 cursor-pointer"
-                >
-                  <FileDown size={14} />
-                  {exporting ? "Exporting..." : "Export Excel"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleExport}
+                    disabled={exporting || !filterMonth || filteredPayslips.length === 0}
+                    variant="outline"
+                    size="default"
+                    className="gap-2 text-xs h-9 cursor-pointer"
+                    title={!filterMonth ? "Select a month to enable Excel export" : `Export payroll for ${filterMonth}`}
+                  >
+                    <FileDown size={14} />
+                    {exporting ? "Exporting..." : filterMonth ? `Export Excel (${filterMonth})` : "Export Excel (Select Month)"}
+                  </Button>
+                  {!filterMonth && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+                      * Select a month to export
+                    </span>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -764,16 +782,9 @@ function PayrollPage() {
                 renderMobileCard={(row: PayslipRow) => (
                   <Card className="border border-border shadow-xs hover:shadow-sm transition-shadow">
                     <CardContent className="p-4 space-y-3.5">
-                      {/* Header: Name, Code & Month */}
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-350 font-bold text-xs border shadow-inner">
-                          {row.name.split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "P"}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-extrabold text-foreground text-sm truncate">{row.name}</h4>
-                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{row.employeeCode} &middot; {row.month}</p>
-                        </div>
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border ${
+                      {/* Status at top before employee name */}
+                      <div className="flex items-center justify-between">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border ${
                           row.status === "Cancelled"
                             ? "bg-red-50 text-red-700 border-red-200 ring-1 ring-inset ring-red-600/10 dark:bg-red-950/30 dark:text-red-300 dark:border-red-900/30 font-bold"
                             : row.status === "Draft"
@@ -784,6 +795,18 @@ function PayrollPage() {
                         }`}>
                           {row.status}
                         </span>
+                        <span className="text-xs text-muted-foreground font-mono">{row.month}</span>
+                      </div>
+
+                      {/* Employee info: Avatar, Name & Code */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-350 font-bold text-xs border shadow-inner">
+                          {row.name.split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "P"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-extrabold text-foreground text-sm truncate">{row.name}</h4>
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{row.employeeCode} &middot; {row.departmentName || row.role}</p>
+                        </div>
                       </div>
 
                       {/* Details Grid */}

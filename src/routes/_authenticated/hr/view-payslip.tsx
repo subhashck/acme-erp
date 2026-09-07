@@ -92,7 +92,18 @@ interface PayslipDetail {
 
 type SalaryTuple = [string, number, React.Dispatch<React.SetStateAction<number>>];
 
-
+function formatDateTime(dateVal?: string | Date | null): string {
+  if (!dateVal) return "—";
+  try {
+    const d = typeof dateVal === "string" ? new Date(dateVal) : dateVal;
+    if (isNaN(d.getTime())) return "—";
+    const str = typeof dateVal === "string" ? dateVal : dateVal.toISOString();
+    const hasTime = str.includes("T") || str.includes(":");
+    return format(d, hasTime ? "dd MMM yyyy, hh:mm a" : "dd MMM yyyy");
+  } catch {
+    return "—";
+  }
+}
 
 function ViewPayslipPage() {
   const { payslipId } = Route.useSearch();
@@ -500,128 +511,153 @@ function ViewPayslipPage() {
     >
 
       {/* Action Bar (hidden on print) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6 print:hidden">
-        <Link to="/hr/payroll">
-          <Button variant="ghost" className="gap-1.5 -ml-2" disabled={saving}>
-            <ArrowLeft size={15} /> Back to Payroll
-          </Button>
-        </Link>
-        <div className="flex items-center gap-2">
-          {isEditing ? (
-            <>
-              <Button
-                variant="ghost"
-                size="default"
-                className="gap-1 text-slate-500"
-                onClick={() => setIsEditing(false)}
-                disabled={saving}
-              >
-                <X size={14} /> Cancel
-              </Button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6 print:hidden">
+        <div className="flex items-center justify-between sm:justify-start gap-2">
+          <Link to="/hr/payroll">
+            <Button variant="ghost" size="sm" className="gap-1.5 -ml-2 text-xs sm:text-sm" disabled={saving}>
+              <ArrowLeft size={15} /> Back to Payroll
+            </Button>
+          </Link>
+          {!isEditing && (
+            <Badge
+              className={`sm:hidden capitalize text-xs font-semibold ${
+                p.status === "Cancelled"
+                  ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                  : p.status === "Active" || p.status === "Draft"
+                  ? ""
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {p.status} (v{p.version})
+            </Badge>
+          )}
+        </div>
+
+        {isEditing ? (
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+            <Button
+              variant="ghost"
+              size="default"
+              className="gap-1 text-slate-500 w-full sm:w-auto justify-center"
+              onClick={() => setIsEditing(false)}
+              disabled={saving}
+            >
+              <X size={14} /> Cancel
+            </Button>
+            <Button
+              variant="default"
+              size="default"
+              className="gap-1 w-full sm:w-auto justify-center"
+              onClick={handleSave}
+              disabled={saving}
+            >
+              <Check size={14} /> Save Changes
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 w-full sm:w-auto">
+            {/* Desktop Status Badge */}
+            <Badge
+              className={`hidden sm:inline-flex capitalize ${
+                p.status === "Cancelled"
+                  ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                  : p.status === "Active" || p.status === "Draft"
+                  ? ""
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {p.status} (v{p.version})
+            </Badge>
+
+            {/* Primary Workflow Action (Full-width on mobile) */}
+            {isHrOrAdmin && (p.status === "Active" || p.status === "Draft") && (
               <Button
                 variant="default"
                 size="default"
-                className="gap-1"
-                onClick={handleSave}
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer w-full sm:w-auto justify-center"
+                onClick={() => handleApprove("Approved by HR")}
                 disabled={saving}
               >
-                <Check size={14} /> Save Changes
+                <CheckCircle2 size={14} /> Approve as HR
               </Button>
-            </>
-          ) : (
-            <>
-              <Badge
-                className={`capitalize ${
-                  p.status === "Cancelled"
-                    ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
-                    : p.status === "Active" || p.status === "Draft"
-                    ? ""
-                    : "bg-muted text-muted-foreground"
-                }`}
+            )}
+            {canApproveManagement && p.status === "Approved by HR" && (
+              <Button
+                variant="default"
+                size="default"
+                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer w-full sm:w-auto justify-center"
+                onClick={() => handleApprove("Approved by Management")}
+                disabled={saving}
               >
-                {p.status} (v{p.version})
-              </Badge>
-              {isHrOrAdmin && (p.status === "Active" || p.status === "Draft") && (
-                <Button
-                  variant="outline"
-                  size="default"
-                  className="gap-1 cursor-pointer"
-                  onClick={() => setIsEditing(true)}
-                  disabled={saving}
-                >
-                  <Pencil size={13} /> Edit
-                </Button>
-              )}
-              {isHrOrAdmin && (p.status === "Active" || p.status === "Draft") && (
+                <CheckCircle2 size={14} /> Approve as Management
+              </Button>
+            )}
+            {isAccountsOrAdmin &&
+              (p.status === "Approved by Management" || p.status === "Approved by COO") && (
                 <Button
                   variant="default"
                   size="default"
-                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                  onClick={() => handleApprove("Approved by HR")}
-                  disabled={saving}
-                >
-                  <CheckCircle2 size={14} /> Approve as HR
-                </Button>
-              )}
-              {canApproveManagement && p.status === "Approved by HR" && (
-                <Button
-                  variant="default"
-                  size="default"
-                  className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer"
-                  onClick={() => handleApprove("Approved by Management")}
-                  disabled={saving}
-                >
-                  <CheckCircle2 size={14} /> Approve as Management
-                </Button>
-              )}
-              {(currentStaff?.departmentName === "Accounts" || session.data?.user.role === "admin") && (p.status === "Approved by Management" || p.status === "Approved by COO") && (
-                <Button
-                  variant="default"
-                  size="default"
-                  className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white cursor-pointer"
+                  className="gap-1.5 bg-teal-600 hover:bg-teal-700 text-white cursor-pointer w-full sm:w-auto justify-center"
                   onClick={() => handleApprove("Paid")}
                   disabled={saving}
                 >
                   <DollarSign size={14} /> Mark as Paid
                 </Button>
               )}
-              {(
-                (isHrOrAdmin && (p.status === "Draft" || p.status === "Active")) ||
-                ((isHrOrAdmin || canApproveManagement) && p.status === "Approved by HR")
-              ) && (
+
+            {/* Secondary Actions Grid on Mobile / Flex row on Desktop */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 w-full sm:w-auto">
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
+                {isHrOrAdmin && (p.status === "Active" || p.status === "Draft") && (
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="gap-1 cursor-pointer w-full sm:w-auto justify-center"
+                    onClick={() => setIsEditing(true)}
+                    disabled={saving}
+                  >
+                    <Pencil size={13} /> Edit
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="default"
-                  className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                  className={cn(
+                    "gap-1.5 w-full sm:w-auto justify-center cursor-pointer",
+                    !(isHrOrAdmin && (p.status === "Active" || p.status === "Draft")) && "col-span-2 sm:col-span-1"
+                  )}
+                  onClick={() => handlePdfAction("save")}
+                  disabled={downloadingPdf || saving}
+                >
+                  <Download size={15} className={downloadingPdf ? "animate-spin" : ""} />
+                  {downloadingPdf ? "Generating..." : "Save PDF"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="default"
+                  className="hidden sm:inline-flex gap-1.5 sm:w-auto justify-center cursor-pointer"
+                  onClick={() => handlePdfAction("print")}
+                  disabled={downloadingPdf || saving}
+                >
+                  <Printer size={15} className={downloadingPdf ? "animate-spin" : ""} />
+                  Print Payslip
+                </Button>
+              </div>
+              {((isHrOrAdmin && (p.status === "Draft" || p.status === "Active")) ||
+                ((isHrOrAdmin || canApproveManagement) && p.status === "Approved by HR")) && (
+                <Button
+                  variant="outline"
+                  size="default"
+                  className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive cursor-pointer w-full sm:w-auto justify-center"
                   onClick={() => handleApprove("Cancelled")}
                   disabled={saving}
                 >
                   <Ban size={14} /> Cancel Payslip
                 </Button>
               )}
-              <Button
-                variant="outline"
-                size="default"
-                className="gap-1.5"
-                onClick={() => handlePdfAction("save")}
-                disabled={downloadingPdf || saving}
-              >
-                <Download size={15} className={downloadingPdf ? "animate-spin" : ""} />
-                {downloadingPdf ? "Generating..." : "Save PDF"}
-              </Button>
-              <Button
-                variant="outline"
-                size="default"
-                className="gap-1.5"
-                onClick={() => handlePdfAction("print")}
-                disabled={downloadingPdf || saving}
-              >
-                <Printer size={15} className={downloadingPdf ? "animate-spin" : ""} />
-                Print Payslip
-              </Button>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Accounts Control & Notification Banner */}
@@ -704,7 +740,7 @@ function ViewPayslipPage() {
               <tbody>
                 {[
                   ["Payment Mode", p.paymentMode || "Bank Transfer"],
-                  ["Generated On", new Date(p.createdAt).toLocaleDateString("en-IN")],
+                  ["Generated On", formatDateTime(p.createdAt)],
                   ["Leave Days Taken", String(currentLeaveDays)],
                 ].map(([label, value]) => (
                   <tr key={label}>
@@ -1049,7 +1085,7 @@ function ViewPayslipPage() {
 
         {/* Unified Watermark for both PDF and Print */}
         <p id="payslip-watermark" style={{ display: "none" }} className="text-center text-[10px] text-muted-foreground mt-4">
-          Generated by Acme Hospital ERP · Issued on {new Date().toLocaleString("en-IN")} by {currentUserEmail} · Confidential
+          Generated by Acme Hospital ERP · Issued on {formatDateTime(new Date())} by {currentUserEmail} · Confidential
         </p>
       </div>
 
@@ -1071,7 +1107,7 @@ function ViewPayslipPage() {
               </span>
               <p className="font-semibold text-foreground">Payslip Generated (Active)</p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Generated on {new Date(p.createdAt).toLocaleString("en-IN")}
+                Generated on {formatDateTime(p.createdAt)}
               </p>
             </div>
 

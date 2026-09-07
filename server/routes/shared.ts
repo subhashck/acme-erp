@@ -679,20 +679,24 @@ export const leaveRequestInput = z
     staffId: z.number().int().positive(),
     leaveType: z.string().min(2),
     isHalfDay: z.boolean().default(false),
-    startDate: z.string().datetime(),
-    endDate: z.string().datetime(),
+    startDate: z
+      .string()
+      .transform((s) => s.split("T")[0])
+      .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid start date format (YYYY-MM-DD)")),
+    endDate: z
+      .string()
+      .transform((s) => s.split("T")[0])
+      .pipe(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid end date format (YYYY-MM-DD)")),
     reason: z.string().min(3),
     // supportingDocument is handled as a multipart file upload, not a JSON field
   })
   .refine(
     (value) => {
-      const start = new Date(value.startDate);
-      const end = new Date(value.endDate);
       if (value.isHalfDay) {
         // For half day leaves, start and end dates must be the exact same calendar day
-        return start.toISOString().split("T")[0] === end.toISOString().split("T")[0];
+        return value.startDate === value.endDate;
       }
-      return end >= start;
+      return value.endDate >= value.startDate;
     },
     {
       path: ["endDate"],

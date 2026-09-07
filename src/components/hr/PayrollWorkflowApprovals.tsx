@@ -60,15 +60,23 @@ export interface PayslipRow extends Record<string, unknown> {
   accountsNotes?: string | null;
 }
 
-export function PayrollWorkflowApprovals() {
+interface PayrollWorkflowApprovalsProps {
+  initialMonth?: string;
+}
+
+export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprovalsProps = {}) {
   const { session } = useRouteContext({ from: "/_authenticated" }) as { session?: any };
   const { currencySymbol } = useSystemSettings();
   const fmt = (n: number) => `${currencySymbol}${n.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
 
-  const [selectedMonth, setSelectedMonth] = React.useState(() => {
+  const getPreviousMonth = () => {
     const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  });
+  };
+
+  const [selectedMonth, setSelectedMonth] = React.useState(initialMonth || getPreviousMonth);
 
   const [selectedStage, setSelectedStage] = React.useState<"all" | "hr" | "management" | "accounts" | "completed">("all");
   const [selectedDeptId, setSelectedDeptId] = React.useState<string>("");
@@ -380,7 +388,7 @@ export function PayrollWorkflowApprovals() {
               <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Department</span>
               <Select
                 value={selectedDeptId}
-                label="Department"
+                // label="Department"
                 onChange={(e) => setSelectedDeptId(e.target.value)}
                 options={[
                   ["", "All Departments"],

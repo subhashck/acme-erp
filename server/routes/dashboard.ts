@@ -86,7 +86,7 @@ export const dashboardRoutes = new Hono<AuthEnv>().get(
         .select({ staffId: leaveRequests.staffId })
         .from(leaveRequests)
         .where(
-          sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${dateTimestamp} AND ${leaveRequests.endDate} >= ${dateTimestamp}`
+          sql`${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} <= ${todayStr} AND ${leaveRequests.endDate} >= ${todayStr}`
         ),
       db
         .select({ staffId: attendance.staffId })

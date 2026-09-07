@@ -275,9 +275,13 @@ function ReviewLeave() {
 
   const requestedDays = React.useMemo(() => {
     if (!leave) return 0;
-    const start = new Date(leave.startDate);
-    const end = new Date(leave.endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
+    if (leave.isHalfDay) return 0.5;
+    const startStr = leave.startDate.slice(0, 10);
+    const endStr = leave.endDate.slice(0, 10);
+    if (endStr < startStr) return 0;
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T00:00:00Z`);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   }, [leave]);
 
@@ -342,11 +346,8 @@ function ReviewLeave() {
   const canForward = canAction && leave.status === "Pending";
 
   const formatDateForInput = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toISOString().split("T")[0];
-    } catch {
-      return dateStr;
-    }
+    if (!dateStr) return "";
+    return typeof dateStr === "string" ? dateStr.slice(0, 10) : new Date(dateStr).toISOString().split("T")[0];
   };
 
   const handleAction = async (action: "approve" | "reject" | "forward" | "cancel") => {
@@ -433,7 +434,7 @@ function ReviewLeave() {
             <form className="grid gap-4 md:grid-cols-2">
               <Field label="Employee" value={leave.staffName} disabled />
               <Field label="Department" value={leave.departmentName || "—"} disabled />
-              <Field label="Leave Type" value={leave.leaveType} disabled />
+              <Field label="Leave Type" value={leave.isHalfDay ? `${leave.leaveType} (Half Day)` : leave.leaveType} disabled />
               <Field label="Start Date" type="date" value={formatDateForInput(leave.startDate)} disabled />
               <Field label="End Date" type="date" value={formatDateForInput(leave.endDate)} disabled />
               <Field label="Reason" className="md:col-span-2" value={leave.reason} disabled />

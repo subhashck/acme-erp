@@ -6,6 +6,10 @@ interface PayslipRow {
   name: string;
   role: string;
   departmentName: string | null;
+  paymentMode?: string | null;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  ifscCode?: string | null;
   basicSalary: number;
   hra: number;
   conveyance: number;
@@ -66,6 +70,10 @@ const COLUMNS: { key: string; label: string; group: ColGroup }[] = [
   { key: "Name",                  label: "Name",                      group: "info"            },
   { key: "Role",                  label: "Role",                      group: "info"            },
   { key: "Department",            label: "Department",                group: "info"            },
+  { key: "Payment Mode",          label: "Payment Mode",              group: "info"            },
+  { key: "Bank Name",             label: "Bank Name",                 group: "info"            },
+  { key: "Account Number",        label: "Account Number",            group: "info"            },
+  { key: "IFSC Code",             label: "IFSC Code",                 group: "info"            },
   { key: "Basic Salary",          label: "Basic Salary (₹)",          group: "earning"         },
   { key: "HRA",                   label: "HRA (₹)",                   group: "earning"         },
   { key: "Conveyance",            label: "Conveyance (₹)",            group: "earning"         },
@@ -119,6 +127,10 @@ function buildDataRows(payslips: PayslipRow[]): DataRow[] {
       "Name":                  p.name,
       "Role":                  p.role,
       "Department":            p.departmentName ?? "General",
+      "Payment Mode":          p.paymentMode || "Bank Transfer",
+      "Bank Name":             p.bankName || "—",
+      "Account Number":        p.accountNumber ? String(p.accountNumber) : "—",
+      "IFSC Code":             p.ifscCode ? String(p.ifscCode).toUpperCase() : "—",
       "Basic Salary":          basic,
       "HRA":                   hra,
       "Conveyance":            conveyance,
@@ -199,22 +211,88 @@ function buildWorksheet(dataRows: DataRow[]): Record<string, unknown> {
   return ws;
 }
 
+function sanitizeSheetName(name: string, existingNames: Set<string>): string {
+  let cleaned = name.replace(/[\\/?*:[\]]/g, " ").trim() || "Sheet";
+  if (cleaned.length > 31) {
+    cleaned = cleaned.slice(0, 31).trim();
+  }
+  let finalName = cleaned;
+  let counter = 1;
+  while (existingNames.has(finalName.toLowerCase())) {
+    const suffix = ` (${counter})`;
+    const maxBaseLen = Math.max(1, 31 - suffix.length);
+    finalName = `${cleaned.slice(0, maxBaseLen)}${suffix}`;
+    counter++;
+  }
+  existingNames.add(finalName.toLowerCase());
+  return finalName;
+}
+
+const STATUS_ORDER = [
+  "Paid",
+  "Approved by Management",
+  "Approved by COO",
+  "Approved by HR",
+  "Active",
+  "Draft",
+  "Cancelled",
+  "Superseded",
+];
+
+function notifyUser(message: string) {
+  if (typeof window !== "undefined" && typeof window.alert === "function") {
+    window.alert(message);
+  } else if (typeof globalThis !== "undefined" && typeof (globalThis as any).alert === "function") {
+    (globalThis as any).alert(message);
+  } else {
+    console.warn("[payroll-export]", message);
+  }
+}
+
 export function exportPayrollToExcel({ payslips, filterMonth }: ExportOptions): void {
-  if (payslips.length === 0) {
-    alert("No payslips to export. Adjust filters and try again.");
+  if (!filterMonth || !filterMonth.trim()) {
+    notifyUser("Please select a specific month to export. Payroll export is restricted to a particular month.");
     return;
   }
 
-  const dataRows = buildDataRows(payslips);
-  const ws = buildWorksheet(dataRows);
+  // Ensure export is strictly for the chosen month only
+  const targetPayslips = payslips.filter((p) => p.month === filterMonth);
+
+  if (targetPayslips.length === 0) {
+    notifyUser(`No payslips found to export for ${filterMonth}. Adjust filters and try again.`);
+    return;
+  }
+
+  // Group payslips strictly by status into separate sheets
+  const payslipsByStatus = new Map<string, PayslipRow[]>();
+  for (const p of targetPayslips) {
+    const st = p.status?.trim() || "Unknown";
+    const list = payslipsByStatus.get(st) || [];
+    list.push(p);
+    payslipsByStatus.set(st, list);
+  }
+
+  const sortedStatuses = Array.from(payslipsByStatus.keys()).sort((a, b) => {
+    const idxA = STATUS_ORDER.indexOf(a);
+    const idxB = STATUS_ORDER.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
 
   const wb = XLSX.utils.book_new();
-  const sheetName = filterMonth ? `Payroll ${filterMonth}` : "Payroll Export";
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  const existingSheetNames = new Set<string>();
 
-  const fileName = filterMonth
-    ? `payroll-${filterMonth}.xlsx`
-    : `payroll-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+  for (const status of sortedStatuses) {
+    const groupPayslips = payslipsByStatus.get(status)!;
+    const dataRows = buildDataRows(groupPayslips);
+    const ws = buildWorksheet(dataRows);
+    const sheetName = sanitizeSheetName(status, existingSheetNames);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  }
+
+  const fileName = `payroll-${filterMonth}.xlsx`;
 
   XLSX.writeFile(wb, fileName);
 }

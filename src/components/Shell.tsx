@@ -391,12 +391,12 @@ function ShellContent({ session }: { session: any }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 border-r py-6 transition-all duration-300 z-50",
+          "fixed inset-y-0 left-0 border-r py-6 transition-all duration-300 z-50 flex flex-col",
           // Desktop behavior
-          "hidden lg:block bg-sidebar/95 backdrop-blur",
+          "hidden lg:flex bg-sidebar/95 backdrop-blur",
           isSidebarMinimized ? "lg:w-16 lg:px-2" : "lg:w-72 lg:px-5",
           // Mobile overlay behavior
-          isMobileMenuOpen ? "block w-72 px-5 shadow-2xl bg-sidebar text-sidebar-foreground border-r border-sidebar-border" : "hidden"
+          isMobileMenuOpen ? "flex w-72 px-5 shadow-2xl bg-sidebar text-sidebar-foreground border-r border-sidebar-border" : "hidden"
         )}
       >
         {/* Minimize Button */}
@@ -409,7 +409,7 @@ function ShellContent({ session }: { session: any }) {
         </button>
 
         {/* Logo Section */}
-        <div className={cn("mb-8 flex items-center justify-between gap-3", isSidebarMinimized && "justify-center")}>
+        <div className={cn("mb-6 flex items-center justify-between gap-3 shrink-0", isSidebarMinimized && "justify-center")}>
           <div className="flex items-center gap-3">
             <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground shrink-0">
               <Activity size={24} />
@@ -439,7 +439,10 @@ function ShellContent({ session }: { session: any }) {
         {/* Navigation */}
         <nav
           onClick={() => setIsMobileMenuOpen(false)}
-          className={cn("space-y-1.5", isSidebarMinimized && "space-y-3 flex flex-col items-center")}
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-1.5 pr-1 pb-2",
+            isSidebarMinimized && "space-y-3 flex flex-col items-center pr-0"
+          )}
         >
 
           {/* Expanded Sidebar Navigation */}
@@ -1570,7 +1573,7 @@ function ShellContent({ session }: { session: any }) {
                 </Button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 z-50 w-80 sm:w-96 rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
+                  <div className="absolute left-0 md:left-auto md:right-0 mt-2 z-50 w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <div className="font-semibold text-sm">Notifications</div>
                       <div className="flex items-center gap-3">
@@ -1592,7 +1595,7 @@ function ShellContent({ session }: { session: any }) {
                         )}
                       </div>
                     </div>
-                    <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
+                    <div className="max-h-[calc(100vh-14rem)] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-border">
                       {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs">
                           <Bell className="size-8 mb-2 opacity-40" />

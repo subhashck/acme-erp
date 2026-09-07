@@ -282,4 +282,89 @@ export const messagesRoutes = new Hono<AuthEnv>()
     dispatchMessage(newMsg);
 
     return c.json(newMsg);
+  })
+  // ── DELETE /messages/direct/:colleagueId ─────────────────────────────────
+  // Clears all direct messages between current user and a colleague
+  .delete("/messages/direct/:colleagueId", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const { colleagueId } = c.req.param();
+
+    await db
+      .delete(messages)
+      .where(
+        sql`${messages.channelType} = 'direct' AND (
+          (${messages.senderId} = ${userId} AND ${messages.receiverId} = ${colleagueId}) OR
+          (${messages.senderId} = ${colleagueId} AND ${messages.receiverId} = ${userId})
+        )`
+      )
+      .execute();
+
+    dispatchMessage({
+      action: "clear_direct",
+      channelType: "direct",
+      senderId: userId,
+      receiverId: colleagueId,
+    });
+
+    return c.json({ ok: true });
+  })
+  // ── DELETE /messages/:id ──────────────────────────────────────────────────
+  // Deletes a single message.
+  // Direct messages: sender, receiver, or admin can delete.
+  // Org / Department messages: allowed within 1 hour of sending by sender or admin.
+  .delete("/messages/:id", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const isAdmin = session.user.role === "admin";
+    const id = Number(c.req.param("id"));
+
+    if (isNaN(id)) {
+      return c.json({ error: "Invalid message ID" }, 400);
+    }
+
+    const [target] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, id))
+      .limit(1);
+
+    if (!target) {
+      return c.json({ error: "Message not found" }, 404);
+    }
+
+    if (target.channelType === "direct") {
+      const isParticipant = target.senderId === userId || target.receiverId === userId;
+      if (!isParticipant && !isAdmin) {
+        return c.json({ error: "Unauthorized to delete this message" }, 403);
+      }
+    } else {
+      // Organization / Department broadcast messages
+      const isSender = target.senderId === userId;
+      if (!isSender && !isAdmin) {
+        return c.json({ error: "You can only delete your own messages" }, 403);
+      }
+
+      const ageMs = Date.now() - new Date(target.createdAt).getTime();
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      if (ageMs > ONE_HOUR_MS) {
+        return c.json(
+          { error: "Organization and management messages can only be deleted within 1 hour of sending." },
+          403
+        );
+      }
+    }
+
+    await db.delete(messages).where(eq(messages.id, id)).execute();
+
+    dispatchMessage({
+      action: "delete_message",
+      id: target.id,
+      channelType: target.channelType,
+      departmentId: target.departmentId,
+      senderId: target.senderId,
+      receiverId: target.receiverId,
+    });
+
+    return c.json({ ok: true, id: target.id });
   });

@@ -65,6 +65,7 @@ export type LeaveRow = {
   employeeCode: string;
   staffName: string;
   leaveType: string;
+  isHalfDay?: boolean;
   startDate: string;
   endDate: string;
   reason: string;
@@ -83,6 +84,7 @@ export type LeaveDetailRow = {
   id: number;
   requestNo: string;
   leaveType: string;
+  isHalfDay?: boolean;
   startDate: string;
   endDate: string;
   reason: string;

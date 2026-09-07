@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "@tanstack/react-store";
 import { createFileRoute } from "@tanstack/react-router";
-import { Send, Hash, Users, Globe, Building2, User, Radio, PenSquare, Search, X } from "lucide-react";
+import { Send, Hash, Users, Globe, Building2, User, Radio, PenSquare, Search, X, Trash2 } from "lucide-react";
 import { chatStore, chatActions, type ChatChannel } from "@/lib/chat-store";
 import { useRpcQuery } from "@/lib/query";
 import { client } from "@/services/rpc";
@@ -79,6 +79,20 @@ function CommunicationPage() {
     chatActions.openDirectChat(conv);
   };
 
+  const handleClearDirectChat = async () => {
+    if (!store.activeChannel?.targetId) return;
+    const partnerName = store.activeChannel.name;
+    if (window.confirm(`Are you sure you want to clear all messages with ${partnerName}? This cannot be undone.`)) {
+      await chatActions.clearDirectMessages(String(store.activeChannel.targetId));
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: number) => {
+    if (window.confirm("Are you sure you want to delete this message?")) {
+      await chatActions.deleteMessage(messageId);
+    }
+  };
+
   return (
     <ModuleLayout
       title="Communication Hub"
@@ -146,33 +160,51 @@ function CommunicationPage() {
                     const isActive = store.activeChannel?.id === channelId;
                     const hasUnread = conv.unread > 0;
                     return (
-                      <button
+                      <div
                         key={conv.id}
                         onClick={() => handleSelectConversation(conv)}
                         className={cn(
-                          "w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer",
+                          "group flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-all cursor-pointer",
                           isActive
                             ? "bg-primary text-primary-foreground shadow-xs shadow-primary/20"
                             : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                         )}
                       >
-                        <User size={14} className="shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className={cn("truncate", hasUnread && !isActive && "text-foreground font-semibold")}>
-                              {conv.name}
-                            </span>
-                            {hasUnread && !isActive && (
-                              <span className="shrink-0 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center leading-none">
-                                {conv.unread > 99 ? "99+" : conv.unread}
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <User size={14} className="shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={cn("truncate", hasUnread && !isActive && "text-foreground font-semibold")}>
+                                {conv.name}
                               </span>
+                              {hasUnread && !isActive && (
+                                <span className="shrink-0 h-4 min-w-4 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center leading-none">
+                                  {conv.unread > 99 ? "99+" : conv.unread}
+                                </span>
+                              )}
+                            </div>
+                            {conv.lastMessage && (
+                              <p className="text-[10px] truncate opacity-70 mt-0.5">{conv.lastMessage}</p>
                             )}
                           </div>
-                          {conv.lastMessage && (
-                            <p className="text-[10px] truncate opacity-70 mt-0.5">{conv.lastMessage}</p>
-                          )}
                         </div>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`Clear all messages with ${conv.name}?`)) {
+                              chatActions.clearDirectMessages(conv.id);
+                            }
+                          }}
+                          className={cn(
+                            "opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-muted-foreground hover:text-rose-500 transition-all shrink-0 ml-1 cursor-pointer",
+                            isActive && "text-primary-foreground/80 hover:text-rose-200"
+                          )}
+                          title={`Clear chat with ${conv.name}`}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
                     );
                   })
                 )}
@@ -190,11 +222,24 @@ function CommunicationPage() {
                 <Hash size={16} className="text-primary" /> {store.activeChannel?.name || "Select Channel"}
               </h3>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {store.activeChannel?.type === "organization" && "Post announcements to everyone"}
-                {store.activeChannel?.type === "department" && "Team-only department chatroom"}
+                {store.activeChannel?.type === "organization" && "Post announcements to everyone (deletes allowed within 1 hour)"}
+                {store.activeChannel?.type === "department" && "Team-only department chatroom (deletes allowed within 1 hour)"}
                 {store.activeChannel?.type === "direct" && `Private message with ${store.activeChannel.name}`}
               </p>
             </div>
+            {store.activeChannel?.type === "direct" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClearDirectChat}
+                disabled={store.messages.length === 0}
+                className="text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 border-rose-200 dark:border-rose-900/40 flex items-center gap-1.5 h-8 cursor-pointer transition-colors"
+                title="Clear all messages in this conversation"
+              >
+                <Trash2 size={13} />
+                <span>Clear Chat</span>
+              </Button>
+            )}
           </div>
 
           {/* Messages Feed */}
@@ -208,17 +253,37 @@ function CommunicationPage() {
             ) : (
               store.messages.map((msg) => {
                 const isOwn = msg.senderId === currentUser?.id;
+                const msgAgeMs = Date.now() - new Date(msg.createdAt).getTime();
+                const isWithinOneHour = msgAgeMs <= 60 * 60 * 1000;
+                const isOrgOrDept = store.activeChannel?.type === "organization" || store.activeChannel?.type === "department";
+
+                // For org/management messages: allow deletes if within 1 hour
+                // For direct messages: allow delete if user is sender or admin
+                const canDelete = isOrgOrDept
+                  ? (isOwn || currentUser?.role === "admin") && isWithinOneHour
+                  : (isOwn || currentUser?.role === "admin");
+
                 return (
                   <div
                     key={msg.id}
                     className={cn(
-                      "flex flex-col max-w-[80%] md:max-w-[70%] animate-in fade-in duration-200",
+                      "group flex flex-col max-w-[80%] md:max-w-[70%] animate-in fade-in duration-200",
                       isOwn ? "ml-auto items-end" : "mr-auto items-start"
                     )}
                   >
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="text-[10px] font-semibold text-foreground">{msg.senderName}</span>
                       <span className="text-[9px] text-muted-foreground">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMessage(msg.id)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 text-muted-foreground hover:text-rose-500 cursor-pointer rounded"
+                          title={isOrgOrDept ? "Delete announcement (allowed within 1 hour)" : "Delete message"}
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      )}
                     </div>
                     <div
                       className={cn(

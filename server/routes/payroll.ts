@@ -37,9 +37,9 @@ function formatPayslipWithBankDetails(row: any) {
   return {
     ...row,
     paymentMode,
-    bankName: paymentMode === "Cash" ? null : (row.bankName || (paymentMode === "Bank Transfer" ? (bankName || null) : null)),
-    accountNumber: paymentMode === "Bank Transfer" ? (accountNumber || null) : null,
-    ifscCode: paymentMode === "Bank Transfer" ? (ifscCode || null) : null,
+    bankName: bankName || row.bankName || null,
+    accountNumber: accountNumber || row.accountNumber || null,
+    ifscCode: ifscCode || row.ifscCode || null,
     chequeNumber: paymentMode === "Cheque" ? (row.chequeNumber || null) : null,
     chequeDate: paymentMode === "Cheque" ? (row.chequeDate || null) : null,
   };
@@ -235,30 +235,27 @@ export const payrollRoutes = new Hono<AuthEnv>()
 
     // Leave balance for the employee: current calendar year
     const year = row.month.slice(0, 4);
-    const yearStart = new Date(`${year}-01-01T00:00:00Z`);
-    const yearEnd = new Date(`${year}-12-31T23:59:59Z`);
+    const yearStartStr = `${year}-01-01`;
+    const yearEndStr = `${year}-12-31`;
 
     const allLeaveTypes = await db
       .select()
       .from(leaveTypes)
       .where(eq(leaveTypes.active, true))
       .execute();
-    const queryYearStart = new Date(yearStart.getTime() - 24 * 60 * 60 * 1000);
-    const queryYearEnd = new Date(yearEnd.getTime() + 24 * 60 * 60 * 1000);
 
     const approvedLeaves = await db
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${queryYearStart.toISOString()} AND ${leaveRequests.startDate} <= ${queryYearEnd.toISOString()}`
+        sql`${leaveRequests.staffId} = ${row.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.startDate} >= ${yearStartStr} AND ${leaveRequests.startDate} <= ${yearEndStr}`
       )
       .execute();
 
-    const getLocalDateStr = (d: Date) => {
+    const getLocalDateStr = (d: Date | string) => {
+      if (typeof d === "string") return d.slice(0, 10);
       return new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
     };
-    const yearStartStr = `${year}-01-01`;
-    const yearEndStr = `${year}-12-31`;
 
     // Count days taken per leave type
     const daysByType: Record<string, number> = {};
@@ -938,7 +935,8 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .execute();
     }
 
-    const getLocalDateStr = (d: Date) => {
+    const getLocalDateStr = (d: Date | string) => {
+      if (typeof d === "string") return d.slice(0, 10);
       return new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
     };
     const monthStartStr = `${month}-01`;
@@ -957,7 +955,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .select()
       .from(leaveRequests)
       .where(
-        sql`${leaveRequests.status} IN ('Pending', 'Forwarded', 'Pending Payroll Approval') AND ${leaveRequests.endDate} >= ${queryStart.toISOString()} AND ${leaveRequests.startDate} <= ${queryEnd.toISOString()}`
+        sql`${leaveRequests.status} IN ('Pending', 'Forwarded', 'Pending Payroll Approval') AND ${leaveRequests.endDate} >= ${monthStartStr} AND ${leaveRequests.startDate} <= ${monthEndStr}`
       )
       .execute();
 
@@ -1149,7 +1147,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         .select()
         .from(leaveRequests)
         .where(
-          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${queryStart.toISOString()} AND ${leaveRequests.startDate} <= ${queryEnd.toISOString()}`
+          sql`${leaveRequests.staffId} = ${employee.staffId} AND ${leaveRequests.status} = 'Approved' AND ${leaveRequests.endDate} >= ${monthStartStr} AND ${leaveRequests.startDate} <= ${monthEndStr}`
         )
         .execute();
 

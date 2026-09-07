@@ -868,15 +868,15 @@ export const staffRoutes = new Hono<AuthEnv>()
       .where(
         sql`${leaveRequests.staffId} = ${id}
           AND ${leaveRequests.status} = 'Approved'
-          AND ${leaveRequests.startDate} >= ${yearStart.toISOString()}
-          AND ${leaveRequests.startDate} <= ${yearEnd.toISOString()}`
+          AND ${leaveRequests.startDate} >= ${`${year}-01-01`}
+          AND ${leaveRequests.startDate} <= ${`${year}-12-31`}`
       )
       .execute();
 
     const daysByType: Record<string, number> = {};
     for (const lr of approvedLeaves) {
-      const start = lr.startDate;
-      const end = lr.endDate;
+      const start = new Date(`${String(lr.startDate).slice(0, 10)}T00:00:00Z`);
+      const end = new Date(`${String(lr.endDate).slice(0, 10)}T00:00:00Z`);
       const days = lr.isHalfDay 
         ? 0.5 
         : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
