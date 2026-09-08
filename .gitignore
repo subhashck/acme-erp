@@ -6,3 +6,5 @@ uploads/
 .env
 coverage/
 scratch/
+scripts/*.sql
+*.sql
