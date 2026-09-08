@@ -736,12 +736,12 @@ describe("Front Office Processor Engine", () => {
   });
 
   describe("Docterz API Headers Configuration & Parsing Engine", () => {
-    it("should provide default fallback configuration with clinic and doctor IDs", () => {
-      expect(DEFAULT_DOCTERZ_CONFIG.authorization).toBeDefined();
-      expect(DEFAULT_DOCTERZ_CONFIG.apiKey).toBeDefined();
-      expect(DEFAULT_DOCTERZ_CONFIG.appKey).toBe("79ca90b3");
-      expect(DEFAULT_DOCTERZ_CONFIG.clinicId).toBe("5760");
-      expect(DEFAULT_DOCTERZ_CONFIG.doctorIds).toContain("11299");
+    it("should provide default configuration object with empty credentials when env unset", () => {
+      expect(DEFAULT_DOCTERZ_CONFIG.authorization).toBe("");
+      expect(DEFAULT_DOCTERZ_CONFIG.apiKey).toBe("");
+      expect(DEFAULT_DOCTERZ_CONFIG.appKey).toBe("");
+      expect(DEFAULT_DOCTERZ_CONFIG.clinicId).toBe("");
+      expect(DEFAULT_DOCTERZ_CONFIG.doctorIds).toBe("");
       expect(DEFAULT_DOCTERZ_CONFIG.baseUrl).toContain("api.docterz.in");
     });
 
@@ -750,30 +750,30 @@ describe("Front Office Processor Engine", () => {
         accept: text/csv
         authorization: test-token-123456
         x-api-key: eyJhbGciOiJIUzI1NiJ9.test-jwt-payload
-        x-app-key: 79ca90b3
+        x-app-key: sample-app-key
         Referer: https://web.docterz.in/
       `;
       const parsed = parseRawHeadersOrCurl(rawText);
       expect(parsed.authorization).toBe("test-token-123456");
       expect(parsed.apiKey).toBe("eyJhbGciOiJIUzI1NiJ9.test-jwt-payload");
-      expect(parsed.appKey).toBe("79ca90b3");
+      expect(parsed.appKey).toBe("sample-app-key");
       expect(parsed.referer).toBe("https://web.docterz.in/");
     });
 
     it("should extract parameters from DevTools cURL command", () => {
       const curlCommand = `
-        curl 'https://api.docterz.in/admin/reports/clinic/consultation_report?clinic_id=5760&doctor_ids=%5B11299%5D' \\
+        curl 'https://api.docterz.in/admin/reports/clinic/consultation_report?clinic_id=9999&doctor_ids=%5B101%5D' \\
           -H 'authorization: my-curl-auth-token' \\
           -H 'x-api-key: my-curl-api-key' \\
-          -H 'x-app-key: 79ca90b3' \\
+          -H 'x-app-key: sample-app-key' \\
           -H 'Referer: https://web.docterz.in/'
       `;
       const parsed = parseRawHeadersOrCurl(curlCommand);
       expect(parsed.authorization).toBe("my-curl-auth-token");
       expect(parsed.apiKey).toBe("my-curl-api-key");
-      expect(parsed.appKey).toBe("79ca90b3");
-      expect(parsed.clinicId).toBe("5760");
-      expect(parsed.doctorIds).toBe("[11299]");
+      expect(parsed.appKey).toBe("sample-app-key");
+      expect(parsed.clinicId).toBe("9999");
+      expect(parsed.doctorIds).toBe("[101]");
     });
 
     it("should handle empty or malformed strings safely without throwing", () => {

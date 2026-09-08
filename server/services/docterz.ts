@@ -14,13 +14,11 @@ export interface DocterzApiConfig {
 }
 
 export const DEFAULT_DOCTERZ_CONFIG: DocterzApiConfig = {
-  authorization: process.env.DOCTERZ_AUTHORIZATION || "3ctPSDmEi6VL-N8KR1cDt7pd01teTEwq",
-  apiKey:
-    process.env.DOCTERZ_API_KEY ||
-    "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjoiOTYzOTMxOCIsImRldmljZV9pZCI6ImVmMzlkN2M3OTU3ZTYzMzliNjQ2NWI0NTM5M2ZhZDM1In0.XQzLIvI_WY1rIOpSb9zKdvaBNI0ksbiRz3PyFkRq3aI",
-  appKey: process.env.DOCTERZ_APP_KEY || "79ca90b3",
-  clinicId: process.env.DOCTERZ_CLINIC_ID || "5760",
-  doctorIds: process.env.DOCTERZ_DOCTOR_IDS || "[11299,11300,11301,11302,11600,11601]",
+  authorization: process.env.DOCTERZ_AUTHORIZATION || "",
+  apiKey: process.env.DOCTERZ_API_KEY || "",
+  appKey: process.env.DOCTERZ_APP_KEY || "",
+  clinicId: process.env.DOCTERZ_CLINIC_ID || "",
+  doctorIds: process.env.DOCTERZ_DOCTOR_IDS || "",
   baseUrl: process.env.DOCTERZ_BASE_URL || "https://api.docterz.in/admin/reports/clinic/consultation_report",
   referer: process.env.DOCTERZ_REFERER || "https://web.docterz.in/",
 };
@@ -163,6 +161,15 @@ export async function testDocterzConnection(
   };
 
   const startTime = Date.now();
+  if (!config.authorization || !config.apiKey) {
+    return {
+      success: false,
+      status: 400,
+      message: "Docterz API credentials are not configured. Please provide an authorization token and API key.",
+      latencyMs: 0,
+    };
+  }
+
   const date = testDate || new Date().toISOString().slice(0, 10);
   const rawDoctorIds = config.doctorIds || DEFAULT_DOCTERZ_CONFIG.doctorIds;
   const doctorIds = rawDoctorIds.includes("%") ? decodeURIComponent(rawDoctorIds) : rawDoctorIds;
@@ -296,6 +303,11 @@ export async function fetchDocterzReport(
   }
 ): Promise<Record<string, any>[]> {
   const config = await getDocterzConfig();
+  if (!config.authorization || !config.apiKey) {
+    throw new Error(
+      `Docterz API credentials are not configured. Please configure them via environment variables or settings.`
+    );
+  }
   const clinicId = options?.clinicId || config.clinicId;
   const rawDoctorIds = options?.doctorIds || config.doctorIds;
   // Ensure we do not pass already-encoded %5B to searchParams (which double-encodes to %255B)

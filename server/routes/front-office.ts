@@ -473,9 +473,9 @@ export const frontOfficeRoutes = new Hono<AuthEnv>()
       z.object({
         authorization: z.string().min(1, "Authorization header token is required"),
         apiKey: z.string().min(1, "x-api-key token is required"),
-        appKey: z.string().optional().default("79ca90b3"),
-        clinicId: z.string().optional().default("5760"),
-        doctorIds: z.string().optional().default("[11299,11300,11301,11302,11600,11601]"),
+        appKey: z.string().optional().default(""),
+        clinicId: z.string().optional().default(""),
+        doctorIds: z.string().optional().default(""),
         baseUrl: z.string().url("Base URL must be valid").optional(),
         referer: z.string().optional(),
       })

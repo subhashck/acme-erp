@@ -91,9 +91,9 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
 
   const [authorization, setAuthorization] = React.useState("");
   const [apiKey, setApiKey] = React.useState("");
-  const [appKey, setAppKey] = React.useState("79ca90b3");
-  const [clinicId, setClinicId] = React.useState("5760");
-  const [doctorIds, setDoctorIds] = React.useState("[11299,11300,11301,11302,11600,11601]");
+  const [appKey, setAppKey] = React.useState("");
+  const [clinicId, setClinicId] = React.useState("");
+  const [doctorIds, setDoctorIds] = React.useState("");
   const [baseUrl, setBaseUrl] = React.useState("https://api.docterz.in/admin/reports/clinic/consultation_report");
   const [referer, setReferer] = React.useState("https://web.docterz.in/");
 
@@ -127,9 +127,9 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
     if (configQuery.data) {
       setAuthorization(configQuery.data.authorization || "");
       setApiKey(configQuery.data.apiKey || "");
-      setAppKey(configQuery.data.appKey || "79ca90b3");
-      setClinicId(configQuery.data.clinicId || "5760");
-      setDoctorIds(configQuery.data.doctorIds || "[11299,11300,11301,11302,11600,11601]");
+      setAppKey(configQuery.data.appKey || "");
+      setClinicId(configQuery.data.clinicId || "");
+      setDoctorIds(configQuery.data.doctorIds || "");
       setBaseUrl(configQuery.data.baseUrl || "https://api.docterz.in/admin/reports/clinic/consultation_report");
       setReferer(configQuery.data.referer || "https://web.docterz.in/");
       setTestResult(null);
@@ -148,9 +148,9 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
         body: JSON.stringify({
           authorization: authorization.trim(),
           apiKey: apiKey.trim(),
-          appKey: appKey.trim() || "79ca90b3",
-          clinicId: clinicId.trim() || "5760",
-          doctorIds: doctorIds.trim() || "[11299,11300,11301,11302,11600,11601]",
+          appKey: appKey.trim(),
+          clinicId: clinicId.trim(),
+          doctorIds: doctorIds.trim(),
           baseUrl: baseUrl.trim() || "https://api.docterz.in/admin/reports/clinic/consultation_report",
           referer: referer.trim() || "https://web.docterz.in/",
         }),
@@ -387,7 +387,7 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
                 type={showTokens ? "text" : "password"}
                 value={authorization}
                 onChange={(e) => setAuthorization(e.target.value)}
-                placeholder="e.g. 3ctPSDmEi6VL-N8KR1cDt7pd01teTEwq"
+                placeholder="e.g. Enter authorization token"
                 className="font-mono text-xs h-9"
               />
             </div>
@@ -437,7 +437,7 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
                   type="text"
                   value={clinicId}
                   onChange={(e) => setClinicId(e.target.value)}
-                  placeholder="5760"
+                  placeholder="e.g. 1234"
                   className="font-mono text-xs h-9"
                 />
               </div>
@@ -453,7 +453,7 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
                   type="text"
                   value={appKey}
                   onChange={(e) => setAppKey(e.target.value)}
-                  placeholder="79ca90b3"
+                  placeholder="e.g. app-key"
                   className="font-mono text-xs h-9"
                 />
               </div>
@@ -471,7 +471,7 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
                 type="text"
                 value={doctorIds}
                 onChange={(e) => setDoctorIds(e.target.value)}
-                placeholder="[11299,11300,11301,11302,11600,11601]"
+                placeholder="e.g. [101, 102]"
                 className="font-mono text-xs h-9"
               />
               <p className="text-[10px] text-muted-foreground">

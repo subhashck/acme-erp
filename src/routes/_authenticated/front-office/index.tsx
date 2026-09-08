@@ -2741,7 +2741,7 @@ function FrontOfficePage() {
                     <div className="flex items-center gap-2">
                       <Globe className="size-3.5 text-emerald-600" />
                       <span>
-                        Connected to <strong>Docterz Clinic API</strong> (Clinic ID: 5760 • OPD Module • 6 Doctors)
+                        Connected to <strong>Docterz Clinic API</strong> (OPD Consultation Reports)
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
