@@ -132,7 +132,11 @@ export async function getDocumentStream(objectKey: string): Promise<{
       filename,
     };
   } catch (err: any) {
-    console.error(`[MinIO] Failed to retrieve document "${objectKey}":`, err);
+    if (err?.code === "NoSuchKey" || err?.name === "NoSuchKey") {
+      console.warn(`[MinIO] Document not found: "${objectKey}"`);
+    } else {
+      console.error(`[MinIO] Failed to retrieve document "${objectKey}":`, err);
+    }
     return null;
   }
 }

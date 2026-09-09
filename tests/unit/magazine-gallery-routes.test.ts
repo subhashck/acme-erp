@@ -136,4 +136,15 @@ describe("Public Magazine & Gallery Routes", () => {
     const data = await res.json();
     expect(data.error).toBe("Invalid image path");
   });
+
+  it("serves a branded SVG placeholder image when a magazine image key is not found in storage", async () => {
+    const res = await publicRoutes.request("/public/magazine/images/magazine/media/1abd8b52f7/Building_1abd8b52f7.webp");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("image/svg+xml");
+    expect(res.headers.get("x-asset-fallback")).toBe("placeholder");
+    const svg = await res.text();
+    expect(svg).toContain("<svg");
+    expect(svg).toContain("Building");
+    expect(svg).toContain("PREVIEW PLACEHOLDER");
+  });
 });

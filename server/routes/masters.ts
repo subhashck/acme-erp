@@ -73,7 +73,7 @@ export const mastersRoutes = new Hono<AuthEnv>()
       .insert(leaveTypes)
       .values({
         ...input,
-        paymentRate: String(input.paymentRate),
+        paymentRate: String(input.payable ? input.paymentRate : 0),
       })
       .returning()
       .execute();
@@ -86,7 +86,7 @@ export const mastersRoutes = new Hono<AuthEnv>()
       .update(leaveTypes)
       .set({
         ...input,
-        paymentRate: String(input.paymentRate),
+        paymentRate: String(input.payable ? input.paymentRate : 0),
       })
       .where(eq(leaveTypes.id, id))
       .returning()

@@ -39,7 +39,8 @@ import {
   CalendarOff,
   FileBarChart,
   GraduationCap,
-  BookOpen
+  BookOpen,
+  FlaskConical
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -263,6 +264,26 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
+  if (pathname === "/lab" || pathname === "/lab/") {
+    items.push({ label: "Laboratory", to: "/lab" });
+    return items;
+  }
+
+  if (pathname.startsWith("/lab/")) {
+    items.push({ label: "Laboratory", to: "/lab" });
+    const sub = pathname.replace("/lab/", "");
+    if (sub === "orders/new") {
+      items.push({ label: "New Order Entry", to: "/lab/orders/new" });
+    } else if (sub.startsWith("orders/")) {
+      items.push({ label: "Order Workspace", to: pathname });
+    } else if (sub.startsWith("reports/")) {
+      items.push({ label: "Diagnostic Report", to: pathname });
+    } else if (sub === "masters" || sub.startsWith("masters/")) {
+      items.push({ label: "Lab Masters Catalog", to: "/lab/masters" });
+    }
+    return items;
+  }
+
   if (pathname === "/magazine" || pathname === "/magazine/") {
     items.push({ label: "E-Magazine", to: "/magazine" });
     return items;
@@ -308,13 +329,14 @@ function ShellContent({ session }: { session: any }) {
   const [accountsOpen, setAccountsOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
   const [inventoryOpen, setInventoryOpen] = React.useState(false);
+  const [labOpen, setLabOpen] = React.useState(false);
   const [purchasesMastersOpen, setPurchasesMastersOpen] = React.useState(false);
   const [mastersOpen, setMastersOpen] = React.useState(false);
   const [adminOpen, setAdminOpen] = React.useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine } = useUserPermissions();
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine, canViewLab } = useUserPermissions();
   const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
 
   React.useEffect(() => {
@@ -334,6 +356,7 @@ function ShellContent({ session }: { session: any }) {
     if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
     if (location.pathname.startsWith("/inventory/")) setInventoryOpen(true);
+    if (location.pathname.startsWith("/lab")) setLabOpen(true);
     if (location.pathname.startsWith("/masters/")) setMastersOpen(true);
     if (location.pathname.startsWith("/admin/")) setAdminOpen(true);
   }, [location.pathname]);
@@ -1030,6 +1053,51 @@ function ShellContent({ session }: { session: any }) {
                 </div>
               )}
 
+              {/* Collapsible Laboratory group */}
+              {canViewLab && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLabOpen(!labOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FlaskConical size={18} />
+                      <span>Laboratory</span>
+                    </div>
+                    {labOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {labOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/lab" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Orders Worklist
+                      </Link>
+                      <Link
+                        to={"/lab/orders/new" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        New Order Entry
+                      </Link>
+                      <Link
+                        to={"/lab/masters" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Test Catalog & Ranges
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Collapsible Masters group */}
               {(session.data?.user.role === "admin" || session.data?.user.role === "hr") && (
                 <div className="flex flex-col">
@@ -1390,6 +1458,21 @@ function ShellContent({ session }: { session: any }) {
                     title="Unit Types Master"
                   >
                     <Scale size={20} />
+                  </Link>
+                </>
+              )}
+
+              {canViewLab && (
+                <>
+                  <div className="w-8 h-px bg-border my-2" />
+
+                  <Link
+                    to="/lab"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Laboratory Orders"
+                  >
+                    <FlaskConical size={20} />
                   </Link>
                 </>
               )}

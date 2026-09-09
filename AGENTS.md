@@ -132,6 +132,21 @@ This document serves as the persistent knowledge index and architecture guide fo
 
 ---
 
+### G. Laboratory Information Management (LIS)
+- **Schema**: PostgreSQL dedicated schema `lab` (`server/db/schema-lab.ts`).
+- **Core Services**:
+  - `server/services/lab-engine.ts`: Reference range matching by age & gender (`findMatchingReferenceRange`), automatic flag evaluation (`evaluateResultFlag`: Normal, High, Low, Critical), sequential document numbering (`generateLabOrderNo`: `LAB-YYYY-XXXX`, `generateAccessionNo`: `ACC-YYYY-XXXX`).
+- **Frontend Routes** (`src/routes/_authenticated/lab/`):
+  - `index.tsx`: Orders Worklist with status filters (All, Ordered, Sample Collected, In Progress, Verified, Completed, Cancelled), priority filters, search, and KPI overview.
+  - `orders/new.tsx`: Lab order creation with patient search, panel & single investigation selection, running bill, clinician selector, and order priority.
+  - `orders/$orderId.tsx`: Order Processing Workspace with specimen collection, accession number generation, live auto-flagging result entry, pathologist single/bulk verification, and report release.
+  - `reports/$orderId.tsx`: Diagnostic report viewer and exportable printable PDF with letterhead, NABL verification, reference ranges, and pathologist signature.
+  - `masters/index.tsx`: Master data management (Test Catalog, Reference Ranges & Critical Thresholds, Diagnostic Panels/Profiles, and Categories).
+- **Backend Route File**: `server/routes/lab.ts` (all endpoints prefixed with `/api/lab/*`).
+- **Key Tables** (`lab.*`): `labTestCategories`, `labTests`, `labTestReferenceRanges`, `labPanels`, `labPanelTests`, `labOrders`, `labOrderItems`, `labSamples`, `labResults`, `labResultAudit`.
+
+---
+
 ## 3. Security & Permission Architecture
 
 1. **Frontend Permissions Hook** (`src/lib/permissions.ts`):
@@ -140,6 +155,9 @@ This document serves as the persistent knowledge index and architecture guide fo
      - `isHr`: User role is `"hr"` or staff record role is `"hr"`.
      - `isAccounts`: Staff department is `"Accounts"` or user role is `"accounts"`.
      - `isAcon`: Staff department is `"ACON"` or user role is `"acon"`.
+     - `isLab`: Staff department is `"LABORATORY"` or user role is `"lab"`.
+     - `isPathologist`: Staff designation contains `"Pathologist"` or user role is `"pathologist"`.
+     - `canViewLab`: `isAdmin || isLab || isPathologist`.
      - `isManagementApprover`: Staff member is marked active in `managementApprovers` table.
      - `canViewAccounts`: `isAdmin || isAccounts || isManagementApprover`.
      - `canViewHr`: `isAdmin || isHr || isManagementApprover`.
@@ -148,6 +166,8 @@ This document serves as the persistent knowledge index and architecture guide fo
      - `canManageStores`: Store configuration restricted to `isAdmin || isManagementApprover`.
 2. **Backend Authentication & Authorization Guards** (`server/routes/shared.ts`):
    - `getCurrentStaff(c)`: Finds active staff record matching session `userId` or `email`.
+   - `hasLabAccess(c)` & `requireLabAccess(c, next)`: Guards laboratory operations (`role in ('admin', 'lab', 'pathologist')` or department `"LABORATORY"`).
+   - `canVerifyLabResults(c)`: Confirms user is Admin or Pathologist.
    - `requireAdmin(c, next)`: Enforces `user.role === 'admin'`.
    - `hasHrOrAccountsViewAccess(c)`: Verifies Admin / HR / Accounts / Management approver.
    - `hasCollegeAccess(c)`: Verifies `role in ('admin', 'accounts', 'acon')` or active department `in ('Accounts', 'ACON')`.

@@ -129,6 +129,12 @@ export async function setup() {
           timeout: 30_000,
           env: { ...process.env, DATABASE_URL: dbUrl },
         });
+        execSync("npx tsx server/db/setup-lab-db.ts", {
+          cwd: rootDir,
+          stdio: "pipe",
+          timeout: 30_000,
+          env: { ...process.env, DATABASE_URL: dbUrl },
+        });
       } catch (setupErr: any) {
         console.warn("Module DB setup notice:", setupErr.stderr?.toString() || setupErr.message);
       }
@@ -136,7 +142,7 @@ export async function setup() {
       execSync("npx drizzle-kit push --force", {
         cwd: rootDir,
         stdio: "pipe",
-        timeout: 30_000,
+        timeout: 120_000,
         env: { ...process.env, DATABASE_URL: dbUrl },
       });
       console.log("✅ Schema synced successfully.\n");

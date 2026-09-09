@@ -18,6 +18,8 @@ export interface UserPermissions {
   isDispensary: boolean;
   isManagementApprover: boolean;
   isMagazineEditor: boolean;
+  isLab: boolean;
+  isPathologist: boolean;
   canViewAccounts: boolean;
   canViewHr: boolean;
   canViewCollege: boolean;
@@ -26,6 +28,7 @@ export interface UserPermissions {
   canViewPurchases: boolean;
   canManageStores: boolean;
   canManageMagazine: boolean;
+  canViewLab: boolean;
   isLoading: boolean;
 }
 
@@ -92,6 +95,15 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
   const canManageStores = isAdmin || isManagementApprover;
   const canManageMagazine = isAdmin || userRole === "magazine_editor" || isHr || isMagazineEditor;
 
+  const isLabStaff =
+    cleanStaffDept === "LABORATORY" ||
+    cleanStaffDept.startsWith("LABORATORY") ||
+    cleanStaffDept === "LAB" ||
+    cleanStaffDept.startsWith("LAB");
+  const isLab = userRole === "lab" || isLabStaff;
+  const isPathologist = userRole === "pathologist";
+  const canViewLab = isAdmin || isLab || isPathologist;
+
   return {
     currentStaff,
     isAdmin,
@@ -103,6 +115,8 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     isDispensary,
     isManagementApprover,
     isMagazineEditor,
+    isLab,
+    isPathologist,
     canViewAccounts,
     canViewHr,
     canViewCollege,
@@ -111,6 +125,7 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     canViewPurchases,
     canManageStores,
     canManageMagazine,
+    canViewLab,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading || magazineAccessQuery.isLoading,
   };
 }

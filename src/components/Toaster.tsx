@@ -6,15 +6,17 @@ import { cn } from "../utils/cn";
 export function Toaster() {
   const { toasts } = useStore(toastStore);
 
+  const iconMap = {
+    success: CheckCircle,
+    error: AlertCircle,
+    warning: AlertTriangle,
+    info: Info,
+  };
+
   return (
     <div className="fixed bottom-4 right-4 z-[99999] flex flex-col gap-2 w-full max-w-sm pointer-events-none">
       {toasts.map((t) => {
-        const Icon = {
-          success: CheckCircle,
-          error: AlertCircle,
-          warning: AlertTriangle,
-          info: Info,
-        }[t.type];
+        const Icon = (t.type && iconMap[t.type as keyof typeof iconMap]) || Info;
 
         return (
           <div
@@ -27,7 +29,7 @@ export function Toaster() {
               t.type === "info" && "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950/70 dark:border-blue-800/30 dark:text-blue-300"
             )}
           >
-            <Icon className="size-5 shrink-0 mt-0.5" />
+            {Icon && <Icon className="size-5 shrink-0 mt-0.5" />}
             <div className="flex-1 text-sm font-medium">{t.message}</div>
             <button
               onClick={() => toast.dismiss(t.id)}
@@ -41,3 +43,6 @@ export function Toaster() {
     </div>
   );
 }
+
+export default Toaster;
+

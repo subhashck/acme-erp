@@ -45,6 +45,22 @@ function formatPayslipWithBankDetails(row: any) {
   };
 }
 
+/**
+ * Calculates the percentage of daily rate to deduct for a given leave type.
+ * - For payable leave with paymentRate (e.g. 100% pay), deduction is (100 - paymentRate)% (e.g. 0% deduction).
+ * - For half-pay leave (50% pay), deduction is 50%.
+ * - For non-payable / Loss of Pay leave, deduction is 100%.
+ * - For undefined leave types, defaults to 100% deduction.
+ */
+export function calculateLeaveDeductionRate(
+  leaveTypeInfo?: { payable: boolean; paymentRate: number } | null
+): number {
+  if (!leaveTypeInfo || !leaveTypeInfo.payable) {
+    return 100;
+  }
+  return Math.max(0, Math.min(100, 100 - leaveTypeInfo.paymentRate));
+}
+
 export const payrollRoutes = new Hono<AuthEnv>()
   .get("/hr/payroll/payslips", async (c) => {
     const session = c.get("session");
@@ -1173,7 +1189,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         leaveDaysTaken += days;
 
         const lt = leaveTypeMap[lr.leaveType];
-        const deductionRate = lt ? (!lt.payable ? 100 : lt.paymentRate) : 100;
+        const deductionRate = calculateLeaveDeductionRate(lt);
         leaveDeduction += dailyRate * days * (deductionRate / 100);
       }
 

@@ -399,6 +399,65 @@ export const requireInventoryAccess = async (c: Context<AuthEnv>, next: any) => 
   await next();
 };
 
+export const hasLabAccess = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) return false;
+
+  const userRole = (session.user.role || "").trim().toLowerCase();
+  if (userRole === "admin" || userRole === "lab" || userRole === "pathologist") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const staffRole = (currentStaff.role || "").trim().toLowerCase();
+  if (staffRole === "admin" || staffRole === "lab" || staffRole === "pathologist") return true;
+
+  // Check active department assignment in staffDepartments
+  const activeStaffDepts = await db
+    .select({ name: departments.name })
+    .from(staffDepartments)
+    .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+    .where(
+      and(
+        eq(staffDepartments.staffId, currentStaff.staffId),
+        eq(staffDepartments.status, "Active")
+      )
+    )
+    .execute();
+
+  const hasAllowedDept = activeStaffDepts.some((d) => {
+    const deptName = (d.name || "").trim().toUpperCase();
+    return deptName === "LABORATORY" || deptName.startsWith("LABORATORY") || deptName === "LAB" || deptName.startsWith("LAB");
+  });
+
+  return hasAllowedDept;
+};
+
+export const requireLabAccess = async (c: Context<AuthEnv>, next: any) => {
+  const allowed = await hasLabAccess(c);
+  if (!allowed) {
+    return c.json({ error: "Forbidden: Access to Lab Module is restricted to Admin and Laboratory staff." }, 403);
+  }
+  await next();
+};
+
+export const canVerifyLabResults = async (c: Context<AuthEnv>): Promise<boolean> => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) return false;
+
+  const userRole = (session.user.role || "").trim().toLowerCase();
+  if (userRole === "admin" || userRole === "pathologist") return true;
+
+  const currentStaff = await getCurrentStaff(c);
+  if (!currentStaff) return false;
+
+  const staffRole = (currentStaff.role || "").trim().toLowerCase();
+  if (staffRole === "admin" || staffRole === "pathologist") return true;
+
+  const designation = (currentStaff.designationName || "").toLowerCase();
+  return designation.includes("pathologist") || designation.includes("senior lab");
+};
+
 export const canPostConsumptionVoucher = async (
   c: Context<AuthEnv>,
   storeId: number

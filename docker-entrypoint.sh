@@ -4,8 +4,9 @@ set -e
 
 echo "Starting ACME ERP startup script..."
 
-# Run Drizzle schema migrations to keep database up to date
-echo "Applying database migrations (drizzle-kit push)..."
+# Run module schema setup and Drizzle schema migrations to keep database up to date
+echo "Applying database setup and migrations..."
+pnpm db:setup
 pnpm db:push
 
 # Run seed file to populate initial data

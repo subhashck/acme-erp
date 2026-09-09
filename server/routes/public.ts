@@ -6,6 +6,7 @@
  *   GET /public/reports/shared/:token   — verify signed URL and return report JSON
  */
 
+import path from "node:path";
 import { Hono } from "hono";
 import { asc, desc, eq, or, sql } from "drizzle-orm";
 import { db } from "../db/client.ts";
@@ -544,6 +545,8 @@ export const publicRoutes = new Hono()
   /**
    * GET /public/magazine/images/*
    * Stream magazine images stored in MinIO.
+   * If the requested key does not exist, streams a sleek branded SVG placeholder
+   * with HTTP 200 so that <img> tags never render broken image icons.
    */
   .get("/public/magazine/images/*", async (c) => {
     // Extract key after /public/magazine/images/ (handling both with/without /api prefix)
@@ -557,7 +560,16 @@ export const publicRoutes = new Hono()
 
     const docStream = await getDocumentStream(decodedKey);
     if (!docStream) {
-      return c.json({ error: "Image not found" }, 404);
+      // Return a graceful SVG placeholder instead of a broken 404
+      const svg = generateMagazineImagePlaceholderSvg(decodedKey);
+      return new Response(svg, {
+        status: 200,
+        headers: {
+          "Content-Type": "image/svg+xml; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+          "X-Asset-Fallback": "placeholder",
+        },
+      });
     }
 
     const headers: Record<string, string> = {
@@ -568,4 +580,87 @@ export const publicRoutes = new Hono()
 
     return new Response(docStream.stream as any, { headers });
   });
+
+/**
+ * Helper to generate a placeholder SVG image when a requested magazine media
+ * asset is missing from storage, preventing broken <img> tags across the UI and SSR.
+ */
+function generateMagazineImagePlaceholderSvg(rawKey: string): string {
+  const baseName = path.basename(rawKey, path.extname(rawKey));
+  const cleanTitle = baseName
+    .replace(/^(med|thumb|raw)_[0-9]+_[a-f0-9]+$/i, "Editorial Asset")
+    .replace(/_[a-f0-9]{8,12}$/i, "")
+    .replace(/[-_]+/g, " ")
+    .trim();
+
+  const title = cleanTitle.length > 0
+    ? cleanTitle.charAt(0).toUpperCase() + cleanTitle.slice(1)
+    : "ACME Magazine";
+
+  const escapeSvg = (str: string) =>
+    str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&apos;");
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="tealCyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <radialGradient id="ambientGlow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#0d9488" stop-opacity="0.22" />
+      <stop offset="60%" stop-color="#0284c7" stop-opacity="0.06" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+    <pattern id="dotPattern" width="30" height="30" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#334155" fill-opacity="0.5" />
+    </pattern>
+  </defs>
+
+  <!-- Background Base -->
+  <rect width="100%" height="100%" fill="url(#bgGradient)" />
+  <rect width="100%" height="100%" fill="url(#dotPattern)" />
+  <rect width="100%" height="100%" fill="url(#ambientGlow)" />
+
+  <!-- Subtle Outer Border Accent -->
+  <rect x="24" y="24" width="752" height="452" rx="16" fill="none" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 6" stroke-opacity="0.6" />
+
+  <!-- Central Card Icon Emblem -->
+  <g transform="translate(400, 205)">
+    <rect x="-65" y="-65" width="130" height="130" rx="28" fill="#1e293b" fill-opacity="0.85" stroke="#475569" stroke-width="1.5" />
+    <rect x="-35" y="-35" width="70" height="70" rx="18" fill="url(#tealCyanGrad)" />
+    <!-- Medical Cross / Sparkle Symbol -->
+    <path d="M-8 -18 h16 v10 h10 v16 h-10 v10 h-16 v-10 h-10 v-16 h10 z" fill="#ffffff" fill-opacity="0.95" />
+    <circle cx="20" cy="-20" r="3" fill="#38bdf8" />
+    <circle cx="-20" cy="20" r="2.5" fill="#2dd4bf" />
+  </g>
+
+  <!-- Image Title -->
+  <text x="400" y="325" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="700" fill="#f1f5f9" letter-spacing="0.4">
+    ${escapeSvg(title)}
+  </text>
+
+  <!-- Subtitle -->
+  <text x="400" y="355" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="500" fill="#94a3b8" letter-spacing="0.3">
+    ACME HEALTHCARE &bull; DIGITAL DIGEST
+  </text>
+
+  <!-- Badge Pill -->
+  <g transform="translate(400, 395)">
+    <rect x="-95" y="-14" width="190" height="28" rx="14" fill="#0f172a" stroke="#0d9488" stroke-width="1.2" stroke-opacity="0.8" />
+    <text x="0" y="4.5" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', monospace" font-size="11" font-weight="600" fill="#2dd4bf" letter-spacing="0.8">
+      PREVIEW PLACEHOLDER
+    </text>
+  </g>
+</svg>`;
+}
 
