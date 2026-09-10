@@ -3,22 +3,24 @@ import { cn } from "../utils/cn";
 import { Label } from "./label";
 import { Search, ChevronDown, X } from "lucide-react";
 
-type Option = [string, string]; // [value, label]
+export type Option = [string, string] | [string, string, string | undefined]; // [value, label, sublabel?]
 
 interface AutocompleteProps {
   label?: string;
+  labelClassName?: string;
   value: string;
   onChange: (value: string) => void;
   options: Option[];
   placeholder?: string;
   className?: string;
+  inputClassName?: string;
   error?: string;
   disabled?: boolean;
   allowCustomValue?: boolean;
 }
 
 export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps>(
-  ({ label, value, onChange, options, placeholder = "Search...", className, error, disabled, allowCustomValue }, ref) => {
+  ({ label, labelClassName, value, onChange, options, placeholder = "Search...", className, inputClassName, error, disabled, allowCustomValue }, ref) => {
     const [isOpen, setIsOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
     const containerRef = React.useRef<HTMLDivElement>(null);
@@ -60,8 +62,9 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
       if (!query || query === selectedLabel) {
         return options;
       }
+      const q = query.toLowerCase();
       return options.filter((opt) =>
-        opt[1].toLowerCase().includes(query.toLowerCase())
+        opt[1].toLowerCase().includes(q) || (opt[2] && opt[2].toLowerCase().includes(q))
       );
     }, [options, query, selectedLabel]);
 
@@ -90,7 +93,7 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
 
     return (
       <div className={cn("relative flex flex-col w-full", isOpen && "z-[9999]", className)} ref={containerRef}>
-        {label && <Label className="font-semibold block mb-1 text-xs">{label}</Label>}
+        {label && <Label className={cn("font-semibold block mb-1 text-xs", labelClassName)}>{label}</Label>}
         <div className="relative flex items-center">
           <input
             ref={ref}
@@ -102,6 +105,7 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
             disabled={disabled}
             className={cn(
               "flex h-9 w-full rounded-md border bg-background pl-8 pr-10 py-1.5 text-xs outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed",
+              inputClassName,
               error ? "border-red-500" : ""
             )}
           />
@@ -134,16 +138,20 @@ export const Autocomplete = React.forwardRef<HTMLInputElement, AutocompleteProps
             {filteredOptions.length > 0 ? (
               filteredOptions.map((opt) => {
                 const isSelected = opt[0] === value;
+                const subLabel = opt[2];
                 return (
                   <li
                     key={opt[0]}
                     onClick={() => handleSelectOption(opt[0], opt[1])}
                     className={cn(
-                      "relative flex w-full cursor-pointer select-none items-center rounded-sm px-3 py-2 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground",
+                      "relative flex w-full cursor-pointer select-none flex-col items-start rounded-sm px-3 py-1.5 text-xs outline-none transition-colors hover:bg-accent hover:text-accent-foreground",
                       isSelected ? "bg-accent/55 font-medium text-accent-foreground" : ""
                     )}
                   >
-                    {opt[1]}
+                    <span className="font-semibold text-foreground">{opt[1]}</span>
+                    {subLabel && (
+                      <span className="text-[10px] text-muted-foreground mt-0.5">{subLabel}</span>
+                    )}
                   </li>
                 );
               })

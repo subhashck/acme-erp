@@ -23,6 +23,8 @@ import {
   X,
   ArrowRight,
   TrendingDown,
+  Eye,
+  CopyCheck,
 } from "lucide-react";
 import * as React from "react";
 import { format, subMonths, addMonths, parseISO } from "date-fns";
@@ -48,6 +50,14 @@ import {
 } from "../../../components/ui/popover";
 import { Calendar } from "../../../components/ui/calendar";
 import { Switch } from "../../../components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../../../components/ui/dialog";
 import { toast } from "sonner";
 import { cn } from "../../../utils/cn";
 
@@ -295,14 +305,26 @@ function BankExpensesPage() {
   const [formVendorId, setFormVendorId] = React.useState<string>("none");
   const [formAmount, setFormAmount] = React.useState("");
   const [formPaymentMode, setFormPaymentMode] = React.useState("Bank Transfer");
+  const [formValueDate, setFormValueDate] = React.useState("");
   const [formPaymentDate, setFormPaymentDate] = React.useState("");
-  const [formChequeIssueDate, setFormChequeIssueDate] = React.useState("");
   const [formReferenceNo, setFormReferenceNo] = React.useState("");
   const [formBankName, setFormBankName] = React.useState("");
   const [formNarration, setFormNarration] = React.useState("");
   const [formIsRecurring, setFormIsRecurring] = React.useState(false);
   const [formIsSalaryAuto, setFormIsSalaryAuto] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  // View state
+  const [viewingExpense, setViewingExpense] = React.useState<any | null>(null);
+  const [copiedRef, setCopiedRef] = React.useState(false);
+
+  const handleCopyRef = (refText: string) => {
+    if (!refText) return;
+    navigator.clipboard.writeText(refText);
+    setCopiedRef(true);
+    toast.success("Reference copied to clipboard");
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
 
   const catalogItemOptions: [string, string][] = React.useMemo(() => {
     const catalog = expCatalogQuery.data || [];
@@ -374,16 +396,10 @@ function BankExpensesPage() {
     setFormLabel("");
     setFormVendorId("none");
     setFormAmount("");
-    setFormPaymentMode("");
-    // If viewing current calendar month, default clearance date to today.
-    // If cash basis is active in another month, default to 1st of that month.
-    // Otherwise in accrual mode for other months, leave empty (pending clearance) to prevent accidental misdating.
-    if (selectedBasis === "cash") {
-      setFormPaymentDate(selectedMonth === defaultMonth ? format(today, "yyyy-MM-dd") : `${selectedMonth}-01`);
-    } else {
-      setFormPaymentDate(selectedMonth === defaultMonth ? format(today, "yyyy-MM-dd") : "");
-    }
-    setFormChequeIssueDate("");
+    setFormPaymentMode("Bank Transfer");
+    const defaultDate = selectedMonth === defaultMonth ? format(today, "yyyy-MM-dd") : `${selectedMonth}-01`;
+    setFormValueDate(defaultDate);
+    setFormPaymentDate(defaultDate);
     setFormReferenceNo("");
     setFormBankName("");
     setFormNarration("");
@@ -398,9 +414,9 @@ function BankExpensesPage() {
     setFormLabel(exp.label);
     setFormVendorId(exp.vendorId ? String(exp.vendorId) : "none");
     setFormAmount(String(exp.amount));
-    setFormPaymentMode(exp.paymentMode || "");
+    setFormPaymentMode(exp.paymentMode || "Bank Transfer");
+    setFormValueDate(exp.valueDate || exp.chequeIssueDate || exp.paymentDate || "");
     setFormPaymentDate(exp.paymentDate || "");
-    setFormChequeIssueDate(exp.chequeIssueDate || "");
     setFormReferenceNo(exp.referenceNo || "");
     setFormBankName(exp.bankName || "");
     setFormNarration(exp.narration || "");
@@ -418,15 +434,18 @@ function BankExpensesPage() {
 
     try {
       setIsSubmitting(true);
+      const derivedAccrualDate = formValueDate || formPaymentDate || `${selectedMonth}-01`;
+      const derivedMonth = derivedAccrualDate.slice(0, 7);
+
       const payload = {
-        month: selectedMonth,
+        month: derivedMonth,
         category: formCategory,
         label: formLabel,
         vendorId: formVendorId !== "none" ? parseInt(formVendorId, 10) : null,
         amount: parseFloat(formAmount),
         paymentMode: formPaymentMode,
+        valueDate: formValueDate || null,
         paymentDate: formPaymentDate || null,
-        chequeIssueDate: formChequeIssueDate || null,
         referenceNo: formReferenceNo || null,
         bankName: formBankName || null,
         narration: formNarration || null,
@@ -735,7 +754,7 @@ function BankExpensesPage() {
                     <th className="py-3 px-4">Vendor</th>
                     <th className="py-3 px-4 text-right">Amount</th>
                     <th className="py-3 px-4">Payment Mode</th>
-                    <th className="py-3 px-4">Payment Date</th>
+                    <th className="py-3 px-4">Value / Clearance Date</th>
                     <th className="py-3 px-4">Ref #</th>
                     <th className="py-3 px-4">Bank</th>
                     <th className="py-3 px-4 text-center">Recurring</th>
@@ -746,6 +765,7 @@ function BankExpensesPage() {
                   {expenses.map((e) => {
                     const catObj = allCategories.find((c) => c.code === e.category);
                     const isPaid = Boolean(e.paymentDate);
+                    const accrualMonth = (e.valueDate || e.chequeIssueDate || e.paymentDate || e.month || "").slice(0, 7);
 
                     return (
                       <tr key={e.id} className="hover:bg-muted/30 transition-colors">
@@ -758,9 +778,18 @@ function BankExpensesPage() {
                               Auto Payslip
                             </Badge>
                           )}
+                          <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                            Accrual: {accrualMonth}
+                          </div>
                         </td>
                         <td className="py-3 px-4 font-semibold text-foreground">
-                          {e.label}
+                          <span
+                            onClick={() => setViewingExpense(e)}
+                            className="cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors hover:underline"
+                            title="Click to view full details"
+                          >
+                            {e.label}
+                          </span>
                           {e.narration && (
                             <div className="text-[10px] text-muted-foreground font-normal truncate max-w-xs">
                               {e.narration}
@@ -784,29 +813,29 @@ function BankExpensesPage() {
                           {e.paymentMode || "Bank Transfer"}
                         </td>
                         <td className="py-3 px-4">
-                          {isPaid ? (
-                            <div>
-                              <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px]">
-                                Cleared: {e.paymentDate}
-                              </Badge>
-                              {e.chequeIssueDate && (
-                                <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                                  Issued: {e.chequeIssueDate}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div>
+                          <div className="space-y-1">
+                            {(e.valueDate || e.chequeIssueDate) && (
+                              <div className="font-semibold text-foreground text-xs">
+                                Value: {e.valueDate || e.chequeIssueDate}
+                              </div>
+                            )}
+                            {isPaid ? (
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 text-[10px]">
+                                  Cleared: {e.paymentDate}
+                                </Badge>
+                                {e.paymentDate && (e.valueDate || e.chequeIssueDate) && e.paymentDate.slice(0, 7) !== (e.valueDate || e.chequeIssueDate).slice(0, 7) && (
+                                  <Badge className="text-[9px] px-1 py-0 bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
+                                    Paid in {e.paymentDate.slice(0, 7)}
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : (
                               <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-500/40">
                                 Pending Clearance
                               </Badge>
-                              {e.chequeIssueDate && (
-                                <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                                  Issued: {e.chequeIssueDate}
-                                </div>
-                              )}
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-muted-foreground font-mono text-[11px]">
                           {e.referenceNo || "—"}
@@ -828,8 +857,18 @@ function BankExpensesPage() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={() => setViewingExpense(e)}
+                              title="View Expense Details"
+                              className="size-7 text-blue-600 hover:text-blue-700 hover:bg-blue-500/10 cursor-pointer"
+                            >
+                              <Eye size={13} />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               onClick={() => handleOpenEdit(e)}
-                              className="size-7 text-muted-foreground hover:text-foreground"
+                              title="Edit Expense"
+                              className="size-7 text-muted-foreground hover:text-foreground cursor-pointer"
                             >
                               <Edit2 size={13} />
                             </Button>
@@ -837,7 +876,8 @@ function BankExpensesPage() {
                               variant="ghost"
                               size="icon"
                               onClick={() => handleDelete(e.id)}
-                              className="size-7 text-rose-500 hover:text-rose-700 hover:bg-rose-500/10"
+                              title="Delete Expense"
+                              className="size-7 text-rose-500 hover:text-rose-700 hover:bg-rose-500/10 cursor-pointer"
                             >
                               <Trash2 size={13} />
                             </Button>
@@ -963,15 +1003,31 @@ function BankExpensesPage() {
               {/* Drawer Form Body */}
               <form onSubmit={handleSubmitForm} className="flex-1 flex flex-col overflow-hidden">
                 <div className="flex-1 overflow-y-auto p-6 space-y-4 text-xs">
-                  <div>
-                    <Autocomplete
-                      label="Category *"
-                      value={formCategory}
-                      onChange={setFormCategory}
-                      options={categoryOptions}
-                      placeholder="Search category or type custom category..."
-                      allowCustomValue={true}
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Autocomplete
+                        label="Category *"
+                        value={formCategory}
+                        onChange={setFormCategory}
+                        options={categoryOptions}
+                        placeholder="Search category or type custom category..."
+                        allowCustomValue={true}
+                      />
+                    </div>
+                    <div>
+                      <label className="font-semibold block mb-1">Payment Mode</label>
+                      <Select value={formPaymentMode} onValueChange={setFormPaymentMode}>
+                        <SelectTrigger className="h-9 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Bank Transfer">Bank Transfer (NEFT/RTGS)</SelectItem>
+                          <SelectItem value="UPI">UPI / Online</SelectItem>
+                          <SelectItem value="Cheque">Cheque</SelectItem>
+                          <SelectItem value="Auto Debit">Auto Debit / NACH</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
                   {/* Salary Auto-Pull Banner */}
@@ -1019,24 +1075,7 @@ function BankExpensesPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="font-semibold block mb-1">Vendor (Optional)</label>
-                    <Select value={formVendorId} onValueChange={setFormVendorId}>
-                      <SelectTrigger className="h-9 text-xs">
-                        <SelectValue placeholder="None / External" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None / Direct Expense</SelectItem>
-                        {vendors.map((v) => (
-                          <SelectItem key={v.id} value={String(v.id)}>
-                            {v.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="font-semibold block mb-1">Amount (₹) *</label>
                       <Input
@@ -1050,16 +1089,18 @@ function BankExpensesPage() {
                       />
                     </div>
                     <div>
-                      <label className="font-semibold block mb-1">Payment Mode</label>
-                      <Select value={formPaymentMode} onValueChange={setFormPaymentMode}>
+                      <label className="font-semibold block mb-1">Vendor (Optional)</label>
+                      <Select value={formVendorId} onValueChange={setFormVendorId}>
                         <SelectTrigger className="h-9 text-xs">
-                          <SelectValue />
+                          <SelectValue placeholder="None / External" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Bank Transfer">Bank Transfer (NEFT/RTGS)</SelectItem>
-                          <SelectItem value="UPI">UPI / Online</SelectItem>
-                          <SelectItem value="Cheque">Cheque</SelectItem>
-                          <SelectItem value="Auto Debit">Auto Debit / NACH</SelectItem>
+                          <SelectItem value="none">None / Direct Expense</SelectItem>
+                          {vendors.map((v) => (
+                            <SelectItem key={v.id} value={String(v.id)}>
+                              {v.name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1068,11 +1109,11 @@ function BankExpensesPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="font-semibold block text-xs">Cheque Issue Date</label>
-                        {formChequeIssueDate && (
+                        <label className="font-semibold block text-xs">Value Date (Cheque / Issue) *</label>
+                        {formValueDate && (
                           <button
                             type="button"
-                            onClick={() => setFormChequeIssueDate("")}
+                            onClick={() => setFormValueDate("")}
                             className="text-[10px] text-muted-foreground hover:text-destructive cursor-pointer"
                           >
                             Clear
@@ -1086,12 +1127,12 @@ function BankExpensesPage() {
                             variant="outline"
                             className={cn(
                               "w-full justify-start text-left font-normal h-9 px-3 text-xs",
-                              !formChequeIssueDate && "text-muted-foreground"
+                              !formValueDate && "text-muted-foreground"
                             )}
                           >
                             <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            {formChequeIssueDate ? (
-                              format(parseISO(formChequeIssueDate), "dd MMM yyyy")
+                            {formValueDate ? (
+                              format(parseISO(formValueDate), "dd MMM yyyy")
                             ) : (
                               <span>Pick date</span>
                             )}
@@ -1100,19 +1141,19 @@ function BankExpensesPage() {
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
-                            selected={formChequeIssueDate ? parseISO(formChequeIssueDate) : undefined}
+                            selected={formValueDate ? parseISO(formValueDate) : undefined}
                             onSelect={(date) =>
-                              setFormChequeIssueDate(date ? format(date, "yyyy-MM-dd") : "")
+                              setFormValueDate(date ? format(date, "yyyy-MM-dd") : "")
                             }
                           />
-                          {formChequeIssueDate && (
+                          {formValueDate && (
                             <div className="p-2 border-t border-border/50 flex justify-end">
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
                                 className="h-7 text-xs text-muted-foreground hover:text-destructive cursor-pointer"
-                                onClick={() => setFormChequeIssueDate("")}
+                                onClick={() => setFormValueDate("")}
                               >
                                 Clear Date
                               </Button>
@@ -1120,6 +1161,9 @@ function BankExpensesPage() {
                           )}
                         </PopoverContent>
                       </Popover>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Accrual Month: <span className="font-semibold text-foreground">{(formValueDate || formPaymentDate || selectedMonth).slice(0, 7)}</span>
+                      </p>
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
@@ -1175,8 +1219,22 @@ function BankExpensesPage() {
                           )}
                         </PopoverContent>
                       </Popover>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Bank clearance date
+                      </p>
                     </div>
                   </div>
+
+                  {formPaymentDate && formValueDate && formPaymentDate.slice(0, 7) !== formValueDate.slice(0, 7) && (
+                    <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-800 dark:text-amber-200 space-y-1">
+                      <div className="font-bold flex items-center gap-1">
+                        <span>💡 Cross-Month Notice:</span>
+                      </div>
+                      <div>
+                        Value Date is <strong>{formValueDate}</strong> (Accrual Month: <strong>{formValueDate.slice(0, 7)}</strong>), but Clearance Date is <strong>{formPaymentDate}</strong> (Cash Basis Month: <strong>{formPaymentDate.slice(0, 7)}</strong>).
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="font-semibold block mb-1">Reference / UTR / Cheque No</label>
@@ -1262,6 +1320,211 @@ function BankExpensesPage() {
         </div>
       )}
 
+      {/* View Expense Details Dialog */}
+      <Dialog open={Boolean(viewingExpense)} onOpenChange={(open) => !open && setViewingExpense(null)}>
+        <DialogContent className="max-w-2xl sm:max-w-2xl p-0 overflow-hidden shadow-2xl border-border/80">
+          {viewingExpense && (
+            <>
+              <DialogHeader className="p-5 border-b border-border/60 bg-muted/20">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <Badge variant="outline" className="text-[10px] font-bold bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30">
+                    {allCategories.find((c) => c.code === viewingExpense.category)?.label || viewingExpense.category}
+                  </Badge>
+                  {viewingExpense.paymentDate ? (
+                    <Badge className="text-[10px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                      Cleared: {viewingExpense.paymentDate}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] font-bold text-amber-600 dark:text-amber-400 border-amber-500/40">
+                      Pending Clearance
+                    </Badge>
+                  )}
+                  {viewingExpense.isRecurring && (
+                    <Badge variant="outline" className="text-[10px] font-bold bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30">
+                      Recurring
+                    </Badge>
+                  )}
+                  {viewingExpense.isSalaryAuto && (
+                    <Badge className="text-[10px] font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30">
+                      Auto Payslip
+                    </Badge>
+                  )}
+                </div>
+                <DialogTitle className="text-xl font-extrabold tracking-tight text-foreground">
+                  {viewingExpense.label}
+                </DialogTitle>
+                {viewingExpense.narration && (
+                  <DialogDescription className="text-xs text-muted-foreground mt-1 italic">
+                    "{viewingExpense.narration}"
+                  </DialogDescription>
+                )}
+              </DialogHeader>
+
+              {/* Amount Highlight Card */}
+              <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="p-4 rounded-xl bg-linear-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Transaction Amount
+                    </span>
+                    <div className="text-3xl font-black text-blue-700 dark:text-blue-300 tracking-tight mt-0.5">
+                      {fmt(parseFloat(viewingExpense.amount || "0"))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs font-semibold px-2.5 py-1 bg-background/80">
+                      {viewingExpense.paymentMode || "Bank Transfer"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Cross-month Notice in View Mode */}
+                {(() => {
+                  const accrualM = (viewingExpense.valueDate || viewingExpense.chequeIssueDate || viewingExpense.month || "").slice(0, 7);
+                  const clearanceM = viewingExpense.paymentDate?.slice(0, 7);
+                  if (clearanceM && accrualM && clearanceM !== accrualM) {
+                    return (
+                      <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-200">
+                        <div className="font-bold flex items-center gap-1.5 mb-0.5">
+                          <span>⚠️ Cross-Month Transaction</span>
+                        </div>
+                        <div>
+                          This expense accrues under <strong>{accrualM}</strong> based on Value Date (<strong>{viewingExpense.valueDate || viewingExpense.chequeIssueDate}</strong>), but cleared the hospital bank on <strong>{viewingExpense.paymentDate}</strong> ({clearanceM} in <em>Cash Basis</em>).
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {/* Key Details Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      Accrual Month (Derived)
+                    </div>
+                    <div className="font-bold text-foreground text-sm">
+                      {(viewingExpense.valueDate || viewingExpense.chequeIssueDate || viewingExpense.paymentDate || viewingExpense.month || "").slice(0, 7)}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Derived from Value Date / Cheque Date
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      Clearance / Payment Date
+                    </div>
+                    <div className="font-bold text-foreground text-sm">
+                      {viewingExpense.paymentDate || "Not yet cleared"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {viewingExpense.paymentDate ? "Date transaction hit hospital bank statement" : "Scheduled / pending clearance"}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      Value Date (Issue Date)
+                    </div>
+                    <div className="font-semibold text-foreground">
+                      {viewingExpense.valueDate || viewingExpense.chequeIssueDate || "—"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Date transaction / cheque was issued
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      Reference / UTR / Cheque #
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-foreground">
+                        {viewingExpense.referenceNo || "—"}
+                      </span>
+                      {viewingExpense.referenceNo && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyRef(viewingExpense.referenceNo)}
+                          className="text-muted-foreground hover:text-foreground cursor-pointer p-0.5 rounded hover:bg-muted"
+                          title="Copy reference number"
+                        >
+                          {copiedRef ? <CopyCheck size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                        </button>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Bank clearance / transaction reference
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      Hospital Bank Account
+                    </div>
+                    <div className="font-semibold text-foreground">
+                      {viewingExpense.bankName || "Not specified"}
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-muted/40 border border-border/50">
+                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1">
+                      Payee / Vendor
+                    </div>
+                    <div className="font-semibold text-foreground flex items-center gap-1.5">
+                      {viewingExpense.vendorName ? (
+                        <>
+                          <Building2 size={13} className="text-blue-500" />
+                          <span>{viewingExpense.vendorName}</span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">Direct Expense (No Vendor)</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Info Box */}
+                <div className="p-3 rounded-lg bg-muted/20 border border-border/40 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between text-muted-foreground text-[11px]">
+                    <span>Expense ID: <span className="font-mono font-semibold text-foreground">#{viewingExpense.id}</span></span>
+                    {viewingExpense.createdAt && (
+                      <span>Created: <span className="font-medium text-foreground">{format(new Date(viewingExpense.createdAt), "dd MMM yyyy, hh:mm a")}</span></span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Dialog Footer */}
+              <DialogFooter className="p-4 border-t border-border/60 bg-muted/10 flex items-center justify-between sm:justify-between">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setViewingExpense(null)}
+                  className="h-8 text-xs cursor-pointer"
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    const exp = viewingExpense;
+                    setViewingExpense(null);
+                    handleOpenEdit(exp);
+                  }}
+                  className="h-8 text-xs font-semibold gap-1.5 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Edit2 size={13} />
+                  Edit Expense
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

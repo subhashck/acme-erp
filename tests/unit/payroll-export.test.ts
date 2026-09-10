@@ -14,6 +14,7 @@ describe("exportPayrollToExcel", () => {
       bankName: "State Bank of India",
       accountNumber: "00123456789012",
       ifscCode: "SBIN0001234",
+      bankAccountName: "Sharma Ramesh Chandra",
       basicSalary: 50000,
       hra: 15000,
       conveyance: 5000,
@@ -97,11 +98,13 @@ describe("exportPayrollToExcel", () => {
     // Check header row contains Bank details
     const cells = Object.keys(sheet).map((k) => sheet[k]?.v);
     expect(cells).toContain("Payment Mode");
+    expect(cells).toContain("Name (in Bank Records)");
     expect(cells).toContain("Bank Name");
     expect(cells).toContain("Account Number");
     expect(cells).toContain("IFSC Code");
 
     // Check that EMP001 (September) data is present with bank details
+    expect(cells).toContain("Sharma Ramesh Chandra");
     expect(cells).toContain("State Bank of India");
     expect(cells).toContain("00123456789012");
     expect(cells).toContain("SBIN0001234");

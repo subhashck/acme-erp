@@ -85,6 +85,7 @@ const staffSchema = z.object({
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
+  bankAccountName: z.string().optional(),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   dateOfJoining: z.string().optional(),
   lastWorkingDate: z.string().optional(),
@@ -170,6 +171,7 @@ const defaultValues: Partial<StaffFormInput> = {
   bankName: "",
   accountNumber: "",
   ifscCode: "",
+  bankAccountName: "",
   dateOfBirth: "",
   dateOfJoining: "",
   lastWorkingDate: "",
@@ -297,6 +299,7 @@ function AddStaff() {
         bankName: (existingStaff as any).bankName ?? "",
         accountNumber: (existingStaff as any).accountNumber ?? "",
         ifscCode: (existingStaff as any).ifscCode ?? "",
+        bankAccountName: (existingStaff as any).bankAccountName ?? (existingStaff as any).name ?? "",
         dateOfBirth: normalizeDateString(profile?.dateOfBirth),
         dateOfJoining: normalizeDateString(profile?.dateOfJoining),
         lastWorkingDate: normalizeDateString(profile?.lastWorkingDate),
@@ -348,6 +351,7 @@ function AddStaff() {
         bankName: values.bankName,
         accountNumber: values.accountNumber,
         ifscCode: values.ifscCode,
+        bankAccountName: values.bankAccountName?.trim() || values.name,
         isExecutive: !!values.isExecutive,
         effectiveDate: values.effectiveDate,
         employmentType: values.employmentType,
@@ -1084,6 +1088,12 @@ function AddStaff() {
 
                 <div className="md:col-span-2 mt-4 pt-4 border-t grid gap-4 md:grid-cols-2">
                   <h3 className="font-semibold md:col-span-2">Bank Details</h3>
+                  <Field
+                    label="Name (in Bank Records)"
+                    placeholder="Account holder name (defaults to employee name)"
+                    {...form.register("bankAccountName")}
+                    error={form.formState.errors.bankAccountName?.message}
+                  />
                   <Select label="Bank Name" {...form.register("bankName")} options={activeBanks} error={form.formState.errors.bankName?.message} />
                   <Field label="Account Number" {...form.register("accountNumber")} error={form.formState.errors.accountNumber?.message} />
                   <Field label="IFSC Code" className="uppercase" {...form.register("ifscCode")} error={form.formState.errors.ifscCode?.message} />

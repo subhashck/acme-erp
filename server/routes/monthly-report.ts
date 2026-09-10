@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gte, lte, inArray, isNotNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { auth, type AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -403,7 +403,8 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
           amount: monthlyBankExpenses.amount,
           paymentMode: monthlyBankExpenses.paymentMode,
           paymentDate: monthlyBankExpenses.paymentDate,
-          chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
+          valueDate: monthlyBankExpenses.valueDate,
+          chequeIssueDate: monthlyBankExpenses.valueDate,
           referenceNo: monthlyBankExpenses.referenceNo,
           bankName: monthlyBankExpenses.bankName,
           narration: monthlyBankExpenses.narration,
@@ -422,49 +423,42 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
         .orderBy(asc(monthlyBankExpenses.paymentDate), asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
         .execute();
     } else {
-      // In Accrual Basis: fetch for all months overlapping the date range
-      const startMonth = startDate.slice(0, 7); // "YYYY-MM"
-      const endMonth = endDate.slice(0, 7);
-      const monthsInRange: string[] = [];
-      {
-        const [sy, sm] = startMonth.split("-").map(Number);
-        const [ey, em] = endMonth.split("-").map(Number);
-        let cy = sy, cm = sm;
-        while (cy < ey || (cy === ey && cm <= em)) {
-          monthsInRange.push(`${cy}-${String(cm).padStart(2, "0")}`);
-          cm++;
-          if (cm > 12) { cm = 1; cy++; }
-        }
-      }
+      // In Accrual Basis: filter by valueDate (or paymentDate if direct transfer) within date range
+      const accrualDateExpr = sql`coalesce(nullif(trim(${monthlyBankExpenses.valueDate}), ''), nullif(trim(${monthlyBankExpenses.paymentDate}), ''))`;
 
-      allBankExpenses = monthsInRange.length > 0
-        ? await db
-            .select({
-              id: monthlyBankExpenses.id,
-              month: monthlyBankExpenses.month,
-              category: monthlyBankExpenses.category,
-              label: monthlyBankExpenses.label,
-              vendorId: monthlyBankExpenses.vendorId,
-              vendorName: vendors.name,
-              amount: monthlyBankExpenses.amount,
-              paymentMode: monthlyBankExpenses.paymentMode,
-              paymentDate: monthlyBankExpenses.paymentDate,
-              chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
-              referenceNo: monthlyBankExpenses.referenceNo,
-              bankName: monthlyBankExpenses.bankName,
-              narration: monthlyBankExpenses.narration,
-              isRecurring: monthlyBankExpenses.isRecurring,
-              isSalaryAuto: monthlyBankExpenses.isSalaryAuto,
-            })
-            .from(monthlyBankExpenses)
-            .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
-            .where(inArray(monthlyBankExpenses.month, monthsInRange))
-            .orderBy(asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
-            .execute()
-        : [];
+      allBankExpenses = await db
+        .select({
+          id: monthlyBankExpenses.id,
+          month: monthlyBankExpenses.month,
+          category: monthlyBankExpenses.category,
+          label: monthlyBankExpenses.label,
+          vendorId: monthlyBankExpenses.vendorId,
+          vendorName: vendors.name,
+          amount: monthlyBankExpenses.amount,
+          paymentMode: monthlyBankExpenses.paymentMode,
+          paymentDate: monthlyBankExpenses.paymentDate,
+          valueDate: monthlyBankExpenses.valueDate,
+          chequeIssueDate: monthlyBankExpenses.valueDate,
+          referenceNo: monthlyBankExpenses.referenceNo,
+          bankName: monthlyBankExpenses.bankName,
+          narration: monthlyBankExpenses.narration,
+          isRecurring: monthlyBankExpenses.isRecurring,
+          isSalaryAuto: monthlyBankExpenses.isSalaryAuto,
+        })
+        .from(monthlyBankExpenses)
+        .leftJoin(vendors, eq(monthlyBankExpenses.vendorId, vendors.id))
+        .where(
+          and(
+            gte(accrualDateExpr, startDate),
+            lte(accrualDateExpr, endDate),
+            isNotNull(accrualDateExpr)
+          )
+        )
+        .orderBy(asc(accrualDateExpr), asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label))
+        .execute();
     }
 
-    // Group bank expenses by category & map by paymentDate for cash daily trends
+    // Group bank expenses by category & map by paymentDate/valueDate for daily trends
     const bankByCategoryMap = new Map<string, { code: string; label: string; total: number; isExcluded: boolean; entries: any[] }>();
     const dailyBankExpenditureMap = new Map<string, number>();
 
@@ -474,8 +468,9 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
       const isExcluded = activeExcludedSet.has(exclusionCode);
       const amt = parseFloat(exp.amount || "0");
 
-      if (isCashBasis && exp.paymentDate && !isExcluded) {
-        dailyBankExpenditureMap.set(exp.paymentDate, (dailyBankExpenditureMap.get(exp.paymentDate) || 0) + amt);
+      const expDate = isCashBasis ? exp.paymentDate : (exp.valueDate || exp.paymentDate);
+      if (expDate && !isExcluded) {
+        dailyBankExpenditureMap.set(expDate, (dailyBankExpenditureMap.get(expDate) || 0) + amt);
       }
 
       if (!bankByCategoryMap.has(cat)) {
@@ -497,7 +492,8 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
         amount: amt,
         paymentMode: exp.paymentMode,
         paymentDate: exp.paymentDate,
-        chequeIssueDate: exp.chequeIssueDate,
+        valueDate: exp.valueDate,
+        chequeIssueDate: exp.valueDate,
         referenceNo: exp.referenceNo,
         bankName: exp.bankName,
         narration: exp.narration,
@@ -540,10 +536,10 @@ export const monthlyReportRoutes = new Hono<AuthEnv>()
     const netBalance = totalIncome - totalExpenditure;
     const reportCount = reports.length;
 
-    // Daily trends filtered dynamically per report date (including cleared bank expenses in cash mode)
+    // Daily trends filtered dynamically per report date (including bank expenses by paymentDate in cash mode or valueDate in accrual mode)
     const dailyTrends = reports.map((r) => {
       const inc = parseFloat(r.totalIncome || "0");
-      const bankExp = isCashBasis ? (dailyBankExpenditureMap.get(r.reportDate) || 0) : 0;
+      const bankExp = dailyBankExpenditureMap.get(r.reportDate) || 0;
       const exp = (dailyExpenditureMap.get(r.reportDate) || 0) + (dailyStaffAdvancesMap.get(r.reportDate) || 0) + bankExp;
       return {
         date: r.reportDate,

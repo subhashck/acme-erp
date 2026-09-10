@@ -3484,6 +3484,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
             amount: String(input.amount),
             paymentMode: modeLabel,
             paymentDate: input.paymentDate,
+            valueDate: input.paymentDate,
             referenceNo: input.referenceNumber?.trim() || voucherNo,
             narration: `Referrer commission settlement voucher ${voucherNo} for ${referrer.name}${input.notes ? ` (${input.notes})` : ""}`,
             createdBy: session?.user?.id || null,

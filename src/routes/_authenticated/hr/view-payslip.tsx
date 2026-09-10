@@ -75,6 +75,7 @@ interface PayslipDetail {
   bankName?: string | null;
   accountNumber?: string | null;
   ifscCode?: string | null;
+  bankAccountName?: string | null;
   chequeNumber?: string | null;
   chequeDate?: string | null;
   hrNotes: string | null;
@@ -176,6 +177,7 @@ function ViewPayslipPage() {
   const [editBankName, setEditBankName] = React.useState("");
   const [editAccountNumber, setEditAccountNumber] = React.useState("");
   const [editIfscCode, setEditIfscCode] = React.useState("");
+  const [editBankAccountName, setEditBankAccountName] = React.useState("");
   const [editChequeNumber, setEditChequeNumber] = React.useState("");
   const [editChequeDate, setEditChequeDate] = React.useState("");
   const [savingPaymentDetails, setSavingPaymentDetails] = React.useState(false);
@@ -347,6 +349,7 @@ function ViewPayslipPage() {
           bankName: editPaymentMode !== "Cash" ? editBankName : null,
           accountNumber: editPaymentMode === "Bank Transfer" ? editAccountNumber : null,
           ifscCode: editPaymentMode === "Bank Transfer" ? editIfscCode : null,
+          bankAccountName: editPaymentMode !== "Cash" ? editBankAccountName : null,
           chequeNumber: editPaymentMode === "Cheque" ? editChequeNumber : null,
           chequeDate: editPaymentMode === "Cheque" ? editChequeDate : null,
         }),
@@ -913,6 +916,7 @@ function ViewPayslipPage() {
                     setEditBankName(p.bankName || "");
                     setEditAccountNumber(p.accountNumber || "");
                     setEditIfscCode(p.ifscCode || "");
+                    setEditBankAccountName(p.bankAccountName || p.name || "");
                     setEditChequeNumber(p.chequeNumber || "");
                     setEditChequeDate(p.chequeDate || "");
                     setShowPaymentModal(true);
@@ -923,7 +927,7 @@ function ViewPayslipPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 text-xs">
               <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
                   Payment Mode
@@ -942,6 +946,14 @@ function ViewPayslipPage() {
 
               {p.paymentMode === "Bank Transfer" ? (
                 <>
+                  <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs">
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
+                      Name (in Bank Records)
+                    </p>
+                    <p className="font-semibold text-foreground truncate" title={p.bankAccountName || p.name}>
+                      {p.bankAccountName || p.name || "N/A"}
+                    </p>
+                  </div>
                   <div className="p-2.5 rounded-lg border bg-background/80 shadow-2xs">
                     <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-0.5">
                       Bank Name
@@ -1235,6 +1247,17 @@ function ViewPayslipPage() {
 
               {editPaymentMode === "Bank Transfer" && (
                 <>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-foreground">Name (in Bank Records)</label>
+                    <input
+                      type="text"
+                      placeholder="Account holder name as per bank records"
+                      value={editBankAccountName}
+                      onChange={(e) => setEditBankAccountName(e.target.value)}
+                      className="w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-foreground">Bank Name</label>
                     <input

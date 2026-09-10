@@ -31,6 +31,10 @@ export type StaffRow = {
   securityDepositStartMonth?: string | null;
   otherDeductions?: number | null;
   lateAttendance?: number | null;
+  bankName?: string | null;
+  accountNumber?: string | null;
+  ifscCode?: string | null;
+  bankAccountName?: string | null;
   salary?: number | null;
   userId?: string | null;
   isExecutive?: boolean;

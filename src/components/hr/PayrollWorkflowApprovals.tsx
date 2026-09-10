@@ -34,11 +34,16 @@ export interface PayslipRow extends Record<string, unknown> {
   basicSalary: number;
   hra: number;
   conveyance: number;
-  medical: number;
+  skillAllowance?: number;
   special: number;
+  earnedLeaveEncashment?: number;
+  extraDayAllowance?: number;
+  medical?: number;
   epf: number;
   esi: number;
   professionalTax: number;
+  tds?: number;
+  securityDeposit?: number;
   otherDeductions: number;
   lateAttendance: number;
   leaveDaysTaken: number;
@@ -55,6 +60,7 @@ export interface PayslipRow extends Record<string, unknown> {
   bankName?: string | null;
   accountNumber?: string | null;
   ifscCode?: string | null;
+  bankAccountName?: string | null;
   hrNotes?: string | null;
   cooNotes?: string | null;
   accountsNotes?: string | null;
@@ -601,17 +607,22 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                       const basic = Number(r.basicSalary ?? 0);
                       const hra = Number(r.hra ?? 0);
                       const conveyance = Number(r.conveyance ?? 0);
-                      const medical = Number(r.medical ?? 0);
+                      const skill = Number(r.skillAllowance ?? 0);
                       const special = Number(r.special ?? 0);
-                      const gross = basic + hra + conveyance + medical + special;
+                      const earnedLeave = Number(r.earnedLeaveEncashment ?? 0);
+                      const extraDay = Number(r.extraDayAllowance ?? 0);
+                      const medical = Number(r.medical ?? 0);
+                      const gross = basic + hra + conveyance + skill + special + earnedLeave + extraDay + medical;
 
                       const epf = Number(r.epf ?? 0);
                       const esi = Number(r.esi ?? 0);
                       const pt = Number(r.professionalTax ?? 0);
+                      const tds = Number(r.tds ?? 0);
+                      const secDep = Number(r.securityDeposit ?? 0);
                       const other = Number(r.otherDeductions ?? 0);
                       const leaveDed = Number(r.leaveDeduction ?? 0);
                       const lateAtt = Number(r.lateAttendance ?? 0);
-                      const totalDeductions = epf + esi + pt + other + leaveDed + lateAtt;
+                      const totalDeductions = epf + esi + pt + tds + secDep + other + leaveDed + lateAtt;
 
                       return (
                         <React.Fragment key={r.id}>
@@ -665,8 +676,11 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                                   <span>Basic: <strong className="text-foreground">{fmt(basic)}</strong></span>
                                   {hra > 0 && <span>HRA: <strong className="text-foreground">{fmt(hra)}</strong></span>}
                                   {conveyance > 0 && <span>Conv: <strong className="text-foreground">{fmt(conveyance)}</strong></span>}
-                                  {medical > 0 && <span>Med: <strong className="text-foreground">{fmt(medical)}</strong></span>}
+                                  {skill > 0 && <span>Skill: <strong className="text-foreground">{fmt(skill)}</strong></span>}
                                   {special > 0 && <span>Spec: <strong className="text-foreground">{fmt(special)}</strong></span>}
+                                  {earnedLeave > 0 && <span>EL Encash: <strong className="text-foreground">{fmt(earnedLeave)}</strong></span>}
+                                  {extraDay > 0 && <span>Extra Day: <strong className="text-foreground">{fmt(extraDay)}</strong></span>}
+                                  {medical > 0 && <span>Med: <strong className="text-foreground">{fmt(medical)}</strong></span>}
                                 </div>
                               </div>
                             </td>
@@ -682,6 +696,8 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                                   {epf > 0 && <span>EPF: <strong className="text-foreground">{fmt(epf)}</strong></span>}
                                   {esi > 0 && <span>ESI: <strong className="text-foreground">{fmt(esi)}</strong></span>}
                                   {pt > 0 && <span>PT: <strong className="text-foreground">{fmt(pt)}</strong></span>}
+                                  {tds > 0 && <span>TDS: <strong className="text-foreground">{fmt(tds)}</strong></span>}
+                                  {secDep > 0 && <span>Sec.Dep: <strong className="text-foreground">{fmt(secDep)}</strong></span>}
                                   {leaveDed > 0 && (
                                     <span className="text-amber-700 dark:text-amber-400">
                                       Leave ({r.leaveDaysTaken}d): <strong>{fmt(leaveDed)}</strong>
@@ -711,6 +727,11 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                                       <Landmark size={11} className="text-emerald-600 shrink-0" />
                                       <span className="truncate max-w-[120px]">{r.bankName || "Bank Transfer"}</span>
                                     </div>
+                                    {r.bankAccountName && r.bankAccountName !== r.name && (
+                                      <div className="text-[10px] text-teal-700 dark:text-teal-400 font-medium truncate max-w-[140px]" title={`Name in Bank: ${r.bankAccountName}`}>
+                                        Bank: {r.bankAccountName}
+                                      </div>
+                                    )}
                                     <div className="text-[10px] font-mono text-muted-foreground truncate max-w-[140px]">
                                       {r.accountNumber ? `A/C: ${r.accountNumber}` : "No A/C info"}
                                       {r.ifscCode ? ` (${r.ifscCode})` : ""}
@@ -788,8 +809,11 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                                       <div className="flex justify-between"><span className="text-muted-foreground">Basic Salary:</span><span className="font-medium">{fmt(basic)}</span></div>
                                       <div className="flex justify-between"><span className="text-muted-foreground">House Rent (HRA):</span><span className="font-medium">{fmt(hra)}</span></div>
                                       <div className="flex justify-between"><span className="text-muted-foreground">Conveyance:</span><span className="font-medium">{fmt(conveyance)}</span></div>
-                                      <div className="flex justify-between"><span className="text-muted-foreground">Medical:</span><span className="font-medium">{fmt(medical)}</span></div>
+                                      {skill > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Skill Allowance:</span><span className="font-medium">{fmt(skill)}</span></div>}
                                       <div className="flex justify-between"><span className="text-muted-foreground">Special Allowance:</span><span className="font-medium">{fmt(special)}</span></div>
+                                      {earnedLeave > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Earned Leave Encashment:</span><span className="font-medium">{fmt(earnedLeave)}</span></div>}
+                                      {extraDay > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Extra Day Allowance:</span><span className="font-medium">{fmt(extraDay)}</span></div>}
+                                      {medical > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Medical:</span><span className="font-medium">{fmt(medical)}</span></div>}
                                     </div>
                                   </div>
 
@@ -803,6 +827,8 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                                       <div className="flex justify-between"><span className="text-muted-foreground">EPF (Provident Fund):</span><span className="font-medium">{fmt(epf)}</span></div>
                                       <div className="flex justify-between"><span className="text-muted-foreground">ESI (State Insurance):</span><span className="font-medium">{fmt(esi)}</span></div>
                                       <div className="flex justify-between"><span className="text-muted-foreground">Professional Tax:</span><span className="font-medium">{fmt(pt)}</span></div>
+                                      {tds > 0 && <div className="flex justify-between"><span className="text-muted-foreground">TDS Deduction:</span><span className="font-medium">{fmt(tds)}</span></div>}
+                                      {secDep > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Security Deposit:</span><span className="font-medium">{fmt(secDep)}</span></div>}
                                       <div className="flex justify-between"><span className="text-muted-foreground">Leave Deduction ({r.leaveDaysTaken} days):</span><span className="font-medium text-amber-600">{fmt(leaveDed)}</span></div>
                                       <div className="flex justify-between"><span className="text-muted-foreground">Late Attendance:</span><span className="font-medium">{fmt(lateAtt)}</span></div>
                                       <div className="flex justify-between"><span className="text-muted-foreground">Other Deductions:</span><span className="font-medium">{fmt(other)}</span></div>
@@ -816,6 +842,7 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                                       <div className="flex justify-between"><span className="text-muted-foreground">Payment Mode:</span><span className="font-semibold">{r.paymentMode || "Bank Transfer"}</span></div>
                                       {r.paymentMode !== "Cash" ? (
                                         <>
+                                          <div className="flex justify-between"><span className="text-muted-foreground">Name in Bank:</span><span className="font-medium truncate max-w-[130px]" title={r.bankAccountName || r.name}>{r.bankAccountName || r.name || "N/A"}</span></div>
                                           <div className="flex justify-between"><span className="text-muted-foreground">Bank Name:</span><span className="font-medium truncate max-w-[120px]">{r.bankName || "N/A"}</span></div>
                                           <div className="flex justify-between"><span className="text-muted-foreground">Account Number:</span><span className="font-mono font-medium">{r.accountNumber || "N/A"}</span></div>
                                           <div className="flex justify-between"><span className="text-muted-foreground">IFSC Code:</span><span className="font-mono font-medium uppercase">{r.ifscCode || "N/A"}</span></div>

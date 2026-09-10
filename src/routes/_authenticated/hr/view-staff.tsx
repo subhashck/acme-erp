@@ -169,7 +169,7 @@ function ViewStaff() {
         body: [
           ["Basic Salary", (employee as any).basicSalary?.toString() || "0", "Gross Salary", employee.salary?.toString() || "0"],
           ["Bank Name", (employee as any).bankName || "N/A", "Account Number", (employee as any).accountNumber || "N/A"],
-          ["IFSC Code", (employee as any).ifscCode || "N/A", "", ""]
+          ["IFSC Code", (employee as any).ifscCode || "N/A", "Name (in Bank Records)", (employee as any).bankAccountName || employee.name || "N/A"]
         ]
       });
       finalY = (doc as any).lastAutoTable.finalY + 10;
@@ -552,6 +552,9 @@ function ViewStaff() {
 
                     <span className="text-muted-foreground font-medium">IFSC Code</span>
                     <span className="font-semibold text-foreground font-mono">{(employee as any).ifscCode || "N/A"}</span>
+
+                    <span className="text-muted-foreground font-medium">Name (in Bank Records)</span>
+                    <span className="font-semibold text-foreground">{(employee as any).bankAccountName || employee.name || "N/A"}</span>
                   </div>
                 </CardContent>
               </Card>

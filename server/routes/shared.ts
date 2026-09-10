@@ -638,6 +638,7 @@ export const staffInput = z.object({
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
   ifscCode: z.string().optional(),
+  bankAccountName: z.string().optional().nullable(),
   salary: z.coerce.number().positive().default(1),
   status: z.string().default("Active"),
   isExecutive: z.boolean().optional().default(false),

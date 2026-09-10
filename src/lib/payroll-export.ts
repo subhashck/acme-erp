@@ -10,6 +10,7 @@ interface PayslipRow {
   bankName?: string | null;
   accountNumber?: string | null;
   ifscCode?: string | null;
+  bankAccountName?: string | null;
   basicSalary: number;
   hra: number;
   conveyance: number;
@@ -68,6 +69,7 @@ const COLUMNS: { key: string; label: string; group: ColGroup }[] = [
   { key: "Month",                 label: "Month",                     group: "info"            },
   { key: "Employee Code",         label: "Employee Code",             group: "info"            },
   { key: "Name",                  label: "Name",                      group: "info"            },
+  { key: "Name (in Bank Records)", label: "Name (in Bank Records)",    group: "info"            },
   { key: "Role",                  label: "Role",                      group: "info"            },
   { key: "Department",            label: "Department",                group: "info"            },
   { key: "Payment Mode",          label: "Payment Mode",              group: "info"            },
@@ -125,6 +127,7 @@ function buildDataRows(payslips: PayslipRow[]): DataRow[] {
       "Month":                 p.month,
       "Employee Code":         p.employeeCode,
       "Name":                  p.name,
+      "Name (in Bank Records)": p.bankAccountName || p.name,
       "Role":                  p.role,
       "Department":            p.departmentName ?? "General",
       "Payment Mode":          p.paymentMode || "Bank Transfer",

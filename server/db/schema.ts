@@ -214,6 +214,7 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   bankName: text("bank_name"),
   accountNumber: text("account_number"),
   ifscCode: text("ifsc_code"),
+  bankAccountName: text("bank_account_name"),
   ...timestamps
 }, (table) => [
   unique("staff_salaries_staff_id_version_unique").on(table.staffId, table.staffVersion),
@@ -406,6 +407,7 @@ export const payslips = sqliteTable("payslips", {
   bankName: text("bank_name"),
   accountNumber: text("account_number"),
   ifscCode: text("ifsc_code"),
+  bankAccountName: text("bank_account_name"),
   chequeNumber: text("cheque_number"),
   chequeDate: text("cheque_date"),
   hrNotes: text("hr_notes"),
@@ -911,14 +913,14 @@ export const dailyDiscountsReturnsRelations = relations(dailyDiscountsReturns, (
 
 export const monthlyBankExpenses = sqliteTable("monthly_bank_expenses", {
   id: serial("id").primaryKey(),
-  month: text("month").notNull(),                // "YYYY-MM" format
+  month: text("month"),                          // "YYYY-MM" format (auto-derived)
   category: text("category").notNull(),          // references expenseCategories.code / expenseCatalog
   label: text("label").notNull(),                // description of the expense
   vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
   paymentMode: text("payment_mode").notNull().default("Bank Transfer"),
   paymentDate: text("payment_date"),             // YYYY-MM-DD (Clearance Date)
-  chequeIssueDate: text("cheque_issue_date"),     // YYYY-MM-DD (Cheque / Instrument Issue Date)
+  valueDate: text("value_date"),                 // YYYY-MM-DD (Cheque / Transaction Value Date - determines accrual period)
   referenceNo: text("reference_no"),             // UTR / cheque no / transaction ref
   bankName: text("bank_name"),                   // which hospital bank account
   narration: text("narration"),

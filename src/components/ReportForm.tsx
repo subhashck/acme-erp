@@ -8,7 +8,7 @@ import { Input } from "../ui/input";
 import { Select } from "../ui/select";
 import { Label } from "../ui/label";
 import { cn } from "../utils/cn";
-import { Autocomplete } from "../ui/autocomplete";
+import { Autocomplete, type Option as AutocompleteOption } from "../ui/autocomplete";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -52,9 +52,16 @@ const toNum = (v: unknown): number => {
 
 // const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
 // const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
-const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHERS"];
-const CHANNELS = ["CREDIT CARD", "UPI", "DEBIT CARD", "RTGS", "CASH"];
+const FALLBACK_BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHERS"];
+const CHANNELS = ["UPI", "CASH", "RAZORPAY", "NETBANKING", "DEBIT CARD", "CREDIT CARD", "RTGS"];
 const CASH_DENOMINATIONS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+
+const LEGAL_ENTITY_LABELS: Record<string, string> = {
+  ACME_HOSPITAL: "Acme Hospital",
+  ACME_NURSING: "Acme College of Nursing",
+  HUMANKIND: "HumanKind Drugs",
+  PERSONAL: "Personal Accounts",
+};
 
 const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "ICICI", channel: "CARD", sourceLabel: "Front OPD Card", amount: 0 },
@@ -144,7 +151,7 @@ export function ReportForm({
   const [cashReceiptAcon, setCashReceiptAcon] = React.useState("");
   const [bankReceiptSir, setBankReceiptSir] = React.useState("");
   const [bankReceiptSirBank, setBankReceiptSirBank] = React.useState("");
-  const [bankDeposits, setBankDeposits] = React.useState<{ bankName: string; amount: number | string }[]>([]);
+  const [bankDeposit, setBankDeposit] = React.useState("");
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
@@ -202,6 +209,38 @@ export function ReportForm({
     return staffList.map((s) => [String(s.staffId), `${s.employeeCode} - ${s.name}`] as [string, string]);
   }, [staffList]);
 
+  // ── bank accounts query (from /accounts/bank-accounts) ─────────
+  const bankAccountsQuery = useRpcQuery<any[]>(
+    ["bank-accounts"],
+    () => (client.accounts as any)["bank-accounts"].$get()
+  );
+  const bankAccounts: any[] = bankAccountsQuery.data || [];
+
+  const activeAccountBanks = React.useMemo(() => {
+    const bankCountMap = new Map<string, number>();
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const name = acc.bankName.trim();
+        bankCountMap.set(name, (bankCountMap.get(name) || 0) + 1);
+      }
+    });
+
+    const list: string[] = [];
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const name = acc.bankName.trim();
+        const isDuplicate = (bankCountMap.get(name) || 0) > 1;
+        const label = isDuplicate && acc.accountNumber
+          ? `${name} (..${acc.accountNumber.slice(-4)})`
+          : name;
+        if (!list.includes(label)) {
+          list.push(label);
+        }
+      }
+    });
+    return list;
+  }, [bankAccounts]);
+
   // ── past reports query for auto-populating balance and prior denominations reference ──
   const pastReportsQuery = useRpcQuery<any[]>(
     ["daily-closing-reports-latest"],
@@ -257,6 +296,138 @@ export function ReportForm({
   const [paymentChannels, setPaymentChannels] = React.useState<PaymentChannel[]>(
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
   );
+
+  // Dynamic bank autocomplete options for Payment Channels reconciliation
+  // Line 1: Bank Name - last 4 digits of bank account
+  // Line 2: Entity to which the account belongs to
+  const bankAutocompleteOptions: AutocompleteOption[] = React.useMemo(() => {
+    const options: AutocompleteOption[] = [];
+    const seenValues = new Set<string>();
+
+    // 1. Bank accounts from /accounts/bank-accounts (fetches all regardless of legal entity)
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const last4 = acc.accountNumber && acc.accountNumber.trim().length >= 4
+          ? acc.accountNumber.trim().slice(-4)
+          : (acc.accountNumber ? acc.accountNumber.trim() : "");
+        const bankDisplayName = last4
+          ? `${acc.bankName.trim()} - ${last4}`
+          : acc.bankName.trim();
+
+        const entityName = LEGAL_ENTITY_LABELS[acc.legalEntity] || acc.legalEntity || "Acme Hospital";
+        const subLabel = acc.branchName ? `${entityName} • ${acc.branchName.trim()}` : entityName;
+
+        if (!seenValues.has(bankDisplayName)) {
+          seenValues.add(bankDisplayName);
+          options.push([bankDisplayName, bankDisplayName, subLabel]);
+        }
+      }
+    });
+
+    // 2. Legacy common aliases (ICICI, HDFC, BOI)
+    if (!seenValues.has("ICICI Bank") && !seenValues.has("ICICI")) {
+      options.push(["ICICI", "ICICI Bank", "Legacy Bank"]);
+      seenValues.add("ICICI");
+    }
+    if (!seenValues.has("HDFC Bank") && !seenValues.has("HDFC")) {
+      options.push(["HDFC", "HDFC Bank", "Legacy Bank"]);
+      seenValues.add("HDFC");
+    }
+    if (!seenValues.has("Bank Of India") && !seenValues.has("BOI")) {
+      options.push(["BOI", "Bank Of India", "Legacy Bank"]);
+      seenValues.add("BOI");
+    }
+
+    // 3. Ensure any existing legacy values in paymentChannels or initialData are present
+    paymentChannels.forEach((pc) => {
+      if (pc.bank && !seenValues.has(pc.bank)) {
+        seenValues.add(pc.bank);
+        options.push([pc.bank, pc.bank, "Current Value"]);
+      }
+    });
+    if (initialData?.paymentChannels) {
+      initialData.paymentChannels.forEach((pc) => {
+        if (pc.bank && !seenValues.has(pc.bank)) {
+          seenValues.add(pc.bank);
+          options.push([pc.bank, pc.bank, "Saved Report Value"]);
+        }
+      });
+    }
+
+    // 4. Non-bank channels (CASH and OTHERS)
+    if (!seenValues.has("CASH")) {
+      options.push(["CASH", "CASH", "Physical Cash Collection"]);
+    }
+    if (!seenValues.has("OTHERS")) {
+      options.push(["OTHERS", "OTHERS", "Other / Miscellaneous"]);
+    }
+
+    return options;
+  }, [bankAccounts, paymentChannels, initialData?.paymentChannels]);
+
+  // Dynamic bank options for Bank Receipt Sir (excluding CASH)
+  const receiptBankOptions = React.useMemo(() => {
+    const options = new Set<string>();
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const last4 = acc.accountNumber && acc.accountNumber.trim().length >= 4
+          ? ` - ${acc.accountNumber.trim().slice(-4)}`
+          : "";
+        options.add(`${acc.bankName.trim()}${last4}`);
+      }
+    });
+    if (options.size === 0) {
+      ["ICICI", "HDFC", "BOI"].forEach((b) => options.add(b));
+    }
+    if (bankReceiptSirBank) {
+      options.add(bankReceiptSirBank);
+    }
+    if (initialData?.bankReceiptSirBank) {
+      options.add(initialData.bankReceiptSirBank);
+    }
+    options.add("OTHERS");
+    return Array.from(options).filter((b) => b !== "CASH");
+  }, [bankAccounts, bankReceiptSirBank, initialData?.bankReceiptSirBank]);
+
+  // When bankAccounts load in "new" mode, update default payment channels bank names if untouched
+  React.useEffect(() => {
+    if (mode !== "new" || !bankAccounts || bankAccounts.length === 0) return;
+
+    setPaymentChannels((prev) => {
+      const isUntouchedDefault =
+        prev.length === 4 &&
+        prev.every(
+          (pc) => toNum(pc.amount) === 0 && (
+            ["ICICI", "HDFC", "BOI"].includes(pc.bank) ||
+            pc.bank.startsWith("ICICI") ||
+            pc.bank.startsWith("HDFC") ||
+            pc.bank.includes("India")
+          )
+        );
+
+      if (!isUntouchedDefault) return prev;
+
+      const resolveBank = (legacy: string) => {
+        const found = bankAccounts.find((a: any) => {
+          if (a.active === false) return false;
+          const name = (a.bankName || "").toUpperCase();
+          if (legacy === "BOI") return name.includes("INDIA") || name.includes("BOI");
+          return name.includes(legacy.toUpperCase());
+        });
+        if (!found) return legacy;
+        const last4 = found.accountNumber && found.accountNumber.trim().length >= 4
+          ? ` - ${found.accountNumber.trim().slice(-4)}`
+          : "";
+        return `${found.bankName.trim()}${last4}`;
+      };
+
+      return prev.map((pc) => ({
+        ...pc,
+        bank: resolveBank(pc.bank),
+      }));
+    });
+  }, [mode, bankAccounts]);
+
   const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number; narration?: string }>>([]);
   const [entryOrder, setEntryOrder] = React.useState<number[]>([]);
 
@@ -385,21 +556,21 @@ export function ReportForm({
     if (initialData.bankDeposits) {
       try {
         const parsed = JSON.parse(initialData.bankDeposits);
-        if (Array.isArray(parsed)) {
-          setBankDeposits(parsed.map((item: any) => ({
-            bankName: item.bankName || "",
-            amount: toNum(item.amount),
-          })));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const sum = parsed.reduce((s: number, it: any) => s + toNum(it.amount), 0);
+          setBankDeposit(sum > 0 ? String(sum) : "");
+        } else if (toNum(initialData.bankDeposit) > 0) {
+          setBankDeposit(String(toNum(initialData.bankDeposit)));
         } else {
-          setBankDeposits([]);
+          setBankDeposit("");
         }
-      } catch (e) {
-        setBankDeposits([]);
+      } catch {
+        setBankDeposit(toNum(initialData.bankDeposit) > 0 ? String(toNum(initialData.bankDeposit)) : "");
       }
     } else if (toNum(initialData.bankDeposit) > 0) {
-      setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
+      setBankDeposit(String(toNum(initialData.bankDeposit)));
     } else {
-      setBankDeposits([]);
+      setBankDeposit("");
     }
 
     if (initialData.cashDenominations) {
@@ -479,11 +650,7 @@ export function ReportForm({
   const totalIncome = Number((totalCategoryIncome + nightServicesTotal - discountsTotal).toFixed(2));
   const netBalance = Number((totalIncome - totalExpenditures).toFixed(2));
 
-  const derivedBankDepositTotal = React.useMemo(() => {
-    return Number(bankDeposits.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
-  }, [bankDeposits]);
-
-  const depositVal = derivedBankDepositTotal;
+  const depositVal = toNum(bankDeposit);
   const handoverSirVal = toNum(fundHandoverSir);
   const handoverMadamVal = toNum(fundHandoverMadam);
 
@@ -826,7 +993,7 @@ export function ReportForm({
       cashReceiptAcon: cashAconVal,
       bankReceiptSir: toNum(bankReceiptSir),
       bankReceiptSirBank: bankReceiptSirBank || null,
-      bankDeposits: JSON.stringify(bankDeposits),
+      bankDeposits: null,
       cashReceipts: cashReceiptsSum,
       status: finalStatus,
       serviceLines: parsedServiceLines,
@@ -1896,67 +2063,6 @@ export function ReportForm({
 
             {/* ── Payment Channels Tab ───────────────────────────── */}
             {formTab === "channels" && (<>
-            {/* Bank Deposits section */}
-            <Card id="sec-bank-deposits" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
-              <button
-                type="button"
-                onClick={() => toggleSection("deposits")}
-                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-              >
-                <div>
-                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    Bank Deposits
-                  </CardTitle>
-                  <CardDescription className="text-xs">Record cash deposits made to specific bank accounts</CardDescription>
-                </div>
-                <span className="text-xs font-bold text-teal-600">{openSections.deposits ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-              </button>
-              {openSections.deposits && (
-                <CardContent className="p-5 space-y-4">
-                  {bankDeposits.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
-                      <div className="flex-1 space-y-1">
-                        <Label className="text-[10px]">Bank Account / Name</Label>
-                        <Input
-                          type="text"
-                          placeholder="e.g. Sir (ICICI)"
-                          value={item.bankName}
-                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, bankName: e.target.value } : bd))}
-                          required
-                        />
-                      </div>
-                      <div className="w-48 space-y-1">
-                        <Label className="text-[10px]">Amount (INR)</Label>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={item.amount || ""}
-                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, amount: e.target.value } : bd))}
-                          required
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setBankDeposits(bankDeposits.filter((_, i) => i !== idx))}
-                        className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" onClick={() => setBankDeposits([...bankDeposits, { bankName: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
-                    <Plus size={13} className="mr-1" /> Add Bank Deposit
-                  </Button>
-                  {bankDeposits.length > 0 && (
-                    <div className="pt-3 border-t flex justify-between items-center text-sm font-bold text-teal-600">
-                      <span>Total Bank Deposits:</span>
-                      <span>{fmt(derivedBankDepositTotal)}</span>
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-
             <Card id="sec-payment-channels" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
@@ -1976,37 +2082,48 @@ export function ReportForm({
                   {paymentChannels
                     .map((item, idx) => ({ item, idx }))
                     .map(({ item, idx }) => (
-                      <div key={idx} className="grid grid-cols-1 gap-3 sm:grid-cols-4 items-end bg-muted/15 p-3 rounded border">
-                        <Select
-                          label="Bank"
-                          options={BANKS}
-                          value={item.bank}
-                          onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, bank: e.target.value } : pc)))}
-                          required
-                        />
-                        <Select
-                          label="Channel"
-                          options={CHANNELS}
-                          value={item.channel}
-                          onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, channel: e.target.value } : pc)))}
-                          required
-                        />
-                        <div className="space-y-1">
-                          <Label className="text-[10px]">Description / Source</Label>
+                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-12 items-end bg-muted/15 p-2.5 rounded border">
+                        <div className="sm:col-span-5">
+                          <Autocomplete
+                            label="Bank"
+                            labelClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1"
+                            inputClassName="h-8 text-xs py-1"
+                            options={bankAutocompleteOptions}
+                            value={item.bank}
+                            onChange={(val) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, bank: val } : pc)))}
+                            placeholder="Search bank..."
+                            allowCustomValue
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Select
+                            label="Channel"
+                            labelClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1"
+                            selectClassName="h-8 text-xs py-1 px-2"
+                            options={CHANNELS}
+                            value={item.channel}
+                            onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, channel: e.target.value } : pc)))}
+                            required
+                          />
+                        </div>
+                        <div className="sm:col-span-3 space-y-1">
+                          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">Description / Source</Label>
                           <Input
                             type="text"
                             placeholder="e.g. Front OPD card reader"
+                            className="h-8 text-xs px-2.5"
                             value={item.sourceLabel}
                             onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, sourceLabel: e.target.value } : pc)))}
                             required
                           />
                         </div>
-                        <div className="flex gap-2 items-center">
-                          <div className="space-y-1 flex-1">
-                            <Label className="text-[10px]">Amount (INR)</Label>
+                        <div className="sm:col-span-2 flex gap-1.5 items-end">
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block truncate">Amount (INR)</Label>
                             <Input
                               type="number"
                               placeholder="0"
+                              className="h-8 text-xs font-semibold px-2 text-right"
                               value={item.amount || ""}
                               onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: e.target.value } : pc)))}
                               required
@@ -2015,9 +2132,10 @@ export function ReportForm({
                           <button
                             type="button"
                             onClick={() => setPaymentChannels(paymentChannels.filter((_, i) => i !== idx))}
-                            className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                            className="h-8 w-8 shrink-0 flex items-center justify-center border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                            title="Delete"
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </div>
@@ -2422,7 +2540,7 @@ export function ReportForm({
                         onChange={(e) => setBankReceiptSirBank(e.target.value)}
                       >
                         <option value="" >Select Bank</option>
-                        {BANKS.filter(b => b !== "CASH").map((b) => (
+                        {receiptBankOptions.map((b) => (
                           <option key={b} value={b}>
                             {b}
                           </option>
@@ -2452,17 +2570,17 @@ export function ReportForm({
                       <span className="font-bold">{fmt(totalExpenditures)}</span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormTab("channels");
-                        setTimeout(() => document.getElementById("sec-bank-deposits")?.scrollIntoView({ behavior: "smooth" }), 50);
-                      }}
-                      className="w-full flex justify-between items-baseline mt-2 text-rose-300 hover:underline cursor-pointer text-left"
-                    >
-                      <span className="font-semibold text-xs">Less Bank Deposit</span>
-                      <span className="font-bold text-xs">{fmt(derivedBankDepositTotal)}</span>
-                    </button>
+                    <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
+                      <Label className="text-rose-300">Less Bank Deposit</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        className="font-semibold text-right pr-0 bg-transparent text-rose-300"
+                        value={bankDeposit}
+                        onChange={(e) => setBankDeposit(e.target.value)}
+                      />
+                    </div>
                     <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
                       <Label className=" text-rose-300"> Handover (Sir)</Label>
                       <Input

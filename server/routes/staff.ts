@@ -98,6 +98,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -163,6 +164,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       bankName,
       accountNumber,
       ifscCode,
+      bankAccountName,
       hrProfile,
       ...staffData
     } = input;
@@ -209,6 +211,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         bankName,
         accountNumber,
         ifscCode,
+        bankAccountName: bankAccountName || staffData.name,
       })
       .execute();
 
@@ -283,6 +286,7 @@ export const staffRoutes = new Hono<AuthEnv>()
       bankName,
       accountNumber,
       ifscCode,
+      bankAccountName,
       hrProfile,
       ...staffData
     } = input;
@@ -324,6 +328,9 @@ export const staffRoutes = new Hono<AuthEnv>()
     const finalBankName = "bankName" in rawBody ? bankName : (currentSalary?.bankName ?? null);
     const finalAccountNumber = "accountNumber" in rawBody ? accountNumber : (currentSalary?.accountNumber ?? null);
     const finalIfscCode = "ifscCode" in rawBody ? ifscCode : (currentSalary?.ifscCode ?? null);
+    const finalBankAccountName = "bankAccountName" in rawBody
+      ? (bankAccountName || staffData.name || currentStaff.name)
+      : (currentSalary?.bankAccountName ?? currentStaff.name);
 
     const hasSalaryChange = !currentSalary ||
       Number(currentSalary.basicSalary) !== finalBasicSalary ||
@@ -343,7 +350,8 @@ export const staffRoutes = new Hono<AuthEnv>()
       Number(currentSalary.otherDeductions) !== finalOther ||
       currentSalary.bankName !== finalBankName ||
       currentSalary.accountNumber !== finalAccountNumber ||
-      currentSalary.ifscCode !== finalIfscCode;
+      currentSalary.ifscCode !== finalIfscCode ||
+      currentSalary.bankAccountName !== finalBankAccountName;
 
     const computedGross = finalBasicSalary + finalHra + finalConveyance + finalSkillAllowance + finalSpecial;
 
@@ -405,6 +413,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         bankName: finalBankName,
         accountNumber: finalAccountNumber,
         ifscCode: finalIfscCode,
+        bankAccountName: finalBankAccountName,
       })
       .returning()
       .execute();
@@ -650,6 +659,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -725,6 +735,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -811,6 +822,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,

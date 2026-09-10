@@ -15,14 +15,15 @@ import { hasHrOrAccountsViewAccess } from "./shared.ts";
 // Input schemas
 // ---------------------------------------------------------------------------
 const bankExpenseInput = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/),
+  month: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional(),
   category: z.string().min(1),
   label: z.string().min(1),
   vendorId: z.number().int().positive().nullable().optional(),
   amount: z.number().min(0),
   paymentMode: z.string().default("Bank Transfer"),
   paymentDate: z.string().nullable().optional(),
-  chequeIssueDate: z.string().nullable().optional(),
+  valueDate: z.string().nullable().optional(),
+  chequeIssueDate: z.string().nullable().optional(), // alias for backwards compatibility
   referenceNo: z.string().nullable().optional(),
   bankName: z.string().nullable().optional(),
   narration: z.string().nullable().optional(),
@@ -124,7 +125,7 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
             amount: e.amount,
             paymentMode: e.paymentMode,
             paymentDate: null,
-            chequeIssueDate: null,
+            valueDate: null,
             referenceNo: null,
             bankName: e.bankName,
             narration: e.narration,
@@ -157,13 +158,16 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
     const basis = c.req.query("basis") || "accrual";
     const isCashBasis = basis === "cash";
 
+    const cleanMonth = month.trim();
+    const accrualDateExpr = sql`coalesce(nullif(trim(${monthlyBankExpenses.valueDate}), ''), nullif(trim(${monthlyBankExpenses.paymentDate}), ''))`;
+
     const whereClause = isCashBasis
-      ? like(monthlyBankExpenses.paymentDate, `${month}%`)
-      : eq(monthlyBankExpenses.month, month);
+      ? sql`trim(${monthlyBankExpenses.paymentDate}) LIKE ${cleanMonth + '%'}`
+      : sql`${accrualDateExpr} LIKE ${cleanMonth + '%'}`;
 
     const orderByClause = isCashBasis
       ? [asc(monthlyBankExpenses.paymentDate), asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label)]
-      : [asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label)];
+      : [asc(accrualDateExpr), asc(monthlyBankExpenses.category), asc(monthlyBankExpenses.label)];
 
     const rows = await db
       .select({
@@ -176,7 +180,8 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
         amount: monthlyBankExpenses.amount,
         paymentMode: monthlyBankExpenses.paymentMode,
         paymentDate: monthlyBankExpenses.paymentDate,
-        chequeIssueDate: monthlyBankExpenses.chequeIssueDate,
+        valueDate: monthlyBankExpenses.valueDate,
+        chequeIssueDate: monthlyBankExpenses.valueDate,
         referenceNo: monthlyBankExpenses.referenceNo,
         bankName: monthlyBankExpenses.bankName,
         narration: monthlyBankExpenses.narration,
@@ -211,10 +216,12 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
     if (search) {
       filtered = filtered.filter((r) =>
         (r.label || "").toLowerCase().includes(search) ||
+        (r.month || "").toLowerCase().includes(search) ||
         (r.vendorName || "").toLowerCase().includes(search) ||
         (r.referenceNo || "").toLowerCase().includes(search) ||
         (r.bankName || "").toLowerCase().includes(search) ||
         (r.paymentDate || "").toLowerCase().includes(search) ||
+        (r.valueDate || "").toLowerCase().includes(search) ||
         (r.chequeIssueDate || "").toLowerCase().includes(search)
       );
     }
@@ -263,17 +270,20 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
     const body = await c.req.json();
     const input = bankExpenseInput.parse(body);
 
+    const effectiveValueDate = input.valueDate ?? input.chequeIssueDate ?? null;
+    const derivedMonth = input.month || (effectiveValueDate || input.paymentDate || "").slice(0, 7) || null;
+
     const [row] = await db
       .insert(monthlyBankExpenses)
       .values({
-        month: input.month,
+        month: derivedMonth,
         category: input.category,
         label: input.label,
         vendorId: input.vendorId ?? null,
         amount: input.amount.toFixed(2),
         paymentMode: input.paymentMode,
         paymentDate: input.paymentDate ?? null,
-        chequeIssueDate: input.chequeIssueDate ?? null,
+        valueDate: effectiveValueDate,
         referenceNo: input.referenceNo ?? null,
         bankName: input.bankName ?? null,
         narration: input.narration ?? null,
@@ -295,14 +305,26 @@ export const bankExpensesRoutes = new Hono<AuthEnv>()
     const input = bankExpenseInput.partial().parse(body);
 
     const updateData: Record<string, any> = { updatedAt: new Date() };
-    if (input.month !== undefined) updateData.month = input.month;
+    const effectiveValueDate = input.valueDate !== undefined ? input.valueDate : input.chequeIssueDate;
+    if (effectiveValueDate !== undefined) updateData.valueDate = effectiveValueDate ?? null;
+
+    if (input.month !== undefined) {
+      updateData.month = input.month;
+    } else if (effectiveValueDate !== undefined || input.paymentDate !== undefined) {
+      const activeValDate = effectiveValueDate !== undefined ? effectiveValueDate : null;
+      const activePayDate = input.paymentDate !== undefined ? input.paymentDate : null;
+      const effectiveDate = activeValDate || activePayDate;
+      if (effectiveDate) {
+        updateData.month = effectiveDate.slice(0, 7);
+      }
+    }
+
     if (input.category !== undefined) updateData.category = input.category;
     if (input.label !== undefined) updateData.label = input.label;
     if (input.vendorId !== undefined) updateData.vendorId = input.vendorId ?? null;
     if (input.amount !== undefined) updateData.amount = input.amount.toFixed(2);
     if (input.paymentMode !== undefined) updateData.paymentMode = input.paymentMode;
     if (input.paymentDate !== undefined) updateData.paymentDate = input.paymentDate ?? null;
-    if (input.chequeIssueDate !== undefined) updateData.chequeIssueDate = input.chequeIssueDate ?? null;
     if (input.referenceNo !== undefined) updateData.referenceNo = input.referenceNo ?? null;
     if (input.bankName !== undefined) updateData.bankName = input.bankName ?? null;
     if (input.narration !== undefined) updateData.narration = input.narration ?? null;

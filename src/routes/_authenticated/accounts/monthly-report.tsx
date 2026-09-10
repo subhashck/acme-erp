@@ -261,6 +261,7 @@ function HeadEntriesDialog({
   selectedHead,
   onClose,
   periodLabel,
+  basis = "accrual",
 }: {
   selectedHead: {
     title: string;
@@ -279,6 +280,7 @@ function HeadEntriesDialog({
   } | null;
   onClose: () => void;
   periodLabel: string;
+  basis?: "accrual" | "cash";
 }) {
   const [filterText, setFilterText] = React.useState("");
 
@@ -381,8 +383,38 @@ function HeadEntriesDialog({
                       className="hover:bg-muted/30 transition-colors"
                     >
                       <td className="py-2.5 px-3 font-semibold text-foreground whitespace-nowrap">
-                        <span className="sm:hidden">{formatDateMobile((entry as any).reportDate || (entry as any).paymentDate || (entry as any).month || "—")}</span>
-                        <span className="hidden sm:inline">{(entry as any).reportDate || (entry as any).paymentDate || (entry as any).month || "—"}</span>
+                        {entry.reportDate ? (
+                          <>
+                            <span className="sm:hidden">{formatDateMobile(entry.reportDate)}</span>
+                            <span className="hidden sm:inline">{entry.reportDate}</span>
+                          </>
+                        ) : (entry as any).valueDate || (entry as any).chequeIssueDate || (entry as any).paymentDate || (entry as any).month ? (
+                          <div>
+                            {basis === "cash" && (entry as any).paymentDate ? (
+                              <>
+                                <span className="font-bold text-foreground">{(entry as any).paymentDate}</span>
+                                {((entry as any).valueDate || (entry as any).chequeIssueDate) && (
+                                  <div className="text-[10px] text-muted-foreground font-normal">
+                                    Value: {(entry as any).valueDate || (entry as any).chequeIssueDate}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-bold text-foreground">
+                                  {(entry as any).valueDate || (entry as any).chequeIssueDate || (entry as any).paymentDate || (entry as any).month}
+                                </span>
+                                {(entry as any).paymentDate && (entry as any).paymentDate !== ((entry as any).valueDate || (entry as any).chequeIssueDate) && (
+                                  <div className="text-[10px] text-muted-foreground font-normal">
+                                    Cleared: {(entry as any).paymentDate}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ) : (
+                          <span>{(entry as any).paymentDate || "—"}</span>
+                        )}
                       </td>
                       <td className="py-2.5 px-3">
                         <div className="font-bold text-foreground flex items-center gap-1.5 flex-wrap">
@@ -398,10 +430,14 @@ function HeadEntriesDialog({
                             </span>
                           )}
                         </div>
-                        {((entry as any).narration || (entry as any).referenceNo || (entry as any).bankName || (entry as any).chequeIssueDate) && (
+                        {((entry as any).narration || (entry as any).referenceNo || (entry as any).bankName || (entry as any).valueDate || (entry as any).chequeIssueDate) && (
                           <div className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-2 flex-wrap italic">
                             {(entry as any).narration && <span>{(entry as any).narration}</span>}
-                            {(entry as any).chequeIssueDate && <span className="font-mono text-[10px] not-italic bg-amber-500/10 text-amber-700 dark:text-amber-300 px-1 rounded border border-amber-500/30">Issued: {(entry as any).chequeIssueDate}</span>}
+                            {((entry as any).valueDate || (entry as any).chequeIssueDate) && (
+                              <span className="font-mono text-[10px] not-italic bg-amber-500/10 text-amber-700 dark:text-amber-300 px-1 rounded border border-amber-500/30">
+                                Value Date: {(entry as any).valueDate || (entry as any).chequeIssueDate}
+                              </span>
+                            )}
                             {(entry as any).referenceNo && <span className="font-mono text-[10px] not-italic bg-muted px-1 rounded">Ref: {(entry as any).referenceNo}</span>}
                             {(entry as any).bankName && <span className="not-italic">{(entry as any).bankName}</span>}
                           </div>
@@ -1626,7 +1662,7 @@ function MonthlyReport() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate({ to: "/accounts/bank-expenses", search: { month: startStr.slice(0, 7) } })}
+                onClick={() => navigate({ to: "/accounts/bank-expenses", search: { month: startStr.slice(0, 7), basis: selectedBasis } })}
                 className="h-7 px-2.5 text-xs font-semibold text-blue-600 border-blue-500/30 hover:bg-blue-500/10 cursor-pointer"
               >
                 Manage Bank Expenses →
@@ -1858,6 +1894,7 @@ function MonthlyReport() {
         selectedHead={selectedHead}
         onClose={() => setSelectedHead(null)}
         periodLabel={periodLabel}
+        basis={selectedBasis}
       />
     </div>
   );

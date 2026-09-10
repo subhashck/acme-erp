@@ -26,6 +26,7 @@ function formatPayslipWithBankDetails(row: any) {
   const bankName = (row.bankName || row.staffBankName || "").trim();
   const accountNumber = (row.accountNumber || row.staffAccountNumber || "").trim();
   const ifscCode = (row.ifscCode || row.staffIfscCode || "").trim();
+  const bankAccountName = (row.bankAccountName || row.staffBankAccountName || row.name || "").trim();
 
   const hasBankInfo = Boolean(bankName && accountNumber);
 
@@ -40,6 +41,7 @@ function formatPayslipWithBankDetails(row: any) {
     bankName: bankName || row.bankName || null,
     accountNumber: accountNumber || row.accountNumber || null,
     ifscCode: ifscCode || row.ifscCode || null,
+    bankAccountName: bankAccountName || row.bankAccountName || row.name || null,
     chequeNumber: paymentMode === "Cheque" ? (row.chequeNumber || null) : null,
     chequeDate: paymentMode === "Cheque" ? (row.chequeDate || null) : null,
   };
@@ -126,6 +128,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         bankName: payslips.bankName,
         accountNumber: payslips.accountNumber,
         ifscCode: payslips.ifscCode,
+        bankAccountName: payslips.bankAccountName,
         chequeNumber: payslips.chequeNumber,
         chequeDate: payslips.chequeDate,
         hrNotes: payslips.hrNotes,
@@ -139,6 +142,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         staffBankName: staffSalaries.bankName,
         staffAccountNumber: staffSalaries.accountNumber,
         staffIfscCode: staffSalaries.ifscCode,
+        staffBankAccountName: staffSalaries.bankAccountName,
       })
       .from(payslips)
       .innerJoin(staff, sql`${payslips.staffId} = ${staff.staffId} AND ${staff.active} = true`)
@@ -181,6 +185,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         bankName: payslips.bankName,
         accountNumber: payslips.accountNumber,
         ifscCode: payslips.ifscCode,
+        bankAccountName: payslips.bankAccountName,
         chequeNumber: payslips.chequeNumber,
         chequeDate: payslips.chequeDate,
         hrNotes: payslips.hrNotes,
@@ -194,6 +199,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         staffBankName: staffSalaries.bankName,
         staffAccountNumber: staffSalaries.accountNumber,
         staffIfscCode: staffSalaries.ifscCode,
+        staffBankAccountName: staffSalaries.bankAccountName,
       })
       .from(payslips)
       .innerJoin(staff, sql`${payslips.staffId} = ${staff.staffId} AND ${staff.active} = true`)
@@ -387,6 +393,13 @@ export const payrollRoutes = new Hono<AuthEnv>()
         leaveDaysTaken: String(input.leaveDaysTaken),
         leaveDeduction: String(input.leaveDeduction),
         netSalary: String(net),
+        paymentMode: existing.paymentMode,
+        bankName: existing.bankName,
+        accountNumber: existing.accountNumber,
+        ifscCode: existing.ifscCode,
+        bankAccountName: existing.bankAccountName,
+        chequeNumber: existing.chequeNumber,
+        chequeDate: existing.chequeDate,
         hrNotes: input.hrNotes !== undefined ? (input.hrNotes || null) : existing.hrNotes,
         cooNotes: existing.cooNotes,
         accountsNotes: existing.accountsNotes,
@@ -839,6 +852,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         bankName: z.string().optional().nullable(),
         accountNumber: z.string().optional().nullable(),
         ifscCode: z.string().optional().nullable(),
+        bankAccountName: z.string().optional().nullable(),
         chequeNumber: z.string().optional().nullable(),
         chequeDate: z.string().optional().nullable(),
       })
@@ -890,6 +904,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         bankName: input.paymentMode === "Cash" ? null : input.bankName || null,
         accountNumber: input.paymentMode === "Bank Transfer" ? input.accountNumber || null : null,
         ifscCode: input.paymentMode === "Bank Transfer" ? input.ifscCode || null : null,
+        bankAccountName: input.paymentMode === "Cash" ? null : input.bankAccountName || null,
         chequeNumber: input.paymentMode === "Cheque" ? input.chequeNumber || null : null,
         chequeDate: input.paymentMode === "Cheque" ? input.chequeDate || null : null,
       })
@@ -1210,6 +1225,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
       const bankName = structure?.bankName || null;
       const accountNumber = structure?.accountNumber || null;
       const ifscCode = structure?.ifscCode || null;
+      const bankAccountName = structure?.bankAccountName || employee.name || null;
       const paymentMode = bankName && accountNumber ? "Bank Transfer" : "Cash";
 
       const payslipValues = {
@@ -1237,6 +1253,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         bankName,
         accountNumber,
         ifscCode,
+        bankAccountName,
       };
 
       if (existing) {
