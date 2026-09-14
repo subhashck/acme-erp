@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2, Lock, Receipt, ArrowDownCircle, CreditCard, Coins } from "lucide-react";
+import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2, Lock, Receipt, ArrowDownCircle, CreditCard, Coins, Landmark } from "lucide-react";
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { Button } from "../ui/button";
@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
 import { Label } from "../ui/label";
+import { Badge } from "../ui/badge";
 import { cn } from "../utils/cn";
 import { Autocomplete, type Option as AutocompleteOption } from "../ui/autocomplete";
 import { format } from "date-fns";
@@ -63,6 +64,46 @@ const LEGAL_ENTITY_LABELS: Record<string, string> = {
   PERSONAL: "Personal Accounts",
 };
 
+const LEGAL_ENTITIES_MAP = [
+  {
+    code: "ACME_HOSPITAL",
+    label: "Acme Hospital",
+    badgeBg: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  },
+  {
+    code: "ACME_NURSING",
+    label: "Acme College of Nursing",
+    badgeBg: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
+  },
+  {
+    code: "HUMANKIND",
+    label: "HumanKind Drugs",
+    badgeBg: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  },
+  {
+    code: "PERSONAL",
+    label: "Personal Accounts",
+    badgeBg: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30",
+  },
+] as const;
+
+function getEntityConfig(code?: string | null) {
+  if (!code) return null;
+  return (
+    LEGAL_ENTITIES_MAP.find((e) => e.code === code) || {
+      code,
+      label: LEGAL_ENTITY_LABELS[code] || code,
+      badgeBg: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30",
+    }
+  );
+}
+
+function maskAccountNumber(acc?: string | null) {
+  if (!acc || acc.trim().length < 4) return acc ? acc.trim() : "";
+  const trimmed = acc.trim();
+  return `•••• •••• ${trimmed.slice(-4)}`;
+}
+
 const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "ICICI", channel: "CARD", sourceLabel: "Front OPD Card", amount: 0 },
   { bank: "HDFC", channel: "UPI", sourceLabel: "Front OPD UPI", amount: 0 },
@@ -84,6 +125,18 @@ type StaffAdvance = { staffId?: number | null; staffName: string; amount: number
 // type AdditionalIncome = { label: string; amount: number };
 type DiscountReturn = { label: string; amount: number | string };
 type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number | string };
+
+export type BankDepositItem = {
+  bankAccountId?: number | null;
+  bankName: string;
+  accountName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  branchName?: string;
+  legalEntity?: string;
+  amount: number | string;
+  narration?: string;
+};
 
 export interface ReportPayload {
   reportDate?: string;
@@ -151,7 +204,7 @@ export function ReportForm({
   const [cashReceiptAcon, setCashReceiptAcon] = React.useState("");
   const [bankReceiptSir, setBankReceiptSir] = React.useState("");
   const [bankReceiptSirBank, setBankReceiptSirBank] = React.useState("");
-  const [bankDeposit, setBankDeposit] = React.useState("");
+  const [bankDeposits, setBankDeposits] = React.useState<BankDepositItem[]>([]);
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
@@ -160,6 +213,7 @@ export function ReportForm({
     exp: false,
     add: false,
     discounts: false,
+    deposits: true,
     reconcile: false,
     denominations: true,
   });
@@ -365,6 +419,68 @@ export function ReportForm({
     return options;
   }, [bankAccounts, paymentChannels, initialData?.paymentChannels]);
 
+  // Dynamic bank options for Bank Deposits from /accounts/bank-accounts
+  const bankDepositAccountOptions: AutocompleteOption[] = React.useMemo(() => {
+    const options: AutocompleteOption[] = [];
+    const seenKeys = new Set<string>();
+
+    // 1. Registered bank accounts from bank-accounts master
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.accountName) {
+        const idStr = String(acc.id);
+        const entityLabel = LEGAL_ENTITY_LABELS[acc.legalEntity] || acc.legalEntity || "Acme Hospital";
+        const masked = maskAccountNumber(acc.accountNumber);
+        const subLabelParts = [entityLabel, acc.bankName];
+        if (masked) subLabelParts.push(`A/C: ${masked}`);
+        if (acc.ifscCode) subLabelParts.push(`IFSC: ${acc.ifscCode}`);
+        if (acc.branchName) subLabelParts.push(acc.branchName);
+
+        seenKeys.add(idStr);
+        seenKeys.add(acc.accountName.toLowerCase());
+        options.push([idStr, acc.accountName, subLabelParts.join(" • ")]);
+      }
+    });
+
+    // 2. Also include any custom bankName already set on bankDeposits
+    bankDeposits.forEach((bd) => {
+      if (bd.bankName && !seenKeys.has(bd.bankName.toLowerCase())) {
+        seenKeys.add(bd.bankName.toLowerCase());
+        options.push([bd.bankName, bd.bankName, "Custom / Historical Bank"]);
+      }
+    });
+
+    return options;
+  }, [bankAccounts, bankDeposits]);
+
+  const handleBankDepositAccountChange = (idx: number, val: string) => {
+    const acc = bankAccounts.find(
+      (a: any) => String(a.id) === val || a.accountName.toLowerCase() === val.toLowerCase()
+    );
+    setBankDeposits(
+      bankDeposits.map((bd, i) => {
+        if (i !== idx) return bd;
+        if (acc) {
+          return {
+            ...bd,
+            bankAccountId: acc.id,
+            bankName: acc.accountName,
+            accountName: acc.accountName,
+            accountNumber: acc.accountNumber,
+            ifscCode: acc.ifscCode || undefined,
+            branchName: acc.branchName || undefined,
+            legalEntity: acc.legalEntity,
+          };
+        }
+        return {
+          ...bd,
+          bankAccountId: null,
+          bankName: val,
+          accountName: val,
+        };
+      })
+    );
+  };
+
   // Dynamic bank options for Bank Receipt Sir (excluding CASH)
   const receiptBankOptions = React.useMemo(() => {
     const options = new Set<string>();
@@ -557,20 +673,42 @@ export function ReportForm({
       try {
         const parsed = JSON.parse(initialData.bankDeposits);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const sum = parsed.reduce((s: number, it: any) => s + toNum(it.amount), 0);
-          setBankDeposit(sum > 0 ? String(sum) : "");
+          setBankDeposits(
+            parsed.map((item: any) => {
+              const matchedAcc = bankAccounts.find(
+                (a: any) =>
+                  (item.bankAccountId && a.id === item.bankAccountId) ||
+                  (item.bankName && a.accountName === item.bankName)
+              );
+              return {
+                bankAccountId: item.bankAccountId || matchedAcc?.id || null,
+                bankName: item.bankName || matchedAcc?.accountName || item.accountName || "",
+                accountName: item.accountName || matchedAcc?.accountName || item.bankName || "",
+                accountNumber: item.accountNumber || matchedAcc?.accountNumber || "",
+                ifscCode: item.ifscCode || matchedAcc?.ifscCode || "",
+                branchName: item.branchName || matchedAcc?.branchName || "",
+                legalEntity: item.legalEntity || matchedAcc?.legalEntity || "",
+                amount: toNum(item.amount),
+                narration: item.narration || "",
+              };
+            })
+          );
         } else if (toNum(initialData.bankDeposit) > 0) {
-          setBankDeposit(String(toNum(initialData.bankDeposit)));
+          setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
         } else {
-          setBankDeposit("");
+          setBankDeposits([]);
         }
       } catch {
-        setBankDeposit(toNum(initialData.bankDeposit) > 0 ? String(toNum(initialData.bankDeposit)) : "");
+        if (toNum(initialData.bankDeposit) > 0) {
+          setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
+        } else {
+          setBankDeposits([]);
+        }
       }
     } else if (toNum(initialData.bankDeposit) > 0) {
-      setBankDeposit(String(toNum(initialData.bankDeposit)));
+      setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
     } else {
-      setBankDeposit("");
+      setBankDeposits([]);
     }
 
     if (initialData.cashDenominations) {
@@ -650,7 +788,11 @@ export function ReportForm({
   const totalIncome = Number((totalCategoryIncome + nightServicesTotal - discountsTotal).toFixed(2));
   const netBalance = Number((totalIncome - totalExpenditures).toFixed(2));
 
-  const depositVal = toNum(bankDeposit);
+  const derivedBankDepositTotal = React.useMemo(() => {
+    return Number(bankDeposits.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  }, [bankDeposits]);
+
+  const depositVal = derivedBankDepositTotal;
   const handoverSirVal = toNum(fundHandoverSir);
   const handoverMadamVal = toNum(fundHandoverMadam);
 
@@ -993,7 +1135,7 @@ export function ReportForm({
       cashReceiptAcon: cashAconVal,
       bankReceiptSir: toNum(bankReceiptSir),
       bankReceiptSirBank: bankReceiptSirBank || null,
-      bankDeposits: null,
+      bankDeposits: JSON.stringify(bankDeposits),
       cashReceipts: cashReceiptsSum,
       status: finalStatus,
       serviceLines: parsedServiceLines,
@@ -1365,7 +1507,7 @@ export function ReportForm({
                 type="button"
                 onClick={() => setFormTab("channels")}
                 className={cn(
-                  "flex-1 min-w-[150px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
+                  "flex-1 min-w-37 flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
                   formTab === "channels"
                     ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
@@ -2063,6 +2205,165 @@ export function ReportForm({
 
             {/* ── Payment Channels Tab ───────────────────────────── */}
             {formTab === "channels" && (<>
+            {/* Bank Deposits Card */}
+            <Card id="sec-bank-deposits" className="border shadow-xs bg-white/70 dark:bg-slate-900/40  scroll-mt-24">
+              <button
+                type="button"
+                onClick={() => toggleSection("deposits")}
+                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
+              >
+                <div>
+                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                    {activeCategories.length + 7}. Bank Deposits
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Record cash deposits made to specific hospital, nursing, or personal bank accounts
+                  </CardDescription>
+                </div>
+                <span className="text-xs font-bold text-teal-600">
+                  {openSections.deposits ? "COLLAPSE ✕" : "EXPAND ▾"}
+                </span>
+              </button>
+              {openSections.deposits && (
+                <CardContent className="p-5 space-y-4">
+                  {bankDeposits.map((item, idx) => {
+                    const linkedAcc = bankAccounts.find(
+                      (a: any) =>
+                        (item.bankAccountId && a.id === item.bankAccountId) ||
+                        (a.accountName && a.accountName === item.bankName)
+                    );
+                    const entityCode = linkedAcc?.legalEntity || item.legalEntity;
+                    const entityConfig = getEntityConfig(entityCode);
+                    const accNumber = linkedAcc?.accountNumber || item.accountNumber;
+                    const ifsc = linkedAcc?.ifscCode || item.ifscCode;
+                    const branch = linkedAcc?.branchName || item.branchName;
+                    const bankActualName = linkedAcc?.bankName;
+
+                    return (
+                      <div key={idx} className="p-3 bg-muted/15 rounded-lg border border-border/60 space-y-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                          <div className="sm:col-span-6">
+                            <Autocomplete
+                              label="Bank Account"
+                              labelClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1"
+                              inputClassName="h-8 text-xs py-1"
+                              options={bankDepositAccountOptions}
+                              value={item.bankAccountId ? String(item.bankAccountId) : item.bankName}
+                              onChange={(val) => handleBankDepositAccountChange(idx, val)}
+                              placeholder="Select bank account..."
+                              allowCustomValue
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3 space-y-1">
+                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                              Deposit Ref / Narration
+                            </Label>
+                            <Input
+                              type="text"
+                              placeholder="e.g. Challan # / Cashier"
+                              className="h-8 text-xs px-2.5"
+                              value={item.narration || ""}
+                              onChange={(e) =>
+                                setBankDeposits(
+                                  bankDeposits.map((bd, i) =>
+                                    i === idx ? { ...bd, narration: e.target.value } : bd
+                                  )
+                                )
+                              }
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3 flex gap-1.5 items-end">
+                            <div className="space-y-1 flex-1 min-w-0">
+                              <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block truncate">
+                                Amount (INR)
+                              </Label>
+                              <Input
+                                type="number"
+                                placeholder="0"
+                                className="h-8 text-xs font-semibold px-2 text-right"
+                                value={item.amount || ""}
+                                onChange={(e) =>
+                                  setBankDeposits(
+                                    bankDeposits.map((bd, i) =>
+                                      i === idx ? { ...bd, amount: e.target.value } : bd
+                                    )
+                                  )
+                                }
+                                required
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setBankDeposits(bankDeposits.filter((_, i) => i !== idx))}
+                              className="h-8 w-8 shrink-0 flex items-center justify-center border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                              title="Delete"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Bank Account Details Strip */}
+                        {(entityConfig || accNumber || ifsc || branch || bankActualName) && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground border-t border-border/40">
+                            {entityConfig && (
+                              <Badge variant="outline" className={cn("text-[10px] py-0 px-1.5 font-bold", entityConfig.badgeBg)}>
+                                {entityConfig.label}
+                              </Badge>
+                            )}
+                            {bankActualName && (
+                              <span className="font-semibold text-foreground flex items-center gap-1">
+                                <Landmark size={12} className="text-teal-600 dark:text-teal-400" />
+                                {bankActualName}
+                              </span>
+                            )}
+                            {accNumber && (
+                              <span className="font-mono bg-muted/50 px-1.5 py-0.5 rounded text-[10px] text-foreground">
+                                A/C: {maskAccountNumber(accNumber)}
+                              </span>
+                            )}
+                            {ifsc && (
+                              <span className="font-mono text-[10px]">
+                                IFSC: <span className="font-semibold">{ifsc}</span>
+                              </span>
+                            )}
+                            {branch && (
+                              <span className="italic text-[10px]">
+                                Branch: {branch}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setBankDeposits([
+                        ...bankDeposits,
+                        { bankName: "", amount: 0, narration: "" },
+                      ])
+                    }
+                    className="font-semibold cursor-pointer text-xs"
+                  >
+                    <Plus size={13} className="mr-1" /> Add Bank Deposit
+                  </Button>
+
+                  {bankDeposits.length > 0 && (
+                    <div className="pt-3 border-t flex justify-between items-center text-sm font-bold text-teal-600 dark:text-teal-400">
+                      <span>Total Bank Deposits:</span>
+                      <span>{fmt(derivedBankDepositTotal)}</span>
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+
             <Card id="sec-payment-channels" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
@@ -2071,7 +2372,7 @@ export function ReportForm({
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 7}. Payment Channel Reconciliation
+                    {activeCategories.length + 8}. Payment Channel Reconciliation
                   </CardTitle>
                   <CardDescription className="text-xs">Reconcile transaction collections by card, UPI, and cash per bank channel</CardDescription>
                 </div>
@@ -2570,17 +2871,23 @@ export function ReportForm({
                       <span className="font-bold">{fmt(totalExpenditures)}</span>
                     </button>
 
-                    <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
-                      <Label className="text-rose-300">Less Bank Deposit</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        className="font-semibold text-right pr-0 bg-transparent text-rose-300"
-                        value={bankDeposit}
-                        onChange={(e) => setBankDeposit(e.target.value)}
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-bank-deposits")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between items-baseline mt-2 text-rose-300 hover:underline cursor-pointer text-left"
+                    >
+                      <span className="font-semibold text-xs">Less Bank Deposit</span>
+                      <span className="font-bold text-xs">{fmt(derivedBankDepositTotal)}</span>
+                    </button>
+                    {bankDeposits.filter((bd) => toNum(bd.amount) > 0).map((bd, i) => (
+                      <div key={i} className="flex justify-between pl-3 text-[10px] text-rose-200/80">
+                        <span className="truncate max-w-[140px]">{bd.bankName || "Deposit"}:</span>
+                        <span>{fmt(toNum(bd.amount))}</span>
+                      </div>
+                    ))}
                     <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
                       <Label className=" text-rose-300"> Handover (Sir)</Label>
                       <Input

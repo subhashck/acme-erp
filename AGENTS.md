@@ -147,6 +147,27 @@ This document serves as the persistent knowledge index and architecture guide fo
 
 ---
 
+### H. Capital Finances & Multi-Source Debt Management
+- **Schema**: PostgreSQL dedicated schema `capital` (`server/db/schema-capital.ts`).
+- **Setup & Seeder**: `server/db/setup-capital-db.ts` (idempotent DDL and Google Spreadsheet data seeder).
+- **Access Policy**: Restricted to `admin`, `accounts` department, and `managementApprovers` (`canViewAccounts`).
+- **Frontend Routes** (`src/routes/_authenticated/capital/`):
+  - `index.tsx`: Executive Treasury Dashboard (KPI cards: Total Debt, Monthly Servicing, Net Cash Position, Capital Infusions, Principal Repaid, Interest Paid; Portfolio breakdown by category; Daily Collection monitor; Recent activity tickers).
+  - `facilities.tsx`: Borrowings & Liabilities Master Directory (Cards/Table view, multi-category filters, status pills, and Add Facility dialog with live EMI/Installment calculator).
+  - `facility.tsx`: Facility 360° Profiles Directory (Cards/Table view, multi-category filters, search, executive KPI aggregates, and quick links to open each facility's 360° profile).
+  - `facility.$id.tsx`: Facility 360° Profile (terms breakdown, amortization progress meter, complete repayment history ledger, Log Payment dialog, Edit Terms).
+  - `daily-collections.tsx`: Dedicated Daily Collection Financing Hub (Daily commitment target, checklist, one-click batch entry for Keishamthong/Golden 20k, 15k and other daily advances).
+  - `repayments.tsx`: Debt Repayments & Servicing Ledger (date range picker, facility/method/type filters, live summary aggregates, and Record Repayment dialog).
+  - `cash-flow.tsx`: Cash Flow & Capital Infusions Ledger (Inflow/Outflow tracking, Angel investments, Founder capital, operating revenue, cumulative running balance).
+- **Backend Route File**: `server/routes/capital.ts` (all endpoints prefixed with `/api/capital/*`).
+- **Key Tables** (`capital.*`): `facilities`, `repayments`, `cash_flow_entries`.
+- **Core Services**:
+  - `server/services/loan-engine.ts`: Reducing balance EMI calculations (`calculateMonthlyEmi`), multi-phase moratoriums (`generateCanonicalAmortizationSchedule`), interest capitalization (`capitalizeInterest`), split installments, recast amortization, and ledger invariants (`verifyLedgerInvariant`).
+- **Unit Test Suite**: `tests/unit/capital-loan-engine.test.ts` (20-point test suite for NEDFi ₹5Cr canonical loan scenario `LIABILITY-LOAN-001` through `LIABILITY-LOAN-020`).
+- **Documentation Guide**: [`docs/capital-financing-guide.md`](file:///d:/dev/acme/acme-erp/docs/capital-financing-guide.md) (Complete theoretical foundation, formulas, instrument mechanics, and operational tutorials).
+
+---
+
 ## 3. Security & Permission Architecture
 
 1. **Frontend Permissions Hook** (`src/lib/permissions.ts`):

@@ -1,5 +1,6 @@
 import { Link, Outlet, useRouter, useLocation, useRouteContext } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   LayoutDashboard,
@@ -135,6 +136,26 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Bank Expenses", to: "/accounts/bank-expenses" });
     } else if (sub === "bank-accounts") {
       items.push({ label: "Bank Accounts", to: "/accounts/bank-accounts" });
+    }
+    return items;
+  }
+
+  if (pathname === "/capital" || pathname.startsWith("/capital/")) {
+    items.push({ label: "Capital Finances", to: "/capital" });
+    const sub = pathname.replace("/capital/", "").replace("/capital", "");
+    if (sub === "facilities") {
+      items.push({ label: "Liabilities & Advances", to: "/capital/facilities" });
+    } else if (sub === "facility" || sub === "facility/") {
+      items.push({ label: "Facility 360° Profile", to: "/capital/facility" });
+    } else if (sub.startsWith("facility/")) {
+      items.push({ label: "Facility 360° Profile", to: "/capital/facility" });
+      items.push({ label: "Profile Details", to: pathname });
+    } else if (sub === "daily-collections") {
+      items.push({ label: "Daily Collection Hub", to: "/capital/daily-collections" });
+    } else if (sub === "repayments") {
+      items.push({ label: "Repayment Ledger", to: "/capital/repayments" });
+    } else if (sub === "cash-flow") {
+      items.push({ label: "Cash Flow & Infusions", to: "/capital/cash-flow" });
     }
     return items;
   }
@@ -327,6 +348,7 @@ function ShellContent({ session }: { session: any }) {
   const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
+  const [capitalOpen, setCapitalOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
   const [inventoryOpen, setInventoryOpen] = React.useState(false);
   const [labOpen, setLabOpen] = React.useState(false);
@@ -354,6 +376,7 @@ function ShellContent({ session }: { session: any }) {
     }
     if (location.pathname.startsWith("/hr/")) setHrOpen(true);
     if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
+    if (location.pathname.startsWith("/capital")) setCapitalOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
     if (location.pathname.startsWith("/inventory/")) setInventoryOpen(true);
     if (location.pathname.startsWith("/lab")) setLabOpen(true);
@@ -849,6 +872,71 @@ function ShellContent({ session }: { session: any }) {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Suppliers & Vendors
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsible Capital Finances group */}
+              {isAccountsVisible && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCapitalOpen(!capitalOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Coins size={18} />
+                      <span>Capital Finances</span>
+                    </div>
+                    {capitalOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {capitalOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to="/capital"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Treasury Dashboard
+                      </Link>
+                      <Link
+                        to="/capital/facilities"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Liabilities & Advances
+                      </Link>
+                      <Link
+                        to="/capital/facility"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Facility 360° Profile
+                      </Link>
+                      <Link
+                        to="/capital/daily-collections"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Daily Collection Hub
+                      </Link>
+                      <Link
+                        to="/capital/repayments"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Repayment Ledger
+                      </Link>
+                      <Link
+                        to="/capital/cash-flow"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Cash Flow & Infusions
                       </Link>
                     </div>
                   )}
@@ -1398,6 +1486,35 @@ function ShellContent({ session }: { session: any }) {
                     title="Monthly Report"
                   >
                     <FileBarChart size={20} />
+                  </Link>
+
+                  <div className="w-8 h-px bg-border my-2" />
+
+                  <Link
+                    to="/capital"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Treasury Dashboard"
+                  >
+                    <Coins size={20} />
+                  </Link>
+
+                  <Link
+                    to="/capital/facilities"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Liabilities & Advances"
+                  >
+                    <Landmark size={20} />
+                  </Link>
+
+                  <Link
+                    to="/capital/facility"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Facility 360° Profile"
+                  >
+                    <Layers size={20} />
                   </Link>
                 </>
               )}

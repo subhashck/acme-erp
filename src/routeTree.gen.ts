@@ -20,6 +20,7 @@ import { Route as AuthenticatedMagazineIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedLabIndexRouteImport } from './routes/_authenticated/lab/index'
 import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
+import { Route as AuthenticatedCapitalIndexRouteImport } from './routes/_authenticated/capital/index'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
 import { Route as AuthenticatedPurchasesUnitTypesRouteImport } from './routes/_authenticated/purchases/unit-types'
@@ -64,6 +65,11 @@ import { Route as AuthenticatedCollegeAttendanceRouteImport } from './routes/_au
 import { Route as AuthenticatedCollegeAdmissionsRouteImport } from './routes/_authenticated/college/admissions'
 import { Route as AuthenticatedCollegeAcademicSchedulesRouteImport } from './routes/_authenticated/college/academic-schedules'
 import { Route as AuthenticatedClinicalImmunizationRouteImport } from './routes/_authenticated/clinical/immunization'
+import { Route as AuthenticatedCapitalRepaymentsRouteImport } from './routes/_authenticated/capital/repayments'
+import { Route as AuthenticatedCapitalFacilityRouteImport } from './routes/_authenticated/capital/facility'
+import { Route as AuthenticatedCapitalFacilitiesRouteImport } from './routes/_authenticated/capital/facilities'
+import { Route as AuthenticatedCapitalDailyCollectionsRouteImport } from './routes/_authenticated/capital/daily-collections'
+import { Route as AuthenticatedCapitalCashFlowRouteImport } from './routes/_authenticated/capital/cash-flow'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
 import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_authenticated/admin/localization'
@@ -99,6 +105,7 @@ import { Route as AuthenticatedCollegeStudentIdRouteImport } from './routes/_aut
 import { Route as AuthenticatedCollegeReportsDueStudentWiseRouteImport } from './routes/_authenticated/college/reports/due-student-wise'
 import { Route as AuthenticatedCollegeReportsDueMonthlyWiseRouteImport } from './routes/_authenticated/college/reports/due-monthly-wise'
 import { Route as AuthenticatedCollegeReportsDailyIncomeExpensesRouteImport } from './routes/_authenticated/college/reports/daily-income-expenses'
+import { Route as AuthenticatedCapitalFacilityIdRouteImport } from './routes/_authenticated/capital/facility.$id'
 import { Route as AuthenticatedAccountsReportsNewRouteImport } from './routes/_authenticated/accounts/reports/new'
 import { Route as AuthenticatedAccountsReportsIdRouteImport } from './routes/_authenticated/accounts/reports/$id'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.edit'
@@ -163,6 +170,12 @@ const AuthenticatedCollegeIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCapitalIndexRoute =
+  AuthenticatedCapitalIndexRouteImport.update({
+    id: '/capital/',
+    path: '/capital/',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
   id: '/shared/report/$token',
@@ -422,6 +435,36 @@ const AuthenticatedClinicalImmunizationRoute =
     path: '/clinical/immunization',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedCapitalRepaymentsRoute =
+  AuthenticatedCapitalRepaymentsRouteImport.update({
+    id: '/capital/repayments',
+    path: '/capital/repayments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalFacilityRoute =
+  AuthenticatedCapitalFacilityRouteImport.update({
+    id: '/capital/facility',
+    path: '/capital/facility',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalFacilitiesRoute =
+  AuthenticatedCapitalFacilitiesRouteImport.update({
+    id: '/capital/facilities',
+    path: '/capital/facilities',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalDailyCollectionsRoute =
+  AuthenticatedCapitalDailyCollectionsRouteImport.update({
+    id: '/capital/daily-collections',
+    path: '/capital/daily-collections',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalCashFlowRoute =
+  AuthenticatedCapitalCashFlowRouteImport.update({
+    id: '/capital/cash-flow',
+    path: '/capital/cash-flow',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
@@ -631,6 +674,12 @@ const AuthenticatedCollegeReportsDailyIncomeExpensesRoute =
     path: '/reports/daily-income-expenses',
     getParentRoute: () => AuthenticatedCollegeRoute,
   } as any)
+const AuthenticatedCapitalFacilityIdRoute =
+  AuthenticatedCapitalFacilityIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedCapitalFacilityRoute,
+  } as any)
 const AuthenticatedAccountsReportsNewRoute =
   AuthenticatedAccountsReportsNewRouteImport.update({
     id: '/accounts/reports/new',
@@ -684,6 +733,11 @@ export interface FileRoutesByFullPath {
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
+  '/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
+  '/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
+  '/capital/facility': typeof AuthenticatedCapitalFacilityRouteWithChildren
+  '/capital/repayments': typeof AuthenticatedCapitalRepaymentsRoute
   '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
   '/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
   '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
@@ -728,12 +782,14 @@ export interface FileRoutesByFullPath {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/capital/': typeof AuthenticatedCapitalIndexRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
   '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
   '/lab/': typeof AuthenticatedLabIndexRoute
   '/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
   '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
   '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   '/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
@@ -780,6 +836,11 @@ export interface FileRoutesByTo {
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
+  '/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
+  '/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
+  '/capital/facility': typeof AuthenticatedCapitalFacilityRouteWithChildren
+  '/capital/repayments': typeof AuthenticatedCapitalRepaymentsRoute
   '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
   '/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
   '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
@@ -823,12 +884,14 @@ export interface FileRoutesByTo {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/capital': typeof AuthenticatedCapitalIndexRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
   '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
   '/lab': typeof AuthenticatedLabIndexRoute
   '/magazine': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
   '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
   '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   '/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
@@ -878,6 +941,11 @@ export interface FileRoutesById {
   '/_authenticated/admin/localization': typeof AuthenticatedAdminLocalizationRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
+  '/_authenticated/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
+  '/_authenticated/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
+  '/_authenticated/capital/facility': typeof AuthenticatedCapitalFacilityRouteWithChildren
+  '/_authenticated/capital/repayments': typeof AuthenticatedCapitalRepaymentsRoute
   '/_authenticated/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
   '/_authenticated/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
   '/_authenticated/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
@@ -922,12 +990,14 @@ export interface FileRoutesById {
   '/_authenticated/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/_authenticated/capital/': typeof AuthenticatedCapitalIndexRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
   '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
   '/_authenticated/lab/': typeof AuthenticatedLabIndexRoute
   '/_authenticated/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/_authenticated/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
   '/_authenticated/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
   '/_authenticated/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
   '/_authenticated/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
@@ -977,6 +1047,11 @@ export interface FileRouteTypes {
     | '/admin/localization'
     | '/admin/payroll'
     | '/admin/users'
+    | '/capital/cash-flow'
+    | '/capital/daily-collections'
+    | '/capital/facilities'
+    | '/capital/facility'
+    | '/capital/repayments'
     | '/clinical/immunization'
     | '/college/academic-schedules'
     | '/college/admissions'
@@ -1021,12 +1096,14 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/capital/'
     | '/college/'
     | '/front-office/'
     | '/lab/'
     | '/magazine/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/capital/facility/$id'
     | '/college/reports/daily-income-expenses'
     | '/college/reports/due-monthly-wise'
     | '/college/reports/due-student-wise'
@@ -1073,6 +1150,11 @@ export interface FileRouteTypes {
     | '/admin/localization'
     | '/admin/payroll'
     | '/admin/users'
+    | '/capital/cash-flow'
+    | '/capital/daily-collections'
+    | '/capital/facilities'
+    | '/capital/facility'
+    | '/capital/repayments'
     | '/clinical/immunization'
     | '/college/academic-schedules'
     | '/college/admissions'
@@ -1116,12 +1198,14 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/capital'
     | '/college'
     | '/front-office'
     | '/lab'
     | '/magazine'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/capital/facility/$id'
     | '/college/reports/daily-income-expenses'
     | '/college/reports/due-monthly-wise'
     | '/college/reports/due-student-wise'
@@ -1170,6 +1254,11 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/localization'
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
+    | '/_authenticated/capital/cash-flow'
+    | '/_authenticated/capital/daily-collections'
+    | '/_authenticated/capital/facilities'
+    | '/_authenticated/capital/facility'
+    | '/_authenticated/capital/repayments'
     | '/_authenticated/clinical/immunization'
     | '/_authenticated/college/academic-schedules'
     | '/_authenticated/college/admissions'
@@ -1214,12 +1303,14 @@ export interface FileRouteTypes {
     | '/_authenticated/purchases/unit-types'
     | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
+    | '/_authenticated/capital/'
     | '/_authenticated/college/'
     | '/_authenticated/front-office/'
     | '/_authenticated/lab/'
     | '/_authenticated/magazine/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
+    | '/_authenticated/capital/facility/$id'
     | '/_authenticated/college/reports/daily-income-expenses'
     | '/_authenticated/college/reports/due-monthly-wise'
     | '/_authenticated/college/reports/due-student-wise'
@@ -1337,6 +1428,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/college/'
       preLoaderRoute: typeof AuthenticatedCollegeIndexRouteImport
       parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/capital/': {
+      id: '/_authenticated/capital/'
+      path: '/capital'
+      fullPath: '/capital/'
+      preLoaderRoute: typeof AuthenticatedCapitalIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/shared/report/$token': {
       id: '/shared/report/$token'
@@ -1646,6 +1744,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClinicalImmunizationRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/capital/repayments': {
+      id: '/_authenticated/capital/repayments'
+      path: '/capital/repayments'
+      fullPath: '/capital/repayments'
+      preLoaderRoute: typeof AuthenticatedCapitalRepaymentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/facility': {
+      id: '/_authenticated/capital/facility'
+      path: '/capital/facility'
+      fullPath: '/capital/facility'
+      preLoaderRoute: typeof AuthenticatedCapitalFacilityRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/facilities': {
+      id: '/_authenticated/capital/facilities'
+      path: '/capital/facilities'
+      fullPath: '/capital/facilities'
+      preLoaderRoute: typeof AuthenticatedCapitalFacilitiesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/daily-collections': {
+      id: '/_authenticated/capital/daily-collections'
+      path: '/capital/daily-collections'
+      fullPath: '/capital/daily-collections'
+      preLoaderRoute: typeof AuthenticatedCapitalDailyCollectionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/cash-flow': {
+      id: '/_authenticated/capital/cash-flow'
+      path: '/capital/cash-flow'
+      fullPath: '/capital/cash-flow'
+      preLoaderRoute: typeof AuthenticatedCapitalCashFlowRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/admin/users'
@@ -1891,6 +2024,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCollegeReportsDailyIncomeExpensesRouteImport
       parentRoute: typeof AuthenticatedCollegeRoute
     }
+    '/_authenticated/capital/facility/$id': {
+      id: '/_authenticated/capital/facility/$id'
+      path: '/$id'
+      fullPath: '/capital/facility/$id'
+      preLoaderRoute: typeof AuthenticatedCapitalFacilityIdRouteImport
+      parentRoute: typeof AuthenticatedCapitalFacilityRoute
+    }
     '/_authenticated/accounts/reports/new': {
       id: '/_authenticated/accounts/reports/new'
       path: '/accounts/reports/new'
@@ -1985,6 +2125,20 @@ const AuthenticatedCollegeRouteChildren: AuthenticatedCollegeRouteChildren = {
 const AuthenticatedCollegeRouteWithChildren =
   AuthenticatedCollegeRoute._addFileChildren(AuthenticatedCollegeRouteChildren)
 
+interface AuthenticatedCapitalFacilityRouteChildren {
+  AuthenticatedCapitalFacilityIdRoute: typeof AuthenticatedCapitalFacilityIdRoute
+}
+
+const AuthenticatedCapitalFacilityRouteChildren: AuthenticatedCapitalFacilityRouteChildren =
+  {
+    AuthenticatedCapitalFacilityIdRoute: AuthenticatedCapitalFacilityIdRoute,
+  }
+
+const AuthenticatedCapitalFacilityRouteWithChildren =
+  AuthenticatedCapitalFacilityRoute._addFileChildren(
+    AuthenticatedCapitalFacilityRouteChildren,
+  )
+
 interface AuthenticatedPurchasesPurchaseOrdersRouteChildren {
   AuthenticatedPurchasesPurchaseOrdersIdRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
   AuthenticatedPurchasesPurchaseOrdersNewRoute: typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
@@ -2026,6 +2180,11 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAdminLocalizationRoute: typeof AuthenticatedAdminLocalizationRoute
   AuthenticatedAdminPayrollRoute: typeof AuthenticatedAdminPayrollRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedCapitalCashFlowRoute: typeof AuthenticatedCapitalCashFlowRoute
+  AuthenticatedCapitalDailyCollectionsRoute: typeof AuthenticatedCapitalDailyCollectionsRoute
+  AuthenticatedCapitalFacilitiesRoute: typeof AuthenticatedCapitalFacilitiesRoute
+  AuthenticatedCapitalFacilityRoute: typeof AuthenticatedCapitalFacilityRouteWithChildren
+  AuthenticatedCapitalRepaymentsRoute: typeof AuthenticatedCapitalRepaymentsRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
   AuthenticatedHrAttendanceRoute: typeof AuthenticatedHrAttendanceRoute
@@ -2058,6 +2217,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPurchasesPurchaseOrdersRoute: typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
   AuthenticatedPurchasesUnitTypesRoute: typeof AuthenticatedPurchasesUnitTypesRoute
   AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
+  AuthenticatedCapitalIndexRoute: typeof AuthenticatedCapitalIndexRoute
   AuthenticatedFrontOfficeIndexRoute: typeof AuthenticatedFrontOfficeIndexRoute
   AuthenticatedLabIndexRoute: typeof AuthenticatedLabIndexRoute
   AuthenticatedMagazineIndexRoute: typeof AuthenticatedMagazineIndexRoute
@@ -2104,6 +2264,13 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAdminLocalizationRoute: AuthenticatedAdminLocalizationRoute,
   AuthenticatedAdminPayrollRoute: AuthenticatedAdminPayrollRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedCapitalCashFlowRoute: AuthenticatedCapitalCashFlowRoute,
+  AuthenticatedCapitalDailyCollectionsRoute:
+    AuthenticatedCapitalDailyCollectionsRoute,
+  AuthenticatedCapitalFacilitiesRoute: AuthenticatedCapitalFacilitiesRoute,
+  AuthenticatedCapitalFacilityRoute:
+    AuthenticatedCapitalFacilityRouteWithChildren,
+  AuthenticatedCapitalRepaymentsRoute: AuthenticatedCapitalRepaymentsRoute,
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
   AuthenticatedHrAddStaffRoute: AuthenticatedHrAddStaffRoute,
@@ -2141,6 +2308,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedPurchasesPurchaseOrdersRouteWithChildren,
   AuthenticatedPurchasesUnitTypesRoute: AuthenticatedPurchasesUnitTypesRoute,
   AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
+  AuthenticatedCapitalIndexRoute: AuthenticatedCapitalIndexRoute,
   AuthenticatedFrontOfficeIndexRoute: AuthenticatedFrontOfficeIndexRoute,
   AuthenticatedLabIndexRoute: AuthenticatedLabIndexRoute,
   AuthenticatedMagazineIndexRoute: AuthenticatedMagazineIndexRoute,
