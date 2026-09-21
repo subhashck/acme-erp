@@ -18,6 +18,7 @@ export interface ConsultationRow {
   srNo: number;
   patientName: string;
   patientUid: string;
+  appointmentId?: string;
   dateText: string;
   dateObj: Date | null;
   doctor: string;
@@ -38,7 +39,9 @@ export interface ConsultationRow {
   paymentModeRaw: string;
   invoiceNo?: string;
   discount: number;
+  mobile?: string;
   notes?: string;
+  apiRemarks?: string[];
   remarks?: string[];
   knownSplit?: CompoundBreakdownPart[];
   _reconciled?: boolean;
@@ -50,6 +53,7 @@ export interface ProcedureRow {
   srNo: number;
   patientName: string;
   patientUid: string;
+  appointmentId?: string;
   dateText: string;
   dateObj: Date | null;
   procedure: string;
@@ -64,7 +68,9 @@ export interface ProcedureRow {
   paymentModeRaw: string;
   invoiceNo?: string;
   discount: number;
+  mobile?: string;
   notes?: string;
+  apiRemarks?: string[];
   remarks?: string[];
   knownSplit?: CompoundBreakdownPart[];
   _reconciled?: boolean;
@@ -82,6 +88,10 @@ export interface CompiledPatient {
   totalPending: number;
   totalDiscount: number;
   discountNotes?: string[];
+  mobile?: string;
+  invoiceNos?: string[];
+  apiRemarks?: string[];
+  systemRemarks?: string[];
 }
 
 export interface FrontOfficeSummaryKPIs {
@@ -219,6 +229,36 @@ export function getField(row: Record<string, any>, ...names: string[]): string {
     if (value !== undefined) return String(value);
   }
   return "";
+}
+
+export function extractApiRemarks(row: Record<string, any>): string[] {
+  const remarkFieldNames = [
+    "Remarks",
+    "Remark",
+    "Notes",
+    "Note",
+    "Comments",
+    "Comment",
+    "Discount Remarks",
+    "Discount Remark",
+    "Discount Note",
+    "Discount Reason",
+    "Payment Remarks",
+    "Payment Note",
+    "Receipt Remarks",
+  ];
+  const lookup: Record<string, any> = {};
+  Object.keys(row || {}).forEach((key) => {
+    lookup[normalizeHeader(key)] = row[key];
+  });
+  const results: string[] = [];
+  for (const name of remarkFieldNames) {
+    const val = cleanText(lookup[normalizeHeader(name)]);
+    if (val && !results.includes(val)) {
+      results.push(val);
+    }
+  }
+  return results;
 }
 
 export function parseCompoundAmount(raw: unknown): CompoundAmount | null {
@@ -362,6 +402,7 @@ export function normalizeConsultationRows(rawRows: Record<string, any>[]): Consu
         srNo: Number(getField(row, "Sr No", "Sr. No", "Serial No")) || index + 1,
         patientName: cleanText(getField(row, "Patient Name", "Patient")),
         patientUid: cleanText(getField(row, "Patient UID", "Patient ID", "UID")),
+        appointmentId: cleanText(getField(row, "Appointment ID", "Appointment Id", "Appointment No", "Appointment Number", "appointment_id")),
         dateText,
         dateObj: parseDate(dateText),
         doctor: cleanText(getField(row, "Doctor", "Doctor Name")) || "Unknown",
@@ -386,9 +427,15 @@ export function normalizeConsultationRows(rawRows: Record<string, any>[]): Consu
         paymentMode: classifyPaymentMode(
           getField(row, "Mode Of Payment", "Mode of Payment", "Payment Mode", "Payment collected by", "Payment Collected By")
         ),
-        invoiceNo: cleanText(getField(row, "Invoice No.", "Invoice No", "Invoice", "Bill No")),
+        invoiceNo: cleanText(
+          getField(row, "Invoice No.", "Invoice No", "Invoice", "Invoice / Receipt No", "Invoice / Receipt No.", "Receipt No", "Receipt No.", "Bill No", "Bill No.")
+        ),
         discount: toNumber(getField(row, "Consultation Revenue Discount", "Consultation Discount", "Discount")),
-        notes: cleanText(getField(row, "Notes", "Note", "Remarks")),
+        mobile: cleanText(
+          getField(row, "Mobile", "Mobile Number", "Mobile No", "Phone", "Phone Number", "Phone No", "Contact", "Contact Number", "Patient Mobile")
+        ),
+        notes: extractApiRemarks(row).join(" | "),
+        apiRemarks: extractApiRemarks(row),
       };
     })
     .filter((r) => (r.patientUid || r.patientName) && !isSummaryRow(r.patientName, r.patientUid));
@@ -440,6 +487,7 @@ export function normalizeProcedureRows(rawRows: Record<string, any>[]): Procedur
         srNo: Number(getField(row, "Sr No", "Sr. No", "Serial No")) || index + 1,
         patientName: cleanText(getField(row, "Patient Name", "Patient")),
         patientUid: cleanText(getField(row, "Patient UID", "Patient ID", "UID")),
+        appointmentId: cleanText(getField(row, "Appointment ID", "Appointment Id", "Appointment No", "Appointment Number", "appointment_id")),
         dateText,
         dateObj: parseDate(dateText),
         procedure: procedureName,
@@ -458,9 +506,15 @@ export function normalizeProcedureRows(rawRows: Record<string, any>[]): Procedur
         paymentMode: classifyPaymentMode(
           getField(row, "Mode Of Payment", "Mode of Payment", "Payment Mode", "Payment collected by", "Payment Collected By")
         ),
-        invoiceNo: cleanText(getField(row, "Invoice No.", "Invoice No", "Invoice", "Bill No")),
+        invoiceNo: cleanText(
+          getField(row, "Invoice No.", "Invoice No", "Invoice", "Invoice / Receipt No", "Invoice / Receipt No.", "Receipt No", "Receipt No.", "Bill No", "Bill No.")
+        ),
         discount: toNumber(getField(row, "Laboratory Discount", "Procedure Discount", "Discount")),
-        notes: cleanText(getField(row, "Notes", "Note", "Remarks")),
+        mobile: cleanText(
+          getField(row, "Mobile", "Mobile Number", "Mobile No", "Phone", "Phone Number", "Phone No", "Contact", "Contact Number", "Patient Mobile")
+        ),
+        notes: extractApiRemarks(row).join(" | "),
+        apiRemarks: extractApiRemarks(row),
       };
     })
     .filter((r) => (r.patientUid || r.patientName) && !isSummaryRow(r.patientName, r.patientUid));
@@ -500,6 +554,7 @@ export function normalizeRadiologyRows(rawRows: Record<string, any>[]): Procedur
         srNo: Number(getField(row, "Sr No", "Sr. No", "Serial No")) || index + 1,
         patientName: cleanText(getField(row, "Patient Name", "Patient")),
         patientUid: cleanText(getField(row, "Patient UID", "Patient ID", "UID")),
+        appointmentId: cleanText(getField(row, "Appointment ID", "Appointment Id", "Appointment No", "Appointment Number", "appointment_id")),
         dateText,
         dateObj: parseDate(dateText),
         procedure: radiologyName,
@@ -516,9 +571,15 @@ export function normalizeRadiologyRows(rawRows: Record<string, any>[]): Procedur
         paymentMode: classifyPaymentMode(
           getField(row, "Mode Of Payment", "Mode of Payment", "Payment Mode", "Payment collected by", "Payment Collected By")
         ),
-        invoiceNo: cleanText(getField(row, "Invoice No.", "Invoice No", "Invoice", "Bill No")),
+        invoiceNo: cleanText(
+          getField(row, "Invoice No.", "Invoice No", "Invoice", "Invoice / Receipt No", "Invoice / Receipt No.", "Receipt No", "Receipt No.", "Bill No", "Bill No.")
+        ),
         discount: toNumber(getField(row, "Radiology Discount", "Discount")),
-        notes: cleanText(getField(row, "Notes", "Note", "Remarks")),
+        mobile: cleanText(
+          getField(row, "Mobile", "Mobile Number", "Mobile No", "Phone", "Phone Number", "Phone No", "Contact", "Contact Number", "Patient Mobile")
+        ),
+        notes: extractApiRemarks(row).join(" | "),
+        apiRemarks: extractApiRemarks(row),
       };
     })
     .filter((r) => (r.patientUid || r.patientName) && !isSummaryRow(r.patientName, r.patientUid));
@@ -1088,6 +1149,36 @@ export function compilePatients(consultations: ConsultationRow[], procedures: Pr
       .filter((n): n is string => Boolean(n && n.trim()))
       .map((n) => n.trim());
     patient.discountNotes = Array.from(new Set(notes));
+
+    patient.mobile = allPatRows.find((r) => r.mobile)?.mobile;
+    patient.invoiceNos = Array.from(
+      new Set(
+        allPatRows
+          .map((r) => r.invoiceNo)
+          .filter((inv): inv is string => Boolean(inv && inv.trim()))
+          .map((inv) => inv.trim())
+      )
+    );
+
+    const apiRemarks = Array.from(
+      new Set(
+        allPatRows
+          .flatMap((r) => r.apiRemarks || (r.notes ? [r.notes] : []))
+          .filter((s): s is string => Boolean(s && s.trim()))
+          .map((s) => s.trim())
+      )
+    );
+    patient.apiRemarks = apiRemarks;
+
+    const systemRemarks = Array.from(
+      new Set(
+        allPatRows
+          .flatMap((r) => r.remarks || [])
+          .filter((s): s is string => Boolean(s && s.trim()))
+          .map((s) => s.trim())
+      )
+    );
+    patient.systemRemarks = systemRemarks;
   });
 
   return Array.from(map.values()).sort((a, b) => comparePatientConsultationTiming(a, b));
@@ -1231,4 +1322,71 @@ export function filterRowsByShift<T extends { dateObj: Date | null; dateText: st
     if (!d || isNaN(d.getTime())) return true;
     return isTimeInShiftWindow(d, startTime, endTime);
   });
+}
+
+export interface PaymentModeStyle {
+  hex: string;
+  badgeClass: string;
+}
+
+export function getPaymentModeStyle(mode: string): PaymentModeStyle {
+  const m = cleanText(mode).toLowerCase();
+  if (m.includes("cash")) {
+    return {
+      hex: "#16a34a",
+      badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800",
+    };
+  }
+  if (m.includes("upi") || m.includes("gpay") || m.includes("phonepe") || m.includes("paytm") || m.includes("bhim") || m.includes("qr")) {
+    return {
+      hex: "#0284c7",
+      badgeClass: "bg-sky-50 text-sky-700 border-sky-300 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800",
+    };
+  }
+  if (m.includes("patient app") || m.includes("app")) {
+    return {
+      hex: "#8b5cf6",
+      badgeClass: "bg-purple-50 text-purple-700 border-purple-300 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800",
+    };
+  }
+  if (m.includes("card") || m.includes("pos") || m.includes("credit") || m.includes("debit")) {
+    return {
+      hex: "#f59e0b",
+      badgeClass: "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
+    };
+  }
+  if (m.includes("online")) {
+    return {
+      hex: "#2563eb",
+      badgeClass: "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800",
+    };
+  }
+  if (m.includes("net banking")) {
+    return {
+      hex: "#0d9488",
+      badgeClass: "bg-teal-50 text-teal-700 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800",
+    };
+  }
+  if (m.includes("split")) {
+    return {
+      hex: "#ec4899",
+      badgeClass: "bg-pink-50 text-pink-700 border-pink-300 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-800",
+    };
+  }
+  if (m.includes("wallet")) {
+    return {
+      hex: "#ea580c",
+      badgeClass: "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800",
+    };
+  }
+  if (m.includes("unpaid") || m.includes("no mode")) {
+    return {
+      hex: "#64748b",
+      badgeClass: "bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700",
+    };
+  }
+  return {
+    hex: "#6366f1",
+    badgeClass: "bg-indigo-50 text-indigo-700 border-indigo-300 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800",
+  };
 }

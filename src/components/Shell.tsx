@@ -23,6 +23,7 @@ import {
   Building2,
   Percent,
   Coins,
+  CreditCard,
   Syringe,
   Bell,
   Check,
@@ -201,6 +202,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Payroll statutory", to: "/admin/payroll" });
     } else if (sub === "localization") {
       items.push({ label: "Localization", to: "/admin/localization" });
+    } else if (sub === "patients") {
+      items.push({ label: "Patient Directory", to: "/admin/patients" });
     }
     return items;
   }
@@ -323,6 +326,13 @@ const getBreadcrumbs = (pathname: string) => {
 
   if (pathname === "/front-office" || pathname.startsWith("/front-office/")) {
     items.push({ label: "Front Office", to: "/front-office" });
+    if (pathname === "/front-office/new") {
+      items.push({ label: "New Handover", to: "/front-office/new" });
+    } else if (pathname === "/front-office/patients") {
+      items.push({ label: "Patient Directory", to: "/front-office/patients" });
+    } else if (pathname === "/front-office/razorpay-reconciliation") {
+      items.push({ label: "Razorpay Reconciliation", to: "/front-office/razorpay-reconciliation" });
+    }
     return items;
   }
 
@@ -344,6 +354,7 @@ function ShellContent({ session }: { session: any }) {
   // const search = useStore(uiStore, (state) => state.search);
   const hospital = useHospitalSettings();
   const [collegeOpen, setCollegeOpen] = React.useState(false);
+  const [frontOfficeOpen, setFrontOfficeOpen] = React.useState(false);
   const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
   const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
@@ -363,6 +374,7 @@ function ShellContent({ session }: { session: any }) {
 
   React.useEffect(() => {
     if (location.pathname.startsWith("/college")) setCollegeOpen(true);
+    if (location.pathname.startsWith("/front-office")) setFrontOfficeOpen(true);
     if (location.pathname.startsWith("/college/reports")) setCollegeReportsOpen(true);
     if (
       location.pathname.startsWith("/college/courses") ||
@@ -523,14 +535,32 @@ function ShellContent({ session }: { session: any }) {
 
               {/* Front Office */}
               {canViewFrontOffice && (
-                <Link
-                  to={"/front-office" as any}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                >
-                  <Building2 size={18} />
-                  <span>Front Office</span>
-                </Link>
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setFrontOfficeOpen((open) => !open)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer"
+                  >
+                    <span className="flex items-center gap-3"><Building2 size={18} />Front Office</span>
+                    {frontOfficeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {frontOfficeOpen && (
+                    <div className="mt-1 ml-4 flex flex-col gap-1 border-l border-border pl-4">
+                      <Link to={"/front-office" as any} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        Saved Handovers
+                      </Link>
+                      <Link to={"/front-office/new" as any} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        New Handover
+                      </Link>
+                      <Link to={"/front-office/razorpay-reconciliation" as any} className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        <CreditCard size={14} />Razorpay Reconciliation
+                      </Link>
+                      <Link to="/front-office/patients" className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        <Users size={14} />Patient Directory
+                      </Link>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Collapsible Nursing College group */}
@@ -1315,6 +1345,13 @@ function ShellContent({ session }: { session: any }) {
                       >
                         Localization
                       </Link>
+                      <Link
+                        to="/admin/patients"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Patient Directory
+                      </Link>
                     </div>
                   )}
                 </div>
@@ -1688,6 +1725,15 @@ function ShellContent({ session }: { session: any }) {
                     title="Localization"
                   >
                     <Coins size={20} />
+                  </Link>
+
+                  <Link
+                    to="/admin/patients"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Patient Directory"
+                  >
+                    <Users size={20} />
                   </Link>
                 </>
               )}

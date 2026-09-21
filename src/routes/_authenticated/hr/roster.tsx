@@ -692,29 +692,32 @@ function Roster() {
 
           {/* ── On Duty Right Now ── */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Users size={18} className="text-primary" />
+            <CardHeader className="py-2.5 px-3.5 sm:py-3 sm:px-4">
+              <CardTitle className="flex items-center justify-between text-xs sm:text-sm">
+                <span className="flex items-center gap-2 font-bold">
+                  <Users size={16} className="text-primary shrink-0" />
                   Staff on duty
                 </span>
                 <span
-                  className={`text-sm font-bold rounded-full px-3 py-1 border ${onDutyNow.length > 0 ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20" : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                    }`}
+                  className={`text-[11px] sm:text-xs font-bold rounded-full px-2.5 py-0.5 border ${
+                    onDutyNow.length > 0
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                  }`}
                 >
                   {onDutyNow.length} on duty
                 </span>
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-3 sm:p-4 pt-0">
               {onDutyNow.length > 0 ? (
-                <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 sm:gap-2.5">
                   {onDutyNow.map((r) => (
-                    <OnDutyCard key={r.id} roster={r} />
+                    <OnDutyCard key={r.id} roster={r} initials={initialsMap.get(r.staffId)} />
                   ))}
                 </div>
               ) : (
-                <p className="text-center text-muted-foreground/60 py-6 text-sm m-0">
+                <p className="text-center text-muted-foreground/60 py-4 text-xs sm:text-sm m-0">
                   No staff members currently on duty for this department.
                 </p>
               )}

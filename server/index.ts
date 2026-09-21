@@ -266,6 +266,46 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 8787;
 if (process.env.NODE_ENV !== "test") {
   serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     console.log(`Hono API listening on http://localhost:${info.port}`);
+
+    // Clean up any stale 'running' sync log entries from a previous crashed server
+    import("./services/docterz.ts")
+      .then(({ resetStuckSync }) => resetStuckSync())
+      .catch((err) => console.warn("[Docterz] Startup reset failed:", err.message));
+
+    // ─── Docterz Patient Auto-Sync Scheduler ─────────────────────────────────
+    // Polls every 5 minutes. If auto-sync is enabled and the configured interval
+    // has elapsed since the last finished sync, triggers a new sync in the background.
+    const POLL_MS = 5 * 60 * 1000; // 5 minutes
+
+    setInterval(async () => {
+      try {
+        const { getDocterzSyncStatus, syncDocterzPatients } = await import("./services/docterz.ts");
+        const status = await getDocterzSyncStatus().catch(() => null);
+        if (!status || !status.syncEnabled) return;
+
+        const intervalMs = (status.syncIntervalMinutes || 60) * 60 * 1000;
+        const lastFinished = status.latestLog?.finishedAt
+          ? new Date(status.latestLog.finishedAt).getTime()
+          : 0;
+        const isRunning = status.latestLog?.status === "running";
+
+        if (!isRunning && Date.now() - lastFinished >= intervalMs) {
+          console.log("[Docterz Auto-Sync] Triggering scheduled patient sync...");
+          syncDocterzPatients("auto")
+            .then((r) => {
+              console.log(
+                `[Docterz Auto-Sync] Done — ${r.newRecords} new, ${r.updatedRecords} updated, ${r.totalFetched} total`
+              );
+            })
+            .catch((err) => {
+              console.error("[Docterz Auto-Sync] Error:", err.message);
+            });
+        }
+      } catch (err: any) {
+        console.error("[Docterz Auto-Sync] Scheduler error:", err.message);
+      }
+    }, POLL_MS);
+    // ─────────────────────────────────────────────────────────────────────────
   });
 }
 

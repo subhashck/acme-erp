@@ -51,7 +51,9 @@ export function parseRawHeadersOrCurl(raw: string): {
   const lines = raw.split(/\r?\n/);
   for (const line of lines) {
     const trimmed = line.trim().replace(/^['"]|['"]$/g, "").replace(/\\$/, "").trim();
+    if (!trimmed) continue;
 
+    // 1. Check if this line is an HTTP header (e.g. -H "Header: val" or "Header: val")
     const headerMatch = trimmed.match(/^(?:-H\s+['"]?|--header\s+['"]?)?([^:\s]+):\s*(.+)$/i);
     if (headerMatch) {
       const key = headerMatch[1].toLowerCase();
@@ -66,8 +68,11 @@ export function parseRawHeadersOrCurl(raw: string): {
       } else if (key === "referer") {
         result.referer = value;
       }
+      // CRITICAL: Do NOT parse URLs inside header lines (such as Referer: https://web.docterz.in/) as the API Base URL!
+      continue;
     }
 
+    // 2. Parse request URL from curl command or direct URL line (not from header lines)
     const urlMatch = trimmed.match(/https?:\/\/[^\s'"]+/);
     if (urlMatch) {
       try {
@@ -77,6 +82,15 @@ export function parseRawHeadersOrCurl(raw: string): {
         }
         if (u.searchParams.get("doctor_ids")) {
           result.doctorIds = u.searchParams.get("doctor_ids")!;
+        }
+
+        // Never set baseUrl to web.docterz.in (the web app frontend); the API host is api.docterz.in
+        if (u.hostname.includes("web.docterz.in")) {
+          u.hostname = "api.docterz.in";
+        }
+        // Ensure path points to consultation report if not specified or root
+        if (!u.pathname || u.pathname === "/" || !u.pathname.includes("consultation_report")) {
+          u.pathname = "/admin/reports/clinic/consultation_report";
         }
         result.baseUrl = `${u.origin}${u.pathname}`;
       } catch {}
@@ -130,7 +144,12 @@ export function DocterzConfigDialog({ open, onOpenChange }: DocterzConfigDialogP
       setAppKey(configQuery.data.appKey || "");
       setClinicId(configQuery.data.clinicId || "");
       setDoctorIds(configQuery.data.doctorIds || "");
-      setBaseUrl(configQuery.data.baseUrl || "https://api.docterz.in/admin/reports/clinic/consultation_report");
+      const loadedBaseUrl = configQuery.data.baseUrl || "";
+      setBaseUrl(
+        loadedBaseUrl && !loadedBaseUrl.includes("web.docterz.in")
+          ? loadedBaseUrl
+          : "https://api.docterz.in/admin/reports/clinic/consultation_report"
+      );
       setReferer(configQuery.data.referer || "https://web.docterz.in/");
       setTestResult(null);
     }

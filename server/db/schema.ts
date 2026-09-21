@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, uniqueIndex, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
+import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, uniqueIndex, index, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1628,7 +1628,126 @@ export const docterzApiConfig = sqliteTable("docterz_api_config", {
   baseUrl: text("base_url").notNull().default("https://api.docterz.in/admin/reports/clinic/consultation_report"),
   referer: text("referer").notNull().default("https://web.docterz.in/"),
   isActive: boolean("is_active").notNull().default(true),
+  patientSyncEnabled: boolean("patient_sync_enabled").notNull().default(false),
+  patientSyncIntervalMinutes: integer("patient_sync_interval_minutes").notNull().default(60),
   updatedBy: text("updated_by").references(() => user.id),
   ...timestamps,
+});
+
+export const docterzPatients = sqliteTable("docterz_patients", {
+  id: serial("id").primaryKey(),
+  docterzId: integer("docterz_id").unique(),
+  uid: text("uid"),
+  name: text("name"),
+  guardianName: text("guardian_name"),
+  mobile: text("mobile"),
+  dob: text("dob"),
+  gender: text("gender"),
+  address: text("address"),
+  clinicId: text("clinic_id"),
+  aadhaarNo: text("aadhaar_no"),
+  thirdPartyApplicationUid: text("third_party_application_uid"),
+  rawData: jsonb("raw_data"),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSyncedAt: timestamp("last_synced_at").notNull().defaultNow(),
+  lastVisitedAt: timestamp("last_visited_at"),
+});
+
+export const frontOfficeRazorpayReconciliations = sqliteTable("front_office_razorpay_reconciliations", {
+  id: serial("id").primaryKey(),
+  fileName: text("file_name").notNull(),
+  totalRows: integer("total_rows").notNull().default(0),
+  matchedRows: integer("matched_rows").notNull().default(0),
+  reviewRows: integer("review_rows").notNull().default(0),
+  unmatchedRows: integer("unmatched_rows").notNull().default(0),
+  ignoredRows: integer("ignored_rows").notNull().default(0),
+  netAmount: numeric("net_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+export const frontOfficeRazorpayReconciliationRows = sqliteTable("front_office_razorpay_reconciliation_rows", {
+  id: serial("id").primaryKey(),
+  reconciliationId: integer("reconciliation_id").notNull().references(() => frontOfficeRazorpayReconciliations.id, { onDelete: "cascade" }),
+  sourceRowNumber: integer("source_row_number").notNull(),
+  transferId: text("transfer_id"),
+  settlementStatus: text("settlement_status").notNull().default("unknown"),
+  createdAtSource: text("created_at_source"),
+  appointmentId: text("appointment_id"),
+  appointmentDate: text("appointment_date"),
+  paymentDate: text("payment_date"),
+  doctorName: text("doctor_name"),
+  sourcePatientName: text("source_patient_name"),
+  grossAmount: numeric("gross_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  reversedAmount: numeric("reversed_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  netAmount: numeric("net_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  currency: text("currency").notNull().default("INR"),
+  matchedPatientId: integer("matched_patient_id").references(() => docterzPatients.id, { onDelete: "set null" }),
+  matchedPatientName: text("matched_patient_name"),
+  matchedPatientUid: text("matched_patient_uid"),
+  reconciliationStatus: text("reconciliation_status").notNull(),
+  confidence: text("confidence").notNull(),
+  matchReason: text("match_reason").notNull(),
+  isDuplicate: boolean("is_duplicate").notNull().default(false),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  reconciliationRowUnique: unique().on(table.reconciliationId, table.sourceRowNumber),
+  transferIdIndex: index("idx_front_office_razorpay_run_transfer").on(table.reconciliationId, table.transferId),
+}));
+
+export const frontOfficeRazorpayReconciliationsRelations = relations(frontOfficeRazorpayReconciliations, ({ one, many }) => ({
+  creator: one(user, { fields: [frontOfficeRazorpayReconciliations.createdBy], references: [user.id] }),
+  rows: many(frontOfficeRazorpayReconciliationRows),
+}));
+
+export const frontOfficeRazorpayReconciliationRowsRelations = relations(frontOfficeRazorpayReconciliationRows, ({ one }) => ({
+  reconciliation: one(frontOfficeRazorpayReconciliations, {
+    fields: [frontOfficeRazorpayReconciliationRows.reconciliationId],
+    references: [frontOfficeRazorpayReconciliations.id],
+  }),
+  patient: one(docterzPatients, {
+    fields: [frontOfficeRazorpayReconciliationRows.matchedPatientId],
+    references: [docterzPatients.id],
+  }),
+}));
+
+export const frontOfficePatientAppointments = sqliteTable("front_office_patient_appointments", {
+  id: serial("id").primaryKey(),
+  sourceRecordKey: text("source_record_key").notNull().unique(),
+  sourceLabel: text("source_label").notNull(),
+  sourceType: text("source_type").notNull(),
+  patientUid: text("patient_uid"),
+  patientName: text("patient_name").notNull(),
+  patientMobile: text("patient_mobile"),
+  appointmentId: text("appointment_id"),
+  appointmentDate: text("appointment_date"),
+  doctorName: text("doctor_name"),
+  serviceName: text("service_name"),
+  schedule: text("schedule"),
+  invoiceNo: text("invoice_no"),
+  billAmount: numeric("bill_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  collectedAmount: numeric("collected_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  pendingAmount: numeric("pending_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode"),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+}, (table) => ({
+  patientUidIndex: index("idx_front_office_appointments_patient_uid").on(table.patientUid),
+  patientNameIndex: index("idx_front_office_appointments_patient_name").on(table.patientName),
+  appointmentIdIndex: index("idx_front_office_appointments_appointment_id").on(table.appointmentId),
+}));
+
+export const docterzSyncLog = sqliteTable("docterz_sync_log", {
+  id: serial("id").primaryKey(),
+  triggeredBy: text("triggered_by").notNull().default("auto"),
+  status: text("status").notNull().default("running"),
+  pagesFetched: integer("pages_fetched").notNull().default(0),
+  totalFetched: integer("total_fetched").notNull().default(0),
+  newRecords: integer("new_records").notNull().default(0),
+  updatedRecords: integer("updated_records").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
 });
 

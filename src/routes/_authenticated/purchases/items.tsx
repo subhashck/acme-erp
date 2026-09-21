@@ -233,7 +233,7 @@ function Items() {
                         const extraUnitPrices = item.unitPrices || [];
 
                         return (
-                          <tr key={item.id} className="border-b last:border-0 hover:bg-slate-50/50 transition-colors">
+                          <tr key={item.id} className="border-b last:border-0 hover:bg-slate-800/20 transition-colors">
                             <td className="px-6 py-4 font-semibold">
                               <div className="flex items-center gap-2">
                                 <span>{item.name}</span>

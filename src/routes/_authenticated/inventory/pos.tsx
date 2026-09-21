@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ModuleLayout } from "@/components/ModuleLayout";
 import { useRpcQuery, queryClient } from "@/lib/query";
 import { client } from "@/services/rpc";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -653,6 +653,31 @@ function PosTerminal() {
   const [customerPhone, setCustomerPhone] = React.useState("");
   const [doctorName, setDoctorName] = React.useState("");
   const [paymentMode, setPaymentMode] = React.useState<"cash" | "card" | "upi" | "credit">("cash");
+
+  // Patient lookup
+  const [patientSearch, setPatientSearch] = React.useState("");
+  const [debouncedPatientSearch, setDebouncedPatientSearch] = React.useState("");
+  const [selectedPatientId, setSelectedPatientId] = React.useState<number | null>(null);
+  const [patientDropdownOpen, setPatientDropdownOpen] = React.useState(false);
+  const patientInputRef = React.useRef<HTMLInputElement>(null);
+  const patientContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // Debounce patient search
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedPatientSearch(patientSearch), 280);
+    return () => clearTimeout(t);
+  }, [patientSearch]);
+
+  // Close patient dropdown on outside click
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (patientContainerRef.current && !patientContainerRef.current.contains(e.target as Node)) {
+        setPatientDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
   const [billDiscountType, setBillDiscountType] = React.useState<"percent" | "fixed">("percent");
   const [billDiscountValue, setBillDiscountValue] = React.useState<number>(0);
   const [isZeroGst, setIsZeroGst] = React.useState(true);
@@ -692,6 +717,20 @@ function PosTerminal() {
   const currentStore = React.useMemo(() => {
     return storesList.find((s: any) => s.id === storeId);
   }, [storesList, storeId]);
+
+  // Patient search query
+  const { data: patientResults = [], isFetching: patientFetching } = useQuery<any[]>({
+    queryKey: ["pos-patient-search", debouncedPatientSearch],
+    queryFn: async () => {
+      if (!debouncedPatientSearch || debouncedPatientSearch.length < 2) return [];
+      const res = await fetch(`/api/front-office/patients?search=${encodeURIComponent(debouncedPatientSearch)}&pageSize=8`);
+      if (!res.ok) return [];
+      const body = await res.json();
+      return body.data ?? body ?? [];
+    },
+    staleTime: 10_000,
+    enabled: debouncedPatientSearch.length >= 2,
+  });
 
   React.useEffect(() => {
     if (storesList.length > 0 && !storeId) {
@@ -939,6 +978,9 @@ function PosTerminal() {
       setCustomerName("");
       setCustomerPhone("");
       setDoctorName("");
+      setPatientSearch("");
+      setSelectedPatientId(null);
+      setPatientDropdownOpen(false);
       setBillDiscountValue(0);
       setBillDiscountType("percent");
       queryClient.invalidateQueries({ queryKey: ["inventory-stock"] });
@@ -1046,17 +1088,91 @@ function PosTerminal() {
                 </div>
               </div>
 
-              <div>
-                <Label className="text-xs">Customer Name</Label>
+              {/* Patient / Customer lookup */}
+              <div ref={patientContainerRef} className="relative">
+                <Label className="text-xs flex items-center gap-1">
+                  Customer Name
+                  {selectedPatientId && (
+                    <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                      Linked
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPatientId(null);
+                          setPatientSearch("");
+                          setCustomerName("");
+                          setCustomerPhone("");
+                          patientInputRef.current?.focus();
+                        }}
+                        className="ml-0.5 hover:text-red-500 transition"
+                        title="Unlink patient"
+                      >
+                        <X size={9} />
+                      </button>
+                    </span>
+                  )}
+                </Label>
                 <div className="relative mt-1">
-                  <User className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Walk-in Customer"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="pl-8 h-9 text-xs"
+                  <User className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    ref={patientInputRef}
+                    type="text"
+                    placeholder="Search patient or type walk-in name"
+                    value={selectedPatientId ? customerName : patientSearch || customerName}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (selectedPatientId) {
+                        // Editing after a patient was linked — break the link
+                        setSelectedPatientId(null);
+                        setPatientSearch(val);
+                        setCustomerName(val);
+                      } else {
+                        setPatientSearch(val);
+                        setCustomerName(val);
+                      }
+                      setPatientDropdownOpen(true);
+                    }}
+                    onFocus={() => {
+                      if (!selectedPatientId) setPatientDropdownOpen(true);
+                    }}
+                    className="flex h-9 w-full rounded-md border bg-background pl-8 pr-3 py-1.5 text-xs outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {(patientFetching && patientSearch.length >= 2) && (
+                    <Loader2 className="w-3 h-3 absolute right-2.5 top-3 animate-spin text-muted-foreground" />
+                  )}
                 </div>
+                {/* Patient results dropdown */}
+                {patientDropdownOpen && !selectedPatientId && patientSearch.length >= 2 && (
+                  <ul className="absolute top-[calc(100%+4px)] z-[9999] w-full max-h-56 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-lg animate-in fade-in slide-in-from-top-1 duration-150">
+                    {patientFetching ? (
+                      <li className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+                        <Loader2 size={12} className="animate-spin" /> Searching patients…
+                      </li>
+                    ) : patientResults.length === 0 ? (
+                      <li className="px-3 py-3 text-xs text-muted-foreground">No patients found</li>
+                    ) : (
+                      patientResults.map((p: any) => (
+                        <li
+                          key={p.id}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setSelectedPatientId(p.id);
+                            setCustomerName(p.name || "");
+                            setCustomerPhone(p.mobile || "");
+                            setPatientSearch(p.name || "");
+                            setPatientDropdownOpen(false);
+                          }}
+                          className="flex flex-col px-3 py-2 cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors"
+                        >
+                          <span className="font-semibold text-xs">{p.name || "—"}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {[p.mobile, p.uid, p.gender].filter(Boolean).join(" · ")}
+                          </span>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                )}
               </div>
 
               <div>

@@ -53,6 +53,9 @@ import { Route as AuthenticatedHrOffDayRequestsRouteImport } from './routes/_aut
 import { Route as AuthenticatedHrLeavesRouteImport } from './routes/_authenticated/hr/leaves'
 import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authenticated/hr/attendance'
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
+import { Route as AuthenticatedFrontOfficeRazorpayReconciliationRouteImport } from './routes/_authenticated/front-office/razorpay-reconciliation'
+import { Route as AuthenticatedFrontOfficePatientsRouteImport } from './routes/_authenticated/front-office/patients'
+import { Route as AuthenticatedFrontOfficeNewRouteImport } from './routes/_authenticated/front-office/new'
 import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
 import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
 import { Route as AuthenticatedCollegeReferrersRouteImport } from './routes/_authenticated/college/referrers'
@@ -72,6 +75,7 @@ import { Route as AuthenticatedCapitalDailyCollectionsRouteImport } from './rout
 import { Route as AuthenticatedCapitalCashFlowRouteImport } from './routes/_authenticated/capital/cash-flow'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
+import { Route as AuthenticatedAdminPatientsRouteImport } from './routes/_authenticated/admin/patients'
 import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_authenticated/admin/localization'
 import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authenticated/admin/hospital'
 import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
@@ -363,6 +367,24 @@ const AuthenticatedHrAddStaffRoute = AuthenticatedHrAddStaffRouteImport.update({
   path: '/hr/add-staff',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFrontOfficeRazorpayReconciliationRoute =
+  AuthenticatedFrontOfficeRazorpayReconciliationRouteImport.update({
+    id: '/front-office/razorpay-reconciliation',
+    path: '/front-office/razorpay-reconciliation',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFrontOfficePatientsRoute =
+  AuthenticatedFrontOfficePatientsRouteImport.update({
+    id: '/front-office/patients',
+    path: '/front-office/patients',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFrontOfficeNewRoute =
+  AuthenticatedFrontOfficeNewRouteImport.update({
+    id: '/front-office/new',
+    path: '/front-office/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedCollegeSubjectsRoute =
   AuthenticatedCollegeSubjectsRouteImport.update({
     id: '/subjects',
@@ -474,6 +496,12 @@ const AuthenticatedAdminPayrollRoute =
   AuthenticatedAdminPayrollRouteImport.update({
     id: '/admin/payroll',
     path: '/admin/payroll',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminPatientsRoute =
+  AuthenticatedAdminPatientsRouteImport.update({
+    id: '/admin/patients',
+    path: '/admin/patients',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminLocalizationRoute =
@@ -731,6 +759,7 @@ export interface FileRoutesByFullPath {
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
+  '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
@@ -750,6 +779,9 @@ export interface FileRoutesByFullPath {
   '/college/referrers': typeof AuthenticatedCollegeReferrersRoute
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
+  '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -834,6 +866,7 @@ export interface FileRoutesByTo {
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
+  '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
@@ -853,6 +886,9 @@ export interface FileRoutesByTo {
   '/college/referrers': typeof AuthenticatedCollegeReferrersRoute
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
+  '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -939,6 +975,7 @@ export interface FileRoutesById {
   '/_authenticated/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/_authenticated/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/_authenticated/admin/localization': typeof AuthenticatedAdminLocalizationRoute
+  '/_authenticated/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
@@ -958,6 +995,9 @@ export interface FileRoutesById {
   '/_authenticated/college/referrers': typeof AuthenticatedCollegeReferrersRoute
   '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/_authenticated/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/_authenticated/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
+  '/_authenticated/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/_authenticated/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/_authenticated/hr/leaves': typeof AuthenticatedHrLeavesRoute
@@ -1045,6 +1085,7 @@ export interface FileRouteTypes {
     | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
+    | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
     | '/capital/cash-flow'
@@ -1064,6 +1105,9 @@ export interface FileRouteTypes {
     | '/college/referrers'
     | '/college/students'
     | '/college/subjects'
+    | '/front-office/new'
+    | '/front-office/patients'
+    | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
@@ -1148,6 +1192,7 @@ export interface FileRouteTypes {
     | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
+    | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
     | '/capital/cash-flow'
@@ -1167,6 +1212,9 @@ export interface FileRouteTypes {
     | '/college/referrers'
     | '/college/students'
     | '/college/subjects'
+    | '/front-office/new'
+    | '/front-office/patients'
+    | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
@@ -1252,6 +1300,7 @@ export interface FileRouteTypes {
     | '/_authenticated/accounts/service-charges'
     | '/_authenticated/admin/hospital'
     | '/_authenticated/admin/localization'
+    | '/_authenticated/admin/patients'
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
     | '/_authenticated/capital/cash-flow'
@@ -1271,6 +1320,9 @@ export interface FileRouteTypes {
     | '/_authenticated/college/referrers'
     | '/_authenticated/college/students'
     | '/_authenticated/college/subjects'
+    | '/_authenticated/front-office/new'
+    | '/_authenticated/front-office/patients'
+    | '/_authenticated/front-office/razorpay-reconciliation'
     | '/_authenticated/hr/add-staff'
     | '/_authenticated/hr/attendance'
     | '/_authenticated/hr/leaves'
@@ -1660,6 +1712,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrAddStaffRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/front-office/razorpay-reconciliation': {
+      id: '/_authenticated/front-office/razorpay-reconciliation'
+      path: '/front-office/razorpay-reconciliation'
+      fullPath: '/front-office/razorpay-reconciliation'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/patients': {
+      id: '/_authenticated/front-office/patients'
+      path: '/front-office/patients'
+      fullPath: '/front-office/patients'
+      preLoaderRoute: typeof AuthenticatedFrontOfficePatientsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/new': {
+      id: '/_authenticated/front-office/new'
+      path: '/front-office/new'
+      fullPath: '/front-office/new'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/college/subjects': {
       id: '/_authenticated/college/subjects'
       path: '/subjects'
@@ -1791,6 +1864,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/payroll'
       fullPath: '/admin/payroll'
       preLoaderRoute: typeof AuthenticatedAdminPayrollRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/patients': {
+      id: '/_authenticated/admin/patients'
+      path: '/admin/patients'
+      fullPath: '/admin/patients'
+      preLoaderRoute: typeof AuthenticatedAdminPatientsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/localization': {
@@ -2178,6 +2258,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAccountsServiceChargesRoute: typeof AuthenticatedAccountsServiceChargesRoute
   AuthenticatedAdminHospitalRoute: typeof AuthenticatedAdminHospitalRoute
   AuthenticatedAdminLocalizationRoute: typeof AuthenticatedAdminLocalizationRoute
+  AuthenticatedAdminPatientsRoute: typeof AuthenticatedAdminPatientsRoute
   AuthenticatedAdminPayrollRoute: typeof AuthenticatedAdminPayrollRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedCapitalCashFlowRoute: typeof AuthenticatedCapitalCashFlowRoute
@@ -2186,6 +2267,9 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCapitalFacilityRoute: typeof AuthenticatedCapitalFacilityRouteWithChildren
   AuthenticatedCapitalRepaymentsRoute: typeof AuthenticatedCapitalRepaymentsRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
+  AuthenticatedFrontOfficeNewRoute: typeof AuthenticatedFrontOfficeNewRoute
+  AuthenticatedFrontOfficePatientsRoute: typeof AuthenticatedFrontOfficePatientsRoute
+  AuthenticatedFrontOfficeRazorpayReconciliationRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
   AuthenticatedHrAttendanceRoute: typeof AuthenticatedHrAttendanceRoute
   AuthenticatedHrLeavesRoute: typeof AuthenticatedHrLeavesRoute
@@ -2262,6 +2346,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedAccountsServiceChargesRoute,
   AuthenticatedAdminHospitalRoute: AuthenticatedAdminHospitalRoute,
   AuthenticatedAdminLocalizationRoute: AuthenticatedAdminLocalizationRoute,
+  AuthenticatedAdminPatientsRoute: AuthenticatedAdminPatientsRoute,
   AuthenticatedAdminPayrollRoute: AuthenticatedAdminPayrollRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedCapitalCashFlowRoute: AuthenticatedCapitalCashFlowRoute,
@@ -2273,6 +2358,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCapitalRepaymentsRoute: AuthenticatedCapitalRepaymentsRoute,
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
+  AuthenticatedFrontOfficeNewRoute: AuthenticatedFrontOfficeNewRoute,
+  AuthenticatedFrontOfficePatientsRoute: AuthenticatedFrontOfficePatientsRoute,
+  AuthenticatedFrontOfficeRazorpayReconciliationRoute:
+    AuthenticatedFrontOfficeRazorpayReconciliationRoute,
   AuthenticatedHrAddStaffRoute: AuthenticatedHrAddStaffRoute,
   AuthenticatedHrAttendanceRoute: AuthenticatedHrAttendanceRoute,
   AuthenticatedHrLeavesRoute: AuthenticatedHrLeavesRoute,

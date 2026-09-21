@@ -13,13 +13,22 @@ import {
   calculateOnlinePayments,
 } from "../../src/lib/front-office-processor";
 import { generateFrontOfficePDF } from "../../src/lib/front-office-export";
+import { formatPatientHistoryDate } from "../../src/lib/patient-history";
 import {
   parseDocterzCsvResponse,
+  parseDocterzPatientsResponse,
   parseRawHeadersOrCurl,
   DEFAULT_DOCTERZ_CONFIG,
+  buildDocterzInvoiceUrl,
 } from "../../server/services/docterz";
 
 describe("Front Office Processor Engine", () => {
+  it("should format supported visit dates without displaying Invalid Date", () => {
+    expect(formatPatientHistoryDate("29-08-2026")).toBe("29 Aug 2026");
+    expect(formatPatientHistoryDate("17-Sep-2026")).toMatch(/^17 Sep(?:t)? 2026$/);
+    expect(formatPatientHistoryDate("Invalid Date")).toBe("Date unavailable");
+  });
+
   it("should parse compound amount string correctly", () => {
     const raw = "5620 (Cash: 500, Online Payment: 5120)";
     const parsed = parseCompoundAmount(raw);
@@ -132,6 +141,54 @@ describe("Front Office Processor Engine", () => {
     expect(kpis.totalBill).toBe(1800);
     expect(kpis.totalCollected).toBe(1800);
     expect(kpis.realizationRate).toBe(100);
+  });
+
+  it("should isolate raw API remarks from system reconciliation commentary", () => {
+    const consultationRows = normalizeConsultationRows([
+      {
+        "Patient Name": "Bob Smith",
+        "Patient UID": "UID-BOB",
+        "Purpose Of Visit": "Consultation",
+        "Total Revenue Billed": "600",
+        "Amount collected": "600",
+        "Total Revenue Billed Pending Dues": "0",
+        "Remarks": "Special senior citizen discount approved by Dr. Sharma",
+      },
+    ]);
+
+    const labRows = normalizeProcedureRows([
+      {
+        "Patient Name": "Bob Smith",
+        "Patient UID": "UID-BOB",
+        "Procedure Name": "CBC",
+        "Total Revenue Billed": "400",
+        "Amount collected": "400",
+        "Total Revenue Billed Pending Dues": "0",
+        "Notes": "Fasting sample collected",
+      },
+    ]);
+
+    const compiled = compilePatients(consultationRows, labRows);
+    expect(compiled).toHaveLength(1);
+    // apiRemarks must contain only the raw notes/remarks from the data source
+    expect(compiled[0].apiRemarks).toEqual([
+      "Special senior citizen discount approved by Dr. Sharma",
+      "Fasting sample collected",
+    ]);
+
+    // Add system commentary to one of the rows
+    consultationRows[0].remarks = ["Invoice #1234: Split payment reconciled automatically"];
+    const compiledWithSystem = compilePatients(consultationRows, labRows);
+
+    // apiRemarks should still ONLY contain API remarks
+    expect(compiledWithSystem[0].apiRemarks).toEqual([
+      "Special senior citizen discount approved by Dr. Sharma",
+      "Fasting sample collected",
+    ]);
+    // systemRemarks must contain the automated commentary
+    expect(compiledWithSystem[0].systemRemarks).toEqual([
+      "Invoice #1234: Split payment reconciled automatically",
+    ]);
   });
 
   it("should sort compiled patients chronologically by consultation timing", () => {
@@ -736,6 +793,24 @@ describe("Front Office Processor Engine", () => {
   });
 
   describe("Docterz API Headers Configuration & Parsing Engine", () => {
+    it("should parse nested patient paginator envelopes and their total", () => {
+      const patients = [{ id: 1301 }, { id: 1302 }];
+      expect(parseDocterzPatientsResponse({ data: { data: patients, total: 1302 } })).toEqual({
+        children: patients,
+        total: 1302,
+      });
+    });
+
+    it("should accept the empty object returned after the final patient page", () => {
+      expect(parseDocterzPatientsResponse({ data: {} })).toEqual({ children: [] });
+    });
+
+    it("should reject unknown patient response shapes instead of silently truncating sync", () => {
+      expect(() => parseDocterzPatientsResponse({ data: { message: "unexpected" } })).toThrow(
+        "unrecognised response shape"
+      );
+    });
+
     it("should provide default configuration object with empty credentials when env unset", () => {
       expect(DEFAULT_DOCTERZ_CONFIG.authorization).toBe("");
       expect(DEFAULT_DOCTERZ_CONFIG.apiKey).toBe("");
@@ -782,6 +857,60 @@ describe("Front Office Processor Engine", () => {
       expect(parseRawHeadersOrCurl(null as any)).toEqual({});
     });
   });
+
+  describe("Docterz Patient & Invoice Deep Linking Contract", () => {
+    it("should extract mobile and invoice numbers into compiled patient directory", () => {
+      const consultations = normalizeConsultationRows([
+        {
+          "Patient Name": "Subhash Keisham",
+          "Patient UID": "UID-98349",
+          "Mobile Number": "9876543210",
+          "Invoice No": "INV-2026-001",
+          "Purpose of Visit": "Consultation",
+          Doctor: "Dr. Acme",
+          "Total Revenue Billed": "500",
+          "Amount collected": "500",
+          "Total Revenue Billed Pending Dues": "0",
+          "Mode of Payment": "Cash",
+          Schedule: "10:00 AM",
+          Prescription: "",
+        },
+      ]);
+
+      const procedures = normalizeProcedureRows([
+        {
+          "Patient Name": "Subhash Keisham",
+          "Patient UID": "UID-98349",
+          "Contact Number": "9876543210",
+          "Invoice / Receipt No": "INV-2026-002",
+          "Investigation / Procedure": "CBC",
+          Doctor: "Dr. Lab",
+          "Total Revenue Billed": "300",
+          "Amount collected": "300",
+          "Total Revenue Billed Pending Dues": "0",
+          "Mode of Payment": "UPI",
+          Category: "Laboratory",
+        },
+      ]);
+
+      const compiled = compilePatients(consultations, procedures);
+      expect(compiled).toHaveLength(1);
+      expect(compiled[0].patientUid).toBe("UID-98349");
+      expect(compiled[0].mobile).toBe("9876543210");
+      expect(compiled[0].invoiceNos).toEqual(["INV-2026-001", "INV-2026-002"]);
+      expect(compiled[0].consultations[0].invoiceNo).toBe("INV-2026-001");
+      expect(compiled[0].procedures[0].invoiceNo).toBe("INV-2026-002");
+    });
+
+    it("should construct canonical Docterz records and invoices URLs from parent and child IDs", () => {
+      const parentId = 9834963;
+      const childId = 12235729;
+
+      const recordsUrl = `https://web.docterz.in/#/patients/${parentId}/details/${childId}/records`;
+      const invoicesUrl = buildDocterzInvoiceUrl("appointment-abc-123");
+
+      expect(recordsUrl).toBe("https://web.docterz.in/#/patients/9834963/details/12235729/records");
+      expect(invoicesUrl).toBe("https://web.docterz.in/#/appointments/appointment-abc-123/invoice");
+    });
+  });
 });
-
-

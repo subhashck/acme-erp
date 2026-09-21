@@ -25,17 +25,49 @@ export function ShiftBadge({ shift, size = "sm" }: { shift: string; size?: "sm" 
   );
 }
 
-export function OnDutyCard({ roster }: { roster: RosterRow }) {
+export function OnDutyCard({
+  roster,
+  initials,
+}: {
+  roster: RosterRow;
+  initials?: string;
+}) {
   const cfg = getShiftConfig(roster.shift);
+  const Icon = cfg.Icon;
+  const staffInitials =
+    initials ??
+    roster.staffName
+      .split(" ")
+      .map((n) => n[0] ?? "")
+      .filter(Boolean)
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+
   return (
     <div
-      className={`bg-linear-to-br border-[1.5px] rounded-xl px-4 py-3.5 flex items-center justify-between gap-3 min-w-[180px] ${cfg.gradientClass} ${cfg.borderClass}`}
+      className={`bg-linear-to-br border-[1.5px] rounded-lg sm:rounded-xl px-2.5 py-2 sm:px-3 sm:py-2 flex items-center gap-2 w-full min-w-0 transition-all hover:shadow-xs ${cfg.gradientClass} ${cfg.borderClass}`}
     >
-      <div>
-        <p className={`font-bold text-[15px] m-0 ${cfg.textColorClass}`}>{roster.staffName}</p>
-        <p className="text-xs text-muted-foreground mt-0.5 mb-0">{roster.departmentName}</p>
+      <span
+        className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md text-[9px] sm:text-[10px] flex items-center justify-center font-black shrink-0 select-none bg-background/80 shadow-2xs border border-border/40 ${cfg.textColorClass}`}
+      >
+        {staffInitials}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p
+          className={`font-semibold text-xs sm:text-[13px] m-0 truncate leading-tight ${cfg.textColorClass}`}
+          title={roster.staffName}
+        >
+          {roster.staffName}
+        </p>
+        <p
+          className="text-[10px] sm:text-[11px] font-medium mt-0.5 mb-0 flex items-center gap-1 leading-tight text-muted-foreground"
+          title={roster.shift}
+        >
+          <Icon size={11} className={`${cfg.colorClass} shrink-0`} />
+          <span className="truncate">{roster.shift}</span>
+        </p>
       </div>
-      <ShiftBadge shift={roster.shift} size="lg" />
     </div>
   );
 }
