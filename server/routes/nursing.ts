@@ -980,7 +980,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       c,
       z.object({
         amount: z.number().positive("Seat booking advance amount must be greater than 0"),
-        paymentMode: z.enum(["cash", "bank_transfer", "upi", "card", "cheque"]).default("cash"),
+        paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]).default("cash"),
         paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
         notes: z.string().optional().nullable(),
       })
@@ -2253,7 +2253,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
         feeType: z.string().optional().nullable(),
         paymentFrequency: z.string().optional().nullable(),
         amount: z.number().min(0, "Payment amount cannot be negative"),
-        paymentMode: z.enum(["cash", "bank_transfer", "upi", "card", "cheque"]).default("cash"),
+        paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]).default("cash"),
         paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
         remarks: z.string().optional().nullable(),
       })
@@ -2909,7 +2909,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
           .optional()
           .nullable(),
         amount: z.number().min(0.01, "Payment amount must be greater than zero"),
-        paymentMode: z.enum(["cash", "bank_transfer", "upi", "card", "cheque"]).default("cash"),
+        paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]).default("cash"),
         paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
         academicYear: z.string().optional().nullable(),
         remarks: z.string().optional().nullable(),
@@ -3363,7 +3363,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       z.object({
         paymentDate: z.string().min(1, "Payment date is required"),
         amount: z.coerce.number().positive("Amount must be greater than 0"),
-        paymentMode: z.enum(["cash", "bank_transfer", "upi", "cheque", "card"]).default("cash"),
+        paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "cheque", "card"]).default("cash"),
         referenceNumber: z.string().optional().nullable(),
         notes: z.string().optional().nullable(),
         allocations: z.array(
@@ -3470,6 +3470,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
         const modeLabelMap: Record<string, string> = {
           bank_transfer: "Bank Transfer",
           upi: "UPI",
+          upi_bank_transfer_dr_je: "UPI/Bank Transfer - Dr JE",
           cheque: "Cheque",
           card: "Card",
         };
@@ -5365,4 +5366,3 @@ export const nursingRoutes = new Hono<AuthEnv>()
       return c.json({ error: "Failed to generate periodic due report: " + err.message }, 500);
     }
   });
-

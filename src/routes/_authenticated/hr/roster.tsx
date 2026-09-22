@@ -37,6 +37,7 @@ import {
 import {
   ShiftBadge,
   OnDutyCard,
+  DailyGanttView,
   DayColumn,
   MonthlyTableView
 } from "../../../components/RosterComponents";
@@ -139,6 +140,7 @@ function Roster() {
   const [showForm, setShowForm] = React.useState(false);
   const [showTable, setShowTable] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"daily" | "monthly">("daily");
+  const [dailyDate, setDailyDate] = React.useState(today());
   const [deletingId, setDeletingId] = React.useState<number | null>(null);
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const [exportMonth, setExportMonth] = React.useState<string>(currentYearMonth());
@@ -152,7 +154,6 @@ function Roster() {
   const [isMobileStaffPoolOpen, setIsMobileStaffPoolOpen] = React.useState<boolean>(true);
   const [visibleShiftIds, setVisibleShiftIds] = React.useState<number[]>([]);
 
-  // Swipe gesture tracking for mobile day pager
   const touchStartX = React.useRef<number | null>(null);
   const touchStartY = React.useRef<number | null>(null);
 
@@ -247,29 +248,8 @@ function Roster() {
     const deltaY = e.changedTouches[0].clientY - touchStartY.current;
     touchStartX.current = null;
     touchStartY.current = null;
-
     if (Math.abs(deltaX) > 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-      if (deltaX < 0) {
-        // Swipe left -> Next day
-        setMobileDayIndex((curr) => {
-          if (curr < 7) {
-            return curr + 1;
-          } else {
-            setWeekOffset((w) => w + 1);
-            return 0;
-          }
-        });
-      } else {
-        // Swipe right -> Prev day
-        setMobileDayIndex((curr) => {
-          if (curr > 0) {
-            return curr - 1;
-          } else {
-            setWeekOffset((w) => w - 1);
-            return 7;
-          }
-        });
-      }
+      setMobileDayIndex((curr) => Math.max(0, Math.min(7, curr + (deltaX < 0 ? 1 : -1))));
     }
   };
 
@@ -375,15 +355,6 @@ function Roster() {
     return [...list].sort(sortShiftsByStartTime);
   }, [shifts, visibleShiftIds]);
 
-  // Set initial mobile day index to today (or day 0 if today not in week)
-  React.useEffect(() => {
-    const todayIndex = week.indexOf(todayStr);
-    if (todayIndex !== -1) {
-      setMobileDayIndex(todayIndex);
-    } else {
-      setMobileDayIndex(0);
-    }
-  }, [weekOffset, todayStr]);
 
   // Auto-select department when data arrives
   React.useEffect(() => {
@@ -756,7 +727,7 @@ function Roster() {
                 <span className="flex items-center gap-2">
                   <CalendarDays size={18} className="text-primary" />
                   {viewMode === "daily" ? (
-                    weekOffset === 0 ? "Next 7 Days" : `Week of ${new Date(week[0] + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                    new Date(dailyDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })
                   ) : (
                     new Date(exportMonth + "-01T00:00:00").toLocaleDateString("en-US", { month: "long", year: "numeric" })
                   )} — {selectedDept?.name}
@@ -765,15 +736,15 @@ function Roster() {
                   <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-end">
                     <Button
                       variant="outline"
-                      onClick={() => setWeekOffset((v) => v - 1)}
+                      onClick={() => setDailyDate(format(addDays(parseISO(dailyDate), -1), "yyyy-MM-dd"))}
                       className="px-2.5 sm:px-3 py-1.5 h-8 text-xs flex items-center gap-1"
                     >
-                      <ChevronLeft size={14} /> <span className="hidden sm:inline">Prev Week</span><span className="sm:hidden">Prev</span>
+                      <ChevronLeft size={14} /> <span className="hidden sm:inline">Previous Day</span><span className="sm:hidden">Prev</span>
                     </Button>
-                    {weekOffset !== 0 && (
+                    {dailyDate !== todayStr && (
                       <Button
                         variant="ghost"
-                        onClick={() => setWeekOffset(0)}
+                        onClick={() => setDailyDate(todayStr)}
                         className="px-2 sm:px-3 py-1.5 h-8 text-xs text-primary font-bold"
                       >
                         Today
@@ -781,10 +752,10 @@ function Roster() {
                     )}
                     <Button
                       variant="outline"
-                      onClick={() => setWeekOffset((v) => v + 1)}
+                      onClick={() => setDailyDate(format(addDays(parseISO(dailyDate), 1), "yyyy-MM-dd"))}
                       className="px-2.5 sm:px-3 py-1.5 h-8 text-xs flex items-center gap-1"
                     >
-                      <span className="hidden sm:inline">Next Week</span><span className="sm:hidden">Next</span> <ChevronRight size={14} />
+                      <span className="hidden sm:inline">Next Day</span><span className="sm:hidden">Next</span> <ChevronRight size={14} />
                     </Button>
                   </div>
                 )}
@@ -883,7 +854,22 @@ function Roster() {
                 </span>
               </div>
 
-              {viewMode === "daily" ? (
+              {viewMode === "daily" && (
+                <DailyGanttView
+                  date={dailyDate}
+                  rosters={rosters.filter((roster) => visibleShiftIds.includes(roster.shiftId))}
+                  shifts={displayShifts}
+                  allStaff={deptStaff}
+                  isOffDay={checkIsOffDay}
+                  initialsMap={initialsMap}
+                  onEditRoster={handleEdit}
+                  onDeleteRoster={deleteRoster}
+                  onAssignShift={handleDropStaff}
+                  canAssign={canAssign}
+                />
+              )}
+
+              {false && (
                 <>
                   {/* ─────────────────────────────────────────────────────────────
                       DESKTOP DAILY VIEW (Persistent Sticky Staff Pool + 7-Day Grid)
@@ -915,7 +901,7 @@ function Roster() {
                         <div className="mb-2 p-2 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between gap-1">
                           <div className="min-w-0 flex-1">
                             <p className="text-[10px] uppercase tracking-wider font-extrabold text-primary m-0">Selected for tap-assign</p>
-                            <p className="text-xs font-bold text-foreground truncate m-0">{selectedStaff.name}</p>
+                            <p className="text-xs font-bold text-foreground truncate m-0">{selectedStaff!.name}</p>
                             <p className="text-[9px] text-muted-foreground m-0">Click any shift slot to assign</p>
                           </div>
                           <button
@@ -1113,7 +1099,7 @@ function Roster() {
                       <div className="p-3 rounded-2xl bg-primary/10 border-2 border-primary/30 flex items-center justify-between gap-2 shadow-xs sticky top-2 z-10 backdrop-blur-md">
                         <div className="min-w-0 flex-1">
                           <p className="text-[10px] uppercase tracking-wider font-extrabold text-primary m-0">Ready to Assign</p>
-                          <p className="text-sm font-bold text-foreground truncate m-0">{selectedStaff.name}</p>
+                          <p className="text-sm font-bold text-foreground truncate m-0">{selectedStaff!.name}</p>
                           <p className="text-[10px] text-muted-foreground m-0">Tap any shift below to assign</p>
                         </div>
                         <button
@@ -1231,7 +1217,8 @@ function Roster() {
                     </div>
                   </div>
                 </>
-              ) : (
+              )}
+              {viewMode === "monthly" && (
                 <div className="mt-2">
                   <MonthlyTableView
                     exportMonth={exportMonth}

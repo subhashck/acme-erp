@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/
 import { Button } from "@/ui/button";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 
 export const Route = createFileRoute("/_authenticated/college/fee-dues")({
   component: StudentFeeDueTrackingPage,
@@ -705,7 +706,7 @@ function StudentFeeDueTrackingPage() {
                                                                             {format(new Date(pmt.paymentDate + "T00:00:00"), "PP")}
                                                                           </span>
                                                                           <span className="uppercase font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                                                            {pmt.paymentMode}
+                                                                            {formatCollegePaymentMode(pmt.paymentMode)}
                                                                           </span>
                                                                           {pmt.targetPeriod && (
                                                                             <span className="text-[10px] bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 px-1.5 py-0.5 rounded font-medium">
@@ -825,7 +826,7 @@ function StudentFeeDueTrackingPage() {
                                                 <div className="font-semibold text-foreground flex items-center gap-2">
                                                   <span>Receipt #{tx.receiptNumber}</span>
                                                   <span className="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-muted text-muted-foreground">
-                                                    {tx.paymentMode}
+                                                    {formatCollegePaymentMode(tx.paymentMode)}
                                                   </span>
                                                   {tx.targetPeriod && (
                                                     <span className="text-[10px] bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 px-1.5 py-0.2 rounded font-medium">

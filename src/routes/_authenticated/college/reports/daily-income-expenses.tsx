@@ -47,6 +47,7 @@ import {
 import { format, parseISO } from "date-fns";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -211,7 +212,7 @@ export default function DailyIncomeExpensesReportPage() {
         r.receiptNumber || r.invoiceNo,
         `${r.studentName} (${r.enrollmentNo})`,
         r.feeType || "Course Fee",
-        (r.paymentMode || "").toUpperCase(),
+        formatCollegePaymentMode(r.paymentMode),
         Number(r.amount).toLocaleString(),
       ]),
       styles: { fontSize: 8 },
@@ -231,7 +232,7 @@ export default function DailyIncomeExpensesReportPage() {
         r.paymentDate,
         r.voucherNo,
         `${r.category} - ${r.payee}`,
-        (r.paymentMode || "").toUpperCase(),
+        formatCollegePaymentMode(r.paymentMode),
         r.referenceNumber || "-",
         Number(r.amount).toLocaleString(),
       ]),
@@ -557,6 +558,7 @@ export default function DailyIncomeExpensesReportPage() {
                   <SelectItem value="cash" className="text-xs">Cash</SelectItem>
                   <SelectItem value="bank_transfer" className="text-xs">Bank Transfer</SelectItem>
                   <SelectItem value="upi" className="text-xs">UPI</SelectItem>
+                  <SelectItem value="upi_bank_transfer_dr_je" className="text-xs">UPI/Bank Transfer - Dr JE</SelectItem>
                   <SelectItem value="cheque" className="text-xs">Cheque</SelectItem>
                   <SelectItem value="card" className="text-xs">Card</SelectItem>
                 </SelectContent>
@@ -639,7 +641,7 @@ export default function DailyIncomeExpensesReportPage() {
                       <td className="p-3 text-foreground">{r.feeType || "Course Fee"}</td>
                       <td className="p-3 text-center">
                         <span className="uppercase font-semibold px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-900 border text-slate-700 dark:text-slate-300">
-                          {r.paymentMode}
+                          {formatCollegePaymentMode(r.paymentMode)}
                         </span>
                       </td>
                       <td className="p-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
@@ -711,7 +713,7 @@ export default function DailyIncomeExpensesReportPage() {
                       </td>
                       <td className="p-3 text-center">
                         <span className="uppercase font-semibold px-2 py-0.5 rounded-full text-[10px] bg-slate-100 dark:bg-slate-900 border text-slate-700 dark:text-slate-300">
-                          {r.paymentMode}
+                          {formatCollegePaymentMode(r.paymentMode)}
                         </span>
                       </td>
                       <td className="p-3 text-muted-foreground truncate max-w-[200px]">

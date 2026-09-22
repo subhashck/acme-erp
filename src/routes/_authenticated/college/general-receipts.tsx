@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useForm, Controller, useFieldArray } from "react-hook-form";
+import { useForm, Controller, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import jsPDF from "jspdf";
@@ -60,6 +60,7 @@ import {
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 
 // ---------------------------------------------------------------------------
 // Route Definition
@@ -102,7 +103,7 @@ const generalReceiptFormSchema = z.object({
   useItemizedList: z.boolean(),
   items: z.array(generalReceiptItemSchema).optional(),
   amount: z.number().min(1, "Receipt amount must be greater than 0"),
-  paymentMode: z.enum(["cash", "bank_transfer", "upi", "card", "cheque"]),
+  paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]),
   paymentDate: z.string(),
   remarks: z.string().nullable().optional(),
 });
@@ -181,7 +182,7 @@ export const buildGeneralReceiptPDFDoc = (
 
   const receiptNo = tx.receiptNumber || "RCP-GEN";
   const paymentDate = tx.paymentDate || format(new Date(), "yyyy-MM-dd");
-  const paymentMode = (tx.paymentMode || "cash").toUpperCase();
+  const paymentMode = formatCollegePaymentMode(tx.paymentMode);
 
   doc.setFontSize(7.5);
   doc.text(`Receipt No: ${receiptNo}`, 138, 9, { align: "right" });
@@ -395,7 +396,7 @@ export const formatGeneralReceiptWhatsAppMessage = (
     lines.push(`*Enrollment No:* ${parsed?.studentEnrollmentNo || tx.enrollmentNo}`);
   }
   lines.push(`*Category:* ${category}`);
-  lines.push(`*Payment Mode:* ${(tx.paymentMode || "cash").toUpperCase()}`);
+  lines.push(`*Payment Mode:* ${formatCollegePaymentMode(tx.paymentMode)}`);
   lines.push(`*Total Amount Paid:* ₹${amt.toLocaleString()}`);
   lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
   lines.push(`📎 *Official PDF Receipt Attached*`);
@@ -587,15 +588,8 @@ export default function GeneralReceiptsPage() {
       category: "Sale of Prospectus",
       narration: "",
       useItemizedList: false,
-      items: [
-        {
-          description: "Prospectus Kit & Admission Form",
-          quantity: 1,
-          unitPrice: 500,
-          amount: 500,
-        },
-      ],
-      amount: 500,
+      items: [],
+      amount: undefined,
       paymentMode: "cash",
       paymentDate: format(new Date(), "yyyy-MM-dd"),
       remarks: "",
@@ -610,20 +604,26 @@ export default function GeneralReceiptsPage() {
   const watchRecipientType = form.watch("recipientType");
   const watchCategory = form.watch("category");
   const watchUseItemizedList = form.watch("useItemizedList");
-  const watchItems = form.watch("items");
+  const watchItems = useWatch({ control: form.control, name: "items" }) ?? [];
+  const lineAmounts = React.useMemo(
+    () => watchItems.map(
+      (item) => (Number(item?.quantity) || 0) * (Number(item?.unitPrice) || 0)
+    ),
+    [watchItems]
+  );
+  const itemizedTotal = lineAmounts.reduce((sum, amount) => sum + amount, 0);
 
-  // Auto calculate total amount from items if itemized list is used
+  // Keep the submitted value synchronized with the total derived during render.
   React.useEffect(() => {
-    if (watchUseItemizedList && Array.isArray(watchItems) && watchItems.length > 0) {
-      const calculatedTotal = watchItems.reduce(
-        (sum, item) => sum + Number(item?.amount || 0),
-        0
-      );
-      if (calculatedTotal > 0) {
-        form.setValue("amount", calculatedTotal);
-      }
+    if (watchUseItemizedList) {
+      lineAmounts.forEach((amount, index) => {
+        if (Number(form.getValues(`items.${index}.amount`)) !== amount) {
+          form.setValue(`items.${index}.amount`, amount, { shouldValidate: true });
+        }
+      });
+      form.setValue("amount", itemizedTotal, { shouldValidate: true });
     }
-  }, [watchUseItemizedList, watchItems, form]);
+  }, [watchUseItemizedList, itemizedTotal, lineAmounts, form]);
 
   // Create General Receipt Mutation
   const createReceiptMutation = useMutation({
@@ -730,10 +730,8 @@ export default function GeneralReceiptsPage() {
                 category: "Sale of Prospectus",
                 narration: "Prospectus kit with official nursing admission application form.",
                 useItemizedList: false,
-                items: [
-                  { description: "Prospectus Kit & Admission Form", quantity: 1, unitPrice: 500, amount: 500 },
-                ],
-                amount: 500,
+                items: [],
+                amount: undefined,
                 paymentMode: "cash",
                 paymentDate: format(new Date(), "yyyy-MM-dd"),
                 remarks: "",
@@ -892,6 +890,7 @@ export default function GeneralReceiptsPage() {
                   <SelectItem value="cash" className="text-xs">Cash</SelectItem>
                   <SelectItem value="bank_transfer" className="text-xs">Bank Transfer</SelectItem>
                   <SelectItem value="upi" className="text-xs">UPI / QR</SelectItem>
+                  <SelectItem value="upi_bank_transfer_dr_je" className="text-xs">UPI/Bank Transfer - Dr JE</SelectItem>
                   <SelectItem value="card" className="text-xs">Card</SelectItem>
                   <SelectItem value="cheque" className="text-xs">Cheque</SelectItem>
                 </SelectContent>
@@ -1168,7 +1167,7 @@ export default function GeneralReceiptsPage() {
                         {/* Mode */}
                         <td className="p-3 capitalize text-muted-foreground whitespace-nowrap">
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted border">
-                            {tx.paymentMode}
+                            {formatCollegePaymentMode(tx.paymentMode)}
                           </span>
                         </td>
 
@@ -1312,7 +1311,12 @@ export default function GeneralReceiptsPage() {
 
       {/* Generate General Receipt Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="sm:max-w-[680px] max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-[680px] max-h-[90vh] overflow-y-auto"
+          onPointerDownOutside={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-teal-700 dark:text-teal-400">
               <Receipt className="h-5 w-5" /> Generate General / Misc Receipt
@@ -1533,28 +1537,14 @@ export default function GeneralReceiptsPage() {
                           type="number"
                           min="1"
                           placeholder="Qty"
-                          {...form.register(`items.${index}.quantity`, {
-                            valueAsNumber: true,
-                            onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-                              const qty = Number(e.target.value) || 1;
-                              const rate = Number(form.getValues(`items.${index}.unitPrice`)) || 0;
-                              form.setValue(`items.${index}.amount`, qty * rate);
-                            },
-                          })}
+                          {...form.register(`items.${index}.quantity`, { valueAsNumber: true })}
                           className="h-7 text-xs w-[60px] text-center bg-background"
                         />
                         <Input
                           type="number"
                           min="0"
                           placeholder="Unit Rate"
-                          {...form.register(`items.${index}.unitPrice`, {
-                            valueAsNumber: true,
-                            onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-                              const rate = Number(e.target.value) || 0;
-                              const qty = Number(form.getValues(`items.${index}.quantity`)) || 1;
-                              form.setValue(`items.${index}.amount`, qty * rate);
-                            },
-                          })}
+                          {...form.register(`items.${index}.unitPrice`, { valueAsNumber: true })}
                           className="h-7 text-xs w-[80px] text-right bg-background"
                         />
                         <Input
@@ -1562,9 +1552,12 @@ export default function GeneralReceiptsPage() {
                           min="0"
                           placeholder="Amount"
                           {...form.register(`items.${index}.amount`, { valueAsNumber: true })}
-                          className="h-7 text-xs w-[90px] text-right bg-background font-semibold"
+                          value={lineAmounts[index] ?? 0}
+                          readOnly
+                          tabIndex={-1}
+                          className="h-7 text-xs w-[90px] text-right bg-muted font-semibold cursor-default"
                         />
-                        {fields.length > 1 && (
+                        {fields.length > 0 && (
                           <Button
                             type="button"
                             size="sm"
@@ -1598,9 +1591,13 @@ export default function GeneralReceiptsPage() {
                       min="1"
                       placeholder="0"
                       {...field}
-                      value={field.value || ""}
+                      value={watchUseItemizedList ? itemizedTotal || "" : field.value || ""}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(Number(e.target.value))}
-                      className="h-9 text-base font-bold text-teal-700 dark:text-teal-300 font-mono bg-background"
+                      readOnly={watchUseItemizedList}
+                      className={cn(
+                        "h-9 text-base font-bold text-teal-700 dark:text-teal-300 font-mono",
+                        watchUseItemizedList ? "bg-muted cursor-default" : "bg-background"
+                      )}
                     />
                   )}
                 />
@@ -1621,6 +1618,7 @@ export default function GeneralReceiptsPage() {
                         <SelectItem value="cash" className="text-xs">Cash</SelectItem>
                         <SelectItem value="bank_transfer" className="text-xs">Bank Transfer / NEFT</SelectItem>
                         <SelectItem value="upi" className="text-xs">UPI / GPay / PhonePe</SelectItem>
+                        <SelectItem value="upi_bank_transfer_dr_je" className="text-xs">UPI/Bank Transfer - Dr JE</SelectItem>
                         <SelectItem value="card" className="text-xs">Credit / Debit Card</SelectItem>
                         <SelectItem value="cheque" className="text-xs">Cheque</SelectItem>
                       </SelectContent>
@@ -1750,7 +1748,7 @@ export default function GeneralReceiptsPage() {
                   </span>
                 </div>
                 <div className="flex justify-between text-muted-foreground pt-1 text-[11px]">
-                  <span>Mode: <strong>{String(pendingPayload.paymentMode).toUpperCase()}</strong></span>
+                  <span>Mode: <strong>{formatCollegePaymentMode(pendingPayload.paymentMode)}</strong></span>
                   <span>Date: <strong>{pendingPayload.paymentDate}</strong></span>
                 </div>
               </div>
@@ -1879,7 +1877,7 @@ export default function GeneralReceiptsPage() {
                           TOTAL AMOUNT RECEIVED
                         </span>
                         <span className="text-[11px] text-muted-foreground">
-                          Payment Mode: {String(viewReceiptTx.paymentMode).toUpperCase()}
+                          Payment Mode: {formatCollegePaymentMode(viewReceiptTx.paymentMode)}
                         </span>
                       </div>
                       <span className="text-2xl font-bold text-teal-700 dark:text-teal-300">

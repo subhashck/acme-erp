@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 
 // ---------------------------------------------------------------------------
 // Route Definition
@@ -1234,6 +1235,7 @@ export default function ReferrersMasterPage() {
                       <SelectContent>
                         <SelectItem value="bank_transfer" className="text-xs">Bank Transfer (NEFT/IMPS)</SelectItem>
                         <SelectItem value="upi" className="text-xs">UPI / GPay / PhonePe</SelectItem>
+                        <SelectItem value="upi_bank_transfer_dr_je" className="text-xs">UPI/Bank Transfer - Dr JE</SelectItem>
                         <SelectItem value="cash" className="text-xs">Cash</SelectItem>
                         <SelectItem value="cheque" className="text-xs">Cheque / Demand Draft</SelectItem>
                         <SelectItem value="card" className="text-xs">Credit / Debit Card</SelectItem>
@@ -1843,7 +1845,7 @@ export default function ReferrersMasterPage() {
                                 {pmt.voucherNo}
                               </span>
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-muted uppercase">
-                                {pmt.paymentMode.replace("_", " ")}
+                                {formatCollegePaymentMode(pmt.paymentMode)}
                               </span>
                               {pmt.referenceNumber && (
                                 <span className="text-[11px] text-muted-foreground font-mono">

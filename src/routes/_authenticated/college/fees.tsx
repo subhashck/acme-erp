@@ -46,6 +46,7 @@ import { Field } from "@/components/Field";
 import { toast } from "@/lib/toast";
 import { toNum } from "@/utils/math";
 import { cn } from "@/lib/utils";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 import {
   Select,
   SelectContent,
@@ -112,7 +113,13 @@ const billingPeriodToFreqKey = (periodType: string): string => {
   }
 };
 
-const isTuitionFee = (name: string): boolean => name.toLowerCase().includes("course") || name.toLowerCase().includes("tuition");
+const normalizedFeeName = (value: unknown): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const isTuitionFee = (name?: string | null): boolean => {
+  const normalized = normalizedFeeName(name);
+  return normalized.includes("course") || normalized.includes("tuition");
+};
 const isHostelOnlyFee = (name: string): boolean => {
   const n = (name || "").toLowerCase();
   return n.includes("hostel") && !n.includes("mess");
@@ -321,7 +328,7 @@ const buildReceiptPDFDoc = (tx: FeeTransaction, userName?: string): jsPDF => {
 
   const receiptNo = tx.receiptNumber || "RCP-FEE";
   const paymentDate = tx.paymentDate || format(new Date(), "yyyy-MM-dd");
-  const paymentMode = (tx.paymentMode || "cash").toUpperCase();
+  const paymentMode = formatCollegePaymentMode(tx.paymentMode);
   const amt = Number(toNum(tx.amount));
 
   doc.setFontSize(7.5);
@@ -620,7 +627,7 @@ export const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: an
   if (!isAdvanceReceipt) {
     lines.push(`*Billing Period:* ${periodDisplay}`);
   }
-  lines.push(`*Payment Mode:* ${(tx.paymentMode || "cash").toUpperCase()}`);
+  lines.push(`*Payment Mode:* ${formatCollegePaymentMode(tx.paymentMode)}`);
   lines.push(`━━━━━━━━━━━━━━━━━━━━━`);
   lines.push(`*FEE BREAKDOWN:*`);
 
@@ -976,7 +983,8 @@ function FeeManagementPage() {
 
       const infos = extractPaidPeriodsFromTx(tx, periodValueOptions, watchBillingPeriodType);
       infos.forEach((info) => {
-        const key = info.period.toLowerCase();
+        const key = normalizedFeeName(info.period);
+        if (!key) return;
         const existing = map.get(key) || [];
         existing.push(info);
         map.set(key, existing);
@@ -1398,7 +1406,9 @@ function FeeManagementPage() {
       setCollectItems((prev) =>
         prev.map((item) => {
           const lock = lockedStudentFrequencies.find(
-            (lf) => (item.componentId && lf.componentId === item.componentId) || lf.componentName.toLowerCase() === item.name.toLowerCase()
+            (lf) =>
+              (item.componentId && lf.componentId === item.componentId) ||
+              (normalizedFeeName(lf.componentName) !== "" && normalizedFeeName(lf.componentName) === normalizedFeeName(item.name))
           );
           if (lock) {
             const selRow =
@@ -1479,7 +1489,7 @@ function FeeManagementPage() {
     }
 
     // Ensure Security Deposit (Refundable) is always available as an optional item in collection form
-    const hasSecurity = comps.some((c) => c.name.toLowerCase().includes("security"));
+    const hasSecurity = comps.some((c) => normalizedFeeName(c.name).includes("security"));
     if (!hasSecurity) {
       const depositAmt = toNum(fs.securityDeposit) > 0 ? toNum(fs.securityDeposit) : 5000;
       comps.push({
@@ -1507,7 +1517,9 @@ function FeeManagementPage() {
           : createDefaultFrequencyRows(c.selectedFrequencyKey || "annually");
 
       const lock = lockedStudentFrequencies.find(
-        (lf) => (c.id && lf.componentId === c.id) || lf.componentName.toLowerCase() === c.name.toLowerCase()
+        (lf) =>
+          (c.id && lf.componentId === c.id) ||
+          (normalizedFeeName(lf.componentName) !== "" && normalizedFeeName(lf.componentName) === normalizedFeeName(c.name))
       );
 
       // Tuition Fee: force frequency to match the billing period type
@@ -1522,8 +1534,8 @@ function FeeManagementPage() {
       const unitAmt = lock && toNum(lock.installmentAmount) > 0 ? toNum(lock.installmentAmount) : calcInstallmentAmount(baseAmt, selRow);
       const mult = allowsPeriodMultiplier(c.name, selKey) ? selectedPeriods.length : 1;
 
-      const isOneTime = selKey === "one_time" || c.name.toLowerCase().includes("security deposit");
-      const paidOneTimeInfo = isOneTime ? paidOneTimeMap.get(c.name.trim().toLowerCase()) : null;
+      const isOneTime = selKey === "one_time" || normalizedFeeName(c.name).includes("security deposit");
+      const paidOneTimeInfo = isOneTime ? paidOneTimeMap.get(normalizedFeeName(c.name)) : null;
       const isOneTimePaid = !!paidOneTimeInfo;
 
       return {
@@ -2683,7 +2695,7 @@ function FeeManagementPage() {
                             <div className="bg-cyan-100/50 dark:bg-cyan-950/40 p-2.5 rounded-lg text-xs space-y-1 text-cyan-900 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
                               <div className="font-semibold text-[11px]">Advance Record Reference:</div>
                               <div className="text-[11px]">Receipt: <strong className="font-mono">{studentAdvanceInfo.receiptNumber || "N/A"}</strong></div>
-                              <div className="text-[11px]">Payment: {studentAdvanceInfo.paymentDate || "N/A"} • {(studentAdvanceInfo.paymentMode || "cash").toUpperCase()}</div>
+                              <div className="text-[11px]">Payment: {studentAdvanceInfo.paymentDate || "N/A"} • {formatCollegePaymentMode(studentAdvanceInfo.paymentMode)}</div>
                             </div>
                           </div>
                         </div>
@@ -2723,6 +2735,7 @@ function FeeManagementPage() {
                             <SelectItem value="cash">Cash</SelectItem>
                             <SelectItem value="bank_transfer">Bank Transfer / NEFT</SelectItem>
                             <SelectItem value="upi">UPI / GPay / PhonePe</SelectItem>
+                            <SelectItem value="upi_bank_transfer_dr_je">UPI/Bank Transfer - Dr JE</SelectItem>
                             <SelectItem value="card">Credit / Debit Card</SelectItem>
                             <SelectItem value="cheque">Cheque</SelectItem>
                           </SelectContent>
@@ -2855,7 +2868,7 @@ function FeeManagementPage() {
                       <span className="text-teal-600 text-base">₹{Number(pendingPayload.amount).toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-muted-foreground pt-1">
-                      <span>Payment Mode: <strong>{String(pendingPayload.paymentMode).toUpperCase()}</strong></span>
+                      <span>Payment Mode: <strong>{formatCollegePaymentMode(pendingPayload.paymentMode)}</strong></span>
                       <span>Date: <strong>{pendingPayload.paymentDate}</strong></span>
                     </div>
                   </div>
@@ -2977,6 +2990,7 @@ function FeeManagementPage() {
               <option value="cash">Cash</option>
               <option value="bank_transfer">Bank Transfer</option>
               <option value="upi">UPI</option>
+              <option value="upi_bank_transfer_dr_je">UPI/Bank Transfer - Dr JE</option>
               <option value="card">Card</option>
               <option value="cheque">Cheque</option>
             </select>
@@ -3198,7 +3212,7 @@ function FeeManagementPage() {
                             </div>
                           </td>
                           <td className="p-3 text-right font-bold text-foreground">₹{toNum(tx.amount).toLocaleString()}</td>
-                          <td className="p-3 capitalize">{tx.paymentMode}</td>
+                          <td className="p-3">{formatCollegePaymentMode(tx.paymentMode)}</td>
                           <td className="p-3">{tx.paymentDate}</td>
                           <td className="p-3 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -3465,7 +3479,7 @@ function FeeManagementPage() {
             <div className="border rounded-lg p-3 bg-teal-50/50 dark:bg-teal-950/20 flex justify-between items-center my-2">
               <div>
                 <span className="text-xs text-teal-800 dark:text-teal-300 font-semibold block">Total Amount Paid</span>
-                <span className="text-xs text-muted-foreground">Payment Mode: {receiptTx?.paymentMode.toUpperCase()}</span>
+                <span className="text-xs text-muted-foreground">Payment Mode: {formatCollegePaymentMode(receiptTx?.paymentMode)}</span>
               </div>
               <span className="text-2xl font-bold text-teal-700 dark:text-teal-300">
                 ₹{toNum(receiptTx?.amount).toLocaleString()}

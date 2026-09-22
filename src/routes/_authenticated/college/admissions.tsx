@@ -45,6 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/ui/label";
 import { toast } from "sonner";
 import { cn } from "@/utils/cn";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
@@ -215,7 +216,7 @@ const buildSeatBookingReceiptDoc = (applicant: Applicant, tx?: any, userName?: s
 
   const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || "RCP-ADV";
   const paymentDate = tx?.paymentDate || applicant.seatBookingDate || format(new Date(), "yyyy-MM-dd");
-  const paymentMode = tx?.paymentMode || applicant.seatBookingPaymentMode || "cash";
+  const paymentMode = formatCollegePaymentMode(tx?.paymentMode || applicant.seatBookingPaymentMode);
   const amt = Number(tx?.amount !== undefined && tx?.amount !== null ? tx.amount : applicant.seatBookingAmount || 0);
 
   doc.setFontSize(7.5);
@@ -335,7 +336,7 @@ const downloadSeatBookingPDF = (applicant: Applicant, tx?: any, userName?: strin
 export const formatAdmissionReceiptWhatsAppMessage = (applicant: Applicant, tx?: any): string => {
   const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || "RCP-ADV";
   const paymentDate = tx?.paymentDate || applicant.seatBookingDate || format(new Date(), "yyyy-MM-dd");
-  const paymentMode = (tx?.paymentMode || applicant.seatBookingPaymentMode || "cash").toUpperCase();
+  const paymentMode = formatCollegePaymentMode(tx?.paymentMode || applicant.seatBookingPaymentMode);
   const amt = Number(tx?.amount !== undefined && tx?.amount !== null ? tx.amount : applicant.seatBookingAmount || 0);
   const isAdjusted = applicant.seatBookingStatus === "adjusted";
 
@@ -3336,7 +3337,7 @@ function AdmissionsPage() {
                                       <td className="p-2 max-w-37 truncate text-muted-foreground" title={tx.remarks || tx.feeType}>
                                         {tx.feeType || "Seat Booking Advance"}
                                       </td>
-                                      <td className="p-2 uppercase">{tx.paymentMode || "cash"}</td>
+                                      <td className="p-2">{formatCollegePaymentMode(tx.paymentMode)}</td>
                                       <td className="p-2 text-right font-semibold text-foreground">
                                         ₹{Number(tx.amount || 0).toLocaleString()}
                                       </td>
@@ -3761,7 +3762,7 @@ function AdmissionsPage() {
       {/* Convert to Student Modal */}
       <Dialog open={convertModalOpen} onOpenChange={setConvertModalOpen}>
         <DialogContent
-          className="w-full max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto p-4 sm:p-6"
+          className="w-[calc(100vw-1rem)] max-w-none sm:w-[96vw]! sm:max-w-[96vw]! lg:w-[94vw]! lg:max-w-300! xl:max-w-350! max-h-[92dvh] overflow-y-auto p-4 sm:p-6"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -3772,16 +3773,7 @@ function AdmissionsPage() {
                 Finalize candidate enrollment and assign to academic batch
               </DialogDescription>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground shrink-0"
-              onClick={() => setConvertModalOpen(false)}
-            >
-              <X size={16} />
-              <span className="sr-only">Close</span>
-            </Button>
+
           </DialogHeader>
 
           <form onSubmit={convertForm.handleSubmit(onConvertSubmit)} className="space-y-4 py-1">
@@ -4061,7 +4053,7 @@ function AdmissionsPage() {
       {/* Record Seat Booking Advance Modal */}
       <Dialog open={seatBookingModalOpen} onOpenChange={setSeatBookingModalOpen}>
         <DialogContent
-          className="w-full max-w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-6"
+          className="w-[calc(100vw-1rem)] max-w-none sm:w-[96vw]! sm:max-w-[96vw]! lg:w-[94vw]! lg:max-w-300! xl:max-w-350! max-h-[92dvh] overflow-y-auto p-4 sm:p-6"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -4074,16 +4066,7 @@ function AdmissionsPage() {
                 Record seat reservation advance or interim fee receipt against the candidate / student.
               </DialogDescription>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 rounded-full text-muted-foreground hover:text-foreground shrink-0"
-              onClick={() => setSeatBookingModalOpen(false)}
-            >
-              <X size={16} />
-              <span className="sr-only">Close</span>
-            </Button>
+
           </DialogHeader>
 
           {seatBookingApplicant && (
@@ -4137,6 +4120,7 @@ function AdmissionsPage() {
                           <SelectItem value="cash">Cash</SelectItem>
                           <SelectItem value="bank_transfer">Bank Transfer / NEFT</SelectItem>
                           <SelectItem value="upi">UPI / GPay / PhonePe</SelectItem>
+                          <SelectItem value="upi_bank_transfer_dr_je">UPI/Bank Transfer - Dr JE</SelectItem>
                           <SelectItem value="card">Credit / Debit Card</SelectItem>
                           <SelectItem value="cheque">Cheque</SelectItem>
                         </SelectContent>

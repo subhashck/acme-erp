@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Trash2, Palmtree, Plus, Calendar, Clock, Check } from "lucide-react";
+import { Trash2, Palmtree, Plus, Calendar, Clock, Check, Edit2, Moon } from "lucide-react";
 import type { RosterRow, ShiftRow, StaffRow } from "../types";
 import { getShiftConfig, today, shortDay } from "../lib/roster-utils";
 import {
@@ -68,6 +68,257 @@ export function OnDutyCard({
           <span className="truncate">{roster.shift}</span>
         </p>
       </div>
+    </div>
+  );
+}
+
+const MINUTES_IN_DAY = 24 * 60;
+const DAY_START_MINUTES = 7 * 60;
+const DAY_END_MINUTES = 19 * 60;
+const NIGHT_SCALE = 0.5;
+const WEIGHTED_DAY_MINUTES = (DAY_END_MINUTES - DAY_START_MINUTES) +
+  (MINUTES_IN_DAY - (DAY_END_MINUTES - DAY_START_MINUTES)) * NIGHT_SCALE;
+
+function timeToMinutes(value?: string | null) {
+  if (!value) return null;
+  const [hours, minutes] = value.slice(0, 5).split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  return Math.min(MINUTES_IN_DAY, Math.max(0, hours * 60 + minutes));
+}
+
+function timelinePercent(minutes: number) {
+  const clamped = Math.min(MINUTES_IN_DAY, Math.max(0, minutes));
+  let weightedMinutes: number;
+
+  if (clamped <= DAY_START_MINUTES) {
+    weightedMinutes = clamped * NIGHT_SCALE;
+  } else if (clamped <= DAY_END_MINUTES) {
+    weightedMinutes = DAY_START_MINUTES * NIGHT_SCALE + (clamped - DAY_START_MINUTES);
+  } else {
+    weightedMinutes = DAY_START_MINUTES * NIGHT_SCALE +
+      (DAY_END_MINUTES - DAY_START_MINUTES) +
+      (clamped - DAY_END_MINUTES) * NIGHT_SCALE;
+  }
+
+  return (weightedMinutes / WEIGHTED_DAY_MINUTES) * 100;
+}
+
+export function DailyGanttView({
+  date,
+  rosters,
+  shifts,
+  allStaff,
+  isOffDay,
+  initialsMap,
+  onEditRoster,
+  onDeleteRoster,
+  onAssignShift,
+  canAssign,
+}: {
+  date: string;
+  rosters: RosterRow[];
+  shifts: ShiftRow[];
+  allStaff: StaffRow[];
+  isOffDay?: (staffId: number, dateStr: string) => boolean;
+  initialsMap?: Map<number, string>;
+  onEditRoster: (roster: RosterRow) => void;
+  onDeleteRoster: (rosterId: number) => void;
+  onAssignShift: (staffId: number, date: string, shiftId: number) => void | Promise<void>;
+  canAssign?: boolean;
+}) {
+  const [assigningStaff, setAssigningStaff] = React.useState<StaffRow | null>(null);
+  const hourMarkers = Array.from({ length: 25 }, (_, hour) => hour);
+  const previousDateValue = new Date(date + "T00:00:00");
+  previousDateValue.setDate(previousDateValue.getDate() - 1);
+  const previousDate = `${previousDateValue.getFullYear()}-${String(previousDateValue.getMonth() + 1).padStart(2, "0")}-${String(previousDateValue.getDate()).padStart(2, "0")}`;
+  const todayRosters = rosters.filter((roster) => roster.date === date);
+  const rosterByStaff = new Map(todayRosters.map((roster) => [roster.staffId, roster]));
+  const shiftById = new Map(shifts.map((shift) => [shift.id, shift]));
+  const previousOvernightByStaff = new Map(
+    rosters
+      .filter((roster) => {
+        if (roster.date !== previousDate) return false;
+        const shift = shiftById.get(roster.shiftId);
+        const start = timeToMinutes(shift?.startTime);
+        const end = timeToMinutes(shift?.endTime);
+        return start !== null && end !== null && end <= start && end > 0;
+      })
+      .map((roster) => [roster.staffId, roster])
+  );
+  const staff = [...allStaff].sort((a, b) => {
+    const aRoster = rosterByStaff.get(a.staffId);
+    const bRoster = rosterByStaff.get(b.staffId);
+    const aCarryOver = previousOvernightByStaff.get(a.staffId);
+    const bCarryOver = previousOvernightByStaff.get(b.staffId);
+    const aShift = aRoster ? shiftById.get(aRoster.shiftId) : undefined;
+    const bShift = bRoster ? shiftById.get(bRoster.shiftId) : undefined;
+    const aStart = aCarryOver ? 0 : timeToMinutes(aShift?.startTime) ?? MINUTES_IN_DAY + (aRoster ? 0 : 1);
+    const bStart = bCarryOver ? 0 : timeToMinutes(bShift?.startTime) ?? MINUTES_IN_DAY + (bRoster ? 0 : 1);
+
+    return aStart - bStart || (aShift?.sortOrder ?? 0) - (bShift?.sortOrder ?? 0) || a.name.localeCompare(b.name);
+  });
+  const currentMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+
+  if (staff.length === 0) {
+    return <div className="p-8 text-center text-sm text-muted-foreground">No staff members found in this department.</div>;
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="min-w-[980px]">
+        <div className="grid grid-cols-[220px_minmax(720px,1fr)] border-b border-border bg-muted/40">
+          <div className="sticky left-0 z-30 flex items-center border-r border-border bg-muted/90 px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Staff member
+          </div>
+          <div className="relative h-12">
+            {hourMarkers.map((hour) => (
+              <div
+                key={hour}
+                className="absolute inset-y-0 border-l border-border/70"
+                style={{ left: `${timelinePercent(hour * 60)}%` }}
+              >
+                {hour < 24 && (
+                  <span className="absolute left-1 top-2 text-[10px] font-semibold text-muted-foreground">
+                    {String(hour).padStart(2, "0")}:00
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="divide-y divide-border">
+          {staff.map((member) => {
+            const assignment = rosterByStaff.get(member.staffId);
+            const shift = assignment ? shiftById.get(assignment.shiftId) : undefined;
+            const previousAssignment = previousOvernightByStaff.get(member.staffId);
+            const previousShift = previousAssignment ? shiftById.get(previousAssignment.shiftId) : undefined;
+            const previousEnd = timeToMinutes(previousShift?.endTime);
+            const staffIsOff = isOffDay?.(member.staffId, date) ?? false;
+            const start = timeToMinutes(shift?.startTime);
+            const rawEnd = timeToMinutes(shift?.endTime);
+            const isUntimed = start === null || rawEnd === null || shift?.isOffDay;
+            const end = !isUntimed && rawEnd! <= start! ? MINUTES_IN_DAY : rawEnd;
+            const left = isUntimed ? 0 : timelinePercent(start!);
+            const width = isUntimed ? 100 : Math.max(2.5, timelinePercent(end!) - timelinePercent(start!));
+            const cfg = getShiftConfig(assignment?.shift ?? "");
+            const Icon = cfg.Icon;
+
+            return (
+              <div key={member.staffId} className="grid min-h-16 grid-cols-[220px_minmax(720px,1fr)] hover:bg-muted/20">
+                <div className="sticky left-0 z-20 flex items-center gap-2 border-r border-border bg-card px-3 py-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-black text-foreground">
+                    {initialsMap?.get(member.staffId) ?? member.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-xs font-bold text-foreground">{member.name}</p>
+                    <p className="m-0 truncate text-[10px] text-muted-foreground">{member.role}</p>
+                  </div>
+                </div>
+
+                <div className="relative my-2 min-h-12 overflow-hidden">
+                  {hourMarkers.map((hour) => (
+                    <div key={hour} className="absolute inset-y-0 border-l border-border/45" style={{ left: `${timelinePercent(hour * 60)}%` }} />
+                  ))}
+                  <div className="absolute inset-y-0 bg-muted/25" style={{ left: 0, width: `${timelinePercent(DAY_START_MINUTES)}%` }} />
+                  <div className="absolute inset-y-0 bg-muted/25" style={{ left: `${timelinePercent(DAY_END_MINUTES)}%`, right: 0 }} />
+                  {date === today() && currentMinutes >= 0 && currentMinutes <= MINUTES_IN_DAY && (
+                    <div className="absolute inset-y-0 z-10 w-px bg-destructive/70" style={{ left: `${timelinePercent(currentMinutes)}%` }} />
+                  )}
+
+                  {previousAssignment && previousShift && previousEnd !== null && (
+                    <div
+                      className={`group absolute top-1 bottom-1 z-10 flex min-w-9 items-center gap-1.5 overflow-hidden rounded-lg rounded-l-none border border-l-0 border-dashed px-2 shadow-xs ${getShiftConfig(previousAssignment.shift).bgClass} ${getShiftConfig(previousAssignment.shift).borderClass} ${getShiftConfig(previousAssignment.shift).textColorClass}`}
+                      style={{ left: 0, width: `${Math.max(2.5, timelinePercent(previousEnd))}%` }}
+                      title={`${previousAssignment.shift} continued from yesterday (${previousShift.startTime.slice(0, 5)} - ${previousShift.endTime.slice(0, 5)})`}
+                    >
+                      <Moon size={13} className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="m-0 truncate text-[11px] font-bold leading-tight">{previousAssignment.shift}</p>
+                        <p className="m-0 truncate text-[9px] font-medium opacity-75">From yesterday · until {previousShift.endTime.slice(0, 5)}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {assignment ? (
+                    <div
+                      className={`group absolute top-1 bottom-1 z-10 flex min-w-9 items-center gap-1.5 overflow-hidden rounded-lg border px-2 shadow-xs ${cfg.bgClass} ${cfg.borderClass} ${cfg.textColorClass}`}
+                      style={{ left: `${left}%`, width: `${width}%` }}
+                      title={`${assignment.shift}${shift?.startTime && shift?.endTime ? ` (${shift.startTime.slice(0, 5)} - ${shift.endTime.slice(0, 5)})` : ""}`}
+                    >
+                      <Icon size={13} className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="m-0 truncate text-[11px] font-bold leading-tight">{assignment.shift}</p>
+                        {shift?.startTime && shift?.endTime && (
+                          <p className="m-0 truncate text-[9px] font-medium opacity-75">{shift.startTime.slice(0, 5)}–{shift.endTime.slice(0, 5)}</p>
+                        )}
+                      </div>
+                      {canAssign && (
+                        <div className="ml-auto hidden shrink-0 items-center gap-0.5 rounded-md bg-background/85 p-0.5 shadow-sm group-hover:flex">
+                          <button type="button" onClick={() => onEditRoster(assignment)} className="rounded p-1 hover:bg-muted" title="Edit assignment"><Edit2 size={11} /></button>
+                          <button type="button" onClick={() => onDeleteRoster(assignment.id)} className="rounded p-1 text-destructive hover:bg-destructive/10" title="Remove assignment"><Trash2 size={11} /></button>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={!canAssign}
+                      onClick={() => setAssigningStaff(member)}
+                      className={`absolute inset-y-1 right-2 flex items-center rounded-lg border border-dashed px-3 text-left text-[10px] font-semibold transition-colors ${staffIsOff ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" : "border-border text-muted-foreground/55"} ${canAssign ? "cursor-pointer hover:border-primary hover:bg-primary/10 hover:text-primary" : "cursor-default"}`}
+                      style={{ left: previousEnd !== null ? `${Math.max(0.75, timelinePercent(previousEnd))}%` : "0.5rem" }}
+                      title={canAssign ? `Assign a shift to ${member.name}` : undefined}
+                    >
+                      {staffIsOff ? <><Palmtree size={12} className="mr-1.5" /> Scheduled off</> : <><Plus size={12} className="mr-1.5" /> Click to assign shift</>}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <Dialog open={Boolean(assigningStaff)} onOpenChange={(open) => !open && setAssigningStaff(null)}>
+        <DialogContent className="w-[92vw] max-w-sm p-5">
+          <DialogHeader className="text-left">
+            <DialogTitle>Assign shift</DialogTitle>
+            <DialogDescription>
+              Select a shift for <strong className="text-foreground">{assigningStaff?.name}</strong> on {new Date(date + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-2 flex max-h-[55vh] flex-col gap-2 overflow-y-auto">
+            {shifts.filter((shift) => shift.active).map((shift) => {
+              const cfg = getShiftConfig(shift.name);
+              const Icon = cfg.Icon;
+              const timeLabel = shift.startTime && shift.endTime
+                ? `${shift.startTime.slice(0, 5)} - ${shift.endTime.slice(0, 5)}`
+                : "No fixed time";
+              return (
+                <button
+                  key={shift.id}
+                  type="button"
+                  onClick={async () => {
+                    if (!assigningStaff) return;
+                    await onAssignShift(assigningStaff.staffId, date, shift.id);
+                    setAssigningStaff(null);
+                  }}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                >
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border ${cfg.bgClass} ${cfg.borderClass} ${cfg.textColorClass}`}>
+                    <Icon size={17} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold text-foreground">{shift.name}</span>
+                    <span className="block text-[11px] text-muted-foreground">{timeLabel}</span>
+                  </span>
+                  <Plus size={16} className="shrink-0 text-primary" />
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

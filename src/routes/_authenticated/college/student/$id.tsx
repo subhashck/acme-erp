@@ -39,6 +39,7 @@ import { Field } from "@/components/Field";
 import { toast } from "sonner";
 import { toNum } from "@/utils/math";
 import { cn } from "@/utils/cn";
+import { formatCollegePaymentMode } from "@/lib/college-payment";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -1202,7 +1203,7 @@ function StudentProfilePage() {
                           <td className="p-3 font-semibold text-teal-600">{tx.receiptNumber}</td>
                           <td className="p-3 text-xs">{tx.invoiceNo}</td>
                           <td className="p-3">{tx.paymentDate}</td>
-                          <td className="p-3 uppercase text-xs">{tx.paymentMode}</td>
+                          <td className="p-3 text-xs">{formatCollegePaymentMode(tx.paymentMode)}</td>
                           <td className="p-3 font-bold text-emerald-600">
                             {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(toNum(tx.amount))}
                           </td>

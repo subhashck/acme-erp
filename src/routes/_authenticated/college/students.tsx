@@ -527,29 +527,40 @@ function StudentDirectoryPage() {
 
       {/* Quick View Admission Details Modal */}
       <Dialog open={quickViewModalOpen} onOpenChange={setQuickViewModalOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="p-5 pb-3 border-b bg-muted/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="flex items-center gap-2 text-lg font-bold text-foreground">
-                  <User className="h-5 w-5 text-teal-600" />
-                  {quickViewStudent?.name}
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                  Enrollment: <strong className="text-teal-600 dark:text-teal-400 font-mono">{quickViewStudent?.enrollmentNo}</strong> • Course: {quickViewStudent?.courseName} ({quickViewStudent?.academicYear})
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-none h-[calc(100dvh-1rem)] sm:!w-[96vw] sm:!max-w-[96vw] lg:!w-[94vw] lg:!max-w-[1200px] xl:!max-w-[1400px] sm:h-auto sm:max-h-[92dvh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl sm:rounded-3xl border-border/70 shadow-2xl">
+          <DialogHeader className="relative overflow-hidden border-b bg-linear-to-br from-teal-600 via-teal-600 to-cyan-700 p-4 pr-12 text-left sm:p-6 sm:pr-14">
+            <div className="absolute -right-12 -top-16 h-44 w-44 rounded-full bg-white/10 blur-sm" />
+            <div className="relative flex items-start gap-3 sm:gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/15 text-lg font-black text-white shadow-sm backdrop-blur-sm sm:h-14 sm:w-14 sm:text-xl">
+                {quickViewStudent?.name?.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "ST"}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <DialogTitle className="truncate text-lg font-bold text-white sm:text-2xl">
+                    {quickViewStudent?.name}
+                  </DialogTitle>
+                  <span className="rounded-full border border-white/25 bg-white/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur-sm">
+                    {quickViewStudent?.status || "Active"}
+                  </span>
+                </div>
+                <DialogDescription className="mt-1.5 flex flex-col gap-1 text-xs text-teal-50 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 sm:text-sm">
+                  <span className="font-mono font-bold text-white">{quickViewStudent?.enrollmentNo}</span>
+                  <span className="hidden text-white/50 sm:inline">•</span>
+                  <span className="truncate">{quickViewStudent?.courseName} · {quickViewStudent?.academicYear}</span>
                 </DialogDescription>
               </div>
             </div>
           </DialogHeader>
 
           {quickViewStudent && (
-            <div className="flex-1 overflow-y-auto p-5 space-y-5 text-sm">
+            <div className="flex-1 overflow-y-auto overscroll-contain bg-muted/10 p-3 space-y-3 text-sm sm:p-5 sm:space-y-5">
               {/* Basic & Quota info */}
-              <div className="p-3.5 bg-muted/20 border rounded-lg space-y-2">
-                <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <User size={13} /> Identification & Admission Info
+              <div className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-xs space-y-3 sm:p-5">
+                <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-500/10"><User size={14} /></span>
+                  Identification & Admission
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div className="grid grid-cols-1 gap-2 text-xs min-[480px]:grid-cols-2 lg:grid-cols-3 [&>div]:min-w-0 [&>div]:rounded-xl [&>div]:border [&>div]:border-border/60 [&>div]:bg-muted/20 [&>div]:p-2.5 [&_span]:block [&_span]:mb-1 [&_span]:text-[10px] [&_span]:font-semibold [&_span]:uppercase [&_span]:tracking-wide [&_strong]:block [&_strong]:truncate">
                   <div>
                     <span className="text-muted-foreground">Application No: </span>
                     <strong className="text-foreground">{quickViewStudent.applicationNo || "Direct Admission"}</strong>
@@ -590,10 +601,10 @@ function StudentDirectoryPage() {
               </div>
 
               {/* Parents details */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3.5 bg-muted/20 border rounded-lg space-y-1.5 text-xs">
-                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1">
-                    <User size={13} /> Father's Profile
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+                <div className="p-3.5 bg-card border border-border/70 rounded-2xl space-y-2 text-xs shadow-xs sm:p-4 [&>div:not(:first-child)]:flex [&>div:not(:first-child)]:justify-between [&>div:not(:first-child)]:gap-3 [&>div:not(:first-child)]:border-b [&>div:not(:first-child)]:border-border/40 [&>div:not(:first-child)]:pb-1.5 [&_strong]:text-right [&_strong]:break-words">
+                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-2 mb-3">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-500/10"><User size={14} /></span> Father's Profile
                   </div>
                   <div>Name: <strong className="text-foreground">{quickViewStudent.fatherName || "N/A"}</strong></div>
                   <div>Contact: <strong className="text-foreground">{quickViewStudent.fatherPhone || "N/A"}</strong></div>
@@ -603,9 +614,9 @@ function StudentDirectoryPage() {
                   <div>Annual Income: <strong className="text-foreground">{quickViewStudent.fatherAnnualIncome ? `₹${Number(quickViewStudent.fatherAnnualIncome).toLocaleString()}` : "N/A"}</strong></div>
                 </div>
 
-                <div className="p-3.5 bg-muted/20 border rounded-lg space-y-1.5 text-xs">
-                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1">
-                    <User size={13} /> Mother's Profile
+                <div className="p-3.5 bg-card border border-border/70 rounded-2xl space-y-2 text-xs shadow-xs sm:p-4 [&>div:not(:first-child)]:flex [&>div:not(:first-child)]:justify-between [&>div:not(:first-child)]:gap-3 [&>div:not(:first-child)]:border-b [&>div:not(:first-child)]:border-border/40 [&>div:not(:first-child)]:pb-1.5 [&_strong]:text-right [&_strong]:break-words">
+                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-2 mb-3">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-500/10"><User size={14} /></span> Mother's Profile
                   </div>
                   <div>Name: <strong className="text-foreground">{quickViewStudent.motherName || "N/A"}</strong></div>
                   <div>Contact: <strong className="text-foreground">{quickViewStudent.motherPhone || "N/A"}</strong></div>
@@ -617,10 +628,10 @@ function StudentDirectoryPage() {
               </div>
 
               {/* Addresses */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-3.5 bg-muted/10 border rounded-lg text-xs space-y-1">
-                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1">
-                    <MapPin size={13} /> Present Address
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+                <div className="p-3.5 bg-card border border-border/70 rounded-2xl text-xs space-y-1.5 shadow-xs sm:p-4">
+                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-500/10"><MapPin size={14} /></span> Present Address
                   </div>
                   <p className="text-foreground">{quickViewStudent.presentAddress || quickViewStudent.address || "Not specified"}</p>
                   <div className="text-muted-foreground">
@@ -628,9 +639,9 @@ function StudentDirectoryPage() {
                   </div>
                 </div>
 
-                <div className="p-3.5 bg-muted/10 border rounded-lg text-xs space-y-1">
-                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1">
-                    <MapPin size={13} /> Permanent Address
+                <div className="p-3.5 bg-card border border-border/70 rounded-2xl text-xs space-y-1.5 shadow-xs sm:p-4">
+                  <div className="font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-2 mb-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-500/10"><MapPin size={14} /></span> Permanent Address
                   </div>
                   <p className="text-foreground">{quickViewStudent.permanentAddress || "Same as present address"}</p>
                   <div className="text-muted-foreground">
@@ -641,12 +652,12 @@ function StudentDirectoryPage() {
 
               {/* Academic History */}
               {parsedQuickViewHistory.length > 0 && (
-                <div className="space-y-2">
-                  <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-1">
-                    <BookOpen size={13} /> Previous Academic History
+                <div className="rounded-2xl border border-border/70 bg-card p-3.5 shadow-xs space-y-3 sm:p-4">
+                  <div className="font-bold text-xs text-teal-700 dark:text-teal-400 uppercase tracking-wider flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal-500/10"><BookOpen size={14} /></span> Previous Academic History
                   </div>
-                  <div className="border rounded-lg overflow-x-auto">
-                    <table className="w-full text-xs text-left border-collapse">
+                  <div className="border border-border/70 rounded-xl overflow-x-auto">
+                    <table className="w-full min-w-[720px] text-xs text-left border-collapse">
                       <thead className="bg-muted/40 text-muted-foreground font-semibold">
                         <tr>
                           <th className="p-2">Exam</th>
@@ -676,15 +687,15 @@ function StudentDirectoryPage() {
             </div>
           )}
 
-          <DialogFooter className="p-4 border-t bg-muted/10 flex items-center justify-between">
+          <DialogFooter className="shrink-0 border-t bg-background/95 p-3 backdrop-blur-sm flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:p-4">
             {quickViewStudent && (
-              <Link to="/college/student/$id" params={{ id: String(quickViewStudent.id) }}>
-                <Button variant="outline" size="sm" className="flex items-center gap-1 text-xs">
+              <Link className="w-full sm:w-auto" to="/college/student/$id" params={{ id: String(quickViewStudent.id) }}>
+                <Button variant="outline" size="sm" className="w-full sm:w-auto flex items-center justify-center gap-1 text-xs">
                   Full 360 Profile <ExternalLink size={12} />
                 </Button>
               </Link>
             )}
-            <div className="flex items-center gap-2">
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
               <Button
                 variant="outline"
                 size="sm"
