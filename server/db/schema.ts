@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, numeric } from "drizzle-orm/pg-core";
+import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, uniqueIndex, index, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
 
 const timestamps = {
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -16,6 +16,7 @@ export const user = sqliteTable("user", {
   banned: boolean("banned").default(false),
   banReason: text("banReason"),
   banExpires: timestamp("banExpires"),
+  mustChangePassword: boolean("mustChangePassword").notNull().default(false),
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull()
 });
@@ -80,6 +81,7 @@ export const departments = sqliteTable("departments", {
   floor: text("floor").notNull(),
   head: text("head").notNull(),
   active: boolean("active").notNull().default(true),
+  isClinical: boolean("is_clinical").notNull().default(false),
   ...timestamps
 });
 
@@ -87,6 +89,36 @@ export const banks = sqliteTable("banks", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const managementApprovers = sqliteTable("management_approvers", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingSupers = sqliteTable("nursing_supers", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const hospitalSettings = sqliteTable("hospital_settings", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().default("ACME Hospital & Healthcare"),
+  tagline: text("tagline").default("Excellence in Medical Care, Research & Healthcare Innovation"),
+  logoUrl: text("logo_url"),
+  phone: text("phone").default("+91 98765 43210"),
+  email: text("email").default("editorial@acmehospital.com"),
+  website: text("website").default("www.acmehospital.com"),
+  address: text("address").default("123 Healthcare Ave, Medical District, Healthcare Campus"),
+  emergencyPhone: text("emergency_phone").default("+91 98765 43211"),
+  opdPhone: text("opd_phone").default("+91 98765 43212"),
+  editorialDivision: text("editorial_division").default("ACME Healthcare Communications & Editorial Division"),
+  copyrightText: text("copyright_text").default("ACME Monthly Electronic Magazine. All rights reserved."),
   ...timestamps
 });
 
@@ -118,6 +150,11 @@ export const staff = sqliteTable("staff", {
   active: boolean("active").notNull().default(true),
   userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
   isExecutive: boolean("is_executive").notNull().default(false),
+  effectiveDate: text("effective_date"),
+  employmentType: text("employment_type").notNull().default("Permanent"),
+  permanentConfirmationDate: text("permanent_confirmation_date"),
+  employmentStartDate: text("employment_start_date"),
+  employmentEndDate: text("employment_end_date"),
   ...timestamps
 }, (table) => [
   primaryKey({ columns: [table.staffId, table.version] })
@@ -161,16 +198,23 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   basicSalary: numeric("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   hra: numeric("hra", { precision: 12, scale: 2 }).notNull().default("0"),
   conveyance: numeric("conveyance", { precision: 12, scale: 2 }).notNull().default("0"),
-  medical: numeric("medical", { precision: 12, scale: 2 }).notNull().default("0"),
+  skillAllowance: numeric("skill_allowance", { precision: 12, scale: 2 }).notNull().default("0"),
   special: numeric("special", { precision: 12, scale: 2 }).notNull().default("0"),
   epf: numeric("epf", { precision: 12, scale: 2 }).notNull().default("0"),
   esi: numeric("esi", { precision: 12, scale: 2 }).notNull().default("0"),
   professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  deductTds: boolean("deduct_tds").notNull().default(false),
+  tdsPercent: numeric("tds_percent", { precision: 5, scale: 2 }).notNull().default("10"),
+  tds: numeric("tds", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDepositTotal: numeric("security_deposit_total", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDepositStartMonth: text("security_deposit_start_month"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   bankName: text("bank_name"),
   accountNumber: text("account_number"),
   ifscCode: text("ifsc_code"),
+  bankAccountName: text("bank_account_name"),
   ...timestamps
 }, (table) => [
   unique("staff_salaries_staff_id_version_unique").on(table.staffId, table.staffVersion),
@@ -190,18 +234,18 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   staffId: integer("staff_id").notNull(),
   staffVersion: integer("staff_version").notNull().default(1),
   dateOfBirth: text("date_of_birth"),
+  nationality: text("nationality").default("Indian"), //d
   gender: text("gender"),
   maritalStatus: text("marital_status"),
   bloodGroup: text("blood_group"),
-  fatherName: text("father_name"),
-  motherName: text("mother_name"),
-  spouseName: text("spouse_name"),
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
   currentAddress: text("current_address"),
+  landmarkCurrentAddress: text("landmar_current_address"), //d
   permanentAddress: text("permanent_address"),
-  educationHistory: text("education_history").notNull().default("[]"),
-  professionalHistory: text("professional_history").notNull().default("[]"),
+  landmarkPermanentAddress: text("landmark_permanent_address"), //d
+  educationHistory: jsonb("education_history").notNull().default([]),
+  professionalHistory: jsonb("professional_history").notNull().default([]),
   uan: text("uan"),
   epfNumber: text("epf_number"),
   esiNumber: text("esi_number"),
@@ -209,6 +253,8 @@ export const staffHrProfiles = sqliteTable("staff_hr_profiles", {
   lastWorkingDate: text("last_working_date"),
   religion: text("religion"),
   nominees: text("nominees").notNull().default("[]"),
+  certifications: jsonb("certifications").notNull().default([]),
+  familyMembers: jsonb("family_members").notNull().default([]),
   mncRegistrationNo: text("mnc_registration_no"),
   mncValidityUpto: text("mnc_validity_upto"),
   mmcRegistrationNo: text("mmc_registration_no"),
@@ -276,8 +322,42 @@ export const rosters = sqliteTable("rosters", {
   staffId: integer("staff_id").notNull(), // stable staffId, no FK
   departmentId: integer("department_id").notNull().references(() => departments.id),
   shiftId: integer("shift_id").notNull().references(() => shifts.id),
-  startDate: text("start_date").notNull(),
-  endDate: text("end_date").notNull(),
+  /** Single calendar date (YYYY-MM-DD) — one row per staff per day. */
+  date: text("date").notNull(),
+  notes: text("notes"),
+  ...timestamps
+}, (table) => [
+  unique("rosters_staff_id_date_unique").on(table.staffId, table.date)
+]);
+
+/**
+ * staffOffDayRequests — an off-day change request submitted by a staff member.
+ * Staff can request to move their scheduled off day from one date to another.
+ * HR/admin reviews (approve / reject). Requester can cancel their own pending request.
+ */
+export const staffOffDayRequests = sqliteTable("staff_off_day_requests", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
+  originalDate: text("original_date").notNull(),   // ISO date — the off day they currently have
+  requestedDate: text("requested_date").notNull(),  // ISO date — the day they want off instead
+  reason: text("reason"),
+  status: text("status").notNull().default("Pending"), // Pending | Approved | Rejected | Cancelled
+  reviewedById: text("reviewed_by_id").references(() => user.id, { onDelete: "set null" }),
+  reviewerNote: text("reviewer_note"),
+  ...timestamps
+});
+
+/**
+ * staffWeeklyOffDays — recurring weekly off-day rules for staff.
+ * daysOfWeek: jsonb array of day numbers (0 = Sunday, 1 = Monday, ..., 6 = Saturday).
+ * effectiveFrom / effectiveTo: date range for when this rule applies.
+ */
+export const staffWeeklyOffDays = sqliteTable("staff_weekly_off_days", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(), // stable staffId, no FK
+  daysOfWeek: jsonb("days_of_week").notNull().default([]),
+  effectiveFrom: text("effective_from").notNull(),
+  effectiveTo: text("effective_to"),
   notes: text("notes"),
   ...timestamps
 });
@@ -288,8 +368,8 @@ export const leaveRequests = sqliteTable("leave_requests", {
   staffId: integer("staff_id").notNull(), // stable staffId, no FK
   leaveType: text("leave_type").notNull(),
   isHalfDay: boolean("is_half_day").notNull().default(false),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
   reason: text("reason").notNull(),
   status: text("status").notNull().default("Pending"),
   reviewedAt: timestamp("reviewed_at"),
@@ -307,21 +387,42 @@ export const payslips = sqliteTable("payslips", {
   basicSalary: numeric("basic_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   hra: numeric("hra", { precision: 12, scale: 2 }).notNull().default("0"),
   conveyance: numeric("conveyance", { precision: 12, scale: 2 }).notNull().default("0"),
-  medical: numeric("medical", { precision: 12, scale: 2 }).notNull().default("0"),
+  skillAllowance: numeric("skill_allowance", { precision: 12, scale: 2 }).notNull().default("0"),
   special: numeric("special", { precision: 12, scale: 2 }).notNull().default("0"),
+  earnedLeaveEncashment: numeric("earned_leave_encashment", { precision: 12, scale: 2 }).notNull().default("0"),
+  extraDayAllowance: numeric("extra_day_allowance", { precision: 12, scale: 2 }).notNull().default("0"),
   epf: numeric("epf", { precision: 12, scale: 2 }).notNull().default("0"),
   esi: numeric("esi", { precision: 12, scale: 2 }).notNull().default("0"),
   professionalTax: numeric("professional_tax", { precision: 12, scale: 2 }).notNull().default("0"),
+  tds: numeric("tds", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   leaveDaysTaken: numeric("leave_days_taken", { precision: 5, scale: 2 }).notNull().default("0"),
   leaveDeduction: numeric("leave_deduction", { precision: 12, scale: 2 }).notNull().default("0"),
   netSalary: numeric("net_salary", { precision: 12, scale: 2 }).notNull().default("0"),
   version: integer("version").notNull().default(1),
-  status: text("status").notNull().default("Active"),
+  status: text("status").notNull().default("Draft"),
+  paymentMode: text("payment_mode").notNull().default("Bank Transfer"),
+  bankName: text("bank_name"),
+  accountNumber: text("account_number"),
+  ifscCode: text("ifsc_code"),
+  bankAccountName: text("bank_account_name"),
+  chequeNumber: text("cheque_number"),
+  chequeDate: text("cheque_date"),
   hrNotes: text("hr_notes"),
   cooNotes: text("coo_notes"),
   accountsNotes: text("accounts_notes"),
+  ...timestamps
+});
+
+export const securityDepositRefunds = sqliteTable("security_deposit_refunds", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(), // stable staffId
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  refundDate: text("refund_date").notNull(),
+  notes: text("notes"),
+  processedBy: text("processed_by").references(() => user.id, { onDelete: "set null" }),
   ...timestamps
 });
 
@@ -617,6 +718,9 @@ export const dailyClosingReports = sqliteTable("daily_closing_reports", {
   bankReceiptSir: numeric("bank_receipt_sir", { precision: 12, scale: 2 }).notNull().default("0"),
   bankReceiptSirBank: text("bank_receipt_sir_bank"),
   bankDeposits: text("bank_deposits"),
+  cashDenominations: jsonb("cash_denominations"),
+  reconciliationTolerance: numeric("reconciliation_tolerance", { precision: 12, scale: 2 }).notNull().default("0"),
+  soiledNotes: text("soiled_notes"),
   status: text("status").notNull().default("draft"),
   ...timestamps
 });
@@ -667,7 +771,8 @@ export const dailyServiceLines = sqliteTable("daily_service_lines", {
   rate: numeric("rate", { precision: 12, scale: 2 }).notNull().default("0"),
   quantity: integer("quantity").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
-  isNightEntry: boolean("is_night_entry").notNull().default(false)
+  isNightEntry: boolean("is_night_entry").notNull().default(false),
+  narration: text("narration")
 });
 
 export const dailyPharmacyIncome = sqliteTable("daily_pharmacy_income", {
@@ -689,7 +794,8 @@ export const dailyExpenditures = sqliteTable("daily_expenditures", {
   reportId: integer("report_id").notNull().references(() => dailyClosingReports.id, { onDelete: "cascade" }),
   category: text("category").notNull(),
   details: text("details").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  narration: text("narration")
 });
 
 export const dailyStaffAdvances = sqliteTable("daily_staff_advances", {
@@ -721,6 +827,16 @@ export const dailyAdditionalIncome = sqliteTable("daily_additional_income", {
   label: text("label").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0")
 });
+
+export const reportCategoryExclusions = sqliteTable("report_category_exclusions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  reportType: text("report_type").notNull().default("monthly-report"),
+  excludedCategories: jsonb("excluded_categories").notNull().default("[]"),
+  ...timestamps
+}, (table) => ({
+  userReportUnique: unique().on(table.userId, table.reportType),
+}));
 
 export const dailyDiscountsReturns = sqliteTable("daily_discounts_returns", {
   id: serial("id").primaryKey(),
@@ -790,3 +906,848 @@ export const dailyPaymentChannelsRelations = relations(dailyPaymentChannels, ({ 
 export const dailyDiscountsReturnsRelations = relations(dailyDiscountsReturns, ({ one }) => ({
   report: one(dailyClosingReports, { fields: [dailyDiscountsReturns.reportId], references: [dailyClosingReports.id] })
 }));
+
+// ---------------------------------------------------------------------------
+// Bank Expenses (Monthly Fixed Expenses & Vendor Payables)
+// ---------------------------------------------------------------------------
+
+export const monthlyBankExpenses = sqliteTable("monthly_bank_expenses", {
+  id: serial("id").primaryKey(),
+  month: text("month"),                          // "YYYY-MM" format (auto-derived)
+  category: text("category").notNull(),          // references expenseCategories.code / expenseCatalog
+  label: text("label").notNull(),                // description of the expense
+  vendorId: integer("vendor_id").references(() => vendors.id, { onDelete: "set null" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode").notNull().default("Bank Transfer"),
+  paymentDate: text("payment_date"),             // YYYY-MM-DD (Clearance Date)
+  valueDate: text("value_date"),                 // YYYY-MM-DD (Cheque / Transaction Value Date - determines accrual period)
+  referenceNo: text("reference_no"),             // UTR / cheque no / transaction ref
+  bankName: text("bank_name"),                   // which hospital bank account
+  narration: text("narration"),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  isSalaryAuto: boolean("is_salary_auto").notNull().default(false),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps
+});
+
+export const monthlyBankExpensesRelations = relations(monthlyBankExpenses, ({ one }) => ({
+  vendor: one(vendors, { fields: [monthlyBankExpenses.vendorId], references: [vendors.id] }),
+  creator: one(user, { fields: [monthlyBankExpenses.createdBy], references: [user.id] }),
+}));
+
+// ---------------------------------------------------------------------------
+// Bank Accounts Master (Entity-tagged Accounts)
+// ---------------------------------------------------------------------------
+
+export const bankAccounts = sqliteTable("bank_accounts", {
+  id: serial("id").primaryKey(),
+  accountName: text("account_name").notNull(),
+  bankName: text("bank_name").notNull(),
+  accountNumber: text("account_number").notNull(),
+  ifscCode: text("ifsc_code"),
+  branchName: text("branch_name"),
+  accountType: text("account_type").notNull().default("Current"), // Current, Savings, OD, CC
+  legalEntity: text("legal_entity").notNull().default("ACME_HOSPITAL"), // ACME_HOSPITAL | ACME_NURSING | HUMANKIND
+  openingBalance: numeric("opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
+  active: boolean("active").notNull().default(true),
+  notes: text("notes"),
+  ...timestamps
+});
+
+// Purchase Orders Module Enums
+export const poStatusEnum = pgEnum("po_status", ["open", "partial", "closed", "cancelled"]);
+export const poPaymentStatusEnum = pgEnum("po_payment_status", ["unpaid", "partial", "paid"]);
+export const paymentModeEnum = pgEnum("payment_mode", ["cash", "upi", "card", "rtgs", "cheque", "other"]);
+
+// Purchase Orders Module Tables
+export const itemTypes = sqliteTable("item_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const unitTypes = sqliteTable("unit_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  symbol: text("symbol").notNull(),
+  category: text("category").notNull().default("Count/Quantity"),
+  isBaseUnit: boolean("is_base_unit").notNull().default(false),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const unitConversions = sqliteTable("unit_conversions", {
+  id: serial("id").primaryKey(),
+  fromUnitId: integer("from_unit_id").notNull().references(() => unitTypes.id, { onDelete: "cascade" }),
+  toUnitId: integer("to_unit_id").notNull().references(() => unitTypes.id, { onDelete: "cascade" }),
+  multiplier: numeric("multiplier", { precision: 12, scale: 6, mode: "number" }).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+
+export const items = sqliteTable("items", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  itemTypeId: integer("item_type_id").notNull().references(() => itemTypes.id),
+  baseUnitId: integer("base_unit_id").notNull().references(() => unitTypes.id),
+  purchaseUnitId: integer("purchase_unit_id").notNull().references(() => unitTypes.id),
+  saleUnitId: integer("sale_unit_id").notNull().references(() => unitTypes.id),
+  rate: numeric("rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  hsnCode: text("hsn_code"),
+  barcode: text("barcode"),
+  reorderLevel: numeric("reorder_level", { precision: 12, scale: 3, mode: "number" }).default(0),
+  reorderQty: numeric("reorder_qty", { precision: 12, scale: 3, mode: "number" }).default(0),
+  drugSchedule: text("drug_schedule"),
+  storageCondition: text("storage_condition"),
+  taxCategory: text("tax_category").default("taxable"),
+  isNarcotic: boolean("is_narcotic").default(false),
+  allowFractional: boolean("allow_fractional").default(false),
+  isSaleable: boolean("is_saleable").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const itemUnitPrices = sqliteTable("item_unit_prices", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
+  costPrice: numeric("cost_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  conversionFactor: numeric("conversion_factor", { precision: 12, scale: 6, mode: "number" }).notNull().default(1),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const itemTypesRelations = relations(itemTypes, ({ many }) => ({
+  items: many(items),
+}));
+
+export const itemsRelations = relations(items, ({ one, many }) => ({
+  itemType: one(itemTypes, { fields: [items.itemTypeId], references: [itemTypes.id] }),
+  baseUnit: one(unitTypes, { fields: [items.baseUnitId], references: [unitTypes.id], relationName: "baseUnit" }),
+  purchaseUnit: one(unitTypes, { fields: [items.purchaseUnitId], references: [unitTypes.id], relationName: "purchaseUnit" }),
+  saleUnit: one(unitTypes, { fields: [items.saleUnitId], references: [unitTypes.id], relationName: "saleUnit" }),
+  unitPrices: many(itemUnitPrices),
+}));
+
+export const itemUnitPricesRelations = relations(itemUnitPrices, ({ one }) => ({
+  item: one(items, { fields: [itemUnitPrices.itemId], references: [items.id] }),
+  unit: one(unitTypes, { fields: [itemUnitPrices.unitId], references: [unitTypes.id] }),
+}));
+
+
+export const unitTypesRelations = relations(unitTypes, ({ many }) => ({
+  conversionsFrom: many(unitConversions, { relationName: "fromUnit" }),
+  conversionsTo: many(unitConversions, { relationName: "toUnit" }),
+}));
+
+export const unitConversionsRelations = relations(unitConversions, ({ one }) => ({
+  fromUnit: one(unitTypes, { fields: [unitConversions.fromUnitId], references: [unitTypes.id], relationName: "fromUnit" }),
+  toUnit: one(unitTypes, { fields: [unitConversions.toUnitId], references: [unitTypes.id], relationName: "toUnit" }),
+}));
+
+
+export const vendors = sqliteTable("vendors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  gstNumber: text("gst_number"),
+  contactPerson: text("contact_person"),
+  phone: text("phone"),
+  address: text("address"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const purchaseOrders = sqliteTable("purchase_orders", {
+  id: serial("id").primaryKey(),
+  poNo: text("po_no").unique().notNull(),
+  poDate: date("po_date").notNull(),
+  vendorId: integer("vendor_id").notNull().references(() => vendors.id),
+  poStatus: poStatusEnum("po_status").notNull().default("open"),
+  paymentStatus: poPaymentStatusEnum("payment_status").notNull().default("unpaid"),
+  totalValue: numeric("total_value", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  remarks: text("remarks"),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow().$onUpdate(() => new Date())
+});
+
+export const poItems = sqliteTable("po_items", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  itemName: text("item_name").notNull(),
+  category: text("category"),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
+  orderedQty: numeric("ordered_qty", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
+  lineValue: numeric("line_value", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const grnStatusEnum = pgEnum("grn_status", ["draft", "posted", "correction"]);
+
+export const grns = sqliteTable("grns", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").references(() => purchaseOrders.id),
+  vendorId: integer("vendor_id").references(() => vendors.id),
+  storeId: integer("store_id"),
+  noPoReason: text("no_po_reason"),
+  grnNo: text("grn_no").unique().notNull(),
+  grnDate: date("grn_date").notNull(),
+  dateOfDelivery: date("date_of_delivery"),
+  remarks: text("remarks"),
+  status: grnStatusEnum("status").notNull().default("draft"),
+  subtotal: numeric("subtotal", { precision: 12, scale: 2, mode: "number" }).default(0),
+  discountAmount: numeric("discount_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  taxableAmount: numeric("taxable_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  totalGst: numeric("total_gst", { precision: 12, scale: 2, mode: "number" }).default(0),
+  roundOff: numeric("round_off", { precision: 12, scale: 2, mode: "number" }).default(0),
+  netAmount: numeric("net_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const grnItems = sqliteTable("grn_items", {
+  id: serial("id").primaryKey(),
+  grnId: integer("grn_id").notNull().references(() => grns.id, { onDelete: "cascade" }),
+  poItemId: integer("po_item_id").references(() => poItems.id),
+  itemId: integer("item_id").references(() => items.id),
+  batchId: integer("batch_id"),
+  itemName: text("item_name"),
+  unitId: integer("unit_id").notNull().references(() => unitTypes.id),
+  receivedQty: numeric("received_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  freeQty: numeric("free_qty", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  unitRate: numeric("unit_rate", { precision: 12, scale: 2, mode: "number" }),
+  discountPercent: numeric("discount_percent", { precision: 5, scale: 2, mode: "number" }).default(0),
+  discountAmount: numeric("discount_amount", { precision: 12, scale: 2, mode: "number" }).default(0),
+  taxableAmount: numeric("taxable_amount", { precision: 12, scale: 2, mode: "number" }),
+  salePrice: numeric("sale_price", { precision: 12, scale: 2, mode: "number" }),
+  gstPercent: numeric("gst_percent", { precision: 5, scale: 2, mode: "number" }),
+  lineValue: numeric("line_value", { precision: 12, scale: 2, mode: "number" }),
+  batch: text("batch"),
+  expiryDate: date("expiry_date"),
+  notes: text("notes")
+});
+
+export const poPayments = sqliteTable("po_payments", {
+  id: serial("id").primaryKey(),
+  poId: integer("po_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  paymentDate: date("payment_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  paymentMode: paymentModeEnum("payment_mode").notNull(),
+  referenceNo: text("reference_no"),
+  remarks: text("remarks"),
+  createdBy: text("created_by").references(() => user.id),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// Relations Definitions
+export const vendorsRelations = relations(vendors, ({ many }) => ({
+  purchaseOrders: many(purchaseOrders),
+}));
+
+export const purchaseOrdersRelations = relations(purchaseOrders, ({ one, many }) => ({
+  vendor: one(vendors, { fields: [purchaseOrders.vendorId], references: [vendors.id] }),
+  createdBy: one(user, { fields: [purchaseOrders.createdBy], references: [user.id] }),
+  items: many(poItems),
+  grns: many(grns),
+  payments: many(poPayments),
+}));
+
+export const poItemsRelations = relations(poItems, ({ one, many }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [poItems.poId], references: [purchaseOrders.id] }),
+  unit: one(unitTypes, { fields: [poItems.unitId], references: [unitTypes.id] }),
+  grnItems: many(grnItems),
+}));
+
+export const grnsRelations = relations(grns, ({ one, many }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [grns.poId], references: [purchaseOrders.id] }),
+  vendor: one(vendors, { fields: [grns.vendorId], references: [vendors.id] }),
+  createdBy: one(user, { fields: [grns.createdBy], references: [user.id] }),
+  items: many(grnItems),
+}));
+
+export const grnItemsRelations = relations(grnItems, ({ one }) => ({
+  grn: one(grns, { fields: [grnItems.grnId], references: [grns.id] }),
+  poItem: one(poItems, { fields: [grnItems.poItemId], references: [poItems.id] }),
+  item: one(items, { fields: [grnItems.itemId], references: [items.id] }),
+  unit: one(unitTypes, { fields: [grnItems.unitId], references: [unitTypes.id] }),
+}));
+
+export const poPaymentsRelations = relations(poPayments, ({ one }) => ({
+  purchaseOrder: one(purchaseOrders, { fields: [poPayments.poId], references: [purchaseOrders.id] }),
+  createdBy: one(user, { fields: [poPayments.createdBy], references: [user.id] }),
+}));
+
+// ===========================================================================
+// Nursing College Module Schemas (Phase 1 & Phase 2)
+// ===========================================================================
+
+export const nursingCourses = sqliteTable("nursing_courses", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  durationYears: integer("duration_years").notNull().default(3),
+  totalSeats: integer("total_seats").notNull().default(60),
+  regulatoryBody: text("regulatory_body").notNull().default("INC / State Council"),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingBatches = sqliteTable("nursing_batches", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id, { onDelete: "cascade" }),
+  academicYear: text("academic_year").notNull(),
+  section: text("section").notNull().default("A"),
+  maxSeats: integer("max_seats").notNull().default(60),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingReferrers = sqliteTable("nursing_referrers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  email: text("email"),
+  address: text("address"),
+  comments: text("comments"),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingApplicants = sqliteTable("nursing_applicants", {
+  id: serial("id").primaryKey(),
+  applicationNo: text("application_no").notNull().unique(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id),
+  academicYear: text("academic_year").notNull(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  aadharNo: text("aadhar_no"),
+  gender: text("gender").notNull().default("Female"),
+  dob: text("dob"),
+  address: text("address"),
+  // Referrer Details
+  referrerId: integer("referrer_id").references(() => nursingReferrers.id, { onDelete: "set null" }),
+  referralAmount: text("referral_amount"),
+  referralComments: text("referral_comments"),
+  // Parents Information
+  fatherDeceased: boolean("father_deceased").default(false),
+  fatherName: text("father_name"),
+  fatherPhone: text("father_phone"),
+  fatherAadharNo: text("father_aadhar_no"),
+  fatherOccupation: text("father_occupation"),
+  fatherOrganization: text("father_organization"),
+  fatherAnnualIncome: numeric("father_annual_income", { precision: 14, scale: 2 }),
+  motherDeceased: boolean("mother_deceased").default(false),
+  motherName: text("mother_name"),
+  motherPhone: text("mother_phone"),
+  motherAadharNo: text("mother_aadhar_no"),
+  motherOccupation: text("mother_occupation"),
+  motherOrganization: text("mother_organization"),
+  motherAnnualIncome: numeric("mother_annual_income", { precision: 14, scale: 2 }),
+  // Guardian Information
+  hasGuardian: boolean("has_guardian").default(false),
+  guardianName: text("guardian_name"),
+  guardianRelation: text("guardian_relation"),
+  guardianPhone: text("guardian_phone"),
+  guardianAadharNo: text("guardian_aadhar_no"),
+  guardianOccupation: text("guardian_occupation"),
+  guardianOrganization: text("guardian_organization"),
+  guardianAnnualIncome: numeric("guardian_annual_income", { precision: 14, scale: 2 }),
+  // Addresses (Present and Permanent)
+  presentAddress: text("present_address"),
+  presentDistrict: text("present_district"),
+  presentPincode: text("present_pincode"),
+  presentState: text("present_state"),
+  permanentAddress: text("permanent_address"),
+  permanentDistrict: text("permanent_district"),
+  permanentPincode: text("permanent_pincode"),
+  permanentState: text("permanent_state"),
+  // Exams Passed (10th, 11th, 12th) with University/Board, Year, Subjects, Percentages
+  academicHistory: jsonb("academic_history"),
+  entranceMeritScore: numeric("entrance_merit_score", { precision: 5, scale: 2 }).notNull().default("0"),
+  quotaCategory: text("quota_category").notNull().default("general"), // general, reserved, management
+  status: text("status").notNull().default("pending"), // pending, approved, rejected, converted
+  notes: text("notes"),
+  seatBookingAmount: numeric("seat_booking_amount", { precision: 12, scale: 2 }).default("0"),
+  seatBookingStatus: text("seat_booking_status").default("none"), // none, unadjusted, adjusted, refunded
+  seatBookingReceiptNo: text("seat_booking_receipt_no"),
+  seatBookingDate: text("seat_booking_date"),
+  seatBookingPaymentMode: text("seat_booking_payment_mode"),
+  seatBookingNotes: text("seat_booking_notes"),
+  ...timestamps
+});
+
+export const nursingStudents = sqliteTable("nursing_students", {
+  id: serial("id").primaryKey(),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "set null" }),
+  batchId: integer("batch_id").notNull().references(() => nursingBatches.id),
+  enrollmentNo: text("enrollment_no").notNull().unique(),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  aadharNo: text("aadhar_no"),
+  gender: text("gender").notNull().default("Female"),
+  dob: text("dob"),
+  address: text("address"),
+  // Referrer Details
+  referrerId: integer("referrer_id").references(() => nursingReferrers.id, { onDelete: "set null" }),
+  referralAmount: text("referral_amount"),
+  referralComments: text("referral_comments"),
+  // Parents Information
+  fatherDeceased: boolean("father_deceased").default(false),
+  fatherName: text("father_name"),
+  fatherPhone: text("father_phone"),
+  fatherAadharNo: text("father_aadhar_no"),
+  fatherOccupation: text("father_occupation"),
+  fatherOrganization: text("father_organization"),
+  fatherAnnualIncome: numeric("father_annual_income", { precision: 14, scale: 2 }),
+  motherDeceased: boolean("mother_deceased").default(false),
+  motherName: text("mother_name"),
+  motherPhone: text("mother_phone"),
+  motherAadharNo: text("mother_aadhar_no"),
+  motherOccupation: text("mother_occupation"),
+  motherOrganization: text("mother_organization"),
+  motherAnnualIncome: numeric("mother_annual_income", { precision: 14, scale: 2 }),
+  // Guardian Information
+  hasGuardian: boolean("has_guardian").default(false),
+  guardianName: text("guardian_name"),
+  guardianRelation: text("guardian_relation"),
+  guardianPhone: text("guardian_phone"),
+  guardianAadharNo: text("guardian_aadhar_no"),
+  guardianOccupation: text("guardian_occupation"),
+  guardianOrganization: text("guardian_organization"),
+  guardianAnnualIncome: numeric("guardian_annual_income", { precision: 14, scale: 2 }),
+  // Addresses (Present and Permanent)
+  presentAddress: text("present_address"),
+  presentDistrict: text("present_district"),
+  presentPincode: text("present_pincode"),
+  presentState: text("present_state"),
+  permanentAddress: text("permanent_address"),
+  permanentDistrict: text("permanent_district"),
+  permanentPincode: text("permanent_pincode"),
+  permanentState: text("permanent_state"),
+  // Exams Passed
+  academicHistory: jsonb("academic_history"),
+  status: text("status").notNull().default("active"), // active, promoted, graduated, dropped, transferred
+  admissionDate: text("admission_date"),
+  ...timestamps
+});
+
+export const nursingStudentDocuments = sqliteTable("nursing_student_documents", {
+  id: serial("id").primaryKey(),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "cascade" }),
+  studentId: integer("student_id").references(() => nursingStudents.id, { onDelete: "cascade" }),
+  documentType: text("document_type").notNull(), // certificate, medical_fitness, id_proof, mark_sheet, other
+  title: text("title").notNull(),
+  fileUrl: text("file_url").notNull(),
+  verificationStatus: text("verification_status").notNull().default("pending"), // pending, verified, rejected
+  verifiedBy: text("verified_by").references(() => user.id),
+  verifiedAt: timestamp("verified_at"),
+  ...timestamps
+});
+
+export const nursingFeeStructures = sqliteTable("nursing_fee_structures", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id, { onDelete: "cascade" }),
+  quotaCategory: text("quota_category").notNull().default("general"),
+  academicYear: text("academic_year").notNull(),
+  feeType: text("fee_type").notNull().default("Tuition & Composite Fee"),
+  paymentFrequency: text("payment_frequency").notNull().default("yearly"), // one_time, yearly, semester, quarterly, monthly
+  oneTimeRebatePercent: numeric("one_time_rebate_percent", { precision: 5, scale: 2 }).notNull().default("0"),
+  tuitionFee: numeric("tuition_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  admissionFee: numeric("admission_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
+  uniformFee: numeric("uniform_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  hostelFee: numeric("hostel_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  hostelMessMonthlyFee: numeric("hostel_mess_monthly_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  examFee: numeric("exam_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  miscFee: numeric("misc_fee", { precision: 12, scale: 2 }).notNull().default("0"),
+  rebatesConfig: text("rebates_config"),
+  surchargesConfig: text("surcharges_config"),
+  componentsConfig: text("components_config"),
+  totalAmount: numeric("total_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  ...timestamps
+}, (t) => [
+  uniqueIndex("nursing_fee_structures_course_year_quota_idx").on(t.courseId, t.academicYear, t.quotaCategory),
+]);
+
+export const nursingFeeTransactions = sqliteTable("nursing_fee_transactions", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").references(() => nursingStudents.id, { onDelete: "cascade" }),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "set null" }),
+  feeStructureId: integer("fee_structure_id").references(() => nursingFeeStructures.id),
+  invoiceNo: text("invoice_no").notNull(),
+  receiptNumber: text("receipt_number").notNull().unique(),
+  feeType: text("fee_type"),
+  paymentFrequency: text("payment_frequency"),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode").notNull().default("cash"), // cash, bank_transfer, upi, card, cheque
+  paymentDate: text("payment_date").notNull(),
+  status: text("status").notNull().default("paid"), // paid, pending, partially_paid, refunded, adjusted
+  remarks: jsonb("remarks"),
+  collectedBy: text("collected_by").references(() => user.id),
+  ...timestamps
+});
+
+export const nursingStudentFeeFrequencies = sqliteTable("nursing_student_fee_frequencies", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull().references(() => nursingStudents.id, { onDelete: "cascade" }),
+  academicYear: text("academic_year").notNull(), // e.g. "2025-2026"
+  componentId: text("component_id"),
+  componentName: text("component_name").notNull(),
+  frequencyKey: text("frequency_key").notNull(), // "monthly", "quarterly", "semester", "annually", "one_time"
+  frequencyLabel: text("frequency_label"),
+  installmentCount: integer("installment_count").notNull().default(1),
+  baseAmount: numeric("base_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  installmentAmount: numeric("installment_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  lockedAt: timestamp("locked_at").notNull().defaultNow(),
+  ...timestamps
+}, (t) => [
+  uniqueIndex("nursing_student_fee_frequencies_unique_idx").on(t.studentId, t.academicYear, t.componentName),
+]);
+
+export const nursingAttendanceRecords = sqliteTable("nursing_attendance_records", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull().references(() => nursingStudents.id, { onDelete: "cascade" }),
+  batchId: integer("batch_id").notNull().references(() => nursingBatches.id, { onDelete: "cascade" }),
+  sessionDate: date("session_date").notNull(),
+  subjectName: text("subject_name"),
+  sessionType: text("session_type").notNull().default("theory"), // theory, practical
+  status: text("status").notNull().default("present"), // present, absent, late, leave
+  markedBy: text("marked_by").references(() => user.id),
+  ...timestamps
+});
+
+export const nursingAuditLogs = sqliteTable("nursing_audit_logs", {
+  id: serial("id").primaryKey(),
+  entity: text("entity").notNull(),
+  entityId: text("entity_id").notNull(),
+  action: text("action").notNull(),
+  changedBy: text("changed_by").references(() => user.id),
+  diff: jsonb("diff"),
+  changedAt: timestamp("changed_at").notNull().defaultNow()
+});
+
+export const nursingSubjects = sqliteTable("nursing_subjects", {
+  id: serial("id").primaryKey(),
+  courseId: integer("course_id").notNull().references(() => nursingCourses.id, { onDelete: "cascade" }),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  year: integer("year").notNull().default(1),
+  semester: integer("semester").notNull().default(1),
+  theoryMaxMarks: integer("theory_max_marks").notNull().default(75),
+  practicalMaxMarks: integer("practical_max_marks").notNull().default(25),
+  credits: integer("credits").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  ...timestamps
+});
+
+export const nursingAcademicSchedules = sqliteTable("nursing_academic_schedules", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").notNull().references(() => nursingBatches.id, { onDelete: "cascade" }),
+  academicYear: text("academic_year").notNull(),
+  semester: integer("semester").notNull().default(1),
+  startDate: text("start_date").notNull(),
+  endDate: text("end_date").notNull(),
+  feeDueDate: text("fee_due_date"),
+  feeDueOffsetDays: integer("fee_due_offset_days").notNull().default(15),
+  remarks: text("remarks"),
+  ...timestamps
+});
+
+// Nursing Relations Definitions
+export const nursingCoursesRelations = relations(nursingCourses, ({ many }) => ({
+  batches: many(nursingBatches),
+  applicants: many(nursingApplicants),
+  feeStructures: many(nursingFeeStructures),
+  subjects: many(nursingSubjects),
+}));
+
+export const nursingBatchesRelations = relations(nursingBatches, ({ one, many }) => ({
+  course: one(nursingCourses, { fields: [nursingBatches.courseId], references: [nursingCourses.id] }),
+  students: many(nursingStudents),
+  attendanceRecords: many(nursingAttendanceRecords),
+  academicSchedules: many(nursingAcademicSchedules),
+}));
+
+export const nursingAcademicSchedulesRelations = relations(nursingAcademicSchedules, ({ one }) => ({
+  batch: one(nursingBatches, { fields: [nursingAcademicSchedules.batchId], references: [nursingBatches.id] }),
+}));
+
+export const nursingReferrerPayments = sqliteTable("nursing_referrer_payments", {
+  id: serial("id").primaryKey(),
+  referrerId: integer("referrer_id").notNull().references(() => nursingReferrers.id, { onDelete: "cascade" }),
+  voucherNo: text("voucher_no").notNull().unique(),
+  paymentDate: text("payment_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode").notNull().default("cash"), // cash, bank_transfer, upi, cheque, card
+  referenceNumber: text("reference_number"), // UTR / Cheque No / Tx ID
+  paidBy: text("paid_by").references(() => user.id),
+  notes: text("notes"),
+  ...timestamps
+});
+
+export const nursingReferrerPaymentAllocations = sqliteTable("nursing_referrer_payment_allocations", {
+  id: serial("id").primaryKey(),
+  paymentId: integer("payment_id").notNull().references(() => nursingReferrerPayments.id, { onDelete: "cascade" }),
+  studentId: integer("student_id").references(() => nursingStudents.id, { onDelete: "set null" }),
+  applicantId: integer("applicant_id").references(() => nursingApplicants.id, { onDelete: "set null" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  ...timestamps
+});
+
+export const nursingReferrersRelations = relations(nursingReferrers, ({ many }) => ({
+  applicants: many(nursingApplicants),
+  students: many(nursingStudents),
+  payments: many(nursingReferrerPayments),
+}));
+
+export const nursingApplicantsRelations = relations(nursingApplicants, ({ one, many }) => ({
+  course: one(nursingCourses, { fields: [nursingApplicants.courseId], references: [nursingCourses.id] }),
+  referrer: one(nursingReferrers, { fields: [nursingApplicants.referrerId], references: [nursingReferrers.id] }),
+  documents: many(nursingStudentDocuments),
+  student: one(nursingStudents, { fields: [nursingApplicants.id], references: [nursingStudents.applicantId] }),
+  feeTransactions: many(nursingFeeTransactions),
+  referrerPaymentAllocations: many(nursingReferrerPaymentAllocations),
+}));
+
+export const nursingStudentsRelations = relations(nursingStudents, ({ one, many }) => ({
+  applicant: one(nursingApplicants, { fields: [nursingStudents.applicantId], references: [nursingApplicants.id] }),
+  referrer: one(nursingReferrers, { fields: [nursingStudents.referrerId], references: [nursingReferrers.id] }),
+  batch: one(nursingBatches, { fields: [nursingStudents.batchId], references: [nursingBatches.id] }),
+  documents: many(nursingStudentDocuments),
+  feeTransactions: many(nursingFeeTransactions),
+  feeFrequencies: many(nursingStudentFeeFrequencies),
+  attendanceRecords: many(nursingAttendanceRecords),
+  referrerPaymentAllocations: many(nursingReferrerPaymentAllocations),
+}));
+
+export const nursingStudentFeeFrequenciesRelations = relations(nursingStudentFeeFrequencies, ({ one }) => ({
+  student: one(nursingStudents, { fields: [nursingStudentFeeFrequencies.studentId], references: [nursingStudents.id] }),
+}));
+
+export const nursingStudentDocumentsRelations = relations(nursingStudentDocuments, ({ one }) => ({
+  applicant: one(nursingApplicants, { fields: [nursingStudentDocuments.applicantId], references: [nursingApplicants.id] }),
+  student: one(nursingStudents, { fields: [nursingStudentDocuments.studentId], references: [nursingStudents.id] }),
+  verifiedByUser: one(user, { fields: [nursingStudentDocuments.verifiedBy], references: [user.id] }),
+}));
+
+export const nursingFeeStructuresRelations = relations(nursingFeeStructures, ({ one, many }) => ({
+  course: one(nursingCourses, { fields: [nursingFeeStructures.courseId], references: [nursingCourses.id] }),
+  transactions: many(nursingFeeTransactions),
+}));
+
+export const nursingFeeTransactionsRelations = relations(nursingFeeTransactions, ({ one }) => ({
+  student: one(nursingStudents, { fields: [nursingFeeTransactions.studentId], references: [nursingStudents.id] }),
+  applicant: one(nursingApplicants, { fields: [nursingFeeTransactions.applicantId], references: [nursingApplicants.id] }),
+  feeStructure: one(nursingFeeStructures, { fields: [nursingFeeTransactions.feeStructureId], references: [nursingFeeStructures.id] }),
+  collectedByUser: one(user, { fields: [nursingFeeTransactions.collectedBy], references: [user.id] }),
+}));
+
+export const nursingAttendanceRecordsRelations = relations(nursingAttendanceRecords, ({ one }) => ({
+  student: one(nursingStudents, { fields: [nursingAttendanceRecords.studentId], references: [nursingStudents.id] }),
+  batch: one(nursingBatches, { fields: [nursingAttendanceRecords.batchId], references: [nursingBatches.id] }),
+  markedByUser: one(user, { fields: [nursingAttendanceRecords.markedBy], references: [user.id] }),
+}));
+
+export const nursingSubjectsRelations = relations(nursingSubjects, ({ one }) => ({
+  course: one(nursingCourses, { fields: [nursingSubjects.courseId], references: [nursingCourses.id] }),
+}));
+
+export const nursingReferrerPaymentsRelations = relations(nursingReferrerPayments, ({ one, many }) => ({
+  referrer: one(nursingReferrers, { fields: [nursingReferrerPayments.referrerId], references: [nursingReferrers.id] }),
+  paidByUser: one(user, { fields: [nursingReferrerPayments.paidBy], references: [user.id] }),
+  allocations: many(nursingReferrerPaymentAllocations),
+}));
+
+export const nursingReferrerPaymentAllocationsRelations = relations(nursingReferrerPaymentAllocations, ({ one }) => ({
+  payment: one(nursingReferrerPayments, { fields: [nursingReferrerPaymentAllocations.paymentId], references: [nursingReferrerPayments.id] }),
+  student: one(nursingStudents, { fields: [nursingReferrerPaymentAllocations.studentId], references: [nursingStudents.id] }),
+  applicant: one(nursingApplicants, { fields: [nursingReferrerPaymentAllocations.applicantId], references: [nursingApplicants.id] }),
+}));
+
+export const frontOfficeDailyReports = sqliteTable("front_office_daily_reports", {
+  id: serial("id").primaryKey(),
+  reportDate: date("report_date").notNull(),
+  shiftLabel: text("shift_label").notNull().default("Full Day"),
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  consultationFileName: text("consultation_file_name"),
+  procedureFileName: text("procedure_file_name"),
+  radiologyFileName: text("radiology_file_name"),
+  totalPatients: integer("total_patients").notNull().default(0),
+  totalBill: numeric("total_bill", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalCollected: numeric("total_collected", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalPending: numeric("total_pending", { precision: 12, scale: 2 }).notNull().default("0"),
+  realizationRate: numeric("realization_rate", { precision: 5, scale: 2 }).default("0"),
+  totalExpenses: numeric("total_expenses", { precision: 12, scale: 2 }).notNull().default("0"),
+  netCollections: numeric("net_collections", { precision: 12, scale: 2 }).notNull().default("0"),
+  patientMix: text("patient_mix"),
+  summaryData: jsonb("summary_data"),
+  patientData: jsonb("patient_data"),
+  createdBy: text("created_by").references(() => user.id),
+  ...timestamps,
+});
+
+export const frontOfficeDailyReportsRelations = relations(frontOfficeDailyReports, ({ one }) => ({
+  createdByUser: one(user, { fields: [frontOfficeDailyReports.createdBy], references: [user.id] }),
+}));
+
+export const frontOfficeShifts = sqliteTable("front_office_shifts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  ...timestamps,
+});
+
+export const docterzApiConfig = sqliteTable("docterz_api_config", {
+  id: serial("id").primaryKey(),
+  authorization: text("authorization").notNull(),
+  apiKey: text("api_key").notNull(),
+  appKey: text("app_key").notNull().default(""),
+  clinicId: text("clinic_id").notNull().default(""),
+  doctorIds: text("doctor_ids").notNull().default(""),
+  baseUrl: text("base_url").notNull().default("https://api.docterz.in/admin/reports/clinic/consultation_report"),
+  referer: text("referer").notNull().default("https://web.docterz.in/"),
+  isActive: boolean("is_active").notNull().default(true),
+  patientSyncEnabled: boolean("patient_sync_enabled").notNull().default(false),
+  patientSyncIntervalMinutes: integer("patient_sync_interval_minutes").notNull().default(60),
+  updatedBy: text("updated_by").references(() => user.id),
+  ...timestamps,
+});
+
+export const docterzPatients = sqliteTable("docterz_patients", {
+  id: serial("id").primaryKey(),
+  docterzId: integer("docterz_id").unique(),
+  uid: text("uid"),
+  name: text("name"),
+  guardianName: text("guardian_name"),
+  mobile: text("mobile"),
+  dob: text("dob"),
+  gender: text("gender"),
+  address: text("address"),
+  clinicId: text("clinic_id"),
+  aadhaarNo: text("aadhaar_no"),
+  thirdPartyApplicationUid: text("third_party_application_uid"),
+  rawData: jsonb("raw_data"),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSyncedAt: timestamp("last_synced_at").notNull().defaultNow(),
+  lastVisitedAt: timestamp("last_visited_at"),
+});
+
+export const frontOfficeRazorpayReconciliations = sqliteTable("front_office_razorpay_reconciliations", {
+  id: serial("id").primaryKey(),
+  fileName: text("file_name").notNull(),
+  totalRows: integer("total_rows").notNull().default(0),
+  matchedRows: integer("matched_rows").notNull().default(0),
+  reviewRows: integer("review_rows").notNull().default(0),
+  unmatchedRows: integer("unmatched_rows").notNull().default(0),
+  ignoredRows: integer("ignored_rows").notNull().default(0),
+  netAmount: numeric("net_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+export const frontOfficeRazorpayReconciliationRows = sqliteTable("front_office_razorpay_reconciliation_rows", {
+  id: serial("id").primaryKey(),
+  reconciliationId: integer("reconciliation_id").notNull().references(() => frontOfficeRazorpayReconciliations.id, { onDelete: "cascade" }),
+  sourceRowNumber: integer("source_row_number").notNull(),
+  transferId: text("transfer_id"),
+  settlementStatus: text("settlement_status").notNull().default("unknown"),
+  createdAtSource: text("created_at_source"),
+  appointmentId: text("appointment_id"),
+  appointmentDate: text("appointment_date"),
+  paymentDate: text("payment_date"),
+  doctorName: text("doctor_name"),
+  sourcePatientName: text("source_patient_name"),
+  grossAmount: numeric("gross_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  reversedAmount: numeric("reversed_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  netAmount: numeric("net_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  currency: text("currency").notNull().default("INR"),
+  matchedPatientId: integer("matched_patient_id").references(() => docterzPatients.id, { onDelete: "set null" }),
+  matchedPatientName: text("matched_patient_name"),
+  matchedPatientUid: text("matched_patient_uid"),
+  reconciliationStatus: text("reconciliation_status").notNull(),
+  confidence: text("confidence").notNull(),
+  matchReason: text("match_reason").notNull(),
+  isDuplicate: boolean("is_duplicate").notNull().default(false),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  reconciliationRowUnique: unique().on(table.reconciliationId, table.sourceRowNumber),
+  transferIdIndex: index("idx_front_office_razorpay_run_transfer").on(table.reconciliationId, table.transferId),
+}));
+
+export const frontOfficeRazorpayReconciliationsRelations = relations(frontOfficeRazorpayReconciliations, ({ one, many }) => ({
+  creator: one(user, { fields: [frontOfficeRazorpayReconciliations.createdBy], references: [user.id] }),
+  rows: many(frontOfficeRazorpayReconciliationRows),
+}));
+
+export const frontOfficeRazorpayReconciliationRowsRelations = relations(frontOfficeRazorpayReconciliationRows, ({ one }) => ({
+  reconciliation: one(frontOfficeRazorpayReconciliations, {
+    fields: [frontOfficeRazorpayReconciliationRows.reconciliationId],
+    references: [frontOfficeRazorpayReconciliations.id],
+  }),
+  patient: one(docterzPatients, {
+    fields: [frontOfficeRazorpayReconciliationRows.matchedPatientId],
+    references: [docterzPatients.id],
+  }),
+}));
+
+export const frontOfficePatientAppointments = sqliteTable("front_office_patient_appointments", {
+  id: serial("id").primaryKey(),
+  sourceRecordKey: text("source_record_key").notNull().unique(),
+  sourceLabel: text("source_label").notNull(),
+  sourceType: text("source_type").notNull(),
+  patientUid: text("patient_uid"),
+  patientName: text("patient_name").notNull(),
+  patientMobile: text("patient_mobile"),
+  appointmentId: text("appointment_id"),
+  appointmentDate: text("appointment_date"),
+  doctorName: text("doctor_name"),
+  serviceName: text("service_name"),
+  schedule: text("schedule"),
+  invoiceNo: text("invoice_no"),
+  billAmount: numeric("bill_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  collectedAmount: numeric("collected_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  pendingAmount: numeric("pending_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+  paymentMode: text("payment_mode"),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+}, (table) => ({
+  patientUidIndex: index("idx_front_office_appointments_patient_uid").on(table.patientUid),
+  patientNameIndex: index("idx_front_office_appointments_patient_name").on(table.patientName),
+  appointmentIdIndex: index("idx_front_office_appointments_appointment_id").on(table.appointmentId),
+}));
+
+export const docterzSyncLog = sqliteTable("docterz_sync_log", {
+  id: serial("id").primaryKey(),
+  triggeredBy: text("triggered_by").notNull().default("auto"),
+  status: text("status").notNull().default("running"),
+  pagesFetched: integer("pages_fetched").notNull().default(0),
+  totalFetched: integer("total_fetched").notNull().default(0),
+  newRecords: integer("new_records").notNull().default(0),
+  updatedRecords: integer("updated_records").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+});
+

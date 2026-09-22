@@ -1,0 +1,97 @@
+# Fix Fee Collection & Due Management Loopholes — Nursing College
+
+After thorough audit of the fee collection ([fees.tsx](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx)), due tracking ([fee-dues.tsx](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fee-dues.tsx)), server routes ([nursing.ts](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts)), and DB schema ([schema.ts](file:///d:/dev/acme/acme-erp/server/db/schema.ts)), here are all the identified loopholes and the planned fixes.
+
+---
+
+## Identified Loopholes
+
+### 🔴 CRITICAL — Server-Side Validation Gaps (money at risk)
+
+| # | Loophole | Impact | Location |
+|---|----------|--------|----------|
+| 1 | **No overpayment guard** — Server accepts any `amount > 0` without checking if the student actually owes that much. A fee of ₹10,00,000 could be recorded for a student who owes ₹0. | Financial misreporting, inflated collections | [nursing.ts:1078-1115](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1078-L1115) |
+| 2 | **No duplicate payment detection** — No check for duplicate fee payments (same student, same components, same date). Double-clicking or retrying can create duplicate transactions. | Double-charged students, inflated revenue | [nursing.ts:1078-1115](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1078-L1115) |
+| 3 | **Discount amount has no cap** — Discount can exceed the gross subtotal (e.g., ₹50,000 discount on ₹30,000 fee), resulting in a ₹0 or negative net amount that still creates a "paid" transaction | Phantom transactions, data corruption | [nursing.ts:1086](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1086), [fees.tsx:606-654](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx#L606-L654) |
+| 4 | **No student status check at payment** — Fee can be recorded for students with `status = 'inactive'`, `'suspended'`, or `'graduated'`. Only active students should have fees collected. | Payments against non-enrolled students | [nursing.ts:1078](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1078) |
+| 5 | **Future-dated payments accepted without limit** — Payment date can be set far into the future (2035+), creating phantom future revenue | Misleading financial reports | [nursing.ts:1088](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1088) |
+| 6 | **Amount field manually editable in UI** — The installment amount input can be freely overridden to any value (even ₹0 or ₹999999), bypassing the fee structure entirely | Collection of wrong amounts | [fees.tsx:801-808](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx#L801-L808) |
+| 7 | **No discount reason enforcement** — When discount > 0, the reason field is labeled as "*" required but has NO actual validation. Empty reason accepted. | Untraceable concessions, audit risk | [fees.tsx:848](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx#L848), [nursing.ts:1078-1091](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1078-L1091) |
+
+### 🟡 IMPORTANT — Due Tracking & Calculation Issues
+
+| # | Loophole | Impact | Location |
+|---|----------|--------|----------|
+| 8 | **Inactive/suspended students shown as "overdue"** — Due dashboard includes ALL students regardless of status, so dropped-out students appear as having overdue fees | False overdue counts, inaccurate KPIs | [nursing.ts:1707-1721](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1707-L1721) |
+| 9 | **Hardcoded fallback fee (₹125,000)** — When no fee structure is found, a hardcoded `125000` is used as the annual fee, creating phantom dues for students with no fee structure | Students shown as owing money they don't | [nursing.ts:1752](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1752) |
+| 10 | **Discount amounts not factored into due calculations** — The due dashboard sums `totalFee` from the fee structure and `paidAmount` from transactions, but discounts/concessions are deducted from the paid amount, not from the expected amount. A student with ₹10,000 discount still shows ₹10,000 as owed. | Students always shown as having a balance even when squared up | [nursing.ts:1760-1763](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts#L1760-L1763) |
+| 11 | **No "paid" status update on student record** — Even after a student pays 100% of their fees, there's no status indicator on the student itself. The only way to know is the dashboard calculation. | No quick status visibility | Various |
+
+### 🟢 MODERATE — UX & Data Integrity
+
+| # | Loophole | Impact | Location |
+|---|----------|--------|----------|
+| 12 | **No submit debounce / loading guard** — The "Record Fee Payment" button can be clicked multiple times during pending mutation | Duplicate transactions | [fees.tsx:951-953](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx#L951-L953) |
+| 13 | **No confirmation dialog before recording payment** — Large payments are submitted instantly with no "Are you sure?" prompt | Accidental submissions | [fees.tsx:606](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx#L606) |
+| 14 | **Zero-amount fee submission possible** — If no items selected but form still submits (race condition with state updates), ₹0 transactions can be recorded | Junk transaction records | [fees.tsx:630-633](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx#L630-L633) |
+
+---
+
+## Proposed Changes
+
+### Server-Side Fixes
+
+#### [MODIFY] [nursing.ts](file:///d:/dev/acme/acme-erp/server/routes/nursing.ts)
+
+**Fix 1-7: Harden the `POST /nursing/fees/transactions` endpoint** (lines 1078-1175)
+
+- **Validate student exists & is active** — query student by ID and reject if `status !== 'active'`
+- **Validate discount < gross amount** — Parse the remarks JSON server-side, extract `grossSubtotal` and `discountAmount`, verify `discountAmount <= grossSubtotal` and that `amount == grossSubtotal - discountAmount`
+- **Require discount reason when discount > 0** — Reject if `discountAmount > 0` and `discountReason` is empty/missing
+- **Enforce amount > 0** — Already there via zod `z.number().positive()`, but add explicit check that `finalNetPayable > 0`
+- **Cap payment date** — Reject dates more than 7 days in the future
+- **Idempotency/dedup guard** — Before inserting, check if a transaction with the same `studentId`, `amount`, and `paymentDate` was recorded in the last 2 minutes (by `createdAt`). If so, reject as duplicate.
+- **Overpayment warning** — Calculate total already paid + this payment amount against total expected fee. If it exceeds 100%, still allow but mark in audit log as potential overpayment (flag, don't block, since advance payments are legitimate).
+
+**Fix 8-10: Harden the `GET /nursing/fees/due-dashboard` endpoint** (lines 1687-1967)
+
+- **Filter out non-active students** — Only include students with `status === 'active'` in due calculations
+- **Remove hardcoded fallback fee** — When no fee structure is found for a student's course, exclude that student from the due dashboard or show them with ₹0 expected (not a phantom ₹125,000)
+- **Account for discounts in due calculation** — Parse each transaction's remarks JSON to extract `discountAmount`, and subtract total discounts from the total expected fee when computing balance due
+
+---
+
+### Client-Side Fixes
+
+#### [MODIFY] [fees.tsx](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fees.tsx)
+
+- **Fix 6: Make amount field read-only** — The per-component installment amount input should be read-only (derived from fee structure + frequency selection). Remove the manual override.
+- **Fix 7: Validate discount reason on submit** — If `discountAmount > 0`, require `discountReason` to be non-empty before form submits
+- **Fix 12: Double-submit prevention** — Already has `disabled={collectFeeMutation.isPending}`, but add a local `isSubmitting` guard that is set `true` before `mutate()` and reset after success/error
+- **Fix 13: Confirmation dialog** — Show a confirmation summary ("You are about to record ₹X for Student Y. Proceed?") before calling `collectFeeMutation.mutate()`
+- **Fix 14: Zero-amount guard** — Add explicit check that `finalNetPayable > 0` before submitting
+
+#### [MODIFY] [fee-dues.tsx](file:///d:/dev/acme/acme-erp/src/routes/_authenticated/college/fee-dues.tsx)
+
+- No code changes needed here — the fixes are all server-side in the due-dashboard endpoint. The UI correctly reflects whatever the server returns.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Build check: `npm run build` to verify TypeScript compiles
+- Manual smoke test the fee collection form with edge cases:
+  - Try submitting ₹0
+  - Try discount > gross subtotal
+  - Try discount without reason
+  - Try payment for inactive student
+  - Try future-dated payment (30 days out)
+  - Try double-click rapid submission
+  - Verify due dashboard no longer shows phantom dues for students without fee structures
+  - Verify inactive students excluded from due dashboard
+
+### Manual Verification
+- Open the fee collection dialog, confirm amount fields are now read-only
+- Attempt a fee payment and verify confirmation dialog appears
+- Check due dashboard KPIs after recording a discounted payment

@@ -15,6 +15,7 @@ import {
   user,
   banks
 } from "./schema.ts";
+import { seedPatients } from "./seed-patients.ts";
 
 const adminEmail = process.env.ADMIN_EMAIL ?? "admin@acmehospital.health";
 const adminPassword = process.env.ADMIN_PASSWORD ?? "AdminAdmin@12345";
@@ -444,6 +445,7 @@ async function main() {
 
   await seedAdmin();
   await seedDomain();
+  await seedPatients();
   // await seedImmunizationSchedule();
   // await seedPatientData();
   // await seedEmployeeUsers();

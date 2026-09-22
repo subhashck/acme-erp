@@ -1,14 +1,43 @@
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema.ts";
+import * as inventorySchema from "./schema-inventory.ts";
+import * as magazineSchema from "./schema-magazine.ts";
+import * as labSchema from "./schema-lab.ts";
+
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 if (!process.env.DATABASE_URL) {
-  try {
-    // @ts-ignore
-    process.loadEnvFile();
-  } catch (e) {
-    // Ignore if .env doesn't exist
+  const envTest = path.resolve(process.cwd(), ".env.test");
+  const candidates = process.env.NODE_ENV === "test" && fs.existsSync(envTest)
+    ? [envTest]
+    : [
+        path.resolve(process.cwd(), ".env"),
+        path.resolve(__dirname, "../../.env"),
+        path.resolve(__dirname, "../.env"),
+        path.resolve(__dirname, ".env"),
+      ];
+
+  for (const envPath of candidates) {
+    if (fs.existsSync(envPath)) {
+      try {
+        // @ts-ignore
+        process.loadEnvFile(envPath);
+        if (process.env.DATABASE_URL) break;
+      } catch (e) {
+        // Ignore
+      }
+    }
   }
+}
+
+if (!process.env.DATABASE_URL) {
+  console.error("⚠️ DATABASE_URL environment variable is not defined.");
 }
 
 export const databaseUrl = process.env.DATABASE_URL!;
@@ -20,4 +49,6 @@ export const pool = new Pool({
   connectionTimeoutMillis: 5000, // Short timeout to fail-fast and retry
 });
 
-export const db = drizzle(pool, { schema });
+const fullSchema = { ...schema, ...inventorySchema, ...magazineSchema, ...labSchema };
+
+export const db = drizzle(pool, { schema: fullSchema });

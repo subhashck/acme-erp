@@ -1,7 +1,4 @@
 import { aliasedTable, desc, eq, sql, and, lte, gte, ne, like } from "drizzle-orm";
-import { createReadStream, existsSync } from "node:fs";
-import { lookup as mimeLookup } from "mime-types";
-import path from "node:path";
 import { Hono } from "hono";
 import { auth } from "../auth.ts";
 import type { AuthEnv } from "../auth.ts";
@@ -10,7 +7,7 @@ import {
   departmentLeaders,
   departments,
   leaveRequests,
-  // leaveTypes,
+  nursingSupers,
   staff,
   staffDepartments,
   staffSupervisors,
@@ -19,11 +16,12 @@ import {
   rosters,
 } from "../db/schema.ts";
 import { sendNotification } from "../utils/notifier.ts";
-import { saveLeaveDocument, resolveUploadPath } from "../utils/upload.ts";
+import { saveLeaveDocument, getLeaveDocumentStream } from "../utils/upload.ts";
 import {
   code,
   getCurrentStaff,
   idParam,
+  isManagementApprover,
   leaveDecisionInput,
   leaveRequestInput,
 } from "./shared.ts";
@@ -145,8 +143,8 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const input = leaveRequestInput.parse(rawInput);
 
     // Check for overlapping leaves
-    const reqStart = new Date(input.startDate);
-    const reqEnd = new Date(input.endDate);
+    const reqStart = input.startDate;
+    const reqEnd = input.endDate;
 
     const existingLeaves = await db
       .select()
@@ -220,8 +218,8 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .values({
         ...input,
         requestNo,
-        startDate: new Date(input.startDate),
-        endDate: new Date(input.endDate),
+        startDate: input.startDate,
+        endDate: input.endDate,
         status: "Pending",
         approverIds: JSON.stringify(computedApproverIds),
         supportingDocument: supportingDocumentPath,
@@ -249,8 +247,10 @@ export const leavesRoutes = new Hono<AuthEnv>()
   // -------------------------------------------------------------------------
   .get("/hr/leaves", async (c) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
 
     const page = Math.max(1, parseInt(c.req.query("page") ?? "1", 10));
     const limit = Math.max(1, parseInt(c.req.query("limit") ?? "10", 10));
@@ -266,6 +266,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         id: leaveRequests.id,
         requestNo: leaveRequests.requestNo,
         leaveType: leaveRequests.leaveType,
+        isHalfDay: leaveRequests.isHalfDay,
         startDate: leaveRequests.startDate,
         endDate: leaveRequests.endDate,
         reason: leaveRequests.reason,
@@ -280,6 +281,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         headStaffId: departmentLeaders.headStaffId,
         subheadStaffId: departmentLeaders.subheadStaffId,
         departmentName: departments.name,
+        isClinical: departments.isClinical,
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
         approverIds: leaveRequests.approverIds,
         supportingDocument: leaveRequests.supportingDocument,
@@ -300,18 +302,32 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .orderBy(desc(leaveRequests.createdAt))
       .execute();
 
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
+
     // Visibility rules:
-    //   Admin/HR        → all leaves
+    //   Admin           → all leaves
     //   Requester       → their own leaves
+    //   Nursing Super   → leaves for staff in clinical departments
+    //   HR User         → leaves for staff in non-clinical departments
     //   Approver        → Pending or Pending Payroll Approval leaves where they are in approverIds
     //   Forward Target  → Forwarded leaves where they are the forwardedToStaffId
     //   Resolved        → Approved/Rejected history visible to all staff
     let filteredRows = rows.filter((row) => {
-      if (isHrOrAdmin) return true;
+      if (isAdmin || isHrUser || isMgtApprover) return true;
       if (!currentStaff) return false;
 
       // Requester sees their own leaves
       if (currentStaff.staffId === row.staffId) return true;
+
+      // Nursing Supers see leaves for staff in clinical departments
+      if (isNursingSuper && row.isClinical) return true;
 
       // Dept head/subhead sees their department's leaves
       const isDeptLeader = currentStaff.staffId === row.headStaffId || currentStaff.staffId === row.subheadStaffId;
@@ -382,8 +398,19 @@ export const leavesRoutes = new Hono<AuthEnv>()
   .get("/hr/leaves/:id", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
+
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
 
     const manager = aliasedTable(staff, "manager");
     const director = aliasedTable(staff, "director");
@@ -394,6 +421,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         id: leaveRequests.id,
         requestNo: leaveRequests.requestNo,
         leaveType: leaveRequests.leaveType,
+        isHalfDay: leaveRequests.isHalfDay,
         startDate: leaveRequests.startDate,
         endDate: leaveRequests.endDate,
         reason: leaveRequests.reason,
@@ -408,6 +436,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
         staffPhone: staff.phone,
         staffRole: staff.role,
         departmentName: departments.name,
+        isClinical: departments.isClinical,
         supervisorLevel1Id: manager.staffId,
         supervisorLevel1Name: manager.name,
         supervisorLevel2Id: director.staffId,
@@ -452,8 +481,18 @@ export const leavesRoutes = new Hono<AuthEnv>()
     } catch (e) {}
 
     const isForwardedTarget = currentStaff && row.forwardedToStaffId !== null && currentStaff.staffId === row.forwardedToStaffId;
+    const isClinicalDept = row.isClinical === true;
 
-    if (!isHrOrAdmin && !isEmployee && !isApprover && !isForwardedTarget) {
+    const canView =
+      isAdmin ||
+      isHrUser ||
+      isMgtApprover ||
+      (isNursingSuper && isClinicalDept) ||
+      isEmployee ||
+      isApprover ||
+      isForwardedTarget;
+
+    if (!canView) {
       return c.json({ error: "You are not authorized to view this leave request" }, 403);
     }
 
@@ -465,8 +504,19 @@ export const leavesRoutes = new Hono<AuthEnv>()
   .get("/hr/leaves/:id/document", async (c) => {
     const { id } = idParam.parse(c.req.param());
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
+    const isMgtApprover = await isManagementApprover(c);
+
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
 
     const leaveRequest = await db
       .select({
@@ -475,8 +525,15 @@ export const leavesRoutes = new Hono<AuthEnv>()
         approverIds: leaveRequests.approverIds,
         forwardedToStaffId: leaveRequests.forwardedToStaffId,
         supportingDocument: leaveRequests.supportingDocument,
+        isClinical: departments.isClinical,
       })
       .from(leaveRequests)
+      .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staff.status} = 'Active'`
+      )
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
       .where(eq(leaveRequests.id, id))
       .limit(1)
       .then((res: any) => res[0]);
@@ -499,7 +556,18 @@ export const leavesRoutes = new Hono<AuthEnv>()
       leaveRequest.forwardedToStaffId !== null &&
       currentStaff.staffId === leaveRequest.forwardedToStaffId;
 
-    if (!isHrOrAdmin && !isEmployee && !isApprover && !isForwardedTarget) {
+    const isClinicalDept = leaveRequest.isClinical === true;
+
+    const canView =
+      isAdmin ||
+      isHrUser ||
+      isMgtApprover ||
+      (isNursingSuper && isClinicalDept) ||
+      isEmployee ||
+      isApprover ||
+      isForwardedTarget;
+
+    if (!canView) {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
@@ -507,25 +575,20 @@ export const leavesRoutes = new Hono<AuthEnv>()
       return c.json({ error: "No supporting document attached" }, 404);
     }
 
-    const absPath = resolveUploadPath(leaveRequest.supportingDocument);
-    if (!existsSync(absPath)) {
-      return c.json({ error: "Document file not found on server" }, 404);
+    const docResult = await getLeaveDocumentStream(leaveRequest.supportingDocument);
+    if (!docResult) {
+      return c.json({ error: "Document file not found on storage" }, 404);
     }
 
-    const ext = path.extname(absPath).toLowerCase();
-    const mimeType = (mimeLookup(ext) as string | false) || "application/octet-stream";
-    const filename = path.basename(absPath);
     const isDownload = c.req.query("download") === "1";
-
-    const stream = createReadStream(absPath);
     const headers: Record<string, string> = {
-      "Content-Type": mimeType,
+      "Content-Type": docResult.mimeType,
       "Content-Disposition": isDownload
-        ? `attachment; filename="${filename}"`
-        : `inline; filename="${filename}"`,
+        ? `attachment; filename="${docResult.filename}"`
+        : `inline; filename="${docResult.filename}"`,
     };
 
-    return new Response(stream as any, { headers });
+    return new Response(docResult.stream as any, { headers });
   })
   // -------------------------------------------------------------------------
   // POST /hr/leaves/:id/approve
@@ -538,10 +601,11 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = leaveDecisionInput.parse(await c.req.json().catch(() => ({})));
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
 
-    if (!currentStaff && !isHrOrAdmin) return c.json({ error: "Staff record not found" }, 404);
+    if (!currentStaff && !isAdmin && !isHrUser) return c.json({ error: "Staff record not found" }, 404);
 
     const leaveRequest = await db
       .select()
@@ -559,9 +623,34 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .then((res: any) => res[0]);
     if (!employee) return c.json({ error: "Employee not found" }, 404);
 
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
+
+    const empDept = await db
+      .select({ isClinical: departments.isClinical })
+      .from(staffDepartments)
+      .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(sql`${staffDepartments.staffId} = ${employee.staffId} AND ${staffDepartments.status} = 'Active'`)
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    const isClinicalDept = empDept?.isClinical === true;
+
     const canAct = (() => {
-      if (isHrOrAdmin) return true;
+      if (leaveRequest.status === "Pending Payroll Approval") {
+        return isAdmin || isHrUser;
+      }
+
+      if (isAdmin || isHrUser) return true;
       if (!currentStaff) return false;
+
+      if (isNursingSuper && isClinicalDept) return true;
 
       if (leaveRequest.status === "Pending") {
         try {
@@ -582,7 +671,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
     if (!canAct) return c.json({ error: "You are not authorized to approve this leave request" }, 403);
 
     let nextStatus = "Approved";
-    if (!isHrOrAdmin) {
+    if (!isAdmin && !isHrUser) {
       nextStatus = "Pending Payroll Approval";
     }
 
@@ -622,26 +711,32 @@ export const leavesRoutes = new Hono<AuthEnv>()
         .then((res: any) => res[0]);
 
       if (leaveShift && activeDept) {
-        // Fix for one day gap: use local date string instead of toISOString() which returns UTC
-        const getLocalDateStr = (d: string | Date) => {
-          const date = new Date(d);
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
+        const startDateStr = typeof leaveRequest.startDate === "string"
+          ? leaveRequest.startDate.slice(0, 10)
+          : new Date(leaveRequest.startDate).toISOString().slice(0, 10);
+        const endDateStr = typeof leaveRequest.endDate === "string"
+          ? leaveRequest.endDate.slice(0, 10)
+          : new Date(leaveRequest.endDate).toISOString().slice(0, 10);
 
-        const startDateStr = getLocalDateStr(leaveRequest.startDate);
-        const endDateStr = getLocalDateStr(leaveRequest.endDate);
+        // Expand the leave date range to individual per-day roster rows
+        const leaveDates: string[] = [];
+        const curr = new Date(startDateStr + "T00:00:00Z");
+        const last = new Date(endDateStr + "T00:00:00Z");
+        while (curr <= last) {
+          leaveDates.push(curr.toISOString().slice(0, 10));
+          curr.setUTCDate(curr.getUTCDate() + 1);
+        }
 
-        await db.insert(rosters).values({
-          staffId: employee.staffId,
-          departmentId: activeDept.departmentId,
-          shiftId: leaveShift.id,
-          startDate: startDateStr,
-          endDate: endDateStr,
-          notes: `Leave Request: ${leaveRequest.requestNo}`,
-        }).execute();
+        if (leaveDates.length > 0) {
+          const leaveRosterValues = leaveDates.map((date) => ({
+            staffId: employee.staffId,
+            departmentId: activeDept.departmentId,
+            shiftId: leaveShift.id,
+            date,
+            notes: `Leave Request: ${leaveRequest.requestNo}`,
+          }));
+          await db.insert(rosters).values(leaveRosterValues).onConflictDoNothing().execute();
+        }
       }
     } catch (err) {
       console.error("Failed to add leave to shift roster:", err);
@@ -682,10 +777,11 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const { id } = idParam.parse(c.req.param());
     const input = leaveDecisionInput.parse(await c.req.json().catch(() => ({})));
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    const isHrOrAdmin = session?.user.role === "admin" || session?.user.role === "hr";
+    const isAdmin = session?.user.role === "admin";
     const currentStaff = await getCurrentStaff(c);
+    const isHrUser = session?.user.role === "hr" || currentStaff?.role === "hr";
 
-    if (!currentStaff && !isHrOrAdmin) return c.json({ error: "Staff record not found" }, 404);
+    if (!currentStaff && !isAdmin && !isHrUser) return c.json({ error: "Staff record not found" }, 404);
 
     const leaveRequest = await db
       .select()
@@ -703,9 +799,34 @@ export const leavesRoutes = new Hono<AuthEnv>()
       .then((res: any) => res[0]);
     if (!employee) return c.json({ error: "Employee not found" }, 404);
 
+    const isNursingSuper = currentStaff
+      ? await db
+          .select()
+          .from(nursingSupers)
+          .where(and(eq(nursingSupers.staffId, currentStaff.staffId), eq(nursingSupers.active, true)))
+          .limit(1)
+          .then((res: any) => !!res[0])
+      : false;
+
+    const empDept = await db
+      .select({ isClinical: departments.isClinical })
+      .from(staffDepartments)
+      .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(sql`${staffDepartments.staffId} = ${employee.staffId} AND ${staffDepartments.status} = 'Active'`)
+      .limit(1)
+      .then((res: any) => res[0]);
+
+    const isClinicalDept = empDept?.isClinical === true;
+
     const canAct = (() => {
-      if (isHrOrAdmin) return true;
+      if (leaveRequest.status === "Pending Payroll Approval") {
+        return isAdmin || isHrUser;
+      }
+
+      if (isAdmin || isHrUser) return true;
       if (!currentStaff) return false;
+
+      if (isNursingSuper && isClinicalDept) return true;
 
       if (leaveRequest.status === "Pending") {
         try {

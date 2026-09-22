@@ -12,6 +12,20 @@ import { rosterRoutes } from "./routes/roster.ts";
 import { staffRoutes } from "./routes/staff.ts";
 import { accountsRoutes } from "./routes/accounts.ts";
 import { dailyClosingRoutes } from "./routes/daily-closing.ts";
+import { monthlyReportRoutes } from "./routes/monthly-report.ts";
+import { adminUserRoutes } from "./routes/admin-users.ts";
+import { purchasesRoutes } from "./routes/purchases.ts";
+import { offDaysRoutes } from "./routes/off-days.ts";
+import { bankExpensesRoutes } from "./routes/bank-expenses.ts";
+import { bankAccountsRoutes } from "./routes/bank-accounts.ts";
+import { nursingRoutes } from "./routes/nursing.ts";
+import { inventoryRoutes } from "./routes/inventory.ts";
+import { transfersRoutes } from "./routes/transfers.ts";
+import { posRoutes } from "./routes/pos.ts";
+import { magazineRoutes } from "./routes/magazine.ts";
+import { frontOfficeRoutes } from "./routes/front-office.ts";
+import { labRoutes } from "./routes/lab.ts";
+import { capitalRoutes } from "./routes/capital.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
@@ -24,7 +38,21 @@ export const api = new Hono<AuthEnv>()
   .route("/", rosterRoutes)
   .route("/", payrollRoutes)
   .route("/", messagesRoutes)
+  .route("/", monthlyReportRoutes)
   .route("/", accountsRoutes)
-  .route("/", dailyClosingRoutes);
+  .route("/", dailyClosingRoutes)
+  .route("/", adminUserRoutes)
+  .route("/", purchasesRoutes)
+  .route("/", offDaysRoutes)
+  .route("/", bankExpensesRoutes)
+  .route("/", bankAccountsRoutes)
+  .route("/", nursingRoutes)
+  .route("/", inventoryRoutes)
+  .route("/", transfersRoutes)
+  .route("/", posRoutes)
+  .route("/", magazineRoutes)
+  .route("/", frontOfficeRoutes)
+  .route("/", labRoutes)
+  .route("/", capitalRoutes);
 
 export type AppType = typeof api;

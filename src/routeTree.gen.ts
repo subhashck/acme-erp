@@ -10,41 +10,121 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
+import { Route as AuthenticatedCollegeRouteImport } from './routes/_authenticated/college'
+import { Route as AuthenticatedMagazineIndexRouteImport } from './routes/_authenticated/magazine/index'
+import { Route as AuthenticatedLabIndexRouteImport } from './routes/_authenticated/lab/index'
+import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
+import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
+import { Route as AuthenticatedCapitalIndexRouteImport } from './routes/_authenticated/capital/index'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
+import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
+import { Route as AuthenticatedPurchasesUnitTypesRouteImport } from './routes/_authenticated/purchases/unit-types'
+import { Route as AuthenticatedPurchasesPurchaseOrdersRouteImport } from './routes/_authenticated/purchases/purchase-orders'
+import { Route as AuthenticatedPurchasesItemsRouteImport } from './routes/_authenticated/purchases/items'
+import { Route as AuthenticatedPurchasesItemTypesRouteImport } from './routes/_authenticated/purchases/item-types'
+import { Route as AuthenticatedPurchasesBillsRouteImport } from './routes/_authenticated/purchases/bills'
 import { Route as AuthenticatedMastersShiftsRouteImport } from './routes/_authenticated/masters/shifts'
 import { Route as AuthenticatedMastersSalaryTemplatesRouteImport } from './routes/_authenticated/masters/salary-templates'
 import { Route as AuthenticatedMastersRolesRouteImport } from './routes/_authenticated/masters/roles'
+import { Route as AuthenticatedMastersNursingSupersRouteImport } from './routes/_authenticated/masters/nursing-supers'
+import { Route as AuthenticatedMastersManagementApproversRouteImport } from './routes/_authenticated/masters/management-approvers'
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
 import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
+import { Route as AuthenticatedMagazineSettingsRouteImport } from './routes/_authenticated/magazine/settings'
+import { Route as AuthenticatedMagazineEditorsRouteImport } from './routes/_authenticated/magazine/editors'
+import { Route as AuthenticatedMagazineIdRouteImport } from './routes/_authenticated/magazine/$id'
+import { Route as AuthenticatedInventoryStoresRouteImport } from './routes/_authenticated/inventory/stores'
+import { Route as AuthenticatedInventoryStockRouteImport } from './routes/_authenticated/inventory/stock'
+import { Route as AuthenticatedInventoryPosRouteImport } from './routes/_authenticated/inventory/pos'
+import { Route as AuthenticatedInventoryLedgerRouteImport } from './routes/_authenticated/inventory/ledger'
 import { Route as AuthenticatedHrViewStaffRouteImport } from './routes/_authenticated/hr/view-staff'
 import { Route as AuthenticatedHrViewPayslipRouteImport } from './routes/_authenticated/hr/view-payslip'
 import { Route as AuthenticatedHrStaffListRouteImport } from './routes/_authenticated/hr/staff-list'
 import { Route as AuthenticatedHrRosterRouteImport } from './routes/_authenticated/hr/roster'
 import { Route as AuthenticatedHrReviewLeaveRouteImport } from './routes/_authenticated/hr/review-leave'
 import { Route as AuthenticatedHrPayrollRouteImport } from './routes/_authenticated/hr/payroll'
+import { Route as AuthenticatedHrOffDayRequestsRouteImport } from './routes/_authenticated/hr/off-day-requests'
 import { Route as AuthenticatedHrLeavesRouteImport } from './routes/_authenticated/hr/leaves'
 import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authenticated/hr/attendance'
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
+import { Route as AuthenticatedFrontOfficeRazorpayReconciliationRouteImport } from './routes/_authenticated/front-office/razorpay-reconciliation'
+import { Route as AuthenticatedFrontOfficePatientsRouteImport } from './routes/_authenticated/front-office/patients'
+import { Route as AuthenticatedFrontOfficeNewRouteImport } from './routes/_authenticated/front-office/new'
+import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
+import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
+import { Route as AuthenticatedCollegeReferrersRouteImport } from './routes/_authenticated/college/referrers'
+import { Route as AuthenticatedCollegeGeneralReceiptsRouteImport } from './routes/_authenticated/college/general-receipts'
+import { Route as AuthenticatedCollegeFeesRouteImport } from './routes/_authenticated/college/fees'
+import { Route as AuthenticatedCollegeFeeStructuresRouteImport } from './routes/_authenticated/college/fee-structures'
+import { Route as AuthenticatedCollegeFeeDuesRouteImport } from './routes/_authenticated/college/fee-dues'
+import { Route as AuthenticatedCollegeCoursesRouteImport } from './routes/_authenticated/college/courses'
+import { Route as AuthenticatedCollegeAttendanceRouteImport } from './routes/_authenticated/college/attendance'
+import { Route as AuthenticatedCollegeAdmissionsRouteImport } from './routes/_authenticated/college/admissions'
+import { Route as AuthenticatedCollegeAcademicSchedulesRouteImport } from './routes/_authenticated/college/academic-schedules'
 import { Route as AuthenticatedClinicalImmunizationRouteImport } from './routes/_authenticated/clinical/immunization'
+import { Route as AuthenticatedCapitalRepaymentsRouteImport } from './routes/_authenticated/capital/repayments'
+import { Route as AuthenticatedCapitalFacilityRouteImport } from './routes/_authenticated/capital/facility'
+import { Route as AuthenticatedCapitalFacilitiesRouteImport } from './routes/_authenticated/capital/facilities'
+import { Route as AuthenticatedCapitalDailyCollectionsRouteImport } from './routes/_authenticated/capital/daily-collections'
+import { Route as AuthenticatedCapitalCashFlowRouteImport } from './routes/_authenticated/capital/cash-flow'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
+import { Route as AuthenticatedAdminPatientsRouteImport } from './routes/_authenticated/admin/patients'
 import { Route as AuthenticatedAdminLocalizationRouteImport } from './routes/_authenticated/admin/localization'
 import { Route as AuthenticatedAdminHospitalRouteImport } from './routes/_authenticated/admin/hospital'
 import { Route as AuthenticatedAccountsServiceChargesRouteImport } from './routes/_authenticated/accounts/service-charges'
+import { Route as AuthenticatedAccountsMonthlyReportRouteImport } from './routes/_authenticated/accounts/monthly-report'
 import { Route as AuthenticatedAccountsConsultantChargesRouteImport } from './routes/_authenticated/accounts/consultant-charges'
+import { Route as AuthenticatedAccountsBankExpensesRouteImport } from './routes/_authenticated/accounts/bank-expenses'
+import { Route as AuthenticatedAccountsBankAccountsRouteImport } from './routes/_authenticated/accounts/bank-accounts'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIndexRouteImport } from './routes/_authenticated/purchases/purchase-orders/index'
+import { Route as AuthenticatedPurchasesGrnsIndexRouteImport } from './routes/_authenticated/purchases/grns/index'
+import { Route as AuthenticatedLabMastersIndexRouteImport } from './routes/_authenticated/lab/masters/index'
+import { Route as AuthenticatedInventoryTransfersIndexRouteImport } from './routes/_authenticated/inventory/transfers/index'
+import { Route as AuthenticatedInventoryRequisitionsIndexRouteImport } from './routes/_authenticated/inventory/requisitions/index'
+import { Route as AuthenticatedInventoryReportsIndexRouteImport } from './routes/_authenticated/inventory/reports/index'
+import { Route as AuthenticatedInventoryPurchaseInvoicesIndexRouteImport } from './routes/_authenticated/inventory/purchase-invoices/index'
+import { Route as AuthenticatedInventoryInvoicesIndexRouteImport } from './routes/_authenticated/inventory/invoices/index'
+import { Route as AuthenticatedInventoryConsumptionsIndexRouteImport } from './routes/_authenticated/inventory/consumptions/index'
+import { Route as AuthenticatedInventoryConsumptionReturnsIndexRouteImport } from './routes/_authenticated/inventory/consumption-returns/index'
+import { Route as AuthenticatedInventoryAdjustmentsIndexRouteImport } from './routes/_authenticated/inventory/adjustments/index'
+import { Route as AuthenticatedCollegeReportsIndexRouteImport } from './routes/_authenticated/college/reports/index'
 import { Route as AuthenticatedAccountsReportsIndexRouteImport } from './routes/_authenticated/accounts/reports/index'
+import { Route as AuthenticatedPurchasesPurchaseOrdersNewRouteImport } from './routes/_authenticated/purchases/purchase-orders/new'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIdRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id'
+import { Route as AuthenticatedPurchasesGrnsNewRouteImport } from './routes/_authenticated/purchases/grns/new'
+import { Route as AuthenticatedPurchasesGrnsGrnIdRouteImport } from './routes/_authenticated/purchases/grns/$grnId'
+import { Route as AuthenticatedLabReportsOrderIdRouteImport } from './routes/_authenticated/lab/reports/$orderId'
+import { Route as AuthenticatedLabOrdersNewRouteImport } from './routes/_authenticated/lab/orders/new'
+import { Route as AuthenticatedLabOrdersOrderIdRouteImport } from './routes/_authenticated/lab/orders/$orderId'
+import { Route as AuthenticatedInventoryPurchaseInvoicesNewRouteImport } from './routes/_authenticated/inventory/purchase-invoices/new'
+import { Route as AuthenticatedInventoryPurchaseInvoicesIdRouteImport } from './routes/_authenticated/inventory/purchase-invoices/$id'
+import { Route as AuthenticatedCollegeStudentIdRouteImport } from './routes/_authenticated/college/student/$id'
+import { Route as AuthenticatedCollegeReportsDueStudentWiseRouteImport } from './routes/_authenticated/college/reports/due-student-wise'
+import { Route as AuthenticatedCollegeReportsDueMonthlyWiseRouteImport } from './routes/_authenticated/college/reports/due-monthly-wise'
+import { Route as AuthenticatedCollegeReportsDailyIncomeExpensesRouteImport } from './routes/_authenticated/college/reports/daily-income-expenses'
+import { Route as AuthenticatedCapitalFacilityIdRouteImport } from './routes/_authenticated/capital/facility.$id'
 import { Route as AuthenticatedAccountsReportsNewRouteImport } from './routes/_authenticated/accounts/reports/new'
 import { Route as AuthenticatedAccountsReportsIdRouteImport } from './routes/_authenticated/accounts/reports/$id'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.edit'
+import { Route as AuthenticatedPurchasesGrnsGrnIdEditRouteImport } from './routes/_authenticated/purchases/grns/$grnId_.edit'
 import { Route as AuthenticatedAccountsReportsEditIdRouteImport } from './routes/_authenticated/accounts/reports/edit.$id'
+import { Route as AuthenticatedPurchasesPurchaseOrdersIdGrnNewRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.grn.new'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangePasswordRoute = ChangePasswordRouteImport.update({
+  id: '/change-password',
+  path: '/change-password',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRoute = AuthenticatedRouteImport.update({
@@ -67,11 +147,81 @@ const AuthenticatedCommunicationRoute =
     path: '/communication',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedCollegeRoute = AuthenticatedCollegeRouteImport.update({
+  id: '/college',
+  path: '/college',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedMagazineIndexRoute =
+  AuthenticatedMagazineIndexRouteImport.update({
+    id: '/magazine/',
+    path: '/magazine/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLabIndexRoute = AuthenticatedLabIndexRouteImport.update({
+  id: '/lab/',
+  path: '/lab/',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFrontOfficeIndexRoute =
+  AuthenticatedFrontOfficeIndexRouteImport.update({
+    id: '/front-office/',
+    path: '/front-office/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeIndexRoute =
+  AuthenticatedCollegeIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCapitalIndexRoute =
+  AuthenticatedCapitalIndexRouteImport.update({
+    id: '/capital/',
+    path: '/capital/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
   id: '/shared/report/$token',
   path: '/shared/report/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedPurchasesVendorsRoute =
+  AuthenticatedPurchasesVendorsRouteImport.update({
+    id: '/purchases/vendors',
+    path: '/purchases/vendors',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesUnitTypesRoute =
+  AuthenticatedPurchasesUnitTypesRouteImport.update({
+    id: '/purchases/unit-types',
+    path: '/purchases/unit-types',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersRoute =
+  AuthenticatedPurchasesPurchaseOrdersRouteImport.update({
+    id: '/purchases/purchase-orders',
+    path: '/purchases/purchase-orders',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesItemsRoute =
+  AuthenticatedPurchasesItemsRouteImport.update({
+    id: '/purchases/items',
+    path: '/purchases/items',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesItemTypesRoute =
+  AuthenticatedPurchasesItemTypesRouteImport.update({
+    id: '/purchases/item-types',
+    path: '/purchases/item-types',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesBillsRoute =
+  AuthenticatedPurchasesBillsRouteImport.update({
+    id: '/purchases/bills',
+    path: '/purchases/bills',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMastersShiftsRoute =
   AuthenticatedMastersShiftsRouteImport.update({
     id: '/masters/shifts',
@@ -90,6 +240,18 @@ const AuthenticatedMastersRolesRoute =
     path: '/masters/roles',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedMastersNursingSupersRoute =
+  AuthenticatedMastersNursingSupersRouteImport.update({
+    id: '/masters/nursing-supers',
+    path: '/masters/nursing-supers',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMastersManagementApproversRoute =
+  AuthenticatedMastersManagementApproversRouteImport.update({
+    id: '/masters/management-approvers',
+    path: '/masters/management-approvers',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMastersLeaveTypesRoute =
   AuthenticatedMastersLeaveTypesRouteImport.update({
     id: '/masters/leave-types',
@@ -106,6 +268,47 @@ const AuthenticatedMastersBanksRoute =
   AuthenticatedMastersBanksRouteImport.update({
     id: '/masters/banks',
     path: '/masters/banks',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMagazineSettingsRoute =
+  AuthenticatedMagazineSettingsRouteImport.update({
+    id: '/magazine/settings',
+    path: '/magazine/settings',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMagazineEditorsRoute =
+  AuthenticatedMagazineEditorsRouteImport.update({
+    id: '/magazine/editors',
+    path: '/magazine/editors',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedMagazineIdRoute = AuthenticatedMagazineIdRouteImport.update({
+  id: '/magazine/$id',
+  path: '/magazine/$id',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedInventoryStoresRoute =
+  AuthenticatedInventoryStoresRouteImport.update({
+    id: '/inventory/stores',
+    path: '/inventory/stores',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryStockRoute =
+  AuthenticatedInventoryStockRouteImport.update({
+    id: '/inventory/stock',
+    path: '/inventory/stock',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPosRoute =
+  AuthenticatedInventoryPosRouteImport.update({
+    id: '/inventory/pos',
+    path: '/inventory/pos',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryLedgerRoute =
+  AuthenticatedInventoryLedgerRouteImport.update({
+    id: '/inventory/ledger',
+    path: '/inventory/ledger',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedHrViewStaffRoute =
@@ -142,6 +345,12 @@ const AuthenticatedHrPayrollRoute = AuthenticatedHrPayrollRouteImport.update({
   path: '/hr/payroll',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedHrOffDayRequestsRoute =
+  AuthenticatedHrOffDayRequestsRouteImport.update({
+    id: '/hr/off-day-requests',
+    path: '/hr/off-day-requests',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedHrLeavesRoute = AuthenticatedHrLeavesRouteImport.update({
   id: '/hr/leaves',
   path: '/hr/leaves',
@@ -158,10 +367,124 @@ const AuthenticatedHrAddStaffRoute = AuthenticatedHrAddStaffRouteImport.update({
   path: '/hr/add-staff',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFrontOfficeRazorpayReconciliationRoute =
+  AuthenticatedFrontOfficeRazorpayReconciliationRouteImport.update({
+    id: '/front-office/razorpay-reconciliation',
+    path: '/front-office/razorpay-reconciliation',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFrontOfficePatientsRoute =
+  AuthenticatedFrontOfficePatientsRouteImport.update({
+    id: '/front-office/patients',
+    path: '/front-office/patients',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFrontOfficeNewRoute =
+  AuthenticatedFrontOfficeNewRouteImport.update({
+    id: '/front-office/new',
+    path: '/front-office/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeSubjectsRoute =
+  AuthenticatedCollegeSubjectsRouteImport.update({
+    id: '/subjects',
+    path: '/subjects',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeStudentsRoute =
+  AuthenticatedCollegeStudentsRouteImport.update({
+    id: '/students',
+    path: '/students',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeReferrersRoute =
+  AuthenticatedCollegeReferrersRouteImport.update({
+    id: '/referrers',
+    path: '/referrers',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeGeneralReceiptsRoute =
+  AuthenticatedCollegeGeneralReceiptsRouteImport.update({
+    id: '/general-receipts',
+    path: '/general-receipts',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeFeesRoute =
+  AuthenticatedCollegeFeesRouteImport.update({
+    id: '/fees',
+    path: '/fees',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeFeeStructuresRoute =
+  AuthenticatedCollegeFeeStructuresRouteImport.update({
+    id: '/fee-structures',
+    path: '/fee-structures',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeFeeDuesRoute =
+  AuthenticatedCollegeFeeDuesRouteImport.update({
+    id: '/fee-dues',
+    path: '/fee-dues',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeCoursesRoute =
+  AuthenticatedCollegeCoursesRouteImport.update({
+    id: '/courses',
+    path: '/courses',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeAttendanceRoute =
+  AuthenticatedCollegeAttendanceRouteImport.update({
+    id: '/attendance',
+    path: '/attendance',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeAdmissionsRoute =
+  AuthenticatedCollegeAdmissionsRouteImport.update({
+    id: '/admissions',
+    path: '/admissions',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeAcademicSchedulesRoute =
+  AuthenticatedCollegeAcademicSchedulesRouteImport.update({
+    id: '/academic-schedules',
+    path: '/academic-schedules',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
 const AuthenticatedClinicalImmunizationRoute =
   AuthenticatedClinicalImmunizationRouteImport.update({
     id: '/clinical/immunization',
     path: '/clinical/immunization',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalRepaymentsRoute =
+  AuthenticatedCapitalRepaymentsRouteImport.update({
+    id: '/capital/repayments',
+    path: '/capital/repayments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalFacilityRoute =
+  AuthenticatedCapitalFacilityRouteImport.update({
+    id: '/capital/facility',
+    path: '/capital/facility',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalFacilitiesRoute =
+  AuthenticatedCapitalFacilitiesRouteImport.update({
+    id: '/capital/facilities',
+    path: '/capital/facilities',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalDailyCollectionsRoute =
+  AuthenticatedCapitalDailyCollectionsRouteImport.update({
+    id: '/capital/daily-collections',
+    path: '/capital/daily-collections',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCapitalCashFlowRoute =
+  AuthenticatedCapitalCashFlowRouteImport.update({
+    id: '/capital/cash-flow',
+    path: '/capital/cash-flow',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
@@ -173,6 +496,12 @@ const AuthenticatedAdminPayrollRoute =
   AuthenticatedAdminPayrollRouteImport.update({
     id: '/admin/payroll',
     path: '/admin/payroll',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAdminPatientsRoute =
+  AuthenticatedAdminPatientsRouteImport.update({
+    id: '/admin/patients',
+    path: '/admin/patients',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedAdminLocalizationRoute =
@@ -193,17 +522,191 @@ const AuthenticatedAccountsServiceChargesRoute =
     path: '/accounts/service-charges',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAccountsMonthlyReportRoute =
+  AuthenticatedAccountsMonthlyReportRouteImport.update({
+    id: '/accounts/monthly-report',
+    path: '/accounts/monthly-report',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountsConsultantChargesRoute =
   AuthenticatedAccountsConsultantChargesRouteImport.update({
     id: '/accounts/consultant-charges',
     path: '/accounts/consultant-charges',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAccountsBankExpensesRoute =
+  AuthenticatedAccountsBankExpensesRouteImport.update({
+    id: '/accounts/bank-expenses',
+    path: '/accounts/bank-expenses',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAccountsBankAccountsRoute =
+  AuthenticatedAccountsBankAccountsRouteImport.update({
+    id: '/accounts/bank-accounts',
+    path: '/accounts/bank-accounts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersIndexRoute =
+  AuthenticatedPurchasesPurchaseOrdersIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsIndexRoute =
+  AuthenticatedPurchasesGrnsIndexRouteImport.update({
+    id: '/purchases/grns/',
+    path: '/purchases/grns/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLabMastersIndexRoute =
+  AuthenticatedLabMastersIndexRouteImport.update({
+    id: '/lab/masters/',
+    path: '/lab/masters/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryTransfersIndexRoute =
+  AuthenticatedInventoryTransfersIndexRouteImport.update({
+    id: '/inventory/transfers/',
+    path: '/inventory/transfers/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryRequisitionsIndexRoute =
+  AuthenticatedInventoryRequisitionsIndexRouteImport.update({
+    id: '/inventory/requisitions/',
+    path: '/inventory/requisitions/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryReportsIndexRoute =
+  AuthenticatedInventoryReportsIndexRouteImport.update({
+    id: '/inventory/reports/',
+    path: '/inventory/reports/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPurchaseInvoicesIndexRoute =
+  AuthenticatedInventoryPurchaseInvoicesIndexRouteImport.update({
+    id: '/inventory/purchase-invoices/',
+    path: '/inventory/purchase-invoices/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryInvoicesIndexRoute =
+  AuthenticatedInventoryInvoicesIndexRouteImport.update({
+    id: '/inventory/invoices/',
+    path: '/inventory/invoices/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryConsumptionsIndexRoute =
+  AuthenticatedInventoryConsumptionsIndexRouteImport.update({
+    id: '/inventory/consumptions/',
+    path: '/inventory/consumptions/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryConsumptionReturnsIndexRoute =
+  AuthenticatedInventoryConsumptionReturnsIndexRouteImport.update({
+    id: '/inventory/consumption-returns/',
+    path: '/inventory/consumption-returns/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryAdjustmentsIndexRoute =
+  AuthenticatedInventoryAdjustmentsIndexRouteImport.update({
+    id: '/inventory/adjustments/',
+    path: '/inventory/adjustments/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeReportsIndexRoute =
+  AuthenticatedCollegeReportsIndexRouteImport.update({
+    id: '/reports/',
+    path: '/reports/',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
 const AuthenticatedAccountsReportsIndexRoute =
   AuthenticatedAccountsReportsIndexRouteImport.update({
     id: '/accounts/reports/',
     path: '/accounts/reports/',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersNewRoute =
+  AuthenticatedPurchasesPurchaseOrdersNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesPurchaseOrdersIdRoute =
+  AuthenticatedPurchasesPurchaseOrdersIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsNewRoute =
+  AuthenticatedPurchasesGrnsNewRouteImport.update({
+    id: '/purchases/grns/new',
+    path: '/purchases/grns/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsGrnIdRoute =
+  AuthenticatedPurchasesGrnsGrnIdRouteImport.update({
+    id: '/purchases/grns/$grnId',
+    path: '/purchases/grns/$grnId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLabReportsOrderIdRoute =
+  AuthenticatedLabReportsOrderIdRouteImport.update({
+    id: '/lab/reports/$orderId',
+    path: '/lab/reports/$orderId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLabOrdersNewRoute =
+  AuthenticatedLabOrdersNewRouteImport.update({
+    id: '/lab/orders/new',
+    path: '/lab/orders/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedLabOrdersOrderIdRoute =
+  AuthenticatedLabOrdersOrderIdRouteImport.update({
+    id: '/lab/orders/$orderId',
+    path: '/lab/orders/$orderId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPurchaseInvoicesNewRoute =
+  AuthenticatedInventoryPurchaseInvoicesNewRouteImport.update({
+    id: '/inventory/purchase-invoices/new',
+    path: '/inventory/purchase-invoices/new',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedInventoryPurchaseInvoicesIdRoute =
+  AuthenticatedInventoryPurchaseInvoicesIdRouteImport.update({
+    id: '/inventory/purchase-invoices/$id',
+    path: '/inventory/purchase-invoices/$id',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedCollegeStudentIdRoute =
+  AuthenticatedCollegeStudentIdRouteImport.update({
+    id: '/student/$id',
+    path: '/student/$id',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeReportsDueStudentWiseRoute =
+  AuthenticatedCollegeReportsDueStudentWiseRouteImport.update({
+    id: '/reports/due-student-wise',
+    path: '/reports/due-student-wise',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeReportsDueMonthlyWiseRoute =
+  AuthenticatedCollegeReportsDueMonthlyWiseRouteImport.update({
+    id: '/reports/due-monthly-wise',
+    path: '/reports/due-monthly-wise',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCollegeReportsDailyIncomeExpensesRoute =
+  AuthenticatedCollegeReportsDailyIncomeExpensesRouteImport.update({
+    id: '/reports/daily-income-expenses',
+    path: '/reports/daily-income-expenses',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
+const AuthenticatedCapitalFacilityIdRoute =
+  AuthenticatedCapitalFacilityIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedCapitalFacilityRoute,
   } as any)
 const AuthenticatedAccountsReportsNewRoute =
   AuthenticatedAccountsReportsNewRouteImport.update({
@@ -217,219 +720,684 @@ const AuthenticatedAccountsReportsIdRoute =
     path: '/accounts/reports/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPurchasesPurchaseOrdersIdEditRoute =
+  AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport.update({
+    id: '/$id_/edit',
+    path: '/$id/edit',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
+const AuthenticatedPurchasesGrnsGrnIdEditRoute =
+  AuthenticatedPurchasesGrnsGrnIdEditRouteImport.update({
+    id: '/purchases/grns/$grnId_/edit',
+    path: '/purchases/grns/$grnId/edit',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAccountsReportsEditIdRoute =
   AuthenticatedAccountsReportsEditIdRouteImport.update({
     id: '/accounts/reports/edit/$id',
     path: '/accounts/reports/edit/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute =
+  AuthenticatedPurchasesPurchaseOrdersIdGrnNewRouteImport.update({
+    id: '/$id_/grn/new',
+    path: '/$id/grn/new',
+    getParentRoute: () => AuthenticatedPurchasesPurchaseOrdersRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
+  '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/college': typeof AuthenticatedCollegeRouteWithChildren
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
+  '/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
   '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
+  '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
+  '/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
+  '/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
+  '/capital/facility': typeof AuthenticatedCapitalFacilityRouteWithChildren
+  '/capital/repayments': typeof AuthenticatedCapitalRepaymentsRoute
   '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
+  '/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
+  '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
+  '/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
+  '/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
+  '/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
+  '/college/fees': typeof AuthenticatedCollegeFeesRoute
+  '/college/general-receipts': typeof AuthenticatedCollegeGeneralReceiptsRoute
+  '/college/referrers': typeof AuthenticatedCollegeReferrersRoute
+  '/college/students': typeof AuthenticatedCollegeStudentsRoute
+  '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
+  '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
+  '/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/hr/payroll': typeof AuthenticatedHrPayrollRoute
   '/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/hr/roster': typeof AuthenticatedHrRosterRoute
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/inventory/ledger': typeof AuthenticatedInventoryLedgerRoute
+  '/inventory/pos': typeof AuthenticatedInventoryPosRoute
+  '/inventory/stock': typeof AuthenticatedInventoryStockRoute
+  '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
+  '/magazine/$id': typeof AuthenticatedMagazineIdRoute
+  '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
+  '/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
+  '/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
+  '/masters/nursing-supers': typeof AuthenticatedMastersNursingSupersRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/purchases/bills': typeof AuthenticatedPurchasesBillsRoute
+  '/purchases/item-types': typeof AuthenticatedPurchasesItemTypesRoute
+  '/purchases/items': typeof AuthenticatedPurchasesItemsRoute
+  '/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
+  '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
+  '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/capital/': typeof AuthenticatedCapitalIndexRoute
+  '/college/': typeof AuthenticatedCollegeIndexRoute
+  '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
+  '/lab/': typeof AuthenticatedLabIndexRoute
+  '/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
+  '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
+  '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
+  '/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
+  '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
+  '/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  '/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
+  '/lab/orders/$orderId': typeof AuthenticatedLabOrdersOrderIdRoute
+  '/lab/orders/new': typeof AuthenticatedLabOrdersNewRoute
+  '/lab/reports/$orderId': typeof AuthenticatedLabReportsOrderIdRoute
+  '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
+  '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  '/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
+  '/college/reports/': typeof AuthenticatedCollegeReportsIndexRoute
+  '/inventory/adjustments/': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/inventory/consumption-returns/': typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  '/inventory/consumptions/': typeof AuthenticatedInventoryConsumptionsIndexRoute
+  '/inventory/invoices/': typeof AuthenticatedInventoryInvoicesIndexRoute
+  '/inventory/purchase-invoices/': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  '/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
+  '/inventory/requisitions/': typeof AuthenticatedInventoryRequisitionsIndexRoute
+  '/inventory/transfers/': typeof AuthenticatedInventoryTransfersIndexRoute
+  '/lab/masters/': typeof AuthenticatedLabMastersIndexRoute
+  '/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
+  '/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
+  '/purchases/grns/$grnId/edit': typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
+  '/purchases/purchase-orders/$id/edit': typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  '/purchases/purchase-orders/$id/grn/new': typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
 }
 export interface FileRoutesByTo {
+  '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/': typeof AuthenticatedIndexRoute
+  '/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
+  '/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
   '/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/admin/localization': typeof AuthenticatedAdminLocalizationRoute
+  '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
+  '/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
+  '/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
+  '/capital/facility': typeof AuthenticatedCapitalFacilityRouteWithChildren
+  '/capital/repayments': typeof AuthenticatedCapitalRepaymentsRoute
   '/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
+  '/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
+  '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
+  '/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
+  '/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
+  '/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
+  '/college/fees': typeof AuthenticatedCollegeFeesRoute
+  '/college/general-receipts': typeof AuthenticatedCollegeGeneralReceiptsRoute
+  '/college/referrers': typeof AuthenticatedCollegeReferrersRoute
+  '/college/students': typeof AuthenticatedCollegeStudentsRoute
+  '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
+  '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
+  '/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/hr/payroll': typeof AuthenticatedHrPayrollRoute
   '/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/hr/roster': typeof AuthenticatedHrRosterRoute
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/inventory/ledger': typeof AuthenticatedInventoryLedgerRoute
+  '/inventory/pos': typeof AuthenticatedInventoryPosRoute
+  '/inventory/stock': typeof AuthenticatedInventoryStockRoute
+  '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
+  '/magazine/$id': typeof AuthenticatedMagazineIdRoute
+  '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
+  '/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
+  '/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
+  '/masters/nursing-supers': typeof AuthenticatedMastersNursingSupersRoute
   '/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/purchases/bills': typeof AuthenticatedPurchasesBillsRoute
+  '/purchases/item-types': typeof AuthenticatedPurchasesItemTypesRoute
+  '/purchases/items': typeof AuthenticatedPurchasesItemsRoute
+  '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
+  '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/capital': typeof AuthenticatedCapitalIndexRoute
+  '/college': typeof AuthenticatedCollegeIndexRoute
+  '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
+  '/lab': typeof AuthenticatedLabIndexRoute
+  '/magazine': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
+  '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
+  '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
+  '/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
+  '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
+  '/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  '/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
+  '/lab/orders/$orderId': typeof AuthenticatedLabOrdersOrderIdRoute
+  '/lab/orders/new': typeof AuthenticatedLabOrdersNewRoute
+  '/lab/reports/$orderId': typeof AuthenticatedLabReportsOrderIdRoute
+  '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
+  '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  '/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/accounts/reports': typeof AuthenticatedAccountsReportsIndexRoute
+  '/college/reports': typeof AuthenticatedCollegeReportsIndexRoute
+  '/inventory/adjustments': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/inventory/consumption-returns': typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  '/inventory/consumptions': typeof AuthenticatedInventoryConsumptionsIndexRoute
+  '/inventory/invoices': typeof AuthenticatedInventoryInvoicesIndexRoute
+  '/inventory/purchase-invoices': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  '/inventory/reports': typeof AuthenticatedInventoryReportsIndexRoute
+  '/inventory/requisitions': typeof AuthenticatedInventoryRequisitionsIndexRoute
+  '/inventory/transfers': typeof AuthenticatedInventoryTransfersIndexRoute
+  '/lab/masters': typeof AuthenticatedLabMastersIndexRoute
+  '/purchases/grns': typeof AuthenticatedPurchasesGrnsIndexRoute
+  '/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
+  '/purchases/grns/$grnId/edit': typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
+  '/purchases/purchase-orders/$id/edit': typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  '/purchases/purchase-orders/$id/grn/new': typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
+  '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/_authenticated/college': typeof AuthenticatedCollegeRouteWithChildren
   '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
+  '/_authenticated/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
   '/_authenticated/accounts/consultant-charges': typeof AuthenticatedAccountsConsultantChargesRoute
+  '/_authenticated/accounts/monthly-report': typeof AuthenticatedAccountsMonthlyReportRoute
   '/_authenticated/accounts/service-charges': typeof AuthenticatedAccountsServiceChargesRoute
   '/_authenticated/admin/hospital': typeof AuthenticatedAdminHospitalRoute
   '/_authenticated/admin/localization': typeof AuthenticatedAdminLocalizationRoute
+  '/_authenticated/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
+  '/_authenticated/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
+  '/_authenticated/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
+  '/_authenticated/capital/facility': typeof AuthenticatedCapitalFacilityRouteWithChildren
+  '/_authenticated/capital/repayments': typeof AuthenticatedCapitalRepaymentsRoute
   '/_authenticated/clinical/immunization': typeof AuthenticatedClinicalImmunizationRoute
+  '/_authenticated/college/academic-schedules': typeof AuthenticatedCollegeAcademicSchedulesRoute
+  '/_authenticated/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
+  '/_authenticated/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
+  '/_authenticated/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/_authenticated/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
+  '/_authenticated/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
+  '/_authenticated/college/fees': typeof AuthenticatedCollegeFeesRoute
+  '/_authenticated/college/general-receipts': typeof AuthenticatedCollegeGeneralReceiptsRoute
+  '/_authenticated/college/referrers': typeof AuthenticatedCollegeReferrersRoute
+  '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
+  '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/_authenticated/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/_authenticated/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
+  '/_authenticated/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
   '/_authenticated/hr/attendance': typeof AuthenticatedHrAttendanceRoute
   '/_authenticated/hr/leaves': typeof AuthenticatedHrLeavesRoute
+  '/_authenticated/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/_authenticated/hr/payroll': typeof AuthenticatedHrPayrollRoute
   '/_authenticated/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/_authenticated/hr/roster': typeof AuthenticatedHrRosterRoute
   '/_authenticated/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/_authenticated/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/_authenticated/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
+  '/_authenticated/inventory/ledger': typeof AuthenticatedInventoryLedgerRoute
+  '/_authenticated/inventory/pos': typeof AuthenticatedInventoryPosRoute
+  '/_authenticated/inventory/stock': typeof AuthenticatedInventoryStockRoute
+  '/_authenticated/inventory/stores': typeof AuthenticatedInventoryStoresRoute
+  '/_authenticated/magazine/$id': typeof AuthenticatedMagazineIdRoute
+  '/_authenticated/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
+  '/_authenticated/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
+  '/_authenticated/masters/management-approvers': typeof AuthenticatedMastersManagementApproversRoute
+  '/_authenticated/masters/nursing-supers': typeof AuthenticatedMastersNursingSupersRoute
   '/_authenticated/masters/roles': typeof AuthenticatedMastersRolesRoute
   '/_authenticated/masters/salary-templates': typeof AuthenticatedMastersSalaryTemplatesRoute
   '/_authenticated/masters/shifts': typeof AuthenticatedMastersShiftsRoute
+  '/_authenticated/purchases/bills': typeof AuthenticatedPurchasesBillsRoute
+  '/_authenticated/purchases/item-types': typeof AuthenticatedPurchasesItemTypesRoute
+  '/_authenticated/purchases/items': typeof AuthenticatedPurchasesItemsRoute
+  '/_authenticated/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
+  '/_authenticated/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
+  '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/_authenticated/capital/': typeof AuthenticatedCapitalIndexRoute
+  '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
+  '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
+  '/_authenticated/lab/': typeof AuthenticatedLabIndexRoute
+  '/_authenticated/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/_authenticated/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
+  '/_authenticated/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
+  '/_authenticated/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
+  '/_authenticated/college/reports/due-student-wise': typeof AuthenticatedCollegeReportsDueStudentWiseRoute
+  '/_authenticated/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
+  '/_authenticated/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  '/_authenticated/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
+  '/_authenticated/lab/orders/$orderId': typeof AuthenticatedLabOrdersOrderIdRoute
+  '/_authenticated/lab/orders/new': typeof AuthenticatedLabOrdersNewRoute
+  '/_authenticated/lab/reports/$orderId': typeof AuthenticatedLabReportsOrderIdRoute
+  '/_authenticated/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  '/_authenticated/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
+  '/_authenticated/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  '/_authenticated/purchases/purchase-orders/new': typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
   '/_authenticated/accounts/reports/': typeof AuthenticatedAccountsReportsIndexRoute
+  '/_authenticated/college/reports/': typeof AuthenticatedCollegeReportsIndexRoute
+  '/_authenticated/inventory/adjustments/': typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  '/_authenticated/inventory/consumption-returns/': typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  '/_authenticated/inventory/consumptions/': typeof AuthenticatedInventoryConsumptionsIndexRoute
+  '/_authenticated/inventory/invoices/': typeof AuthenticatedInventoryInvoicesIndexRoute
+  '/_authenticated/inventory/purchase-invoices/': typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  '/_authenticated/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
+  '/_authenticated/inventory/requisitions/': typeof AuthenticatedInventoryRequisitionsIndexRoute
+  '/_authenticated/inventory/transfers/': typeof AuthenticatedInventoryTransfersIndexRoute
+  '/_authenticated/lab/masters/': typeof AuthenticatedLabMastersIndexRoute
+  '/_authenticated/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
+  '/_authenticated/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/_authenticated/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
+  '/_authenticated/purchases/grns/$grnId_/edit': typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
+  '/_authenticated/purchases/purchase-orders/$id_/edit': typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  '/_authenticated/purchases/purchase-orders/$id_/grn/new': typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/change-password'
     | '/login'
+    | '/college'
     | '/communication'
     | '/settings'
+    | '/accounts/bank-accounts'
+    | '/accounts/bank-expenses'
     | '/accounts/consultant-charges'
+    | '/accounts/monthly-report'
     | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
+    | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
+    | '/capital/cash-flow'
+    | '/capital/daily-collections'
+    | '/capital/facilities'
+    | '/capital/facility'
+    | '/capital/repayments'
     | '/clinical/immunization'
+    | '/college/academic-schedules'
+    | '/college/admissions'
+    | '/college/attendance'
+    | '/college/courses'
+    | '/college/fee-dues'
+    | '/college/fee-structures'
+    | '/college/fees'
+    | '/college/general-receipts'
+    | '/college/referrers'
+    | '/college/students'
+    | '/college/subjects'
+    | '/front-office/new'
+    | '/front-office/patients'
+    | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
+    | '/hr/off-day-requests'
     | '/hr/payroll'
     | '/hr/review-leave'
     | '/hr/roster'
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
+    | '/inventory/ledger'
+    | '/inventory/pos'
+    | '/inventory/stock'
+    | '/inventory/stores'
+    | '/magazine/$id'
+    | '/magazine/editors'
+    | '/magazine/settings'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
+    | '/masters/management-approvers'
+    | '/masters/nursing-supers'
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/purchases/bills'
+    | '/purchases/item-types'
+    | '/purchases/items'
+    | '/purchases/purchase-orders'
+    | '/purchases/unit-types'
+    | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/capital/'
+    | '/college/'
+    | '/front-office/'
+    | '/lab/'
+    | '/magazine/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/capital/facility/$id'
+    | '/college/reports/daily-income-expenses'
+    | '/college/reports/due-monthly-wise'
+    | '/college/reports/due-student-wise'
+    | '/college/student/$id'
+    | '/inventory/purchase-invoices/$id'
+    | '/inventory/purchase-invoices/new'
+    | '/lab/orders/$orderId'
+    | '/lab/orders/new'
+    | '/lab/reports/$orderId'
+    | '/purchases/grns/$grnId'
+    | '/purchases/grns/new'
+    | '/purchases/purchase-orders/$id'
+    | '/purchases/purchase-orders/new'
     | '/accounts/reports/'
+    | '/college/reports/'
+    | '/inventory/adjustments/'
+    | '/inventory/consumption-returns/'
+    | '/inventory/consumptions/'
+    | '/inventory/invoices/'
+    | '/inventory/purchase-invoices/'
+    | '/inventory/reports/'
+    | '/inventory/requisitions/'
+    | '/inventory/transfers/'
+    | '/lab/masters/'
+    | '/purchases/grns/'
+    | '/purchases/purchase-orders/'
     | '/accounts/reports/edit/$id'
+    | '/purchases/grns/$grnId/edit'
+    | '/purchases/purchase-orders/$id/edit'
+    | '/purchases/purchase-orders/$id/grn/new'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/change-password'
     | '/login'
     | '/communication'
     | '/settings'
     | '/'
+    | '/accounts/bank-accounts'
+    | '/accounts/bank-expenses'
     | '/accounts/consultant-charges'
+    | '/accounts/monthly-report'
     | '/accounts/service-charges'
     | '/admin/hospital'
     | '/admin/localization'
+    | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
+    | '/capital/cash-flow'
+    | '/capital/daily-collections'
+    | '/capital/facilities'
+    | '/capital/facility'
+    | '/capital/repayments'
     | '/clinical/immunization'
+    | '/college/academic-schedules'
+    | '/college/admissions'
+    | '/college/attendance'
+    | '/college/courses'
+    | '/college/fee-dues'
+    | '/college/fee-structures'
+    | '/college/fees'
+    | '/college/general-receipts'
+    | '/college/referrers'
+    | '/college/students'
+    | '/college/subjects'
+    | '/front-office/new'
+    | '/front-office/patients'
+    | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
     | '/hr/attendance'
     | '/hr/leaves'
+    | '/hr/off-day-requests'
     | '/hr/payroll'
     | '/hr/review-leave'
     | '/hr/roster'
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
+    | '/inventory/ledger'
+    | '/inventory/pos'
+    | '/inventory/stock'
+    | '/inventory/stores'
+    | '/magazine/$id'
+    | '/magazine/editors'
+    | '/magazine/settings'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
+    | '/masters/management-approvers'
+    | '/masters/nursing-supers'
     | '/masters/roles'
     | '/masters/salary-templates'
     | '/masters/shifts'
+    | '/purchases/bills'
+    | '/purchases/item-types'
+    | '/purchases/items'
+    | '/purchases/unit-types'
+    | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/capital'
+    | '/college'
+    | '/front-office'
+    | '/lab'
+    | '/magazine'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/capital/facility/$id'
+    | '/college/reports/daily-income-expenses'
+    | '/college/reports/due-monthly-wise'
+    | '/college/reports/due-student-wise'
+    | '/college/student/$id'
+    | '/inventory/purchase-invoices/$id'
+    | '/inventory/purchase-invoices/new'
+    | '/lab/orders/$orderId'
+    | '/lab/orders/new'
+    | '/lab/reports/$orderId'
+    | '/purchases/grns/$grnId'
+    | '/purchases/grns/new'
+    | '/purchases/purchase-orders/$id'
+    | '/purchases/purchase-orders/new'
     | '/accounts/reports'
+    | '/college/reports'
+    | '/inventory/adjustments'
+    | '/inventory/consumption-returns'
+    | '/inventory/consumptions'
+    | '/inventory/invoices'
+    | '/inventory/purchase-invoices'
+    | '/inventory/reports'
+    | '/inventory/requisitions'
+    | '/inventory/transfers'
+    | '/lab/masters'
+    | '/purchases/grns'
+    | '/purchases/purchase-orders'
     | '/accounts/reports/edit/$id'
+    | '/purchases/grns/$grnId/edit'
+    | '/purchases/purchase-orders/$id/edit'
+    | '/purchases/purchase-orders/$id/grn/new'
   id:
     | '__root__'
     | '/_authenticated'
+    | '/change-password'
     | '/login'
+    | '/_authenticated/college'
     | '/_authenticated/communication'
     | '/_authenticated/settings'
     | '/_authenticated/'
+    | '/_authenticated/accounts/bank-accounts'
+    | '/_authenticated/accounts/bank-expenses'
     | '/_authenticated/accounts/consultant-charges'
+    | '/_authenticated/accounts/monthly-report'
     | '/_authenticated/accounts/service-charges'
     | '/_authenticated/admin/hospital'
     | '/_authenticated/admin/localization'
+    | '/_authenticated/admin/patients'
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
+    | '/_authenticated/capital/cash-flow'
+    | '/_authenticated/capital/daily-collections'
+    | '/_authenticated/capital/facilities'
+    | '/_authenticated/capital/facility'
+    | '/_authenticated/capital/repayments'
     | '/_authenticated/clinical/immunization'
+    | '/_authenticated/college/academic-schedules'
+    | '/_authenticated/college/admissions'
+    | '/_authenticated/college/attendance'
+    | '/_authenticated/college/courses'
+    | '/_authenticated/college/fee-dues'
+    | '/_authenticated/college/fee-structures'
+    | '/_authenticated/college/fees'
+    | '/_authenticated/college/general-receipts'
+    | '/_authenticated/college/referrers'
+    | '/_authenticated/college/students'
+    | '/_authenticated/college/subjects'
+    | '/_authenticated/front-office/new'
+    | '/_authenticated/front-office/patients'
+    | '/_authenticated/front-office/razorpay-reconciliation'
     | '/_authenticated/hr/add-staff'
     | '/_authenticated/hr/attendance'
     | '/_authenticated/hr/leaves'
+    | '/_authenticated/hr/off-day-requests'
     | '/_authenticated/hr/payroll'
     | '/_authenticated/hr/review-leave'
     | '/_authenticated/hr/roster'
     | '/_authenticated/hr/staff-list'
     | '/_authenticated/hr/view-payslip'
     | '/_authenticated/hr/view-staff'
+    | '/_authenticated/inventory/ledger'
+    | '/_authenticated/inventory/pos'
+    | '/_authenticated/inventory/stock'
+    | '/_authenticated/inventory/stores'
+    | '/_authenticated/magazine/$id'
+    | '/_authenticated/magazine/editors'
+    | '/_authenticated/magazine/settings'
     | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
+    | '/_authenticated/masters/management-approvers'
+    | '/_authenticated/masters/nursing-supers'
     | '/_authenticated/masters/roles'
     | '/_authenticated/masters/salary-templates'
     | '/_authenticated/masters/shifts'
+    | '/_authenticated/purchases/bills'
+    | '/_authenticated/purchases/item-types'
+    | '/_authenticated/purchases/items'
+    | '/_authenticated/purchases/purchase-orders'
+    | '/_authenticated/purchases/unit-types'
+    | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
+    | '/_authenticated/capital/'
+    | '/_authenticated/college/'
+    | '/_authenticated/front-office/'
+    | '/_authenticated/lab/'
+    | '/_authenticated/magazine/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
+    | '/_authenticated/capital/facility/$id'
+    | '/_authenticated/college/reports/daily-income-expenses'
+    | '/_authenticated/college/reports/due-monthly-wise'
+    | '/_authenticated/college/reports/due-student-wise'
+    | '/_authenticated/college/student/$id'
+    | '/_authenticated/inventory/purchase-invoices/$id'
+    | '/_authenticated/inventory/purchase-invoices/new'
+    | '/_authenticated/lab/orders/$orderId'
+    | '/_authenticated/lab/orders/new'
+    | '/_authenticated/lab/reports/$orderId'
+    | '/_authenticated/purchases/grns/$grnId'
+    | '/_authenticated/purchases/grns/new'
+    | '/_authenticated/purchases/purchase-orders/$id'
+    | '/_authenticated/purchases/purchase-orders/new'
     | '/_authenticated/accounts/reports/'
+    | '/_authenticated/college/reports/'
+    | '/_authenticated/inventory/adjustments/'
+    | '/_authenticated/inventory/consumption-returns/'
+    | '/_authenticated/inventory/consumptions/'
+    | '/_authenticated/inventory/invoices/'
+    | '/_authenticated/inventory/purchase-invoices/'
+    | '/_authenticated/inventory/reports/'
+    | '/_authenticated/inventory/requisitions/'
+    | '/_authenticated/inventory/transfers/'
+    | '/_authenticated/lab/masters/'
+    | '/_authenticated/purchases/grns/'
+    | '/_authenticated/purchases/purchase-orders/'
     | '/_authenticated/accounts/reports/edit/$id'
+    | '/_authenticated/purchases/grns/$grnId_/edit'
+    | '/_authenticated/purchases/purchase-orders/$id_/edit'
+    | '/_authenticated/purchases/purchase-orders/$id_/grn/new'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
+  ChangePasswordRoute: typeof ChangePasswordRoute
   LoginRoute: typeof LoginRoute
   SharedReportTokenRoute: typeof SharedReportTokenRoute
 }
@@ -441,6 +1409,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-password': {
+      id: '/change-password'
+      path: '/change-password'
+      fullPath: '/change-password'
+      preLoaderRoute: typeof ChangePasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -471,12 +1446,96 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCommunicationRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/college': {
+      id: '/_authenticated/college'
+      path: '/college'
+      fullPath: '/college'
+      preLoaderRoute: typeof AuthenticatedCollegeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/': {
+      id: '/_authenticated/magazine/'
+      path: '/magazine'
+      fullPath: '/magazine/'
+      preLoaderRoute: typeof AuthenticatedMagazineIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/lab/': {
+      id: '/_authenticated/lab/'
+      path: '/lab'
+      fullPath: '/lab/'
+      preLoaderRoute: typeof AuthenticatedLabIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/': {
+      id: '/_authenticated/front-office/'
+      path: '/front-office'
+      fullPath: '/front-office/'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/': {
+      id: '/_authenticated/college/'
+      path: '/'
+      fullPath: '/college/'
+      preLoaderRoute: typeof AuthenticatedCollegeIndexRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/capital/': {
+      id: '/_authenticated/capital/'
+      path: '/capital'
+      fullPath: '/capital/'
+      preLoaderRoute: typeof AuthenticatedCapitalIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/shared/report/$token': {
       id: '/shared/report/$token'
       path: '/shared/report/$token'
       fullPath: '/shared/report/$token'
       preLoaderRoute: typeof SharedReportTokenRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/purchases/vendors': {
+      id: '/_authenticated/purchases/vendors'
+      path: '/purchases/vendors'
+      fullPath: '/purchases/vendors'
+      preLoaderRoute: typeof AuthenticatedPurchasesVendorsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/unit-types': {
+      id: '/_authenticated/purchases/unit-types'
+      path: '/purchases/unit-types'
+      fullPath: '/purchases/unit-types'
+      preLoaderRoute: typeof AuthenticatedPurchasesUnitTypesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/purchase-orders': {
+      id: '/_authenticated/purchases/purchase-orders'
+      path: '/purchases/purchase-orders'
+      fullPath: '/purchases/purchase-orders'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/items': {
+      id: '/_authenticated/purchases/items'
+      path: '/purchases/items'
+      fullPath: '/purchases/items'
+      preLoaderRoute: typeof AuthenticatedPurchasesItemsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/item-types': {
+      id: '/_authenticated/purchases/item-types'
+      path: '/purchases/item-types'
+      fullPath: '/purchases/item-types'
+      preLoaderRoute: typeof AuthenticatedPurchasesItemTypesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/bills': {
+      id: '/_authenticated/purchases/bills'
+      path: '/purchases/bills'
+      fullPath: '/purchases/bills'
+      preLoaderRoute: typeof AuthenticatedPurchasesBillsRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/masters/shifts': {
       id: '/_authenticated/masters/shifts'
@@ -499,6 +1558,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMastersRolesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/masters/nursing-supers': {
+      id: '/_authenticated/masters/nursing-supers'
+      path: '/masters/nursing-supers'
+      fullPath: '/masters/nursing-supers'
+      preLoaderRoute: typeof AuthenticatedMastersNursingSupersRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/masters/management-approvers': {
+      id: '/_authenticated/masters/management-approvers'
+      path: '/masters/management-approvers'
+      fullPath: '/masters/management-approvers'
+      preLoaderRoute: typeof AuthenticatedMastersManagementApproversRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/masters/leave-types': {
       id: '/_authenticated/masters/leave-types'
       path: '/masters/leave-types'
@@ -518,6 +1591,55 @@ declare module '@tanstack/react-router' {
       path: '/masters/banks'
       fullPath: '/masters/banks'
       preLoaderRoute: typeof AuthenticatedMastersBanksRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/settings': {
+      id: '/_authenticated/magazine/settings'
+      path: '/magazine/settings'
+      fullPath: '/magazine/settings'
+      preLoaderRoute: typeof AuthenticatedMagazineSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/editors': {
+      id: '/_authenticated/magazine/editors'
+      path: '/magazine/editors'
+      fullPath: '/magazine/editors'
+      preLoaderRoute: typeof AuthenticatedMagazineEditorsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/magazine/$id': {
+      id: '/_authenticated/magazine/$id'
+      path: '/magazine/$id'
+      fullPath: '/magazine/$id'
+      preLoaderRoute: typeof AuthenticatedMagazineIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/stores': {
+      id: '/_authenticated/inventory/stores'
+      path: '/inventory/stores'
+      fullPath: '/inventory/stores'
+      preLoaderRoute: typeof AuthenticatedInventoryStoresRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/stock': {
+      id: '/_authenticated/inventory/stock'
+      path: '/inventory/stock'
+      fullPath: '/inventory/stock'
+      preLoaderRoute: typeof AuthenticatedInventoryStockRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/pos': {
+      id: '/_authenticated/inventory/pos'
+      path: '/inventory/pos'
+      fullPath: '/inventory/pos'
+      preLoaderRoute: typeof AuthenticatedInventoryPosRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/ledger': {
+      id: '/_authenticated/inventory/ledger'
+      path: '/inventory/ledger'
+      fullPath: '/inventory/ledger'
+      preLoaderRoute: typeof AuthenticatedInventoryLedgerRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/hr/view-staff': {
@@ -562,6 +1684,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrPayrollRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/hr/off-day-requests': {
+      id: '/_authenticated/hr/off-day-requests'
+      path: '/hr/off-day-requests'
+      fullPath: '/hr/off-day-requests'
+      preLoaderRoute: typeof AuthenticatedHrOffDayRequestsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/hr/leaves': {
       id: '/_authenticated/hr/leaves'
       path: '/hr/leaves'
@@ -583,11 +1712,144 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrAddStaffRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/front-office/razorpay-reconciliation': {
+      id: '/_authenticated/front-office/razorpay-reconciliation'
+      path: '/front-office/razorpay-reconciliation'
+      fullPath: '/front-office/razorpay-reconciliation'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/patients': {
+      id: '/_authenticated/front-office/patients'
+      path: '/front-office/patients'
+      fullPath: '/front-office/patients'
+      preLoaderRoute: typeof AuthenticatedFrontOfficePatientsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/new': {
+      id: '/_authenticated/front-office/new'
+      path: '/front-office/new'
+      fullPath: '/front-office/new'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/subjects': {
+      id: '/_authenticated/college/subjects'
+      path: '/subjects'
+      fullPath: '/college/subjects'
+      preLoaderRoute: typeof AuthenticatedCollegeSubjectsRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/students': {
+      id: '/_authenticated/college/students'
+      path: '/students'
+      fullPath: '/college/students'
+      preLoaderRoute: typeof AuthenticatedCollegeStudentsRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/referrers': {
+      id: '/_authenticated/college/referrers'
+      path: '/referrers'
+      fullPath: '/college/referrers'
+      preLoaderRoute: typeof AuthenticatedCollegeReferrersRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/general-receipts': {
+      id: '/_authenticated/college/general-receipts'
+      path: '/general-receipts'
+      fullPath: '/college/general-receipts'
+      preLoaderRoute: typeof AuthenticatedCollegeGeneralReceiptsRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/fees': {
+      id: '/_authenticated/college/fees'
+      path: '/fees'
+      fullPath: '/college/fees'
+      preLoaderRoute: typeof AuthenticatedCollegeFeesRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/fee-structures': {
+      id: '/_authenticated/college/fee-structures'
+      path: '/fee-structures'
+      fullPath: '/college/fee-structures'
+      preLoaderRoute: typeof AuthenticatedCollegeFeeStructuresRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/fee-dues': {
+      id: '/_authenticated/college/fee-dues'
+      path: '/fee-dues'
+      fullPath: '/college/fee-dues'
+      preLoaderRoute: typeof AuthenticatedCollegeFeeDuesRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/courses': {
+      id: '/_authenticated/college/courses'
+      path: '/courses'
+      fullPath: '/college/courses'
+      preLoaderRoute: typeof AuthenticatedCollegeCoursesRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/attendance': {
+      id: '/_authenticated/college/attendance'
+      path: '/attendance'
+      fullPath: '/college/attendance'
+      preLoaderRoute: typeof AuthenticatedCollegeAttendanceRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/admissions': {
+      id: '/_authenticated/college/admissions'
+      path: '/admissions'
+      fullPath: '/college/admissions'
+      preLoaderRoute: typeof AuthenticatedCollegeAdmissionsRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/academic-schedules': {
+      id: '/_authenticated/college/academic-schedules'
+      path: '/academic-schedules'
+      fullPath: '/college/academic-schedules'
+      preLoaderRoute: typeof AuthenticatedCollegeAcademicSchedulesRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
     '/_authenticated/clinical/immunization': {
       id: '/_authenticated/clinical/immunization'
       path: '/clinical/immunization'
       fullPath: '/clinical/immunization'
       preLoaderRoute: typeof AuthenticatedClinicalImmunizationRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/repayments': {
+      id: '/_authenticated/capital/repayments'
+      path: '/capital/repayments'
+      fullPath: '/capital/repayments'
+      preLoaderRoute: typeof AuthenticatedCapitalRepaymentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/facility': {
+      id: '/_authenticated/capital/facility'
+      path: '/capital/facility'
+      fullPath: '/capital/facility'
+      preLoaderRoute: typeof AuthenticatedCapitalFacilityRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/facilities': {
+      id: '/_authenticated/capital/facilities'
+      path: '/capital/facilities'
+      fullPath: '/capital/facilities'
+      preLoaderRoute: typeof AuthenticatedCapitalFacilitiesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/daily-collections': {
+      id: '/_authenticated/capital/daily-collections'
+      path: '/capital/daily-collections'
+      fullPath: '/capital/daily-collections'
+      preLoaderRoute: typeof AuthenticatedCapitalDailyCollectionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/capital/cash-flow': {
+      id: '/_authenticated/capital/cash-flow'
+      path: '/capital/cash-flow'
+      fullPath: '/capital/cash-flow'
+      preLoaderRoute: typeof AuthenticatedCapitalCashFlowRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/users': {
@@ -602,6 +1864,13 @@ declare module '@tanstack/react-router' {
       path: '/admin/payroll'
       fullPath: '/admin/payroll'
       preLoaderRoute: typeof AuthenticatedAdminPayrollRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/admin/patients': {
+      id: '/_authenticated/admin/patients'
+      path: '/admin/patients'
+      fullPath: '/admin/patients'
+      preLoaderRoute: typeof AuthenticatedAdminPatientsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/admin/localization': {
@@ -625,6 +1894,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsServiceChargesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/accounts/monthly-report': {
+      id: '/_authenticated/accounts/monthly-report'
+      path: '/accounts/monthly-report'
+      fullPath: '/accounts/monthly-report'
+      preLoaderRoute: typeof AuthenticatedAccountsMonthlyReportRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/accounts/consultant-charges': {
       id: '/_authenticated/accounts/consultant-charges'
       path: '/accounts/consultant-charges'
@@ -632,12 +1908,208 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsConsultantChargesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/accounts/bank-expenses': {
+      id: '/_authenticated/accounts/bank-expenses'
+      path: '/accounts/bank-expenses'
+      fullPath: '/accounts/bank-expenses'
+      preLoaderRoute: typeof AuthenticatedAccountsBankExpensesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/accounts/bank-accounts': {
+      id: '/_authenticated/accounts/bank-accounts'
+      path: '/accounts/bank-accounts'
+      fullPath: '/accounts/bank-accounts'
+      preLoaderRoute: typeof AuthenticatedAccountsBankAccountsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/purchase-orders/': {
+      id: '/_authenticated/purchases/purchase-orders/'
+      path: '/'
+      fullPath: '/purchases/purchase-orders/'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIndexRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/grns/': {
+      id: '/_authenticated/purchases/grns/'
+      path: '/purchases/grns'
+      fullPath: '/purchases/grns/'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/lab/masters/': {
+      id: '/_authenticated/lab/masters/'
+      path: '/lab/masters'
+      fullPath: '/lab/masters/'
+      preLoaderRoute: typeof AuthenticatedLabMastersIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/transfers/': {
+      id: '/_authenticated/inventory/transfers/'
+      path: '/inventory/transfers'
+      fullPath: '/inventory/transfers/'
+      preLoaderRoute: typeof AuthenticatedInventoryTransfersIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/requisitions/': {
+      id: '/_authenticated/inventory/requisitions/'
+      path: '/inventory/requisitions'
+      fullPath: '/inventory/requisitions/'
+      preLoaderRoute: typeof AuthenticatedInventoryRequisitionsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/reports/': {
+      id: '/_authenticated/inventory/reports/'
+      path: '/inventory/reports'
+      fullPath: '/inventory/reports/'
+      preLoaderRoute: typeof AuthenticatedInventoryReportsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/purchase-invoices/': {
+      id: '/_authenticated/inventory/purchase-invoices/'
+      path: '/inventory/purchase-invoices'
+      fullPath: '/inventory/purchase-invoices/'
+      preLoaderRoute: typeof AuthenticatedInventoryPurchaseInvoicesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/invoices/': {
+      id: '/_authenticated/inventory/invoices/'
+      path: '/inventory/invoices'
+      fullPath: '/inventory/invoices/'
+      preLoaderRoute: typeof AuthenticatedInventoryInvoicesIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/consumptions/': {
+      id: '/_authenticated/inventory/consumptions/'
+      path: '/inventory/consumptions'
+      fullPath: '/inventory/consumptions/'
+      preLoaderRoute: typeof AuthenticatedInventoryConsumptionsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/consumption-returns/': {
+      id: '/_authenticated/inventory/consumption-returns/'
+      path: '/inventory/consumption-returns'
+      fullPath: '/inventory/consumption-returns/'
+      preLoaderRoute: typeof AuthenticatedInventoryConsumptionReturnsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/adjustments/': {
+      id: '/_authenticated/inventory/adjustments/'
+      path: '/inventory/adjustments'
+      fullPath: '/inventory/adjustments/'
+      preLoaderRoute: typeof AuthenticatedInventoryAdjustmentsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/reports/': {
+      id: '/_authenticated/college/reports/'
+      path: '/reports'
+      fullPath: '/college/reports/'
+      preLoaderRoute: typeof AuthenticatedCollegeReportsIndexRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
     '/_authenticated/accounts/reports/': {
       id: '/_authenticated/accounts/reports/'
       path: '/accounts/reports'
       fullPath: '/accounts/reports/'
       preLoaderRoute: typeof AuthenticatedAccountsReportsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/purchase-orders/new': {
+      id: '/_authenticated/purchases/purchase-orders/new'
+      path: '/new'
+      fullPath: '/purchases/purchase-orders/new'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersNewRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/purchase-orders/$id': {
+      id: '/_authenticated/purchases/purchase-orders/$id'
+      path: '/$id'
+      fullPath: '/purchases/purchase-orders/$id'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/grns/new': {
+      id: '/_authenticated/purchases/grns/new'
+      path: '/purchases/grns/new'
+      fullPath: '/purchases/grns/new'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/purchases/grns/$grnId': {
+      id: '/_authenticated/purchases/grns/$grnId'
+      path: '/purchases/grns/$grnId'
+      fullPath: '/purchases/grns/$grnId'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/lab/reports/$orderId': {
+      id: '/_authenticated/lab/reports/$orderId'
+      path: '/lab/reports/$orderId'
+      fullPath: '/lab/reports/$orderId'
+      preLoaderRoute: typeof AuthenticatedLabReportsOrderIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/lab/orders/new': {
+      id: '/_authenticated/lab/orders/new'
+      path: '/lab/orders/new'
+      fullPath: '/lab/orders/new'
+      preLoaderRoute: typeof AuthenticatedLabOrdersNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/lab/orders/$orderId': {
+      id: '/_authenticated/lab/orders/$orderId'
+      path: '/lab/orders/$orderId'
+      fullPath: '/lab/orders/$orderId'
+      preLoaderRoute: typeof AuthenticatedLabOrdersOrderIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/purchase-invoices/new': {
+      id: '/_authenticated/inventory/purchase-invoices/new'
+      path: '/inventory/purchase-invoices/new'
+      fullPath: '/inventory/purchase-invoices/new'
+      preLoaderRoute: typeof AuthenticatedInventoryPurchaseInvoicesNewRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/inventory/purchase-invoices/$id': {
+      id: '/_authenticated/inventory/purchase-invoices/$id'
+      path: '/inventory/purchase-invoices/$id'
+      fullPath: '/inventory/purchase-invoices/$id'
+      preLoaderRoute: typeof AuthenticatedInventoryPurchaseInvoicesIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/college/student/$id': {
+      id: '/_authenticated/college/student/$id'
+      path: '/student/$id'
+      fullPath: '/college/student/$id'
+      preLoaderRoute: typeof AuthenticatedCollegeStudentIdRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/reports/due-student-wise': {
+      id: '/_authenticated/college/reports/due-student-wise'
+      path: '/reports/due-student-wise'
+      fullPath: '/college/reports/due-student-wise'
+      preLoaderRoute: typeof AuthenticatedCollegeReportsDueStudentWiseRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/reports/due-monthly-wise': {
+      id: '/_authenticated/college/reports/due-monthly-wise'
+      path: '/reports/due-monthly-wise'
+      fullPath: '/college/reports/due-monthly-wise'
+      preLoaderRoute: typeof AuthenticatedCollegeReportsDueMonthlyWiseRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/college/reports/daily-income-expenses': {
+      id: '/_authenticated/college/reports/daily-income-expenses'
+      path: '/reports/daily-income-expenses'
+      fullPath: '/college/reports/daily-income-expenses'
+      preLoaderRoute: typeof AuthenticatedCollegeReportsDailyIncomeExpensesRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
+    '/_authenticated/capital/facility/$id': {
+      id: '/_authenticated/capital/facility/$id'
+      path: '/$id'
+      fullPath: '/capital/facility/$id'
+      preLoaderRoute: typeof AuthenticatedCapitalFacilityIdRouteImport
+      parentRoute: typeof AuthenticatedCapitalFacilityRoute
     }
     '/_authenticated/accounts/reports/new': {
       id: '/_authenticated/accounts/reports/new'
@@ -653,6 +2125,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsReportsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/purchases/purchase-orders/$id_/edit': {
+      id: '/_authenticated/purchases/purchase-orders/$id_/edit'
+      path: '/$id/edit'
+      fullPath: '/purchases/purchase-orders/$id/edit'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
+    '/_authenticated/purchases/grns/$grnId_/edit': {
+      id: '/_authenticated/purchases/grns/$grnId_/edit'
+      path: '/purchases/grns/$grnId/edit'
+      fullPath: '/purchases/grns/$grnId/edit'
+      preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdEditRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/accounts/reports/edit/$id': {
       id: '/_authenticated/accounts/reports/edit/$id'
       path: '/accounts/reports/edit/$id'
@@ -660,77 +2146,296 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountsReportsEditIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/purchases/purchase-orders/$id_/grn/new': {
+      id: '/_authenticated/purchases/purchase-orders/$id_/grn/new'
+      path: '/$id/grn/new'
+      fullPath: '/purchases/purchase-orders/$id/grn/new'
+      preLoaderRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRouteImport
+      parentRoute: typeof AuthenticatedPurchasesPurchaseOrdersRoute
+    }
   }
 }
 
+interface AuthenticatedCollegeRouteChildren {
+  AuthenticatedCollegeAcademicSchedulesRoute: typeof AuthenticatedCollegeAcademicSchedulesRoute
+  AuthenticatedCollegeAdmissionsRoute: typeof AuthenticatedCollegeAdmissionsRoute
+  AuthenticatedCollegeAttendanceRoute: typeof AuthenticatedCollegeAttendanceRoute
+  AuthenticatedCollegeCoursesRoute: typeof AuthenticatedCollegeCoursesRoute
+  AuthenticatedCollegeFeeDuesRoute: typeof AuthenticatedCollegeFeeDuesRoute
+  AuthenticatedCollegeFeeStructuresRoute: typeof AuthenticatedCollegeFeeStructuresRoute
+  AuthenticatedCollegeFeesRoute: typeof AuthenticatedCollegeFeesRoute
+  AuthenticatedCollegeGeneralReceiptsRoute: typeof AuthenticatedCollegeGeneralReceiptsRoute
+  AuthenticatedCollegeReferrersRoute: typeof AuthenticatedCollegeReferrersRoute
+  AuthenticatedCollegeStudentsRoute: typeof AuthenticatedCollegeStudentsRoute
+  AuthenticatedCollegeSubjectsRoute: typeof AuthenticatedCollegeSubjectsRoute
+  AuthenticatedCollegeIndexRoute: typeof AuthenticatedCollegeIndexRoute
+  AuthenticatedCollegeReportsDailyIncomeExpensesRoute: typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
+  AuthenticatedCollegeReportsDueMonthlyWiseRoute: typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
+  AuthenticatedCollegeReportsDueStudentWiseRoute: typeof AuthenticatedCollegeReportsDueStudentWiseRoute
+  AuthenticatedCollegeStudentIdRoute: typeof AuthenticatedCollegeStudentIdRoute
+  AuthenticatedCollegeReportsIndexRoute: typeof AuthenticatedCollegeReportsIndexRoute
+}
+
+const AuthenticatedCollegeRouteChildren: AuthenticatedCollegeRouteChildren = {
+  AuthenticatedCollegeAcademicSchedulesRoute:
+    AuthenticatedCollegeAcademicSchedulesRoute,
+  AuthenticatedCollegeAdmissionsRoute: AuthenticatedCollegeAdmissionsRoute,
+  AuthenticatedCollegeAttendanceRoute: AuthenticatedCollegeAttendanceRoute,
+  AuthenticatedCollegeCoursesRoute: AuthenticatedCollegeCoursesRoute,
+  AuthenticatedCollegeFeeDuesRoute: AuthenticatedCollegeFeeDuesRoute,
+  AuthenticatedCollegeFeeStructuresRoute:
+    AuthenticatedCollegeFeeStructuresRoute,
+  AuthenticatedCollegeFeesRoute: AuthenticatedCollegeFeesRoute,
+  AuthenticatedCollegeGeneralReceiptsRoute:
+    AuthenticatedCollegeGeneralReceiptsRoute,
+  AuthenticatedCollegeReferrersRoute: AuthenticatedCollegeReferrersRoute,
+  AuthenticatedCollegeStudentsRoute: AuthenticatedCollegeStudentsRoute,
+  AuthenticatedCollegeSubjectsRoute: AuthenticatedCollegeSubjectsRoute,
+  AuthenticatedCollegeIndexRoute: AuthenticatedCollegeIndexRoute,
+  AuthenticatedCollegeReportsDailyIncomeExpensesRoute:
+    AuthenticatedCollegeReportsDailyIncomeExpensesRoute,
+  AuthenticatedCollegeReportsDueMonthlyWiseRoute:
+    AuthenticatedCollegeReportsDueMonthlyWiseRoute,
+  AuthenticatedCollegeReportsDueStudentWiseRoute:
+    AuthenticatedCollegeReportsDueStudentWiseRoute,
+  AuthenticatedCollegeStudentIdRoute: AuthenticatedCollegeStudentIdRoute,
+  AuthenticatedCollegeReportsIndexRoute: AuthenticatedCollegeReportsIndexRoute,
+}
+
+const AuthenticatedCollegeRouteWithChildren =
+  AuthenticatedCollegeRoute._addFileChildren(AuthenticatedCollegeRouteChildren)
+
+interface AuthenticatedCapitalFacilityRouteChildren {
+  AuthenticatedCapitalFacilityIdRoute: typeof AuthenticatedCapitalFacilityIdRoute
+}
+
+const AuthenticatedCapitalFacilityRouteChildren: AuthenticatedCapitalFacilityRouteChildren =
+  {
+    AuthenticatedCapitalFacilityIdRoute: AuthenticatedCapitalFacilityIdRoute,
+  }
+
+const AuthenticatedCapitalFacilityRouteWithChildren =
+  AuthenticatedCapitalFacilityRoute._addFileChildren(
+    AuthenticatedCapitalFacilityRouteChildren,
+  )
+
+interface AuthenticatedPurchasesPurchaseOrdersRouteChildren {
+  AuthenticatedPurchasesPurchaseOrdersIdRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
+  AuthenticatedPurchasesPurchaseOrdersNewRoute: typeof AuthenticatedPurchasesPurchaseOrdersNewRoute
+  AuthenticatedPurchasesPurchaseOrdersIndexRoute: typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
+  AuthenticatedPurchasesPurchaseOrdersIdEditRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdEditRoute
+  AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute: typeof AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute
+}
+
+const AuthenticatedPurchasesPurchaseOrdersRouteChildren: AuthenticatedPurchasesPurchaseOrdersRouteChildren =
+  {
+    AuthenticatedPurchasesPurchaseOrdersIdRoute:
+      AuthenticatedPurchasesPurchaseOrdersIdRoute,
+    AuthenticatedPurchasesPurchaseOrdersNewRoute:
+      AuthenticatedPurchasesPurchaseOrdersNewRoute,
+    AuthenticatedPurchasesPurchaseOrdersIndexRoute:
+      AuthenticatedPurchasesPurchaseOrdersIndexRoute,
+    AuthenticatedPurchasesPurchaseOrdersIdEditRoute:
+      AuthenticatedPurchasesPurchaseOrdersIdEditRoute,
+    AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute:
+      AuthenticatedPurchasesPurchaseOrdersIdGrnNewRoute,
+  }
+
+const AuthenticatedPurchasesPurchaseOrdersRouteWithChildren =
+  AuthenticatedPurchasesPurchaseOrdersRoute._addFileChildren(
+    AuthenticatedPurchasesPurchaseOrdersRouteChildren,
+  )
+
 interface AuthenticatedRouteChildren {
+  AuthenticatedCollegeRoute: typeof AuthenticatedCollegeRouteWithChildren
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedAccountsBankAccountsRoute: typeof AuthenticatedAccountsBankAccountsRoute
+  AuthenticatedAccountsBankExpensesRoute: typeof AuthenticatedAccountsBankExpensesRoute
   AuthenticatedAccountsConsultantChargesRoute: typeof AuthenticatedAccountsConsultantChargesRoute
+  AuthenticatedAccountsMonthlyReportRoute: typeof AuthenticatedAccountsMonthlyReportRoute
   AuthenticatedAccountsServiceChargesRoute: typeof AuthenticatedAccountsServiceChargesRoute
   AuthenticatedAdminHospitalRoute: typeof AuthenticatedAdminHospitalRoute
   AuthenticatedAdminLocalizationRoute: typeof AuthenticatedAdminLocalizationRoute
+  AuthenticatedAdminPatientsRoute: typeof AuthenticatedAdminPatientsRoute
   AuthenticatedAdminPayrollRoute: typeof AuthenticatedAdminPayrollRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedCapitalCashFlowRoute: typeof AuthenticatedCapitalCashFlowRoute
+  AuthenticatedCapitalDailyCollectionsRoute: typeof AuthenticatedCapitalDailyCollectionsRoute
+  AuthenticatedCapitalFacilitiesRoute: typeof AuthenticatedCapitalFacilitiesRoute
+  AuthenticatedCapitalFacilityRoute: typeof AuthenticatedCapitalFacilityRouteWithChildren
+  AuthenticatedCapitalRepaymentsRoute: typeof AuthenticatedCapitalRepaymentsRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
+  AuthenticatedFrontOfficeNewRoute: typeof AuthenticatedFrontOfficeNewRoute
+  AuthenticatedFrontOfficePatientsRoute: typeof AuthenticatedFrontOfficePatientsRoute
+  AuthenticatedFrontOfficeRazorpayReconciliationRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
   AuthenticatedHrAttendanceRoute: typeof AuthenticatedHrAttendanceRoute
   AuthenticatedHrLeavesRoute: typeof AuthenticatedHrLeavesRoute
+  AuthenticatedHrOffDayRequestsRoute: typeof AuthenticatedHrOffDayRequestsRoute
   AuthenticatedHrPayrollRoute: typeof AuthenticatedHrPayrollRoute
   AuthenticatedHrReviewLeaveRoute: typeof AuthenticatedHrReviewLeaveRoute
   AuthenticatedHrRosterRoute: typeof AuthenticatedHrRosterRoute
   AuthenticatedHrStaffListRoute: typeof AuthenticatedHrStaffListRoute
   AuthenticatedHrViewPayslipRoute: typeof AuthenticatedHrViewPayslipRoute
   AuthenticatedHrViewStaffRoute: typeof AuthenticatedHrViewStaffRoute
+  AuthenticatedInventoryLedgerRoute: typeof AuthenticatedInventoryLedgerRoute
+  AuthenticatedInventoryPosRoute: typeof AuthenticatedInventoryPosRoute
+  AuthenticatedInventoryStockRoute: typeof AuthenticatedInventoryStockRoute
+  AuthenticatedInventoryStoresRoute: typeof AuthenticatedInventoryStoresRoute
+  AuthenticatedMagazineIdRoute: typeof AuthenticatedMagazineIdRoute
+  AuthenticatedMagazineEditorsRoute: typeof AuthenticatedMagazineEditorsRoute
+  AuthenticatedMagazineSettingsRoute: typeof AuthenticatedMagazineSettingsRoute
   AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
+  AuthenticatedMastersManagementApproversRoute: typeof AuthenticatedMastersManagementApproversRoute
+  AuthenticatedMastersNursingSupersRoute: typeof AuthenticatedMastersNursingSupersRoute
   AuthenticatedMastersRolesRoute: typeof AuthenticatedMastersRolesRoute
   AuthenticatedMastersSalaryTemplatesRoute: typeof AuthenticatedMastersSalaryTemplatesRoute
   AuthenticatedMastersShiftsRoute: typeof AuthenticatedMastersShiftsRoute
+  AuthenticatedPurchasesBillsRoute: typeof AuthenticatedPurchasesBillsRoute
+  AuthenticatedPurchasesItemTypesRoute: typeof AuthenticatedPurchasesItemTypesRoute
+  AuthenticatedPurchasesItemsRoute: typeof AuthenticatedPurchasesItemsRoute
+  AuthenticatedPurchasesPurchaseOrdersRoute: typeof AuthenticatedPurchasesPurchaseOrdersRouteWithChildren
+  AuthenticatedPurchasesUnitTypesRoute: typeof AuthenticatedPurchasesUnitTypesRoute
+  AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
+  AuthenticatedCapitalIndexRoute: typeof AuthenticatedCapitalIndexRoute
+  AuthenticatedFrontOfficeIndexRoute: typeof AuthenticatedFrontOfficeIndexRoute
+  AuthenticatedLabIndexRoute: typeof AuthenticatedLabIndexRoute
+  AuthenticatedMagazineIndexRoute: typeof AuthenticatedMagazineIndexRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
+  AuthenticatedInventoryPurchaseInvoicesIdRoute: typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
+  AuthenticatedInventoryPurchaseInvoicesNewRoute: typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
+  AuthenticatedLabOrdersOrderIdRoute: typeof AuthenticatedLabOrdersOrderIdRoute
+  AuthenticatedLabOrdersNewRoute: typeof AuthenticatedLabOrdersNewRoute
+  AuthenticatedLabReportsOrderIdRoute: typeof AuthenticatedLabReportsOrderIdRoute
+  AuthenticatedPurchasesGrnsGrnIdRoute: typeof AuthenticatedPurchasesGrnsGrnIdRoute
+  AuthenticatedPurchasesGrnsNewRoute: typeof AuthenticatedPurchasesGrnsNewRoute
   AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
+  AuthenticatedInventoryAdjustmentsIndexRoute: typeof AuthenticatedInventoryAdjustmentsIndexRoute
+  AuthenticatedInventoryConsumptionReturnsIndexRoute: typeof AuthenticatedInventoryConsumptionReturnsIndexRoute
+  AuthenticatedInventoryConsumptionsIndexRoute: typeof AuthenticatedInventoryConsumptionsIndexRoute
+  AuthenticatedInventoryInvoicesIndexRoute: typeof AuthenticatedInventoryInvoicesIndexRoute
+  AuthenticatedInventoryPurchaseInvoicesIndexRoute: typeof AuthenticatedInventoryPurchaseInvoicesIndexRoute
+  AuthenticatedInventoryReportsIndexRoute: typeof AuthenticatedInventoryReportsIndexRoute
+  AuthenticatedInventoryRequisitionsIndexRoute: typeof AuthenticatedInventoryRequisitionsIndexRoute
+  AuthenticatedInventoryTransfersIndexRoute: typeof AuthenticatedInventoryTransfersIndexRoute
+  AuthenticatedLabMastersIndexRoute: typeof AuthenticatedLabMastersIndexRoute
+  AuthenticatedPurchasesGrnsIndexRoute: typeof AuthenticatedPurchasesGrnsIndexRoute
   AuthenticatedAccountsReportsEditIdRoute: typeof AuthenticatedAccountsReportsEditIdRoute
+  AuthenticatedPurchasesGrnsGrnIdEditRoute: typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedCollegeRoute: AuthenticatedCollegeRouteWithChildren,
   AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedAccountsBankAccountsRoute:
+    AuthenticatedAccountsBankAccountsRoute,
+  AuthenticatedAccountsBankExpensesRoute:
+    AuthenticatedAccountsBankExpensesRoute,
   AuthenticatedAccountsConsultantChargesRoute:
     AuthenticatedAccountsConsultantChargesRoute,
+  AuthenticatedAccountsMonthlyReportRoute:
+    AuthenticatedAccountsMonthlyReportRoute,
   AuthenticatedAccountsServiceChargesRoute:
     AuthenticatedAccountsServiceChargesRoute,
   AuthenticatedAdminHospitalRoute: AuthenticatedAdminHospitalRoute,
   AuthenticatedAdminLocalizationRoute: AuthenticatedAdminLocalizationRoute,
+  AuthenticatedAdminPatientsRoute: AuthenticatedAdminPatientsRoute,
   AuthenticatedAdminPayrollRoute: AuthenticatedAdminPayrollRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedCapitalCashFlowRoute: AuthenticatedCapitalCashFlowRoute,
+  AuthenticatedCapitalDailyCollectionsRoute:
+    AuthenticatedCapitalDailyCollectionsRoute,
+  AuthenticatedCapitalFacilitiesRoute: AuthenticatedCapitalFacilitiesRoute,
+  AuthenticatedCapitalFacilityRoute:
+    AuthenticatedCapitalFacilityRouteWithChildren,
+  AuthenticatedCapitalRepaymentsRoute: AuthenticatedCapitalRepaymentsRoute,
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
+  AuthenticatedFrontOfficeNewRoute: AuthenticatedFrontOfficeNewRoute,
+  AuthenticatedFrontOfficePatientsRoute: AuthenticatedFrontOfficePatientsRoute,
+  AuthenticatedFrontOfficeRazorpayReconciliationRoute:
+    AuthenticatedFrontOfficeRazorpayReconciliationRoute,
   AuthenticatedHrAddStaffRoute: AuthenticatedHrAddStaffRoute,
   AuthenticatedHrAttendanceRoute: AuthenticatedHrAttendanceRoute,
   AuthenticatedHrLeavesRoute: AuthenticatedHrLeavesRoute,
+  AuthenticatedHrOffDayRequestsRoute: AuthenticatedHrOffDayRequestsRoute,
   AuthenticatedHrPayrollRoute: AuthenticatedHrPayrollRoute,
   AuthenticatedHrReviewLeaveRoute: AuthenticatedHrReviewLeaveRoute,
   AuthenticatedHrRosterRoute: AuthenticatedHrRosterRoute,
   AuthenticatedHrStaffListRoute: AuthenticatedHrStaffListRoute,
   AuthenticatedHrViewPayslipRoute: AuthenticatedHrViewPayslipRoute,
   AuthenticatedHrViewStaffRoute: AuthenticatedHrViewStaffRoute,
+  AuthenticatedInventoryLedgerRoute: AuthenticatedInventoryLedgerRoute,
+  AuthenticatedInventoryPosRoute: AuthenticatedInventoryPosRoute,
+  AuthenticatedInventoryStockRoute: AuthenticatedInventoryStockRoute,
+  AuthenticatedInventoryStoresRoute: AuthenticatedInventoryStoresRoute,
+  AuthenticatedMagazineIdRoute: AuthenticatedMagazineIdRoute,
+  AuthenticatedMagazineEditorsRoute: AuthenticatedMagazineEditorsRoute,
+  AuthenticatedMagazineSettingsRoute: AuthenticatedMagazineSettingsRoute,
   AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
+  AuthenticatedMastersManagementApproversRoute:
+    AuthenticatedMastersManagementApproversRoute,
+  AuthenticatedMastersNursingSupersRoute:
+    AuthenticatedMastersNursingSupersRoute,
   AuthenticatedMastersRolesRoute: AuthenticatedMastersRolesRoute,
   AuthenticatedMastersSalaryTemplatesRoute:
     AuthenticatedMastersSalaryTemplatesRoute,
   AuthenticatedMastersShiftsRoute: AuthenticatedMastersShiftsRoute,
+  AuthenticatedPurchasesBillsRoute: AuthenticatedPurchasesBillsRoute,
+  AuthenticatedPurchasesItemTypesRoute: AuthenticatedPurchasesItemTypesRoute,
+  AuthenticatedPurchasesItemsRoute: AuthenticatedPurchasesItemsRoute,
+  AuthenticatedPurchasesPurchaseOrdersRoute:
+    AuthenticatedPurchasesPurchaseOrdersRouteWithChildren,
+  AuthenticatedPurchasesUnitTypesRoute: AuthenticatedPurchasesUnitTypesRoute,
+  AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
+  AuthenticatedCapitalIndexRoute: AuthenticatedCapitalIndexRoute,
+  AuthenticatedFrontOfficeIndexRoute: AuthenticatedFrontOfficeIndexRoute,
+  AuthenticatedLabIndexRoute: AuthenticatedLabIndexRoute,
+  AuthenticatedMagazineIndexRoute: AuthenticatedMagazineIndexRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
+  AuthenticatedInventoryPurchaseInvoicesIdRoute:
+    AuthenticatedInventoryPurchaseInvoicesIdRoute,
+  AuthenticatedInventoryPurchaseInvoicesNewRoute:
+    AuthenticatedInventoryPurchaseInvoicesNewRoute,
+  AuthenticatedLabOrdersOrderIdRoute: AuthenticatedLabOrdersOrderIdRoute,
+  AuthenticatedLabOrdersNewRoute: AuthenticatedLabOrdersNewRoute,
+  AuthenticatedLabReportsOrderIdRoute: AuthenticatedLabReportsOrderIdRoute,
+  AuthenticatedPurchasesGrnsGrnIdRoute: AuthenticatedPurchasesGrnsGrnIdRoute,
+  AuthenticatedPurchasesGrnsNewRoute: AuthenticatedPurchasesGrnsNewRoute,
   AuthenticatedAccountsReportsIndexRoute:
     AuthenticatedAccountsReportsIndexRoute,
+  AuthenticatedInventoryAdjustmentsIndexRoute:
+    AuthenticatedInventoryAdjustmentsIndexRoute,
+  AuthenticatedInventoryConsumptionReturnsIndexRoute:
+    AuthenticatedInventoryConsumptionReturnsIndexRoute,
+  AuthenticatedInventoryConsumptionsIndexRoute:
+    AuthenticatedInventoryConsumptionsIndexRoute,
+  AuthenticatedInventoryInvoicesIndexRoute:
+    AuthenticatedInventoryInvoicesIndexRoute,
+  AuthenticatedInventoryPurchaseInvoicesIndexRoute:
+    AuthenticatedInventoryPurchaseInvoicesIndexRoute,
+  AuthenticatedInventoryReportsIndexRoute:
+    AuthenticatedInventoryReportsIndexRoute,
+  AuthenticatedInventoryRequisitionsIndexRoute:
+    AuthenticatedInventoryRequisitionsIndexRoute,
+  AuthenticatedInventoryTransfersIndexRoute:
+    AuthenticatedInventoryTransfersIndexRoute,
+  AuthenticatedLabMastersIndexRoute: AuthenticatedLabMastersIndexRoute,
+  AuthenticatedPurchasesGrnsIndexRoute: AuthenticatedPurchasesGrnsIndexRoute,
   AuthenticatedAccountsReportsEditIdRoute:
     AuthenticatedAccountsReportsEditIdRoute,
+  AuthenticatedPurchasesGrnsGrnIdEditRoute:
+    AuthenticatedPurchasesGrnsGrnIdEditRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -739,6 +2444,7 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
+  ChangePasswordRoute: ChangePasswordRoute,
   LoginRoute: LoginRoute,
   SharedReportTokenRoute: SharedReportTokenRoute,
 }

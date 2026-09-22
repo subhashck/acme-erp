@@ -34,7 +34,7 @@ function PayrollStatutoryPage() {
   const [payBasic, setPayBasic] = React.useState(0);
   const [payHra, setPayHra] = React.useState(0);
   const [payConveyance, setPayConveyance] = React.useState(0);
-  const [payMedical, setPayMedical] = React.useState(0);
+  const [paySkill, setPaySkill] = React.useState(0);
   const [paySpecial, setPaySpecial] = React.useState(0);
   const [payrollMessage, setPayrollMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -45,13 +45,13 @@ function PayrollStatutoryPage() {
     setPayBasic(payrollSettings.basicPct);
     setPayHra(payrollSettings.hraPct);
     setPayConveyance(payrollSettings.conveyancePct);
-    setPayMedical(payrollSettings.medicalPct);
+    setPaySkill(payrollSettings.skillAllowancePct ?? 5);
     setPaySpecial(payrollSettings.specialPct);
   }, [payrollSettings]);
 
   const handleSavePayrollSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    const sum = Number(payBasic) + Number(payHra) + Number(payConveyance) + Number(payMedical) + Number(paySpecial);
+    const sum = Number(payBasic) + Number(payHra) + Number(payConveyance) + Number(paySkill) + Number(paySpecial);
     if (sum !== 100) {
       setPayrollMessage({ type: "error", text: `Salary component splits must add up to exactly 100%. Currently they equal ${sum}%.` });
       return;
@@ -63,7 +63,7 @@ function PayrollStatutoryPage() {
       basicPct: Number(payBasic) || 0,
       hraPct: Number(payHra) || 0,
       conveyancePct: Number(payConveyance) || 0,
-      medicalPct: Number(payMedical) || 0,
+      skillAllowancePct: Number(paySkill) || 0,
       specialPct: Number(paySpecial) || 0
     };
     savePayrollSettings(settings);
@@ -126,11 +126,11 @@ function PayrollStatutoryPage() {
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Default Salary Splits (Percentage % of Gross)</h4>
                   <Badge variant="default" className={`py-1 px-2.5 font-bold ${
-                    (Number(payBasic) + Number(payHra) + Number(payConveyance) + Number(payMedical) + Number(paySpecial)) === 100
+                    (Number(payBasic) + Number(payHra) + Number(payConveyance) + Number(paySkill) + Number(paySpecial)) === 100
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900"
                       : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-900 animate-pulse"
                   }`}>
-                    Total: {Number(payBasic) + Number(payHra) + Number(payConveyance) + Number(payMedical) + Number(paySpecial)}% / 100%
+                    Total: {Number(payBasic) + Number(payHra) + Number(payConveyance) + Number(paySkill) + Number(paySpecial)}% / 100%
                   </Badge>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-5">
@@ -159,12 +159,12 @@ function PayrollStatutoryPage() {
                     onChange={(e) => setPayConveyance(Number(e.target.value))}
                   />
                   <Field
-                    label="Medical (%)"
+                    label="Skill Allowance (%)"
                     type="number"
                     min="0"
                     max="100"
-                    value={payMedical}
-                    onChange={(e) => setPayMedical(Number(e.target.value))}
+                    value={paySkill}
+                    onChange={(e) => setPaySkill(Number(e.target.value))}
                   />
                   <Field
                     label="Special (%)"

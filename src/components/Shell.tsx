@@ -1,26 +1,29 @@
-import { Link, Outlet, useRouter, useLocation } from "@tanstack/react-router";
+import { Link, Outlet, useRouter, useLocation, useRouteContext } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
-import { 
-  Activity, 
-  LayoutDashboard, 
-  LogOut, 
-  Search, 
-  Settings, 
-  ShieldCheck, 
-  Users, 
-  ChevronDown, 
-  ChevronRight, 
-  ChevronLeft, 
-  CalendarClock, 
-  CalendarDays, 
-  Clock, 
+import { useQuery } from "@tanstack/react-query";
+import {
+  Activity,
+  LayoutDashboard,
+  LogOut,
+  Search,
+  Settings,
+  ShieldCheck,
+  Users,
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  CalendarClock,
+  CalendarDays,
+  Clock,
   Landmark,
   Receipt,
   Menu,
   X,
   Building,
+  Building2,
   Percent,
   Coins,
+  CreditCard,
   Syringe,
   Bell,
   Check,
@@ -29,12 +32,22 @@ import {
   AlertCircle,
   Info,
   MessageSquare,
-  Trash2
+  Trash2,
+  ShoppingCart,
+  ShoppingBag,
+  Package,
+  Layers,
+  Scale,
+  CalendarOff,
+  FileBarChart,
+  GraduationCap,
+  BookOpen,
+  FlaskConical
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+// import { Input } from "../ui/input";
 import * as React from "react";
 import { cn } from "../utils/cn";
 import { useHospitalSettings } from "../lib/settings";
@@ -42,26 +55,27 @@ import { notificationsStore, notificationsActions } from "../lib/notifications-s
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { chatStore, chatActions } from "../lib/chat-store";
+import { useUserPermissions, PermissionsProvider } from "../lib/permissions";
 
 const getBreadcrumbs = (pathname: string) => {
   const items = [{ label: "Dashboard", to: "/" }];
-  
+
   if (pathname === "/" || pathname === "") {
     return items;
   }
-  
+
   if (pathname === "/settings" || pathname === "/settings/") {
     items.push({ label: "Settings", to: "/settings" });
     return items;
   }
-  
+
   if (pathname === "/hr" || pathname === "/hr/") {
-    items.push({ label: "Employee Details", to: "/hr" });
+    items.push({ label: "Employee Details", to: "/hr/staff-list" });
     return items;
   }
-  
+
   if (pathname.startsWith("/hr/")) {
-    items.push({ label: "HR Management", to: "/hr/" });
+    items.push({ label: "HR Management", to: "/hr/staff-list" });
     const sub = pathname.replace("/hr/", "");
     if (sub === "roster") {
       items.push({ label: "Shift Roster", to: "/hr/roster" });
@@ -79,12 +93,14 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "View Payslip", to: "/hr/view-payslip" });
     } else if (sub === "review-leave") {
       items.push({ label: "Review Leave", to: "/hr/review-leave" });
-    } else if(sub === "staff-list") {
+    } else if (sub === "staff-list") {
       items.push({ label: "Staff List", to: "/hr/staff-list" });
+    } else if (sub === "off-day-requests") {
+      items.push({ label: "Off-Day Requests", to: "/hr/off-day-requests" });
     }
     return items;
   }
-  
+
   if (pathname.startsWith("/masters/")) {
     items.push({ label: "Masters", to: "/masters/roles" });
     const sub = pathname.replace("/masters/", "");
@@ -100,6 +116,68 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Salary Templates", to: "/masters/salary-templates" });
     } else if (sub === "banks") {
       items.push({ label: "Banks", to: "/masters/banks" });
+    } else if (sub === "management-approvers") {
+      items.push({ label: "Management Approvers", to: "/masters/management-approvers" });
+    } else if (sub === "nursing-supers") {
+      items.push({ label: "Nursing Supers", to: "/masters/nursing-supers" });
+    }
+    return items;
+  }
+
+  if (pathname.startsWith("/accounts/")) {
+    items.push({ label: "Accounts", to: "/accounts/service-charges" });
+    const sub = pathname.replace("/accounts/", "");
+    if (sub === "service-charges") {
+      items.push({ label: "Service Charges", to: "/accounts/service-charges" });
+    } else if (sub === "reports" || sub.startsWith("reports/")) {
+      items.push({ label: "Daily Closing Reports", to: "/accounts/reports" });
+    } else if (sub === "monthly-report") {
+      items.push({ label: "Monthly Report", to: "/accounts/monthly-report" });
+    } else if (sub === "bank-expenses") {
+      items.push({ label: "Bank Expenses", to: "/accounts/bank-expenses" });
+    } else if (sub === "bank-accounts") {
+      items.push({ label: "Bank Accounts", to: "/accounts/bank-accounts" });
+    }
+    return items;
+  }
+
+  if (pathname === "/capital" || pathname.startsWith("/capital/")) {
+    items.push({ label: "Capital Finances", to: "/capital" });
+    const sub = pathname.replace("/capital/", "").replace("/capital", "");
+    if (sub === "facilities") {
+      items.push({ label: "Liabilities & Advances", to: "/capital/facilities" });
+    } else if (sub === "facility" || sub === "facility/") {
+      items.push({ label: "Facility 360° Profile", to: "/capital/facility" });
+    } else if (sub.startsWith("facility/")) {
+      items.push({ label: "Facility 360° Profile", to: "/capital/facility" });
+      items.push({ label: "Profile Details", to: pathname });
+    } else if (sub === "daily-collections") {
+      items.push({ label: "Daily Collection Hub", to: "/capital/daily-collections" });
+    } else if (sub === "repayments") {
+      items.push({ label: "Repayment Ledger", to: "/capital/repayments" });
+    } else if (sub === "cash-flow") {
+      items.push({ label: "Cash Flow & Infusions", to: "/capital/cash-flow" });
+    }
+    return items;
+  }
+
+  if (pathname.startsWith("/purchases/")) {
+    items.push({ label: "Purchases", to: "/purchases/purchase-orders" });
+    const sub = pathname.replace("/purchases/", "");
+    if (sub === "purchase-orders") {
+      items.push({ label: "Purchase Orders", to: "/purchases/purchase-orders" });
+    } else if (sub === "grns") {
+      items.push({ label: "Goods Receipt Notes", to: "/purchases/grns" });
+    } else if (sub === "vendors") {
+      items.push({ label: "Suppliers & Vendors", to: "/purchases/vendors" });
+    } else if (sub === "bills") {
+      items.push({ label: "Bills & Invoices", to: "/purchases/bills" });
+    } else if (sub === "items") {
+      items.push({ label: "Items", to: "/purchases/items" });
+    } else if (sub === "item-types") {
+      items.push({ label: "Item Types", to: "/purchases/item-types" });
+    } else if (sub === "unit-types") {
+      items.push({ label: "Unit Types", to: "/purchases/unit-types" });
     }
     return items;
   }
@@ -112,47 +190,212 @@ const getBreadcrumbs = (pathname: string) => {
     }
     return items;
   }
-  
-    if (pathname.startsWith("/admin/")) {
-      items.push({ label: "Admin Console", to: "/admin/users" });
-      const sub = pathname.replace("/admin/", "");
-      if (sub === "users") {
-        items.push({ label: "User Management", to: "/admin/users" });
-      } else if (sub === "hospital") {
-        items.push({ label: "Hospital Profile", to: "/admin/hospital" });
-      } else if (sub === "payroll") {
-        items.push({ label: "Payroll statutory", to: "/admin/payroll" });
-      } else if (sub === "localization") {
-        items.push({ label: "Localization", to: "/admin/localization" });
-      }
-      return items;
+
+  if (pathname.startsWith("/admin/")) {
+    items.push({ label: "Admin Console", to: "/admin/users" });
+    const sub = pathname.replace("/admin/", "");
+    if (sub === "users") {
+      items.push({ label: "User Management", to: "/admin/users" });
+    } else if (sub === "hospital") {
+      items.push({ label: "Hospital Profile", to: "/admin/hospital" });
+    } else if (sub === "payroll") {
+      items.push({ label: "Payroll statutory", to: "/admin/payroll" });
+    } else if (sub === "localization") {
+      items.push({ label: "Localization", to: "/admin/localization" });
+    } else if (sub === "patients") {
+      items.push({ label: "Patient Directory", to: "/admin/patients" });
     }
-  
+    return items;
+  }
+
+  if (pathname === "/college") {
+    items.push({ label: "Nursing College Dashboard", to: "/college" });
+    return items;
+  }
+
+  if (pathname.startsWith("/college/")) {
+    items.push({ label: "Nursing College", to: "/college" });
+    const sub = pathname.replace("/college/", "");
+    if (sub === "courses") {
+      items.push({ label: "Masters", to: "/college/courses" });
+      items.push({ label: "Courses & Batches", to: "/college/courses" });
+    } else if (sub === "academic-schedules") {
+      items.push({ label: "Masters", to: "/college/academic-schedules" });
+      items.push({ label: "Academic Schedules", to: "/college/academic-schedules" });
+    } else if (sub === "subjects") {
+      items.push({ label: "Masters", to: "/college/subjects" });
+      items.push({ label: "Subject Master", to: "/college/subjects" });
+    } else if (sub === "fee-structures") {
+      items.push({ label: "Masters", to: "/college/fee-structures" });
+      items.push({ label: "Fee Structures Master", to: "/college/fee-structures" });
+    } else if (sub === "referrers") {
+      items.push({ label: "Masters", to: "/college/referrers" });
+      items.push({ label: "Referral Partners Master", to: "/college/referrers" });
+    } else if (sub === "students" || sub.startsWith("students/")) {
+      items.push({ label: "Masters", to: "/college/students" });
+      items.push({ label: "Student Master List", to: "/college/students" });
+    } else if (sub.startsWith("student/")) {
+      items.push({ label: "Masters", to: "/college/students" });
+      items.push({ label: "Student Profile", to: "/college/students" });
+    } else if (sub === "admissions") {
+      items.push({ label: "Admissions Pipeline", to: "/college/admissions" });
+    } else if (sub === "fees") {
+      items.push({ label: "Fee Ledger & Collection", to: "/college/fees" });
+    } else if (sub === "general-receipts") {
+      items.push({ label: "General & Misc Receipts", to: "/college/general-receipts" });
+    } else if (sub === "fee-dues") {
+      items.push({ label: "Student Fee Due Tracking", to: "/college/fee-dues" });
+    } else if (sub === "attendance") {
+      items.push({ label: "Attendance Marking", to: "/college/attendance" });
+    } else if (sub.startsWith("reports/")) {
+      items.push({ label: "Reports", to: "/college/reports/daily-income-expenses" });
+      const repSub = sub.replace("reports/", "");
+      if (repSub === "daily-income-expenses") {
+        items.push({ label: "Daily Income & Expenses", to: "/college/reports/daily-income-expenses" });
+      } else if (repSub === "due-student-wise") {
+        items.push({ label: "Due Report Student wise", to: "/college/reports/due-student-wise" });
+      } else if (repSub === "due-monthly-wise") {
+        items.push({ label: "Due Report (Periodic)", to: "/college/reports/due-monthly-wise" });
+      }
+    }
+    return items;
+  }
+
+  if (pathname.startsWith("/inventory/")) {
+    items.push({ label: "Inventory", to: "/inventory/stores" });
+    const sub = pathname.replace("/inventory/", "");
+    if (sub === "stores") {
+      items.push({ label: "Stores Master", to: "/inventory/stores" });
+    } else if (sub === "stock") {
+      items.push({ label: "Live Stock Inquiry", to: "/inventory/stock" });
+    } else if (sub === "ledger") {
+      items.push({ label: "Stock Ledger", to: "/inventory/ledger" });
+    } else if (sub === "purchase-invoices" || sub.startsWith("purchase-invoices/")) {
+      items.push({ label: "Purchase Invoices", to: "/inventory/purchase-invoices" });
+    } else if (sub === "requisitions") {
+      items.push({ label: "Store Indents", to: "/inventory/requisitions" });
+    } else if (sub === "transfers") {
+      items.push({ label: "Stock Transfers", to: "/inventory/transfers" });
+    } else if (sub === "pos") {
+      items.push({ label: "POS Billing Terminal", to: "/inventory/pos" });
+    } else if (sub === "invoices") {
+      items.push({ label: "Sales Invoices", to: "/inventory/invoices" });
+    } else if (sub === "adjustments") {
+      items.push({ label: "Stock Adjustments", to: "/inventory/adjustments" });
+    } else if (sub === "reports") {
+      items.push({ label: "Inventory Reports", to: "/inventory/reports" });
+    }
+    return items;
+  }
+
+  if (pathname === "/lab" || pathname === "/lab/") {
+    items.push({ label: "Laboratory", to: "/lab" });
+    return items;
+  }
+
+  if (pathname.startsWith("/lab/")) {
+    items.push({ label: "Laboratory", to: "/lab" });
+    const sub = pathname.replace("/lab/", "");
+    if (sub === "orders/new") {
+      items.push({ label: "New Order Entry", to: "/lab/orders/new" });
+    } else if (sub.startsWith("orders/")) {
+      items.push({ label: "Order Workspace", to: pathname });
+    } else if (sub.startsWith("reports/")) {
+      items.push({ label: "Diagnostic Report", to: pathname });
+    } else if (sub === "masters" || sub.startsWith("masters/")) {
+      items.push({ label: "Lab Masters Catalog", to: "/lab/masters" });
+    }
+    return items;
+  }
+
+  if (pathname === "/magazine" || pathname === "/magazine/") {
+    items.push({ label: "E-Magazine", to: "/magazine" });
+    return items;
+  }
+
+  if (pathname.startsWith("/magazine/")) {
+    items.push({ label: "E-Magazine", to: "/magazine" });
+    const sub = pathname.replace("/magazine/", "");
+    if (sub === "editors") {
+      items.push({ label: "Editorial Access", to: "/magazine/editors" });
+    } else {
+      items.push({ label: "Issue Details", to: `/magazine/${sub}` });
+    }
+    return items;
+  }
+
+  if (pathname === "/front-office" || pathname.startsWith("/front-office/")) {
+    items.push({ label: "Front Office", to: "/front-office" });
+    if (pathname === "/front-office/new") {
+      items.push({ label: "New Handover", to: "/front-office/new" });
+    } else if (pathname === "/front-office/patients") {
+      items.push({ label: "Patient Directory", to: "/front-office/patients" });
+    } else if (pathname === "/front-office/razorpay-reconciliation") {
+      items.push({ label: "Razorpay Reconciliation", to: "/front-office/razorpay-reconciliation" });
+    }
+    return items;
+  }
+
   return items;
 };
 
 export function Shell() {
+  const context = useRouteContext({ from: "/_authenticated" }) as { session?: any };
+  return (
+    <PermissionsProvider session={context?.session}>
+      <ShellContent session={context?.session} />
+    </PermissionsProvider>
+  );
+}
+
+function ShellContent({ session }: { session: any }) {
   const router = useRouter();
   const location = useLocation();
-  const search = useStore(uiStore, (state) => state.search);
-  const session = authClient.useSession();
+  // const search = useStore(uiStore, (state) => state.search);
   const hospital = useHospitalSettings();
+  const [collegeOpen, setCollegeOpen] = React.useState(false);
+  const [frontOfficeOpen, setFrontOfficeOpen] = React.useState(false);
+  const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
+  const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
-  const [clinicalOpen, setClinicalOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
+  const [capitalOpen, setCapitalOpen] = React.useState(false);
+  const [purchasesOpen, setPurchasesOpen] = React.useState(false);
+  const [inventoryOpen, setInventoryOpen] = React.useState(false);
+  const [labOpen, setLabOpen] = React.useState(false);
+  const [purchasesMastersOpen, setPurchasesMastersOpen] = React.useState(false);
   const [mastersOpen, setMastersOpen] = React.useState(false);
   const [adminOpen, setAdminOpen] = React.useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  
-  const staffQuery = useRpcQuery<any[]>(["staff"], () => client.hr.staff.$get());
-  const currentStaff = staffQuery.data?.find(
-    (s: any) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
-  );
-  
-  const displayName = currentStaff?.name || session.data?.user?.name;
-  const isAccountsVisible = session.data?.user?.role === "admin" || currentStaff?.departmentName === "Accounts";
-  
+
+  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine, canViewLab } = useUserPermissions();
+  const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
+
+  React.useEffect(() => {
+    if (location.pathname.startsWith("/college")) setCollegeOpen(true);
+    if (location.pathname.startsWith("/front-office")) setFrontOfficeOpen(true);
+    if (location.pathname.startsWith("/college/reports")) setCollegeReportsOpen(true);
+    if (
+      location.pathname.startsWith("/college/courses") ||
+      location.pathname.startsWith("/college/academic-schedules") ||
+      location.pathname.startsWith("/college/subjects") ||
+      location.pathname.startsWith("/college/students") ||
+      location.pathname.startsWith("/college/student/") ||
+      location.pathname.startsWith("/college/fee-structures")
+    ) {
+      setCollegeMastersOpen(true);
+    }
+    if (location.pathname.startsWith("/hr/")) setHrOpen(true);
+    if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
+    if (location.pathname.startsWith("/capital")) setCapitalOpen(true);
+    if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
+    if (location.pathname.startsWith("/inventory/")) setInventoryOpen(true);
+    if (location.pathname.startsWith("/lab")) setLabOpen(true);
+    if (location.pathname.startsWith("/masters/")) setMastersOpen(true);
+    if (location.pathname.startsWith("/admin/")) setAdminOpen(true);
+  }, [location.pathname]);
+
   // Notification system state and hooks
   const { notifications } = useStore(notificationsStore);
   const unreadCount = notifications.filter((n) => !n.read).length;
@@ -198,20 +441,20 @@ export function Shell() {
     <div className="min-h-screen bg-background text-foreground">
       {/* Mobile Sidebar Overlay Backdrop */}
       {isMobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden transition-opacity"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
-      <aside 
+      <aside
         className={cn(
-          "fixed inset-y-0 left-0 border-r py-6 transition-all duration-300 z-50",
+          "fixed inset-y-0 left-0 border-r py-6 transition-all duration-300 z-50 flex flex-col",
           // Desktop behavior
-          "hidden lg:block bg-sidebar/95 backdrop-blur",
+          "hidden lg:flex bg-sidebar/95 backdrop-blur",
           isSidebarMinimized ? "lg:w-16 lg:px-2" : "lg:w-72 lg:px-5",
           // Mobile overlay behavior
-          isMobileMenuOpen ? "block w-72 px-5 shadow-2xl bg-sidebar text-sidebar-foreground border-r border-sidebar-border" : "hidden"
+          isMobileMenuOpen ? "flex w-72 px-5 shadow-2xl bg-sidebar text-sidebar-foreground border-r border-sidebar-border" : "hidden"
         )}
       >
         {/* Minimize Button */}
@@ -224,7 +467,7 @@ export function Shell() {
         </button>
 
         {/* Logo Section */}
-        <div className={cn("mb-8 flex items-center justify-between gap-3", isSidebarMinimized && "justify-center")}>
+        <div className={cn("mb-6 flex items-center justify-between gap-3 shrink-0", isSidebarMinimized && "justify-center")}>
           <div className="flex items-center gap-3">
             <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground shrink-0">
               <Activity size={24} />
@@ -232,7 +475,7 @@ export function Shell() {
             {!isSidebarMinimized && (
               <div>
                 <p className="text-sm text-muted-foreground">Acme ERP</p>
-                <h1 className="text-xl font-semibold truncate max-w-[170px]" title={hospital.name}>
+                <h1 className="text-xl font-semibold truncate max-w-42" title={hospital.name}>
                   {hospital.name}
                 </h1>
               </div>
@@ -252,9 +495,12 @@ export function Shell() {
         </div>
 
         {/* Navigation */}
-        <nav 
+        <nav
           onClick={() => setIsMobileMenuOpen(false)}
-          className={cn("space-y-1.5", isSidebarMinimized && "space-y-3 flex flex-col items-center")}
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-1.5 pr-1 pb-2",
+            isSidebarMinimized && "space-y-3 flex flex-col items-center pr-0"
+          )}
         >
 
           {/* Expanded Sidebar Navigation */}
@@ -287,6 +533,207 @@ export function Shell() {
                 )}
               </Link>
 
+              {/* Front Office */}
+              {canViewFrontOffice && (
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setFrontOfficeOpen((open) => !open)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer"
+                  >
+                    <span className="flex items-center gap-3"><Building2 size={18} />Front Office</span>
+                    {frontOfficeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {frontOfficeOpen && (
+                    <div className="mt-1 ml-4 flex flex-col gap-1 border-l border-border pl-4">
+                      <Link to={"/front-office" as any} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        Saved Handovers
+                      </Link>
+                      <Link to={"/front-office/new" as any} className="rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        New Handover
+                      </Link>
+                      <Link to={"/front-office/razorpay-reconciliation" as any} className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        <CreditCard size={14} />Razorpay Reconciliation
+                      </Link>
+                      <Link to="/front-office/patients" className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        <Users size={14} />Patient Directory
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsible Nursing College group */}
+              {canViewCollege && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCollegeOpen(!collegeOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <GraduationCap size={18} />
+                      <span>Nursing College</span>
+                    </div>
+                    {collegeOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {collegeOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/college" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Nursing College Dashboard
+                      </Link>
+                      <Link
+                        to={"/college/admissions" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Admissions Pipeline
+                      </Link>
+                      <Link
+                        to={"/college/fees" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Fee Ledger & Collection
+                      </Link>
+                      <Link
+                        to={"/college/general-receipts" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        General Receipts
+                      </Link>
+                      <Link
+                        to={"/college/fee-dues" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Fee Due Tracking
+                      </Link>
+                      <Link
+                        to={"/college/attendance" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Attendance Marking
+                      </Link>
+
+                      {/* Collapsible Reports subgroup */}
+                      <div className="flex flex-col mt-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCollegeReportsOpen(!collegeReportsOpen);
+                          }}
+                          className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <FileBarChart size={13} className="text-teal-600 dark:text-teal-400" />
+                            <span>Reports</span>
+                          </span>
+                          {collegeReportsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {collegeReportsOpen && (
+                          <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
+                            <Link
+                              to={"/college/reports/daily-income-expenses" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Daily Income & Expenses
+                            </Link>
+                            <Link
+                              to={"/college/reports/due-student-wise" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Due Report Student wise
+                            </Link>
+                            <Link
+                              to={"/college/reports/due-monthly-wise" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Due Report (Periodic)
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Collapsible College Masters subgroup */}
+                      <div className="flex flex-col mt-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCollegeMastersOpen(!collegeMastersOpen);
+                          }}
+                          className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Layers size={13} className="text-teal-600 dark:text-teal-400" />
+                            <span>Masters</span>
+                          </span>
+                          {collegeMastersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {collegeMastersOpen && (
+                          <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
+                            <Link
+                              to={"/college/courses" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Courses & Batches
+                            </Link>
+                            <Link
+                              to={"/college/academic-schedules" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Academic Schedules
+                            </Link>
+                            <Link
+                              to={"/college/subjects" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Subject Master
+                            </Link>
+                            <Link
+                              to={"/college/students" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Student Master List
+                            </Link>
+                            <Link
+                              to={"/college/fee-structures" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Fee Structures Master
+                            </Link>
+                            <Link
+                              to={"/college/referrers" as any}
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Referral Partners
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Collapsible HR group */}
               <div className="flex flex-col">
                 <button
@@ -302,7 +749,7 @@ export function Shell() {
                   </div>
                   {hrOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
-                
+
                 {hrOpen && (
                   <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                     <Link
@@ -327,6 +774,13 @@ export function Shell() {
                       Leave Management
                     </Link>
                     <Link
+                      to="/hr/off-day-requests"
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Off-Day Requests
+                    </Link>
+                    <Link
                       to="/hr/attendance"
                       className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                       activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
@@ -340,6 +794,15 @@ export function Shell() {
                     >
                       Payroll
                     </Link>
+                    {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
+                      <Link
+                        to="/admin/users"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        User Management
+                      </Link>
+                    )}
                   </div>
                 )}
               </div>
@@ -389,20 +852,22 @@ export function Shell() {
                   </button>
                   {accountsOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                      <Link
+                      {/* <Link
                         to="/accounts/consultant-charges"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Consultant Charges
-                      </Link>
-                      <Link
-                        to="/accounts/service-charges"
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                      >
-                        Service Charges
-                      </Link>
+                      </Link> */}
+                      {!isManagementApprover && (
+                        <Link
+                          to="/accounts/service-charges"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Service Charges
+                        </Link>
+                      )}
                       <Link
                         to="/accounts/reports"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -410,13 +875,349 @@ export function Shell() {
                       >
                         Daily Closing Reports
                       </Link>
+                      <Link
+                        to="/accounts/monthly-report"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Monthly Report
+                      </Link>
+                      <Link
+                        to="/accounts/bank-expenses"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Bank Expenses
+                      </Link>
+                      <Link
+                        to="/accounts/bank-accounts"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Bank Accounts
+                      </Link>
+                      <Link
+                        to="/purchases/vendors"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Suppliers & Vendors
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsible Capital Finances group */}
+              {isAccountsVisible && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCapitalOpen(!capitalOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Coins size={18} />
+                      <span>Capital Finances</span>
+                    </div>
+                    {capitalOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {capitalOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to="/capital"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Treasury Dashboard
+                      </Link>
+                      <Link
+                        to="/capital/facilities"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Liabilities & Advances
+                      </Link>
+                      <Link
+                        to="/capital/facility"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Facility 360° Profile
+                      </Link>
+                      <Link
+                        to="/capital/daily-collections"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Daily Collection Hub
+                      </Link>
+                      <Link
+                        to="/capital/repayments"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Repayment Ledger
+                      </Link>
+                      <Link
+                        to="/capital/cash-flow"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Cash Flow & Infusions
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsible Purchases group */}
+              {canViewPurchases && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPurchasesOpen(!purchasesOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShoppingCart size={18} />
+                      <span>Purchases</span>
+                    </div>
+                    {purchasesOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {purchasesOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to="/purchases/purchase-orders"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Purchase Orders
+                      </Link>
+                      <Link
+                        to="/purchases/grns"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Goods Receipt Notes
+                      </Link>
+                      <Link
+                        to="/purchases/bills"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Bills & Invoices
+                      </Link>
+
+                      {/* Collapsible Purchases Masters subgroup */}
+                      <div className="flex flex-col">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPurchasesMastersOpen(!purchasesMastersOpen);
+                          }}
+                          className="flex items-center justify-between w-full rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors outline-none cursor-pointer"
+                        >
+                          <span>Masters</span>
+                          {purchasesMastersOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                        {purchasesMastersOpen && (
+                          <div className="mt-0.5 ml-3 pl-3 border-l border-border flex flex-col gap-1">
+                            <Link
+                              to="/purchases/vendors"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Suppliers & Vendors
+                            </Link>
+                            <Link
+                              to="/purchases/items"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Items
+                            </Link>
+                            <Link
+                              to="/purchases/item-types"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Item Types
+                            </Link>
+                            <Link
+                              to="/purchases/unit-types"
+                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                            >
+                              Unit Types
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsible Inventory group */}
+              {canViewInventory && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInventoryOpen(!inventoryOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Package size={18} />
+                      <span>Inventory & Store</span>
+                    </div>
+                    {inventoryOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {inventoryOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/inventory/stores" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stores Master
+                      </Link>
+                      <Link
+                        to={"/inventory/stock" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Live Stock Inquiry
+                      </Link>
+                      <Link
+                        to={"/inventory/ledger" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stock Ledger
+                      </Link>
+                      <Link
+                        to={"/inventory/purchase-invoices" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Purchase Invoices
+                      </Link>
+                      <Link
+                        to={"/inventory/requisitions" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Store Indents
+                      </Link>
+                      <Link
+                        to={"/inventory/transfers" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stock Transfers
+                      </Link>
+                      <Link
+                        to={"/inventory/pos" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        POS Billing Terminal
+                      </Link>
+                      <Link
+                        to={"/inventory/invoices" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Sales Invoices
+                      </Link>
+                      <Link
+                        to={"/inventory/adjustments" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Stock Adjustments
+                      </Link>
+                      <Link
+                        to={"/inventory/consumptions" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Consumptions
+                      </Link>
+                      <Link
+                        to={"/inventory/consumption-returns" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Consumption Returns
+                      </Link>
+                      <Link
+                        to={"/inventory/reports" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Inventory Reports
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsible Laboratory group */}
+              {canViewLab && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLabOpen(!labOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FlaskConical size={18} />
+                      <span>Laboratory</span>
+                    </div>
+                    {labOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {labOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/lab" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Orders Worklist
+                      </Link>
+                      <Link
+                        to={"/lab/orders/new" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        New Order Entry
+                      </Link>
+                      <Link
+                        to={"/lab/masters" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Test Catalog & Ranges
+                      </Link>
                     </div>
                   )}
                 </div>
               )}
 
               {/* Collapsible Masters group */}
-              {session.data?.user.role === "admin" && (
+              {(session.data?.user.role === "admin" || session.data?.user.role === "hr") && (
                 <div className="flex flex-col">
                   <button
                     onClick={(e) => {
@@ -431,7 +1232,7 @@ export function Shell() {
                     </div>
                     {mastersOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
-                  
+
                   {mastersOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                       <Link
@@ -476,6 +1277,15 @@ export function Shell() {
                       >
                         Banks
                       </Link>
+                      {session.data?.user.role === "admin" && (
+                        <Link
+                          to="/masters/nursing-supers"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Nursing Supers
+                        </Link>
+                      )}
                     </div>
                   )}
                 </div>
@@ -497,7 +1307,7 @@ export function Shell() {
                     </div>
                     {adminOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
-                  
+
                   {adminOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                       <Link
@@ -506,6 +1316,13 @@ export function Shell() {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         User Management
+                      </Link>
+                      <Link
+                        to="/masters/management-approvers"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Management Approvers
                       </Link>
                       <Link
                         to="/admin/hospital"
@@ -528,11 +1345,30 @@ export function Shell() {
                       >
                         Localization
                       </Link>
+                      <Link
+                        to="/admin/patients"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Patient Directory
+                      </Link>
                     </div>
                   )}
                 </div>
               )}
-              
+
+              {/* E-Magazine */}
+              {canManageMagazine && (
+                <Link
+                  to="/magazine"
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                >
+                  <BookOpen size={18} />
+                  <span>E-Magazine</span>
+                </Link>
+              )}
+
               <Link
                 to="/settings"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
@@ -553,7 +1389,7 @@ export function Shell() {
               >
                 <LayoutDashboard size={20} />
               </Link>
-              
+
               <Link
                 to="/communication"
                 className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -567,7 +1403,29 @@ export function Shell() {
                   </span>
                 )}
               </Link>
-              
+
+              {canViewCollege && (
+                <Link
+                  to={"/college" as any}
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Nursing College"
+                >
+                  <GraduationCap size={20} />
+                </Link>
+              )}
+
+              {canViewFrontOffice && (
+                <Link
+                  to={"/front-office" as any}
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Front Office"
+                >
+                  <Building2 size={20} />
+                </Link>
+              )}
+
               <div className="w-8 h-px bg-border my-2" />
 
               <Link
@@ -598,6 +1456,15 @@ export function Shell() {
               </Link>
 
               <Link
+                to="/hr/off-day-requests"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Off-Day Requests"
+              >
+                <CalendarOff size={20} />
+              </Link>
+
+              <Link
                 to="/hr/payroll"
                 className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
@@ -620,23 +1487,25 @@ export function Shell() {
 
               {isAccountsVisible && (
                 <>
-                  <Link
+                  {/* <Link
                     to="/accounts/consultant-charges"
                     className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                     activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
                     title="Consultant Charges"
                   >
                     <Landmark size={20} />
-                  </Link>
+                  </Link> */}
 
-                  <Link
-                    to="/accounts/service-charges"
-                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                    title="Service Charges"
-                  >
-                    <Coins size={20} />
-                  </Link>
+                  {!isManagementApprover && (
+                    <Link
+                      to="/accounts/service-charges"
+                      className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                      title="Service Charges"
+                    >
+                      <Coins size={20} />
+                    </Link>
+                  )}
 
                   <Link
                     to="/accounts/reports"
@@ -646,13 +1515,126 @@ export function Shell() {
                   >
                     <CalendarClock size={20} />
                   </Link>
+
+                  <Link
+                    to="/accounts/monthly-report"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Monthly Report"
+                  >
+                    <FileBarChart size={20} />
+                  </Link>
+
+                  <div className="w-8 h-px bg-border my-2" />
+
+                  <Link
+                    to="/capital"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Treasury Dashboard"
+                  >
+                    <Coins size={20} />
+                  </Link>
+
+                  <Link
+                    to="/capital/facilities"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Liabilities & Advances"
+                  >
+                    <Landmark size={20} />
+                  </Link>
+
+                  <Link
+                    to="/capital/facility"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Facility 360° Profile"
+                  >
+                    <Layers size={20} />
+                  </Link>
+                </>
+              )}
+
+              {canViewPurchases && (
+                <>
+                  <div className="w-8 h-px bg-border my-2" />
+
+                  <Link
+                    to="/purchases/purchase-orders"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Purchase Orders"
+                  >
+                    <ShoppingCart size={20} />
+                  </Link>
+
+                  <Link
+                    to="/purchases/vendors"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Suppliers & Vendors"
+                  >
+                    <ShoppingBag size={20} />
+                  </Link>
+
+                  <Link
+                    to="/purchases/bills"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Bills & Invoices"
+                  >
+                    <Receipt size={20} />
+                  </Link>
+
+                  <Link
+                    to="/purchases/items"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Items Master"
+                  >
+                    <Package size={20} />
+                  </Link>
+
+                  <Link
+                    to="/purchases/item-types"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Item Types Master"
+                  >
+                    <Layers size={20} />
+                  </Link>
+
+                  <Link
+                    to="/purchases/unit-types"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Unit Types Master"
+                  >
+                    <Scale size={20} />
+                  </Link>
+                </>
+              )}
+
+              {canViewLab && (
+                <>
+                  <div className="w-8 h-px bg-border my-2" />
+
+                  <Link
+                    to="/lab"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Laboratory Orders"
+                  >
+                    <FlaskConical size={20} />
+                  </Link>
                 </>
               )}
 
               {session.data?.user.role === "admin" && (
                 <>
                   <div className="w-8 h-px bg-border my-2" />
-                  
+
                   <Link
                     to="/masters/roles"
                     className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -744,7 +1726,27 @@ export function Shell() {
                   >
                     <Coins size={20} />
                   </Link>
+
+                  <Link
+                    to="/admin/patients"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Patient Directory"
+                  >
+                    <Users size={20} />
+                  </Link>
                 </>
+              )}
+
+              {canManageMagazine && (
+                <Link
+                  to="/magazine"
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Electronic Magazine"
+                >
+                  <BookOpen size={20} />
+                </Link>
               )}
 
               <Link
@@ -761,7 +1763,7 @@ export function Shell() {
 
 
       </aside>
-      
+
       <main className={cn("transition-all duration-300", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")}>
         <header className="sticky top-0 z-20 border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -817,7 +1819,7 @@ export function Shell() {
                 </Button>
 
                 {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 z-50 w-80 sm:w-96 rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
+                  <div className="absolute left-0 md:left-auto md:right-0 mt-2 z-50 w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <div className="font-semibold text-sm">Notifications</div>
                       <div className="flex items-center gap-3">
@@ -839,7 +1841,7 @@ export function Shell() {
                         )}
                       </div>
                     </div>
-                    <div className="max-h-[350px] overflow-y-auto divide-y divide-border">
+                    <div className="max-h-[calc(100vh-14rem)] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-border">
                       {notifications.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs">
                           <Bell className="size-8 mb-2 opacity-40" />

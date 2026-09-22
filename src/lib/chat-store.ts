@@ -201,6 +201,59 @@ export const chatActions = {
     }
   },
 
+  deleteMessage: async (messageId: number): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const res = await fetch(`/api/messages/${messageId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        chatStore.setState((state) => ({
+          ...state,
+          messages: state.messages.filter((m) => m.id !== messageId),
+        }));
+        if (chatStore.state.activeChannel?.type === "direct") {
+          setTimeout(() => chatActions.fetchConversations(), 300);
+        }
+        return { ok: true };
+      } else {
+        const errMsg = data.error || "Failed to delete message";
+        alert(errMsg);
+        return { ok: false, error: errMsg };
+      }
+    } catch (err: any) {
+      console.error("Failed to delete message:", err);
+      alert("Network error: Failed to delete message");
+      return { ok: false, error: err?.message };
+    }
+  },
+
+  clearDirectMessages: async (colleagueId: string): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const res = await fetch(`/api/messages/direct/${colleagueId}`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        chatStore.setState((state) => ({
+          ...state,
+          messages: state.activeChannel?.type === "direct" && String(state.activeChannel.targetId) === colleagueId
+            ? []
+            : state.messages,
+          conversations: state.conversations.map((c) =>
+            c.id === colleagueId ? { ...c, lastMessage: "", unread: 0 } : c
+          ),
+        }));
+        setTimeout(() => chatActions.fetchConversations(), 300);
+        return { ok: true };
+      } else {
+        const errMsg = data.error || "Failed to clear direct messages";
+        alert(errMsg);
+        return { ok: false, error: errMsg };
+      }
+    } catch (err: any) {
+      console.error("Failed to clear direct messages:", err);
+      alert("Network error: Failed to clear direct messages");
+      return { ok: false, error: err?.message };
+    }
+  },
+
   connectSSE: () => {
     if (chatEventSource) return;
 
@@ -213,7 +266,37 @@ export const chatActions = {
 
     chatEventSource.addEventListener("message", (event) => {
       try {
-        const newMsg: Message = JSON.parse(event.data);
+        const payload: any = JSON.parse(event.data);
+
+        // Handle delete_message SSE event
+        if (payload.action === "delete_message") {
+          chatStore.setState((state) => ({
+            ...state,
+            messages: state.messages.filter((m) => m.id !== payload.id),
+          }));
+          return;
+        }
+
+        // Handle clear_direct SSE event
+        if (payload.action === "clear_direct") {
+          chatStore.setState((state) => {
+            const current = state.activeChannel;
+            const isCurrentChannel = current?.type === "direct" &&
+              (String(current.targetId) === payload.senderId || String(current.targetId) === payload.receiverId);
+            return {
+              ...state,
+              messages: isCurrentChannel ? [] : state.messages,
+              conversations: state.conversations.map((c) =>
+                c.id === payload.senderId || c.id === payload.receiverId
+                  ? { ...c, lastMessage: "", unread: 0 }
+                  : c
+              ),
+            };
+          });
+          return;
+        }
+
+        const newMsg: Message = payload;
 
         chatStore.setState((state) => {
           const current = state.activeChannel;

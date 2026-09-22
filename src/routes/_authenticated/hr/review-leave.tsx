@@ -6,7 +6,6 @@ import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import type { StaffRow, LeaveDetailRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -229,7 +228,7 @@ export const Route = createFileRoute("/_authenticated/hr/review-leave")({
 function ReviewLeave() {
   const navigate = useNavigate();
   const { leaveId } = Route.useSearch();
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const [reviewerNote, setReviewerNote] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [forwardToStaffId, setForwardToStaffId] = React.useState<number | "">("");
@@ -239,6 +238,16 @@ function ReviewLeave() {
   const leaveQuery = useRpcQuery<LeaveDetailRow>(
     ["leave", leaveId],
     () => client.hr.leaves[":id"].$get({ param: { id: String(leaveId) } })
+  );
+
+  const nursingSupersQuery = useRpcQuery<any[]>(
+    ["masters-nursing-supers"],
+    () => client.masters["nursing-supers"].$get()
+  );
+
+  const deptsQuery = useRpcQuery<any[]>(
+    ["masters-departments"],
+    () => client.masters.departments.$get()
   );
 
   const leave = leaveQuery.data;
@@ -266,9 +275,13 @@ function ReviewLeave() {
 
   const requestedDays = React.useMemo(() => {
     if (!leave) return 0;
-    const start = new Date(leave.startDate);
-    const end = new Date(leave.endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
+    if (leave.isHalfDay) return 0.5;
+    const startStr = leave.startDate.slice(0, 10);
+    const endStr = leave.endDate.slice(0, 10);
+    if (endStr < startStr) return 0;
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T00:00:00Z`);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   }, [leave]);
 
@@ -288,7 +301,8 @@ function ReviewLeave() {
     );
   }
 
-  const isAdminOrHr = session.data?.user?.role === "admin" || session.data?.user?.role === "hr";
+  const isAdmin = session.data?.user?.role === "admin";
+  const isHrUser = session.data?.user?.role === "hr" || currentStaff?.role === "hr";
 
   const isApprover = (() => {
     if (!currentStaff || !leave.approverIds) return false;
@@ -302,11 +316,24 @@ function ReviewLeave() {
 
   const isForwardedTarget = currentStaff != null && leave.forwardedToStaffId != null && currentStaff.staffId === leave.forwardedToStaffId;
 
+  const isNursingSuper = (nursingSupersQuery.data ?? []).some(
+    (ns: any) => currentStaff?.staffId && ns.staffId === currentStaff.staffId && ns.active
+  );
+
+  const leaveRequesterStaff = (staffQuery.data ?? []).find(s => s.staffId === leave?.staffId);
+  const leaveRequesterDept = (deptsQuery.data ?? []).find(d => d.name === leaveRequesterStaff?.departmentName);
+  const isClinicalDept = leaveRequesterDept?.isClinical === true;
+
   // Decision panel visibility — mirrors the backend canAct logic
   const canAction = (() => {
     if (["Approved", "Rejected", "Cancelled"].includes(leave.status)) return false;
-    if (isAdminOrHr) return true;
-    if (leave.status === "Pending Payroll Approval") return false;
+
+    if (leave.status === "Pending Payroll Approval") {
+      return isAdmin || isHrUser;
+    }
+
+    if (isAdmin || isHrUser) return true;
+    if (isNursingSuper && isClinicalDept) return true;
 
     if (leave.status === "Pending") return isApprover;
     if (leave.status === "Forwarded") return isForwardedTarget;
@@ -319,11 +346,8 @@ function ReviewLeave() {
   const canForward = canAction && leave.status === "Pending";
 
   const formatDateForInput = (dateStr: string) => {
-    try {
-      return new Date(dateStr).toISOString().split("T")[0];
-    } catch {
-      return dateStr;
-    }
+    if (!dateStr) return "";
+    return typeof dateStr === "string" ? dateStr.slice(0, 10) : new Date(dateStr).toISOString().split("T")[0];
   };
 
   const handleAction = async (action: "approve" | "reject" | "forward" | "cancel") => {
@@ -410,7 +434,7 @@ function ReviewLeave() {
             <form className="grid gap-4 md:grid-cols-2">
               <Field label="Employee" value={leave.staffName} disabled />
               <Field label="Department" value={leave.departmentName || "—"} disabled />
-              <Field label="Leave Type" value={leave.leaveType} disabled />
+              <Field label="Leave Type" value={leave.isHalfDay ? `${leave.leaveType} (Half Day)` : leave.leaveType} disabled />
               <Field label="Start Date" type="date" value={formatDateForInput(leave.startDate)} disabled />
               <Field label="End Date" type="date" value={formatDateForInput(leave.endDate)} disabled />
               <Field label="Reason" className="md:col-span-2" value={leave.reason} disabled />

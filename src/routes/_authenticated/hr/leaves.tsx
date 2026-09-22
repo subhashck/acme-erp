@@ -9,7 +9,6 @@ import { ModuleLayout } from "../../../components/ModuleLayout";
 import { DataTable } from "../../../components/DataTable";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import type { StaffRow, LeaveTypeRow, LeaveRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -52,9 +51,9 @@ const leaveSchema = z.object({
   if (value.isHalfDay) return true;
   if (!value.endDate) return true;
   
-  const start = new Date(value.startDate);
-  const end = new Date(value.endDate);
-  return end >= start;
+  const startStr = value.startDate.slice(0, 10);
+  const endStr = value.endDate.slice(0, 10);
+  return endStr >= startStr;
 }, {
   path: ["endDate"],
   message: "End date must be on or after start date."
@@ -123,7 +122,7 @@ function LeaveManagement() {
   const [sortOrder, setSortOrder] = useState("desc");
   const limit = 10;
 
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const isAdmin = session.data?.user?.role === "admin";
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
@@ -188,17 +187,22 @@ function LeaveManagement() {
     if (!startDateVal) return 0;
     if (isHalfDayVal) return 0.5;
     if (!endDateVal) return 0;
-    const start = new Date(startDateVal);
-    const end = new Date(endDateVal);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
+    const startStr = startDateVal.slice(0, 10);
+    const endStr = endDateVal.slice(0, 10);
+    if (endStr < startStr) return 0;
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T00:00:00Z`);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   }, [startDateVal, endDateVal, isHalfDayVal]);
 
   const submitLeave = leaveForm.handleSubmit(async (values) => {
     // Force end date to be equal to start date for half day leaves
     const finalEndDate = values.isHalfDay ? values.startDate : values.endDate!;
-    const start = new Date(values.startDate);
-    const end = new Date(finalEndDate);
+    const startStr = values.startDate.slice(0, 10);
+    const endStr = finalEndDate.slice(0, 10);
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T00:00:00Z`);
     const days = values.isHalfDay ? 0.5 : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
 
     const balance = (balanceQuery.data ?? []).find(b => b.leaveType === values.leaveType);
@@ -214,8 +218,8 @@ function LeaveManagement() {
       formData.append("staffId", String(values.staffId));
       formData.append("leaveType", values.leaveType);
       formData.append("isHalfDay", String(values.isHalfDay));
-      formData.append("startDate", new Date(values.startDate).toISOString());
-      formData.append("endDate", new Date(finalEndDate).toISOString());
+      formData.append("startDate", startStr);
+      formData.append("endDate", endStr);
       formData.append("reason", values.reason);
       if (file) {
         formData.append("supportingDocument", file);
@@ -491,7 +495,6 @@ function LeaveManagement() {
         <>
           <div 
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={handleCloseForm}
           />
           <div 
             className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"
@@ -581,14 +584,14 @@ function LeaveManagement() {
                               )}
                             >
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              {field.value ? format(new Date(`${field.value.slice(0, 10)}T00:00:00`), "PPP") : <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                              selected={field.value ? new Date(`${field.value.slice(0, 10)}T00:00:00`) : undefined}
+                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
                             />
                           </PopoverContent>
                         </Popover>
@@ -618,15 +621,15 @@ function LeaveManagement() {
                             >
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
                               {isHalfDayVal && startDateVal
-                                ? format(new Date(startDateVal), "PPP")
-                                : field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                                ? format(new Date(`${startDateVal.slice(0, 10)}T00:00:00`), "PPP")
+                                : field.value ? format(new Date(`${field.value.slice(0, 10)}T00:00:00`), "PPP") : <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                              selected={field.value ? new Date(`${field.value.slice(0, 10)}T00:00:00`) : undefined}
+                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
                             />
                           </PopoverContent>
                         </Popover>

@@ -25,8 +25,28 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
+    allowedHosts: true,
     proxy: {
-      "/api": "http://localhost:8787"
+      "/api": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
+      },
+      "/magazine/ssr": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
+      },
+      "/magazine/view": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
+      },
+      "^/magazine/[^/]+/gallery": {
+        target: "http://localhost:8787",
+        changeOrigin: true,
+        cookieDomainRewrite: "localhost",
+      }
     }
   }
 });

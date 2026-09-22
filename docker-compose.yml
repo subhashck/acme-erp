@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:16-alpine
@@ -19,6 +17,38 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: acme-erp-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: miniopassword
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: acme-erp-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 minioadmin miniopassword;
+      /usr/bin/mc mb local/acme-erp --ignore-existing;
+      exit 0;
+      "
+
   web:
     build:
       context: .
@@ -31,14 +61,23 @@ services:
       - PORT=8787
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/acme_erp?sslmode=disable
-      - BETTER_AUTH_SECRET=acme-secret-is-greatest
+      - BETTER_AUTH_SECRET=ee3e644fc63c3c50d5a15b3ff79057725f35f43698a91f194b34f7ccbff289cd
       - BETTER_AUTH_URL=http://localhost:8787
-      - TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://10.10.10.36:8787
+      - TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8787,https://my-acme.cloud
       - ADMIN_EMAIL=admin@acmehospital.health
       - ADMIN_PASSWORD=AdminAdmin@12345
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_USE_SSL=false
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=miniopassword
+      - MINIO_BUCKET=acme-erp
     depends_on:
       db:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  minio_data:

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2 } from "lucide-react";
+import { Plus, Trash2, Save, AlertTriangle, CheckCircle, Calendar as CalendarIcon, Loader2, Lock, Receipt, ArrowDownCircle, CreditCard, Coins, Landmark } from "lucide-react";
 import { useRpcQuery } from "../lib/query";
 import { client } from "../services/rpc";
 import { Button } from "../ui/button";
@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
 import { Label } from "../ui/label";
+import { Badge } from "../ui/badge";
 import { cn } from "../utils/cn";
-import { Autocomplete } from "../ui/autocomplete";
+import { Autocomplete, type Option as AutocompleteOption } from "../ui/autocomplete";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -52,8 +53,56 @@ const toNum = (v: unknown): number => {
 
 // const EXP_CATEGORIES = ["SALARY", "VENDOR", "MISC"];
 // const IPD_TYPES = ["ADMISSION", "ADVANCE", "OBSERVATION"];
-const BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHER"];
-const CHANNELS = ["CREDIT CARD", "UPI", "DEBIT CARD", "RTGS", "CASH"];
+const FALLBACK_BANKS = ["ICICI", "HDFC", "BOI", "CASH", "OTHERS"];
+const CHANNELS = ["UPI", "CASH", "RAZORPAY", "NETBANKING", "DEBIT CARD", "CREDIT CARD", "RTGS"];
+const CASH_DENOMINATIONS = [2000, 500, 200, 100, 50, 20, 10, 5, 2, 1];
+
+const LEGAL_ENTITY_LABELS: Record<string, string> = {
+  ACME_HOSPITAL: "Acme Hospital",
+  ACME_NURSING: "Acme College of Nursing",
+  HUMANKIND: "HumanKind Drugs",
+  PERSONAL: "Personal Accounts",
+};
+
+const LEGAL_ENTITIES_MAP = [
+  {
+    code: "ACME_HOSPITAL",
+    label: "Acme Hospital",
+    badgeBg: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
+  },
+  {
+    code: "ACME_NURSING",
+    label: "Acme College of Nursing",
+    badgeBg: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30",
+  },
+  {
+    code: "HUMANKIND",
+    label: "HumanKind Drugs",
+    badgeBg: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30",
+  },
+  {
+    code: "PERSONAL",
+    label: "Personal Accounts",
+    badgeBg: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30",
+  },
+] as const;
+
+function getEntityConfig(code?: string | null) {
+  if (!code) return null;
+  return (
+    LEGAL_ENTITIES_MAP.find((e) => e.code === code) || {
+      code,
+      label: LEGAL_ENTITY_LABELS[code] || code,
+      badgeBg: "bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30",
+    }
+  );
+}
+
+function maskAccountNumber(acc?: string | null) {
+  if (!acc || acc.trim().length < 4) return acc ? acc.trim() : "";
+  const trimmed = acc.trim();
+  return `•••• •••• ${trimmed.slice(-4)}`;
+}
 
 const DEFAULT_PAYMENT_CHANNELS = [
   { bank: "ICICI", channel: "CARD", sourceLabel: "Front OPD Card", amount: 0 },
@@ -66,16 +115,28 @@ const DEFAULT_PAYMENT_CHANNELS = [
 
 // ─────────────────────────── types ───────────────────────────────
 
-type ServiceQty = Record<number, { rate: number; quantity: number; amount: number }>;
-type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number };
+type ServiceQty = Record<number, { rate: number; quantity: number; amount: number; narration?: string; showNarration?: boolean }>;
+type CustomLine = { serviceName: string; department: string; rate: number; quantity: number; amount: number; narration?: string; showNarration?: boolean };
 // type MiscIncome = { label: string; amount: number };
 type IpdAdmission = { patientName: string; type: "ADMISSION" | "ADVANCE" | "OBSERVATION"; amount: number };
 type IpdDischarge = { patientName: string; amount: number };
-type Expenditure = { category: string; details: string; amount: number };
-type StaffAdvance = { staffId?: number | null; staffName: string; amount: number };
+type Expenditure = { category: string; details: string; amount: number | string; narration?: string; showNarration?: boolean };
+type StaffAdvance = { staffId?: number | null; staffName: string; amount: number | string };
 // type AdditionalIncome = { label: string; amount: number };
-type DiscountReturn = { label: string; amount: number };
-type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number };
+type DiscountReturn = { label: string; amount: number | string };
+type PaymentChannel = { bank: string; channel: string; sourceLabel: string; amount: number | string };
+
+export type BankDepositItem = {
+  bankAccountId?: number | null;
+  bankName: string;
+  accountName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  branchName?: string;
+  legalEntity?: string;
+  amount: number | string;
+  narration?: string;
+};
 
 export interface ReportPayload {
   reportDate?: string;
@@ -91,14 +152,17 @@ export interface ReportPayload {
   bankDeposits?: string | null;
   cashReceipts: number;
   status: "draft" | "submitted";
-  serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean }>;
-  expenditures: Expenditure[];
-  staffAdvances: StaffAdvance[];
+  serviceLines: Array<{ serviceId: number | null; rate: number; quantity: number; amount: number; isNightEntry?: boolean; narration?: string | null }>;
+  expenditures: Array<{ category: string; details: string; amount: number; narration?: string | null }>;
+  staffAdvances: Array<{ staffId?: number | null; staffName: string; amount: number }>;
   // ipdAdmissions: IpdAdmission[];
   // ipdDischarges: IpdDischarge[];
   // additionalIncome: AdditionalIncome[];
-  discountsReturns: DiscountReturn[];
-  paymentChannels: PaymentChannel[];
+  discountsReturns: Array<{ label: string; amount: number }>;
+  paymentChannels: Array<{ bank: string; channel: string; sourceLabel: string; amount: number }>;
+  cashDenominations?: Record<string, number> | Record<number, number> | string | null;
+  reconciliationTolerance?: number;
+  soiledNotes?: number | null;
 }
 
 export interface ReportFormProps {
@@ -131,16 +195,16 @@ export function ReportForm({
 }: ReportFormProps) {
   // ── header state ──────────────────────────────────────────────
   const [reportDate, setReportDate] = React.useState(() => new Date().toISOString().split("T")[0]);
-  const [openingBalance, setOpeningBalance] = React.useState("0");
-  const [fundHandoverSir, setFundHandoverSir] = React.useState("0");
-  const [fundHandoverMadam, setFundHandoverMadam] = React.useState("0");
+  const [openingBalance, setOpeningBalance] = React.useState("");
+  const [fundHandoverSir, setFundHandoverSir] = React.useState("");
+  const [fundHandoverMadam, setFundHandoverMadam] = React.useState("");
   const [status, setStatus] = React.useState<"draft" | "submitted">("draft");
-  const [cashReceiptSir, setCashReceiptSir] = React.useState("0");
-  const [cashReceiptMam, setCashReceiptMam] = React.useState("0");
-  const [cashReceiptAcon, setCashReceiptAcon] = React.useState("0");
-  const [bankReceiptSir, setBankReceiptSir] = React.useState("0");
+  const [cashReceiptSir, setCashReceiptSir] = React.useState("");
+  const [cashReceiptMam, setCashReceiptMam] = React.useState("");
+  const [cashReceiptAcon, setCashReceiptAcon] = React.useState("");
+  const [bankReceiptSir, setBankReceiptSir] = React.useState("");
   const [bankReceiptSirBank, setBankReceiptSirBank] = React.useState("");
-  const [bankDeposits, setBankDeposits] = React.useState<{ bankName: string; amount: number }[]>([]);
+  const [bankDeposits, setBankDeposits] = React.useState<BankDepositItem[]>([]);
 
   // ── collapsible sections ──────────────────────────────────────
   const [openSections, setOpenSections] = React.useState<Record<string, boolean>>({
@@ -149,9 +213,18 @@ export function ReportForm({
     exp: false,
     add: false,
     discounts: false,
+    deposits: true,
     reconcile: false,
+    denominations: true,
   });
   const toggleSection = (s: string) => setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
+
+  // ── form tab state ──────────────────────────────────────────
+  const [formTab, setFormTab] = React.useState<"income" | "expenses" | "channels" | "tally">("income");
+
+  // ── cash denomination & tolerance state ─────────────────────
+  const [cashDenominations, setCashDenominations] = React.useState<Record<number, number>>({});
+  const [reconciliationTolerance, setReconciliationTolerance] = React.useState<string>("");
 
   // ── categories master query ───────────────────────────────────
   const categoriesQuery = useRpcQuery<ServiceCategory[]>(
@@ -190,11 +263,42 @@ export function ReportForm({
     return staffList.map((s) => [String(s.staffId), `${s.employeeCode} - ${s.name}`] as [string, string]);
   }, [staffList]);
 
-  // ── auto-populate opening balance in new mode ─────────────────
+  // ── bank accounts query (from /accounts/bank-accounts) ─────────
+  const bankAccountsQuery = useRpcQuery<any[]>(
+    ["bank-accounts"],
+    () => (client.accounts as any)["bank-accounts"].$get()
+  );
+  const bankAccounts: any[] = bankAccountsQuery.data || [];
+
+  const activeAccountBanks = React.useMemo(() => {
+    const bankCountMap = new Map<string, number>();
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const name = acc.bankName.trim();
+        bankCountMap.set(name, (bankCountMap.get(name) || 0) + 1);
+      }
+    });
+
+    const list: string[] = [];
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const name = acc.bankName.trim();
+        const isDuplicate = (bankCountMap.get(name) || 0) > 1;
+        const label = isDuplicate && acc.accountNumber
+          ? `${name} (..${acc.accountNumber.slice(-4)})`
+          : name;
+        if (!list.includes(label)) {
+          list.push(label);
+        }
+      }
+    });
+    return list;
+  }, [bankAccounts]);
+
+  // ── past reports query for auto-populating balance and prior denominations reference ──
   const pastReportsQuery = useRpcQuery<any[]>(
     ["daily-closing-reports-latest"],
-    () => client["daily-closing"].reports.$get(),
-    { enabled: mode === "new" }
+    () => client["daily-closing"].reports.$get()
   );
 
   React.useEffect(() => {
@@ -204,11 +308,11 @@ export function ReportForm({
         const sorted = [...priorReports].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
         const latest = sorted[0];
         if (latest) {
-          setOpeningBalance(String(latest.closingBalance || 0));
+          setOpeningBalance(latest.closingBalance ? String(latest.closingBalance) : "");
           return;
         }
       }
-      setOpeningBalance("0");
+      setOpeningBalance("");
     }
   }, [pastReportsQuery.data, reportDate, mode]);
 
@@ -238,6 +342,7 @@ export function ReportForm({
   // ── other form state ──────────────────────────────────────────
   // const [ipdAdmissions, setIpdAdmissions] = React.useState<IpdAdmission[]>([]);
   // const [ipdDischarges, setIpdDischarges] = React.useState<IpdDischarge[]>([]);
+  const [soiledNotes, setSoiledNotes] = React.useState("");
   const [expenditures, setExpenditures] = React.useState<Expenditure[]>([]);
   const [staffAdvances, setStaffAdvances] = React.useState<StaffAdvance[]>([]);
   // const [additionalIncome, setAdditionalIncome] = React.useState<AdditionalIncome[]>([]);
@@ -245,7 +350,201 @@ export function ReportForm({
   const [paymentChannels, setPaymentChannels] = React.useState<PaymentChannel[]>(
     mode === "new" ? DEFAULT_PAYMENT_CHANNELS : []
   );
-  const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number }>>([]);
+
+  // Dynamic bank autocomplete options for Payment Channels reconciliation
+  // Line 1: Bank Name - last 4 digits of bank account
+  // Line 2: Entity to which the account belongs to
+  const bankAutocompleteOptions: AutocompleteOption[] = React.useMemo(() => {
+    const options: AutocompleteOption[] = [];
+    const seenValues = new Set<string>();
+
+    // 1. Bank accounts from /accounts/bank-accounts (fetches all regardless of legal entity)
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const last4 = acc.accountNumber && acc.accountNumber.trim().length >= 4
+          ? acc.accountNumber.trim().slice(-4)
+          : (acc.accountNumber ? acc.accountNumber.trim() : "");
+        const bankDisplayName = last4
+          ? `${acc.bankName.trim()} - ${last4}`
+          : acc.bankName.trim();
+
+        const entityName = LEGAL_ENTITY_LABELS[acc.legalEntity] || acc.legalEntity || "Acme Hospital";
+        const subLabel = acc.branchName ? `${entityName} • ${acc.branchName.trim()}` : entityName;
+
+        if (!seenValues.has(bankDisplayName)) {
+          seenValues.add(bankDisplayName);
+          options.push([bankDisplayName, bankDisplayName, subLabel]);
+        }
+      }
+    });
+
+    // 2. Legacy common aliases (ICICI, HDFC, BOI)
+    if (!seenValues.has("ICICI Bank") && !seenValues.has("ICICI")) {
+      options.push(["ICICI", "ICICI Bank", "Legacy Bank"]);
+      seenValues.add("ICICI");
+    }
+    if (!seenValues.has("HDFC Bank") && !seenValues.has("HDFC")) {
+      options.push(["HDFC", "HDFC Bank", "Legacy Bank"]);
+      seenValues.add("HDFC");
+    }
+    if (!seenValues.has("Bank Of India") && !seenValues.has("BOI")) {
+      options.push(["BOI", "Bank Of India", "Legacy Bank"]);
+      seenValues.add("BOI");
+    }
+
+    // 3. Ensure any existing legacy values in paymentChannels or initialData are present
+    paymentChannels.forEach((pc) => {
+      if (pc.bank && !seenValues.has(pc.bank)) {
+        seenValues.add(pc.bank);
+        options.push([pc.bank, pc.bank, "Current Value"]);
+      }
+    });
+    if (initialData?.paymentChannels) {
+      initialData.paymentChannels.forEach((pc) => {
+        if (pc.bank && !seenValues.has(pc.bank)) {
+          seenValues.add(pc.bank);
+          options.push([pc.bank, pc.bank, "Saved Report Value"]);
+        }
+      });
+    }
+
+    // 4. Non-bank channels (CASH and OTHERS)
+    if (!seenValues.has("CASH")) {
+      options.push(["CASH", "CASH", "Physical Cash Collection"]);
+    }
+    if (!seenValues.has("OTHERS")) {
+      options.push(["OTHERS", "OTHERS", "Other / Miscellaneous"]);
+    }
+
+    return options;
+  }, [bankAccounts, paymentChannels, initialData?.paymentChannels]);
+
+  // Dynamic bank options for Bank Deposits from /accounts/bank-accounts
+  const bankDepositAccountOptions: AutocompleteOption[] = React.useMemo(() => {
+    const options: AutocompleteOption[] = [];
+    const seenKeys = new Set<string>();
+
+    // 1. Registered bank accounts from bank-accounts master
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.accountName) {
+        const idStr = String(acc.id);
+        const entityLabel = LEGAL_ENTITY_LABELS[acc.legalEntity] || acc.legalEntity || "Acme Hospital";
+        const masked = maskAccountNumber(acc.accountNumber);
+        const subLabelParts = [entityLabel, acc.bankName];
+        if (masked) subLabelParts.push(`A/C: ${masked}`);
+        if (acc.ifscCode) subLabelParts.push(`IFSC: ${acc.ifscCode}`);
+        if (acc.branchName) subLabelParts.push(acc.branchName);
+
+        seenKeys.add(idStr);
+        seenKeys.add(acc.accountName.toLowerCase());
+        options.push([idStr, acc.accountName, subLabelParts.join(" • ")]);
+      }
+    });
+
+    // 2. Also include any custom bankName already set on bankDeposits
+    bankDeposits.forEach((bd) => {
+      if (bd.bankName && !seenKeys.has(bd.bankName.toLowerCase())) {
+        seenKeys.add(bd.bankName.toLowerCase());
+        options.push([bd.bankName, bd.bankName, "Custom / Historical Bank"]);
+      }
+    });
+
+    return options;
+  }, [bankAccounts, bankDeposits]);
+
+  const handleBankDepositAccountChange = (idx: number, val: string) => {
+    const acc = bankAccounts.find(
+      (a: any) => String(a.id) === val || a.accountName.toLowerCase() === val.toLowerCase()
+    );
+    setBankDeposits(
+      bankDeposits.map((bd, i) => {
+        if (i !== idx) return bd;
+        if (acc) {
+          return {
+            ...bd,
+            bankAccountId: acc.id,
+            bankName: acc.accountName,
+            accountName: acc.accountName,
+            accountNumber: acc.accountNumber,
+            ifscCode: acc.ifscCode || undefined,
+            branchName: acc.branchName || undefined,
+            legalEntity: acc.legalEntity,
+          };
+        }
+        return {
+          ...bd,
+          bankAccountId: null,
+          bankName: val,
+          accountName: val,
+        };
+      })
+    );
+  };
+
+  // Dynamic bank options for Bank Receipt Sir (excluding CASH)
+  const receiptBankOptions = React.useMemo(() => {
+    const options = new Set<string>();
+    bankAccounts.forEach((acc: any) => {
+      if (acc.active !== false && acc.bankName) {
+        const last4 = acc.accountNumber && acc.accountNumber.trim().length >= 4
+          ? ` - ${acc.accountNumber.trim().slice(-4)}`
+          : "";
+        options.add(`${acc.bankName.trim()}${last4}`);
+      }
+    });
+    if (options.size === 0) {
+      ["ICICI", "HDFC", "BOI"].forEach((b) => options.add(b));
+    }
+    if (bankReceiptSirBank) {
+      options.add(bankReceiptSirBank);
+    }
+    if (initialData?.bankReceiptSirBank) {
+      options.add(initialData.bankReceiptSirBank);
+    }
+    options.add("OTHERS");
+    return Array.from(options).filter((b) => b !== "CASH");
+  }, [bankAccounts, bankReceiptSirBank, initialData?.bankReceiptSirBank]);
+
+  // When bankAccounts load in "new" mode, update default payment channels bank names if untouched
+  React.useEffect(() => {
+    if (mode !== "new" || !bankAccounts || bankAccounts.length === 0) return;
+
+    setPaymentChannels((prev) => {
+      const isUntouchedDefault =
+        prev.length === 4 &&
+        prev.every(
+          (pc) => toNum(pc.amount) === 0 && (
+            ["ICICI", "HDFC", "BOI"].includes(pc.bank) ||
+            pc.bank.startsWith("ICICI") ||
+            pc.bank.startsWith("HDFC") ||
+            pc.bank.includes("India")
+          )
+        );
+
+      if (!isUntouchedDefault) return prev;
+
+      const resolveBank = (legacy: string) => {
+        const found = bankAccounts.find((a: any) => {
+          if (a.active === false) return false;
+          const name = (a.bankName || "").toUpperCase();
+          if (legacy === "BOI") return name.includes("INDIA") || name.includes("BOI");
+          return name.includes(legacy.toUpperCase());
+        });
+        if (!found) return legacy;
+        const last4 = found.accountNumber && found.accountNumber.trim().length >= 4
+          ? ` - ${found.accountNumber.trim().slice(-4)}`
+          : "";
+        return `${found.bankName.trim()}${last4}`;
+      };
+
+      return prev.map((pc) => ({
+        ...pc,
+        bank: resolveBank(pc.bank),
+      }));
+    });
+  }, [mode, bankAccounts]);
+
+  const [nightServices, setNightServices] = React.useState<Array<{ serviceId: number; rate: number; quantity: number; amount: number; narration?: string }>>([]);
   const [entryOrder, setEntryOrder] = React.useState<number[]>([]);
 
   // Initialize entryOrder reactively based on mode and catalogList / initialData
@@ -287,16 +586,18 @@ export function ReportForm({
   React.useEffect(() => {
     if (!initialData) return;
 
-    setOpeningBalance(String(toNum(initialData.openingBalance)));
-    setFundHandoverSir(String(toNum(initialData.fundHandoverSir)));
-    setFundHandoverMadam(String(toNum(initialData.fundHandoverMadam)));
+    setOpeningBalance(toNum(initialData.openingBalance) ? String(toNum(initialData.openingBalance)) : "");
+    setFundHandoverSir(toNum(initialData.fundHandoverSir) ? String(toNum(initialData.fundHandoverSir)) : "");
+    setFundHandoverMadam(toNum(initialData.fundHandoverMadam) ? String(toNum(initialData.fundHandoverMadam)) : "");
+    setSoiledNotes(initialData.soiledNotes && toNum(initialData.soiledNotes) ? String(toNum(initialData.soiledNotes)) : "");
     setStatus(initialData.status);
 
     // Service lines
     const quantities: ServiceQty = {};
     const custom: CustomLine[] = [];
-    const night: Array<{ serviceId: number; rate: number; quantity: number; amount: number }> = [];
+    const night: Array<{ serviceId: number; rate: number; quantity: number; amount: number; narration?: string }> = [];
     initialData.serviceLines?.forEach((l: any) => {
+      const hasNarration = Boolean(l.narration && String(l.narration).trim() !== "");
       if (l.isNightEntry) {
         if (l.serviceId) {
           night.push({
@@ -304,6 +605,7 @@ export function ReportForm({
             rate: toNum(l.rate),
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
+            narration: l.narration || "",
           });
         }
       } else {
@@ -312,6 +614,8 @@ export function ReportForm({
             rate: toNum(l.rate),
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
+            narration: l.narration || "",
+            showNarration: hasNarration,
           };
         } else {
           custom.push({
@@ -320,6 +624,8 @@ export function ReportForm({
             rate: toNum(l.rate),
             quantity: toNum(l.quantity),
             amount: toNum(l.amount),
+            narration: l.narration || "",
+            showNarration: hasNarration,
           });
         }
       }
@@ -335,7 +641,11 @@ export function ReportForm({
     //   patientName: item.patientName, amount: toNum(item.amount),
     // })) ?? []);
     setExpenditures(initialData.expenditures?.map((item: any) => ({
-      category: item.category, details: item.details, amount: toNum(item.amount),
+      category: item.category,
+      details: item.details,
+      amount: toNum(item.amount),
+      narration: item.narration || "",
+      showNarration: Boolean(item.narration && String(item.narration).trim() !== ""),
     })) ?? []);
     setStaffAdvances(initialData.staffAdvances?.map((item: any) => ({
       staffId: item.staffId ? toNum(item.staffId) : undefined,
@@ -348,10 +658,10 @@ export function ReportForm({
     setDiscountsReturns(initialData.discountsReturns?.map((item: any) => ({
       label: item.label, amount: toNum(item.amount),
     })) ?? []);
-    setCashReceiptSir(String(toNum(initialData.cashReceiptSir)));
-    setCashReceiptMam(String(toNum(initialData.cashReceiptMam)));
-    setCashReceiptAcon(String(toNum(initialData.cashReceiptAcon)));
-    setBankReceiptSir(String(toNum(initialData.bankReceiptSir)));
+    setCashReceiptSir(toNum(initialData.cashReceiptSir) ? String(toNum(initialData.cashReceiptSir)) : "");
+    setCashReceiptMam(toNum(initialData.cashReceiptMam) ? String(toNum(initialData.cashReceiptMam)) : "");
+    setCashReceiptAcon(toNum(initialData.cashReceiptAcon) ? String(toNum(initialData.cashReceiptAcon)) : "");
+    setBankReceiptSir(toNum(initialData.bankReceiptSir) ? String(toNum(initialData.bankReceiptSir)) : "");
     setBankReceiptSirBank(initialData.bankReceiptSirBank || "");
 
     const pChannels = (initialData.paymentChannels ?? []).map((item: any) => ({
@@ -362,23 +672,80 @@ export function ReportForm({
     if (initialData.bankDeposits) {
       try {
         const parsed = JSON.parse(initialData.bankDeposits);
-        if (Array.isArray(parsed)) {
-          setBankDeposits(parsed.map((item: any) => ({
-            bankName: item.bankName || "",
-            amount: toNum(item.amount),
-          })));
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setBankDeposits(
+            parsed.map((item: any) => {
+              const matchedAcc = bankAccounts.find(
+                (a: any) =>
+                  (item.bankAccountId && a.id === item.bankAccountId) ||
+                  (item.bankName && a.accountName === item.bankName)
+              );
+              return {
+                bankAccountId: item.bankAccountId || matchedAcc?.id || null,
+                bankName: item.bankName || matchedAcc?.accountName || item.accountName || "",
+                accountName: item.accountName || matchedAcc?.accountName || item.bankName || "",
+                accountNumber: item.accountNumber || matchedAcc?.accountNumber || "",
+                ifscCode: item.ifscCode || matchedAcc?.ifscCode || "",
+                branchName: item.branchName || matchedAcc?.branchName || "",
+                legalEntity: item.legalEntity || matchedAcc?.legalEntity || "",
+                amount: toNum(item.amount),
+                narration: item.narration || "",
+              };
+            })
+          );
+        } else if (toNum(initialData.bankDeposit) > 0) {
+          setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
         } else {
           setBankDeposits([]);
         }
-      } catch (e) {
-        setBankDeposits([]);
+      } catch {
+        if (toNum(initialData.bankDeposit) > 0) {
+          setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
+        } else {
+          setBankDeposits([]);
+        }
       }
     } else if (toNum(initialData.bankDeposit) > 0) {
       setBankDeposits([{ bankName: "Sir (ICICI)", amount: toNum(initialData.bankDeposit) }]);
     } else {
       setBankDeposits([]);
     }
+
+    if (initialData.cashDenominations) {
+      try {
+        const parsed = typeof initialData.cashDenominations === "string"
+          ? JSON.parse(initialData.cashDenominations)
+          : initialData.cashDenominations;
+        setCashDenominations(parsed && typeof parsed === "object" ? parsed : {});
+      } catch (e) {
+        setCashDenominations({});
+      }
+    } else {
+      setCashDenominations({});
+    }
+
+    if (initialData.reconciliationTolerance !== undefined && initialData.reconciliationTolerance !== null) {
+      setReconciliationTolerance(toNum(initialData.reconciliationTolerance) ? String(toNum(initialData.reconciliationTolerance)) : "");
+    }
   }, [initialData]);
+
+  // ── Keyboard shortcut Ctrl+S to save as draft ────────────────
+  const doSubmitRef = React.useRef<(forcedStatus?: "draft" | "submitted") => void>(undefined);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (isPending) return;
+        setStatus("draft");
+        doSubmitRef.current?.("draft");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isPending]);
 
   // ── derived calculations ──────────────────────────────────────
   const catalogServiceLines = Object.entries(serviceQuantities)
@@ -404,25 +771,25 @@ export function ReportForm({
     return totals;
   }, [catalogServiceLines, customLines, activeCategories]);
 
-  const totalCategoryIncome = Object.values(categoryTotals).reduce((s, v) => s + toNum(v), 0);
+  const totalCategoryIncome = Number(Object.values(categoryTotals).reduce((s, v) => s + toNum(v), 0).toFixed(2));
 
-  const expTotal = expenditures.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const advTotal = staffAdvances.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const totalExpenditures = expTotal + advTotal;
+  const expTotal = Number(expenditures.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  const advTotal = Number(staffAdvances.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  const totalExpenditures = Number((expTotal + advTotal).toFixed(2));
 
   // const ipdAdmissionsTotal = ipdAdmissions.reduce((sum, item) => sum + toNum(item.amount), 0);
   // const ipdDischargesTotal = ipdDischarges.reduce((sum, item) => sum + toNum(item.amount), 0);
   // const additionalTotal = additionalIncome.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const discountsTotal = discountsReturns.reduce((sum, item) => sum + toNum(item.amount), 0);
+  const discountsTotal = Number(discountsReturns.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
 
   const openBal = toNum(openingBalance);
 
-  const nightServicesTotal = nightServices.reduce((sum, item) => sum + toNum(item.amount), 0);
-  const totalIncome = totalCategoryIncome + nightServicesTotal - discountsTotal;
-  const netBalance = totalIncome - totalExpenditures;
+  const nightServicesTotal = Number(nightServices.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
+  const totalIncome = Number((totalCategoryIncome + nightServicesTotal - discountsTotal).toFixed(2));
+  const netBalance = Number((totalIncome - totalExpenditures).toFixed(2));
 
   const derivedBankDepositTotal = React.useMemo(() => {
-    return bankDeposits.reduce((sum, item) => sum + item.amount, 0);
+    return Number(bankDeposits.reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
   }, [bankDeposits]);
 
   const depositVal = derivedBankDepositTotal;
@@ -437,26 +804,96 @@ export function ReportForm({
   // `numeric` columns come back as strings via Drizzle), so every reduce
   // over this array must go through `toNum` — raw `item.amount` addition
   // silently degrades into string concatenation the moment a string slips in.
-  const cashReceiptsSum = paymentChannels
+  const cashReceiptsSum = Number(paymentChannels
     .filter((item) => item.bank === "CASH" && item.channel === "CASH")
-    .reduce((sum, item) => sum + toNum(item.amount), 0);
+    .reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
 
-  const bankReceiptsSum = paymentChannels
+  const bankReceiptsSum = Number(paymentChannels
     .filter((item) => item.bank !== "CASH")
-    .reduce((sum, item) => sum + toNum(item.amount), 0);
+    .reduce((sum, item) => sum + toNum(item.amount), 0).toFixed(2));
 
   // Reuses cashReceiptsSum/bankReceiptsSum above instead of re-filtering and
   // re-reducing the same array a second time — one source of truth per total.
   // const paymentChannelsSum = bankReceiptsSum + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal;
-  const paymentChannelsSum = bankReceiptsSum + cashReceiptsSum;
+  const paymentChannelsSum = Number((bankReceiptsSum + cashReceiptsSum).toFixed(2));
 
-  const closingBalance = openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal;
+  const closingBalance = Number((openBal + cashReceiptsSum + cashSirVal + cashMamVal + cashAconVal - totalExpenditures - depositVal - handoverSirVal - handoverMadamVal).toFixed(2));
+
+  const totalDenominationAmount = React.useMemo(() => {
+    const rawSum = Object.entries(cashDenominations).reduce((sum, [denom, count]) => {
+      const d = parseInt(denom, 10) || 0;
+      const c = typeof count === "number" ? count : (parseInt(count, 10) || 0);
+      return sum + (d * c);
+    }, 0) + toNum(soiledNotes);
+    return Number(rawSum.toFixed(2));
+  }, [cashDenominations, soiledNotes]);
+
+  // ── prior report & cash denominations reference ──────────────
+  const activeReportDate = mode === "new" ? reportDate : (lockedReportDate || initialData?.reportDate || "");
+
+  const priorReport = React.useMemo(() => {
+    if (!pastReportsQuery.data || !activeReportDate) return null;
+    const filtered = pastReportsQuery.data.filter((r) => r.reportDate < activeReportDate);
+    if (filtered.length === 0) return null;
+    const sorted = [...filtered].sort((a, b) => b.reportDate.localeCompare(a.reportDate));
+    return sorted[0];
+  }, [pastReportsQuery.data, activeReportDate]);
+
+  const priorDenominations: Record<number, number> = React.useMemo(() => {
+    if (!priorReport || !priorReport.cashDenominations) return {};
+    try {
+      const parsed = typeof priorReport.cashDenominations === "string"
+        ? JSON.parse(priorReport.cashDenominations)
+        : priorReport.cashDenominations;
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }, [priorReport]);
+
+  const priorTotalDenominationAmount = React.useMemo(() => {
+    return Object.entries(priorDenominations).reduce((sum, [denom, count]) => {
+      const d = parseInt(denom, 10) || 0;
+      const c = typeof count === "number" ? count : (parseInt(count, 10) || 0);
+      return sum + (d * c);
+    }, 0);
+  }, [priorDenominations]);
+
+  const handleApplyPriorDenominations = () => {
+    if (Object.keys(priorDenominations).length > 0) {
+      setCashDenominations(priorDenominations);
+    }
+  };
+
+  const toleranceVal = toNum(reconciliationTolerance);
+  const cashTallyDiff = Number((totalDenominationAmount - closingBalance).toFixed(2));
+  const isCashTallied = Math.abs(cashTallyDiff) <= toleranceVal;
 
   const revenueToReconcile = totalIncome;
-  const isReconciled = Math.abs(paymentChannelsSum - revenueToReconcile) < 1;
+  const isReconciled = Math.abs(Number((paymentChannelsSum - revenueToReconcile).toFixed(2))) <= toleranceVal;
 
   const fmt = (num: number) =>
     new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(num);
+
+  const handleDenominationChange = (denom: number, countStr: string) => {
+    const count = parseInt(countStr, 10);
+    if (isNaN(count) || count <= 0) {
+      setCashDenominations((prev) => {
+        const copy = { ...prev };
+        delete copy[denom];
+        return copy;
+      });
+    } else {
+      setCashDenominations((prev) => ({
+        ...prev,
+        [denom]: count,
+      }));
+    }
+  };
+
+  const handleClearDenominations = () => {
+    setCashDenominations({});
+  };
 
   // ── event handlers ────────────────────────────────────────────
   const handleCashReceiptChange = (sourceLabel: "SIR" | "MAM" | "ACON", valStr: string) => {
@@ -476,27 +913,69 @@ export function ReportForm({
     } else {
       setServiceQuantities((prev) => ({
         ...prev,
-        [serviceId]: { rate, quantity: qty, amount: rate * qty },
+        [serviceId]: { rate, quantity: qty, amount: Number((rate * qty).toFixed(2)) },
       }));
     }
   };
 
   const handleRateAmtChange = (serviceId: number, field: "rate" | "amount", valueStr: string) => {
-    const val = parseFloat(valueStr);
-    if (isNaN(val) || val < 0) return;
+    const val = parseFloat(valueStr) || 0;
     setServiceQuantities((prev) => {
       const data = prev[serviceId];
       if (!data) return prev;
       if (field === "rate") {
-        return { ...prev, [serviceId]: { ...data, rate: val, amount: val * data.quantity } };
+        return { ...prev, [serviceId]: { ...data, rate: val, amount: Number((val * data.quantity).toFixed(2)) } };
       } else {
-        return { ...prev, [serviceId]: { ...data, amount: val } };
+        return { ...prev, [serviceId]: { ...data, rate: 0, amount: val } };
       }
     });
   };
 
   const handleAddCustomLine = (dept: string) => {
-    setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0 }]);
+    setCustomLines((prev) => [...prev, { serviceName: "", department: dept, rate: 0, quantity: 1, amount: 0, narration: "", showNarration: false }]);
+  };
+
+  const handleNarrationChange = (serviceId: number, val: string) => {
+    setServiceQuantities((prev) => {
+      const data = prev[serviceId];
+      if (!data) return prev;
+      return { ...prev, [serviceId]: { ...data, narration: val } };
+    });
+  };
+
+  const toggleNarration = (serviceId: number) => {
+    setServiceQuantities((prev) => {
+      const data = prev[serviceId];
+      if (!data) return prev;
+      const currentShow = data.showNarration ?? Boolean(data.narration && data.narration.trim() !== "");
+      return { ...prev, [serviceId]: { ...data, showNarration: !currentShow } };
+    });
+  };
+
+  const toggleCustomLineNarration = (index: number) => {
+    setCustomLines((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const currentShow = item.showNarration ?? Boolean(item.narration && item.narration.trim() !== "");
+        return { ...item, showNarration: !currentShow };
+      })
+    );
+  };
+
+  const toggleExpenditureNarration = (index: number) => {
+    setExpenditures((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== index) return item;
+        const currentShow = item.showNarration ?? Boolean(item.narration && item.narration.trim() !== "");
+        return { ...item, showNarration: !currentShow };
+      })
+    );
+  };
+
+  const handleNightNarrationChange = (index: number, val: string) => {
+    setNightServices((prev) =>
+      prev.map((item, idx) => (idx === index ? { ...item, narration: val } : item))
+    );
   };
 
   const handleCustomLineChange = (index: number, field: string, val: string, isVar: boolean = false) => {
@@ -509,13 +988,18 @@ export function ReportForm({
         } else if (field === "rate") {
           const rateVal = parseFloat(val) || 0;
           copy.rate = rateVal;
-          if (!isVar) copy.amount = rateVal * copy.quantity;
+          if (!isVar) copy.amount = Number((rateVal * copy.quantity).toFixed(2));
         } else if (field === "quantity") {
           const qtyVal = parseInt(val, 10) || 0;
           copy.quantity = qtyVal;
-          if (!isVar) copy.amount = copy.rate * qtyVal;
+          if (!isVar) copy.amount = Number((copy.rate * qtyVal).toFixed(2));
         } else if (field === "amount") {
           copy.amount = parseFloat(val) || 0;
+          if (!isVar) {
+            copy.rate = 0;
+          }
+        } else if (field === "narration") {
+          copy.narration = val;
         }
         return copy;
       })
@@ -544,21 +1028,20 @@ export function ReportForm({
     setNightServices((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
-        return { ...item, quantity: qty, amount: item.rate * qty };
+        return { ...item, quantity: qty, amount: Number((item.rate * qty).toFixed(2)) };
       })
     );
   };
 
   const handleNightRateAmtChange = (index: number, field: "rate" | "amount", valueStr: string) => {
-    const val = parseFloat(valueStr);
-    if (isNaN(val) || val < 0) return;
+    const val = parseFloat(valueStr) || 0;
     setNightServices((prev) =>
       prev.map((item, idx) => {
         if (idx !== index) return item;
         if (field === "rate") {
-          return { ...item, rate: val, amount: val * item.quantity };
+          return { ...item, rate: val, amount: Number((val * item.quantity).toFixed(2)) };
         } else {
-          return { ...item, amount: val };
+          return { ...item, rate: 0, amount: val };
         }
       })
     );
@@ -594,8 +1077,18 @@ export function ReportForm({
   };
 
   // ── submit ────────────────────────────────────────────────────
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const doSubmit = (forcedStatus?: "draft" | "submitted") => {
+    const finalStatus = forcedStatus ?? status;
+
+    if (finalStatus === "submitted" && (!isCashTallied || !isReconciled)) {
+      alert("Submission blocked due to tally mismatch! Physical cash and payment channel totals must match calculated figures before submitting.");
+      return;
+    }
+
+    if (toNum(reconciliationTolerance) > 100) {
+      alert("Submission blocked! Reconciliation Tolerance exceeds the maximum allowed limit of ₹100.");
+      return;
+    }
     const parsedServiceLines = [
       ...entryOrder
         .filter((serviceId) => {
@@ -609,6 +1102,7 @@ export function ReportForm({
             rate: toNum(data.rate),
             quantity: toNum(data.quantity),
             amount: toNum(data.amount),
+            narration: data.narration || null,
             isNightEntry: false,
           };
         }),
@@ -617,6 +1111,7 @@ export function ReportForm({
         rate: toNum(line.rate),
         quantity: toNum(line.quantity),
         amount: toNum(line.amount),
+        narration: line.narration || null,
         isNightEntry: false,
       })),
       ...nightServices.map((line) => ({
@@ -624,6 +1119,7 @@ export function ReportForm({
         rate: toNum(line.rate),
         quantity: toNum(line.quantity),
         amount: toNum(line.amount),
+        narration: line.narration || null,
         isNightEntry: true,
       })),
     ];
@@ -641,12 +1137,13 @@ export function ReportForm({
       bankReceiptSirBank: bankReceiptSirBank || null,
       bankDeposits: JSON.stringify(bankDeposits),
       cashReceipts: cashReceiptsSum,
-      status,
+      status: finalStatus,
       serviceLines: parsedServiceLines,
       expenditures: expenditures.map((e) => ({
         category: e.category,
         details: e.details,
         amount: toNum(e.amount),
+        narration: e.narration || null,
       })),
       staffAdvances: staffAdvances.map((sa) => ({
         staffId: sa.staffId ?? null,
@@ -665,9 +1162,18 @@ export function ReportForm({
           sourceLabel: pc.sourceLabel,
           amount: toNum(pc.amount),
         })),
+      cashDenominations,
+      reconciliationTolerance: toleranceVal,
+      soiledNotes: toNum(soiledNotes) || null,
     };
 
     onSubmit(payload);
+  };
+  doSubmitRef.current = doSubmit;
+
+  const handleSubmit = (e?: React.SyntheticEvent) => {
+    if (e) e.preventDefault();
+    doSubmit();
   };
 
   // ── catalog autocomplete helper ───────────────────────────────
@@ -706,9 +1212,45 @@ export function ReportForm({
         <tbody className="divide-y">
           {catalog.map((item) => {
             const state = serviceQuantities[item.id] ?? { rate: item.defaultRate, quantity: 0, amount: 0 };
+            const isNarrationVisible = state.showNarration ?? Boolean(state.narration && state.narration.trim() !== "");
             return (
               <tr key={item.id} className="hover:bg-muted/10">
-                <td className="p-3 font-semibold text-foreground">{item.serviceName}</td>
+                <td className="p-3 font-semibold text-foreground">
+                  <div>{item.serviceName}</div>
+                  {state.quantity > 0 && (
+                    <div className="mt-1">
+                      {isNarrationVisible ? (
+                        <div className="space-y-1 mt-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground font-medium">Narration / Remarks</span>
+                            <button
+                              type="button"
+                              onClick={() => toggleNarration(item.id)}
+                              className="text-[10px] text-muted-foreground hover:text-rose-500 font-semibold cursor-pointer"
+                            >
+                              Hide Narration
+                            </button>
+                          </div>
+                          <textarea
+                            rows={2}
+                            placeholder="Add narration / note (multi-line supported)..."
+                            value={state.narration || ""}
+                            onChange={(e) => handleNarrationChange(item.id, e.target.value)}
+                            className="w-full text-[11px] font-normal border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleNarration(item.id)}
+                          className="text-[10px] text-teal-650 dark:text-teal-400 hover:underline font-semibold cursor-pointer mt-0.5 inline-flex items-center gap-1"
+                        >
+                          + Add Narration
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td className="p-3 text-center">
                   <input
                     type="number" min="0" placeholder="0"
@@ -730,7 +1272,8 @@ export function ReportForm({
                           }));
                         }
                       } else {
-                        handleQtyChange(item.id, toNum(item.defaultRate), qtyStr);
+                        const currentRate = state.quantity > 0 ? state.rate : toNum(item.defaultRate);
+                        handleQtyChange(item.id, currentRate, qtyStr);
                       }
                     }}
                     className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
@@ -738,19 +1281,33 @@ export function ReportForm({
                 </td>
                 {!isVar && (
                   <td className="p-3 text-right">
-                    <input
-                      type="number" min="0" step="0.01"
-                      value={state.rate}
-                      onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
-                      disabled={state.quantity === 0}
-                      className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
-                    />
+                    {state.rate > 0 ? (
+                      <input
+                        type="number" min="0" step="0.01"
+                        placeholder="0.00"
+                        value={state.rate || ""}
+                        onChange={(e) => handleRateAmtChange(item.id, "rate", e.target.value)}
+                        disabled={state.quantity === 0}
+                        className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
+                      />
+                    ) : state.quantity > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRateAmtChange(item.id, "rate", String(item.defaultRate || 0))}
+                        className="text-[10px] text-teal-650 hover:underline cursor-pointer font-bold"
+                      >
+                        Reset Rate
+                      </button>
+                    ) : (
+                      <span className="text-muted-foreground text-[10px]">—</span>
+                    )}
                   </td>
                 )}
                 <td className="p-3 text-right">
                   <input
                     type="number" min="0" step="0.01"
-                    value={state.amount}
+                    placeholder="0.00"
+                    value={state.amount || ""}
                     onChange={(e) => handleRateAmtChange(item.id, "amount", e.target.value)}
                     disabled={state.quantity === 0}
                     className="w-28 text-right font-bold text-foreground rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none disabled:opacity-50"
@@ -770,55 +1327,101 @@ export function ReportForm({
       .filter((l) => l.department === dept)
       .map((line, cIdx) => {
         const actualIdx = customLines.indexOf(line);
+        const isCustomNarrationVisible = line.showNarration ?? Boolean(line.narration && line.narration.trim() !== "");
         return (
           <div key={cIdx} className="grid grid-cols-1 gap-2.5 sm:grid-cols-4 items-end bg-muted/20 p-3 rounded-lg border">
-            <div className="sm:col-span-1 space-y-1">
-              <Label className="text-[10px]">Service Name</Label>
-              <Input
-                type="text" placeholder="Service name"
-                value={line.serviceName}
-                onChange={(e) => handleCustomLineChange(actualIdx, "serviceName", e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px]">Qty</Label>
-              <Input
-                type="number" placeholder="1"
-                value={line.quantity}
-                onChange={(e) => handleCustomLineChange(actualIdx, "quantity", e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px]">Rate</Label>
-              <Input
-                type="number" placeholder="0"
-                value={line.rate}
-                onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex gap-2 items-center">
-              <div className="space-y-1 flex-1">
-                <Label className="text-[10px]">Total</Label>
-                <Input
-                  type="number"
-                  value={line.amount}
-                  onChange={(e) => handleCustomLineChange(actualIdx, "amount", e.target.value)}
-                  required
-                />
+                <div className="sm:col-span-1 space-y-1">
+                  <Label className="text-[10px]">Service Name</Label>
+                  <Input
+                    type="text" placeholder="Service name"
+                    value={line.serviceName}
+                    onChange={(e) => handleCustomLineChange(actualIdx, "serviceName", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Qty</Label>
+                  <Input
+                    type="number" placeholder="1"
+                    value={line.quantity || ""}
+                    onChange={(e) => handleCustomLineChange(actualIdx, "quantity", e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px]">Rate</Label>
+                  {line.rate > 0 ? (
+                    <Input
+                      type="number" placeholder="0.00"
+                      value={line.rate || ""}
+                      onChange={(e) => handleCustomLineChange(actualIdx, "rate", e.target.value)}
+                      required
+                    />
+                  ) : (
+                    <div className="h-10 flex items-center justify-between border rounded-md px-3 bg-muted/20 text-[10px] text-muted-foreground select-none">
+                      <span>Hidden</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCustomLineChange(actualIdx, "rate", String(line.amount / (line.quantity || 1)))}
+                        className="text-teal-650 hover:underline font-bold cursor-pointer"
+                      >
+                        Show
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <div className="space-y-1 flex-1">
+                    <Label className="text-[10px]">Total</Label>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={line.amount || ""}
+                      onChange={(e) => handleCustomLineChange(actualIdx, "amount", e.target.value)}
+                      required
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCustomLine(actualIdx)}
+                    className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 self-end mb-0.5 cursor-pointer"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+                <div className="sm:col-span-4 space-y-1">
+                  {isCustomNarrationVisible ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[10px]">Narration / Remarks (Optional)</Label>
+                        <button
+                          type="button"
+                          onClick={() => toggleCustomLineNarration(actualIdx)}
+                          className="text-[10px] text-muted-foreground hover:text-rose-500 font-semibold cursor-pointer"
+                        >
+                          Hide Narration
+                        </button>
+                      </div>
+                      <textarea
+                        rows={2}
+                        placeholder="Enter narration or service remarks (multi-line supported)..."
+                        value={line.narration || ""}
+                        onChange={(e) => handleCustomLineChange(actualIdx, "narration", e.target.value)}
+                        className="w-full text-xs font-normal border rounded px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                      />
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleCustomLineNarration(actualIdx)}
+                      className="text-[10px] text-teal-650 dark:text-teal-400 hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
+                    >
+                      + Add Narration / Remarks
+                    </button>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveCustomLine(actualIdx)}
-                className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 self-end mb-0.5 cursor-pointer"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          </div>
-        );
+            );
       });
 
   // ── render ────────────────────────────────────────────────────
@@ -857,6 +1460,105 @@ export function ReportForm({
           {/* ── Form panel ─────────────────────────────────────── */}
           <form onSubmit={handleSubmit} className="lg:col-span-3 space-y-5">
 
+            {/* ── Tab Navigation ──────────────────────────────── */}
+            <div className="sticky top-16 z-20 flex gap-1.5 p-1.5 bg-background/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-x-auto">
+              {/* 1. Income Tab */}
+              <button
+                type="button"
+                onClick={() => setFormTab("income")}
+                className={cn(
+                  "flex-1 min-w-[120px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "income"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <Receipt size={14} />
+                  <span>Income</span>
+                </div>
+                <div className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  {fmt(totalIncome)}
+                </div>
+              </button>
+
+              {/* 2. Expenditures Tab */}
+              <button
+                type="button"
+                onClick={() => setFormTab("expenses")}
+                className={cn(
+                  "flex-1 min-w-[130px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "expenses"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <ArrowDownCircle size={14} />
+                  <span>Expenditures</span>
+                </div>
+                <div className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                  {fmt(totalExpenditures)}
+                </div>
+              </button>
+
+              {/* 3. Payment Channels Tab */}
+              <button
+                type="button"
+                onClick={() => setFormTab("channels")}
+                className={cn(
+                  "flex-1 min-w-37 flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "channels"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <CreditCard size={14} />
+                  <span>Payment Channels</span>
+                </div>
+                <div className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-teal-500/10 text-teal-650 dark:text-teal-400">
+                  {fmt(paymentChannelsSum)}
+                </div>
+              </button>
+
+              {/* 4. Cash Tally Tab */}
+              <button
+                type="button"
+                onClick={() => setFormTab("tally")}
+                className={cn(
+                  "flex-1 min-w-[130px] flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-lg transition-all cursor-pointer whitespace-nowrap",
+                  formTab === "tally"
+                    ? "bg-white dark:bg-slate-800 text-teal-650 dark:text-teal-400 shadow-xs border border-teal-500/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                )}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider">
+                  <Coins size={14} />
+                  <span>Cash Tally</span>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] font-extrabold">
+                  <span className="px-2 py-0.5 rounded-full bg-slate-500/10 text-slate-700 dark:text-slate-300">
+                    {fmt(totalDenominationAmount)}
+                  </span>
+                  {totalDenominationAmount > 0 && (
+                    <span
+                      className={cn(
+                        "px-1.5 py-0.5 rounded-full text-[10px] font-black uppercase",
+                        isCashTallied
+                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                          : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                      )}
+                    >
+                      {isCashTallied ? "Tallied" : "Mismatch"}
+                    </span>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* ── Income & Reconciliation Tab ─────────────────── */}
+            {formTab === "income" && (<>
             {/* 1. Header Details */}
             <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
               <CardHeader className="pb-3">
@@ -890,6 +1592,7 @@ export function ReportForm({
                         <Calendar
                           mode="single"
                           selected={reportDate ? new Date(reportDate) : undefined}
+                          disabled={{ after: new Date() }}
                           onSelect={(date) => {
                             if (date) {
                               const yyyy = date.getFullYear();
@@ -913,13 +1616,14 @@ export function ReportForm({
                     type="number"
                     step="0.01"
                     min="0"
+                    placeholder="0.00"
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(e.target.value)}
                     required
                   />
                 </div>
                 {/* Separator and Night Services */}
-                <div className="sm:col-span-2 border-t pt-4 mt-2 space-y-4">
+                <div id="sec-night" className="sm:col-span-2 border-t pt-4 mt-2 space-y-4 scroll-mt-24">
                   <button
                     type="button"
                     onClick={() => toggleSection("night")}
@@ -965,33 +1669,53 @@ export function ReportForm({
                                 return (
                                   <tr key={idx} className="hover:bg-muted/10">
                                     <td className="p-3 font-semibold text-teal-600 dark:text-teal-400">
-                                      {s?.serviceName || "Unknown Service"}
+                                      <div>{s?.serviceName || "Unknown Service"}</div>
+                                      <textarea
+                                        rows={2}
+                                        placeholder="Add narration / note (multi-line supported)..."
+                                        value={item.narration || ""}
+                                        onChange={(e) => handleNightNarrationChange(idx, e.target.value)}
+                                        className="w-full mt-1.5 text-[11px] font-normal border rounded px-2 py-1 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y"
+                                      />
                                     </td>
                                     <td className="p-3 text-center">
                                       <input
                                         type="number"
                                         min="1"
+                                        placeholder="1"
                                         value={item.quantity || ""}
                                         onChange={(e) => handleNightQtyChange(idx, e.target.value)}
                                         className="w-20 rounded border bg-transparent text-center py-1 text-xs font-bold focus:outline-none"
                                       />
                                     </td>
                                     <td className="p-3 text-right">
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={item.rate}
-                                        onChange={(e) => handleNightRateAmtChange(idx, "rate", e.target.value)}
-                                        className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
-                                      />
+                                      {item.rate > 0 ? (
+                                        <input
+                                          type="number"
+                                          min="0"
+                                          step="0.01"
+                                          placeholder="0.00"
+                                          value={item.rate || ""}
+                                          onChange={(e) => handleNightRateAmtChange(idx, "rate", e.target.value)}
+                                          className="w-24 text-right rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
+                                        />
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleNightRateAmtChange(idx, "rate", String(s?.defaultRate || 0))}
+                                          className="text-[10px] text-teal-650 hover:underline cursor-pointer font-bold"
+                                        >
+                                          Reset Rate
+                                        </button>
+                                      )}
                                     </td>
                                     <td className="p-3 text-right">
                                       <input
                                         type="number"
                                         min="0"
                                         step="0.01"
-                                        value={item.amount}
+                                        placeholder="0.00"
+                                        value={item.amount || ""}
                                         onChange={(e) => handleNightRateAmtChange(idx, "amount", e.target.value)}
                                         className="w-28 text-right font-bold text-foreground rounded border bg-transparent py-1 px-1.5 text-xs focus:outline-none"
                                       />
@@ -1029,7 +1753,7 @@ export function ReportForm({
               const isOpen = openSections[sectionKey] ?? false;
               const deptCatalog = getCatalogForDept(cat.code);
               return (
-                <Card key={cat.code} className="border shadow-xs bg-white/70 dark:bg-slate-900/40">
+                <Card id={`sec-cat-${cat.code}`} key={cat.code} className="border shadow-xs bg-white/70 dark:bg-slate-900/40 scroll-mt-24">
                   <button
                     type="button"
                     onClick={() => toggleSection(sectionKey)}
@@ -1173,7 +1897,7 @@ export function ReportForm({
             )}
           </Card> */}
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <Card id="sec-discounts" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("discounts")}
@@ -1207,7 +1931,7 @@ export function ReportForm({
                           type="number"
                           placeholder="0"
                           value={item.amount || ""}
-                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: parseFloat(e.target.value) || 0 } : dr)))}
+                          onChange={(e) => setDiscountsReturns(discountsReturns.map((dr, i) => (i === idx ? { ...dr, amount: e.target.value } : dr)))}
                           required
                         />
                       </div>
@@ -1226,90 +1950,203 @@ export function ReportForm({
                 </CardContent>
               )}
             </Card>
+            </>)}
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
-              <button
-                type="button"
-                onClick={() => toggleSection("exp")}
-                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-              >
-                <div>
-                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 3}. Expenditures &amp; Staff Advances
-                  </CardTitle>
-                  <CardDescription className="text-xs">Daily payouts, vendor settlements, and salaries</CardDescription>
-                </div>
-                <span className="text-xs font-bold text-teal-600">{openSections.exp ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-              </button>
-              {openSections.exp && (
+            {/* ── Expenditures Tab ───────────────────────────────── */}
+            {formTab === "expenses" && (<>
+            <Card id="sec-expenditures" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                  Expenditures &amp; Staff Advances
+                </CardTitle>
+                <CardDescription className="text-xs">Daily payouts, vendor settlements, and salaries</CardDescription>
+              </CardHeader>
                 <CardContent className="p-5 space-y-5">
                   <div className="space-y-3">
                     <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">Outflow Payments</h5>
-                    <datalist id="predefined-expenses">
-                      {expCatalogList.map((item) => (
-                        <option key={item.id} value={item.itemName}>
-                          {item.itemName} ({activeExpCategories.find(c => c.code === item.category)?.label || item.category} - ₹{item.defaultAmount})
-                        </option>
-                      ))}
-                    </datalist>
 
-                    {expenditures.map((item, idx) => (
-                      <div key={idx} className="flex flex-wrap gap-3 items-end bg-muted/15 p-2.5 rounded border">
-                        <Select
-                          label="Category"
-                          options={expCategoriesOptions}
-                          value={item.category}
-                          className="w-48"
-                          onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, category: e.target.value } : ex)))}
-                          required
-                        />
-                        <div className="flex-1 space-y-1">
-                          <Label className="text-[10px]">Details / Payee</Label>
-                          <Input
-                            type="text"
-                            list="predefined-expenses"
-                            placeholder="e.g. M/S SB Surgical, Bamboo purchase"
-                            value={item.details}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              const matched = expCatalogList.find((x) => x.itemName.toUpperCase() === val.toUpperCase());
-                              if (matched) {
-                                setExpenditures(
-                                  expenditures.map((ex, i) =>
-                                    i === idx
-                                      ? { ...ex, details: val, category: matched.category, amount: toNum(matched.defaultAmount) }
-                                      : ex
-                                  )
-                                );
-                              } else {
-                                setExpenditures(
-                                  expenditures.map((ex, i) =>
-                                    i === idx ? { ...ex, details: val } : ex
-                                  )
-                                );
-                              }
-                            }}
-                            required
-                          />
-                        </div>
-                        <div className="w-36 space-y-1">
-                          <Label className="text-[10px]">Amount (INR)</Label>
-                          <Input
-                            type="number"
-                            value={item.amount || ""}
-                            onChange={(e) => setExpenditures(expenditures.map((ex, i) => (i === idx ? { ...ex, amount: parseFloat(e.target.value) || 0 } : ex)))}
-                            required
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setExpenditures(expenditures.filter((_, i) => i !== idx))}
-                          className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                    {expenditures.map((item, idx) => {
+                      const isAutoExpenditure =
+                        item.category === "Salary" &&
+                        (item.details?.startsWith("Salary Payment -") ||
+                          item.narration?.includes("Payslip #") ||
+                          item.narration?.includes("Cash salary payment"));
+
+                      const filteredCatalog = expCatalogList.filter((catItem) => {
+                        if (!item.category) return true;
+                        const c1 = (catItem.category || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        const c2 = (item.category || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+                        return catItem.category === item.category || c1 === c2 || c1.includes(c2) || c2.includes(c1);
+                      });
+
+                      return (
+                        <div
+                          key={idx}
+                          className={cn(
+                            "flex flex-wrap gap-3 items-end p-2.5 rounded border transition-colors",
+                            isAutoExpenditure
+                              ? "bg-amber-50/30 dark:bg-amber-950/10 border-amber-200/70 dark:border-amber-900/50"
+                              : "bg-muted/15"
+                          )}
                         >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    ))}
+                          <datalist id={`predefined-expenses-${idx}`}>
+                            {filteredCatalog.map((catItem) => (
+                              <option key={catItem.id} value={catItem.itemName}>
+                                {catItem.itemName} ({activeExpCategories.find(c => c.code === catItem.category)?.label || catItem.category} - ₹{catItem.defaultAmount})
+                              </option>
+                            ))}
+                          </datalist>
+
+                          {isAutoExpenditure && (
+                            <div className="w-full mb-1 flex items-center justify-between text-[11px] font-semibold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded border border-amber-200/70 dark:border-amber-900/50">
+                              <span className="flex items-center gap-1.5">
+                                <Lock size={12} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                                <span>Auto-Generated Payroll Cash Outflow Entry (Locked)</span>
+                              </span>
+                              <span className="text-[10px] text-amber-600 dark:text-amber-400 italic hidden sm:inline">
+                                Read-only &mdash; Managed via HR Payroll Workflow
+                              </span>
+                            </div>
+                          )}
+
+                          <Select
+                            label="Category"
+                            options={expCategoriesOptions}
+                            value={item.category}
+                            className="w-48"
+                            onChange={(e) =>
+                              setExpenditures(
+                                expenditures.map((ex, i) => (i === idx ? { ...ex, category: e.target.value } : ex))
+                              )
+                            }
+                            required
+                          />
+                          <div className="flex-1 space-y-1">
+                            <Label className="text-[10px]">Details / Payee</Label>
+                            <Input
+                              type="text"
+                              list={`predefined-expenses-${idx}`}
+                              placeholder="e.g. M/S SB Surgical, Bamboo purchase"
+                              value={item.details}
+                              readOnly={isAutoExpenditure}
+                              className={cn(
+                                isAutoExpenditure && "bg-muted/70 text-muted-foreground cursor-not-allowed font-medium"
+                              )}
+                              onChange={(e) => {
+                                if (isAutoExpenditure) return;
+                                const val = e.target.value;
+                                const matched = expCatalogList.find(
+                                  (x) => x.itemName.toUpperCase() === val.toUpperCase()
+                                );
+                                if (matched) {
+                                  setExpenditures(
+                                    expenditures.map((ex, i) =>
+                                      i === idx
+                                        ? {
+                                            ...ex,
+                                            details: val,
+                                            category: matched.category,
+                                            amount: toNum(matched.defaultAmount),
+                                          }
+                                        : ex
+                                    )
+                                  );
+                                } else {
+                                  setExpenditures(
+                                    expenditures.map((ex, i) => (i === idx ? { ...ex, details: val } : ex))
+                                  );
+                                }
+                              }}
+                              required
+                            />
+                          </div>
+                          <div className="w-36 space-y-1">
+                            <Label className="text-[10px]">Amount (INR)</Label>
+                            <Input
+                              type="number"
+                              value={item.amount || ""}
+                              readOnly={isAutoExpenditure}
+                              className={cn(
+                                isAutoExpenditure && "bg-muted/70 text-muted-foreground font-bold cursor-not-allowed"
+                              )}
+                              onChange={(e) =>
+                                !isAutoExpenditure &&
+                                setExpenditures(
+                                  expenditures.map((ex, i) =>
+                                    i === idx ? { ...ex, amount: e.target.value } : ex
+                                  )
+                                )
+                              }
+                              required
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isAutoExpenditure}
+                            title={
+                              isAutoExpenditure
+                                ? "Automatic payroll expenditure entries cannot be deleted directly."
+                                : "Remove outflow record"
+                            }
+                            onClick={() =>
+                              !isAutoExpenditure && setExpenditures(expenditures.filter((_, i) => i !== idx))
+                            }
+                            className={cn(
+                              "p-2 border rounded-md mb-0.5",
+                              isAutoExpenditure
+                                ? "opacity-40 cursor-not-allowed text-muted-foreground border-border"
+                                : "hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                            )}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                          <div className="w-full border-t pt-2 mt-1">
+                            {(item.showNarration ?? Boolean(item.narration && item.narration.trim() !== "")) ? (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <Label className="text-[10px]">Narration Entry (Optional)</Label>
+                                  {!isAutoExpenditure && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpenditureNarration(idx)}
+                                      className="text-[10px] text-muted-foreground hover:text-rose-500 font-semibold cursor-pointer"
+                                    >
+                                      Hide Narration
+                                    </button>
+                                  )}
+                                </div>
+                                <textarea
+                                  rows={2}
+                                  placeholder="Enter narration or payment remarks (multi-line supported)..."
+                                  value={item.narration || ""}
+                                  readOnly={isAutoExpenditure}
+                                  onChange={(e) =>
+                                    !isAutoExpenditure &&
+                                    setExpenditures(
+                                      expenditures.map((ex, i) => (i === idx ? { ...ex, narration: e.target.value } : ex))
+                                    )
+                                  }
+                                  className={cn(
+                                    "w-full text-xs font-normal border rounded px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-teal-500 resize-y",
+                                    isAutoExpenditure
+                                      ? "bg-muted/70 text-muted-foreground cursor-not-allowed"
+                                      : "bg-background text-foreground"
+                                  )}
+                                />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleExpenditureNarration(idx)}
+                                className="text-[10px] text-teal-650 dark:text-teal-400 hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
+                              >
+                                + Add Narration Entry
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                     <Button type="button" variant="outline" onClick={() => setExpenditures([...expenditures, { category: expCategoriesOptions[0] || "MISC", details: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
                       <Plus size={13} className="mr-1" /> Add Outflow Record
                     </Button>
@@ -1328,10 +2165,10 @@ export function ReportForm({
                                 staffAdvances.map((sa, i) =>
                                   i === idx
                                     ? {
-                                        ...sa,
-                                        staffId: val ? Number(val) : undefined,
-                                        staffName: selectedStaff ? selectedStaff.name : "",
-                                      }
+                                      ...sa,
+                                      staffId: val ? Number(val) : undefined,
+                                      staffName: selectedStaff ? selectedStaff.name : "",
+                                    }
                                     : sa
                                 )
                               );
@@ -1345,7 +2182,7 @@ export function ReportForm({
                           <Input
                             type="number"
                             value={item.amount || ""}
-                            onChange={(e) => setStaffAdvances(staffAdvances.map((sa, i) => (i === idx ? { ...sa, amount: parseFloat(e.target.value) || 0 } : sa)))}
+                            onChange={(e) => setStaffAdvances(staffAdvances.map((sa, i) => (i === idx ? { ...sa, amount: e.target.value } : sa)))}
                             required
                           />
                         </div>
@@ -1363,66 +2200,13 @@ export function ReportForm({
                     </Button>
                   </div>
                 </CardContent>
-              )}
             </Card>
+            </>)}
 
-            {/* <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
-            <button
-              type="button"
-              onClick={() => toggleSection("add")}
-              className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
-            >
-              <div>
-                <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                  {activeCategories.length + 4}. Additional Income
-                </CardTitle>
-                <CardDescription className="text-xs">IVF injections, Lifecell, outsourced diagnostic sales, and fund transfers</CardDescription>
-              </div>
-              <span className="text-xs font-bold text-teal-600">{openSections.add ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
-            </button>
-            {openSections.add && (
-              <CardContent className="p-5 space-y-4">
-                {additionalIncome.map((item, idx) => (
-                  <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
-                    <div className="flex-1 space-y-1">
-                      <Label className="text-[10px]">Income Label</Label>
-                      <Input
-                        type="text"
-                        placeholder="e.g. IVF Injection, Lifecell"
-                        value={item.label}
-                        onChange={(e) => setAdditionalIncome(additionalIncome.map((add, i) => (i === idx ? { ...add, label: e.target.value } : add)))}
-                        required
-                      />
-                    </div>
-                    <div className="w-48 space-y-1">
-                      <Label className="text-[10px]">Amount (INR)</Label>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        value={item.amount || ""}
-                        onChange={(e) => setAdditionalIncome(additionalIncome.map((add, i) => (i === idx ? { ...add, amount: parseFloat(e.target.value) || 0 } : add)))}
-                        required
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAdditionalIncome(additionalIncome.filter((_, i) => i !== idx))}
-                      className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ))}
-                <Button type="button" variant="outline" onClick={() => setAdditionalIncome([...additionalIncome, { label: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
-                  <Plus size={13} className="mr-1" /> Add Additional Income
-                </Button>
-              </CardContent>
-            )}
-          </Card> */}
-
-
-
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 ">
+            {/* ── Payment Channels Tab ───────────────────────────── */}
+            {formTab === "channels" && (<>
+            {/* Bank Deposits Card */}
+            <Card id="sec-bank-deposits" className="border shadow-xs bg-white/70 dark:bg-slate-900/40  scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("deposits")}
@@ -1430,50 +2214,148 @@ export function ReportForm({
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 6}. Bank Deposits
+                    {activeCategories.length + 7}. Bank Deposits
                   </CardTitle>
-                  <CardDescription className="text-xs">Record cash deposits made to specific bank accounts</CardDescription>
+                  <CardDescription className="text-xs">
+                    Record cash deposits made to specific hospital, nursing, or personal bank accounts
+                  </CardDescription>
                 </div>
-                <span className="text-xs font-bold text-teal-600">{openSections.deposits ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+                <span className="text-xs font-bold text-teal-600">
+                  {openSections.deposits ? "COLLAPSE ✕" : "EXPAND ▾"}
+                </span>
               </button>
               {openSections.deposits && (
                 <CardContent className="p-5 space-y-4">
-                  {bankDeposits.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 items-end bg-muted/15 p-2.5 rounded border">
-                      <div className="flex-1 space-y-1">
-                        <Label className="text-[10px]">Bank Account / Name</Label>
-                        <Input
-                          type="text"
-                          placeholder="e.g. Sir (ICICI)"
-                          value={item.bankName}
-                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, bankName: e.target.value } : bd))}
-                          required
-                        />
+                  {bankDeposits.map((item, idx) => {
+                    const linkedAcc = bankAccounts.find(
+                      (a: any) =>
+                        (item.bankAccountId && a.id === item.bankAccountId) ||
+                        (a.accountName && a.accountName === item.bankName)
+                    );
+                    const entityCode = linkedAcc?.legalEntity || item.legalEntity;
+                    const entityConfig = getEntityConfig(entityCode);
+                    const accNumber = linkedAcc?.accountNumber || item.accountNumber;
+                    const ifsc = linkedAcc?.ifscCode || item.ifscCode;
+                    const branch = linkedAcc?.branchName || item.branchName;
+                    const bankActualName = linkedAcc?.bankName;
+
+                    return (
+                      <div key={idx} className="p-3 bg-muted/15 rounded-lg border border-border/60 space-y-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                          <div className="sm:col-span-6">
+                            <Autocomplete
+                              label="Bank Account"
+                              labelClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1"
+                              inputClassName="h-8 text-xs py-1"
+                              options={bankDepositAccountOptions}
+                              value={item.bankAccountId ? String(item.bankAccountId) : item.bankName}
+                              onChange={(val) => handleBankDepositAccountChange(idx, val)}
+                              placeholder="Select bank account..."
+                              allowCustomValue
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3 space-y-1">
+                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">
+                              Deposit Ref / Narration
+                            </Label>
+                            <Input
+                              type="text"
+                              placeholder="e.g. Challan # / Cashier"
+                              className="h-8 text-xs px-2.5"
+                              value={item.narration || ""}
+                              onChange={(e) =>
+                                setBankDeposits(
+                                  bankDeposits.map((bd, i) =>
+                                    i === idx ? { ...bd, narration: e.target.value } : bd
+                                  )
+                                )
+                              }
+                            />
+                          </div>
+
+                          <div className="sm:col-span-3 flex gap-1.5 items-end">
+                            <div className="space-y-1 flex-1 min-w-0">
+                              <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block truncate">
+                                Amount (INR)
+                              </Label>
+                              <Input
+                                type="number"
+                                placeholder="0"
+                                className="h-8 text-xs font-semibold px-2 text-right"
+                                value={item.amount || ""}
+                                onChange={(e) =>
+                                  setBankDeposits(
+                                    bankDeposits.map((bd, i) =>
+                                      i === idx ? { ...bd, amount: e.target.value } : bd
+                                    )
+                                  )
+                                }
+                                required
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setBankDeposits(bankDeposits.filter((_, i) => i !== idx))}
+                              className="h-8 w-8 shrink-0 flex items-center justify-center border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                              title="Delete"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Bank Account Details Strip */}
+                        {(entityConfig || accNumber || ifsc || branch || bankActualName) && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground border-t border-border/40">
+                            {entityConfig && (
+                              <Badge variant="outline" className={cn("text-[10px] py-0 px-1.5 font-bold", entityConfig.badgeBg)}>
+                                {entityConfig.label}
+                              </Badge>
+                            )}
+                            {bankActualName && (
+                              <span className="font-semibold text-foreground flex items-center gap-1">
+                                <Landmark size={12} className="text-teal-600 dark:text-teal-400" />
+                                {bankActualName}
+                              </span>
+                            )}
+                            {accNumber && (
+                              <span className="font-mono bg-muted/50 px-1.5 py-0.5 rounded text-[10px] text-foreground">
+                                A/C: {maskAccountNumber(accNumber)}
+                              </span>
+                            )}
+                            {ifsc && (
+                              <span className="font-mono text-[10px]">
+                                IFSC: <span className="font-semibold">{ifsc}</span>
+                              </span>
+                            )}
+                            {branch && (
+                              <span className="italic text-[10px]">
+                                Branch: {branch}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="w-48 space-y-1">
-                        <Label className="text-[10px]">Amount (INR)</Label>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          value={item.amount || ""}
-                          onChange={(e) => setBankDeposits(bankDeposits.map((bd, i) => i === idx ? { ...bd, amount: parseFloat(e.target.value) || 0 } : bd))}
-                          required
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setBankDeposits(bankDeposits.filter((_, i) => i !== idx))}
-                        className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" onClick={() => setBankDeposits([...bankDeposits, { bankName: "", amount: 0 }])} className="font-semibold cursor-pointer text-xs">
+                    );
+                  })}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setBankDeposits([
+                        ...bankDeposits,
+                        { bankName: "", amount: 0, narration: "" },
+                      ])
+                    }
+                    className="font-semibold cursor-pointer text-xs"
+                  >
                     <Plus size={13} className="mr-1" /> Add Bank Deposit
                   </Button>
+
                   {bankDeposits.length > 0 && (
-                    <div className="pt-3 border-t flex justify-between items-center text-sm font-bold text-teal-600">
+                    <div className="pt-3 border-t flex justify-between items-center text-sm font-bold text-teal-600 dark:text-teal-400">
                       <span>Total Bank Deposits:</span>
                       <span>{fmt(derivedBankDepositTotal)}</span>
                     </div>
@@ -1482,7 +2364,7 @@ export function ReportForm({
               )}
             </Card>
 
-            <Card className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur">
+            <Card id="sec-payment-channels" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
               <button
                 type="button"
                 onClick={() => toggleSection("reconcile")}
@@ -1490,7 +2372,7 @@ export function ReportForm({
               >
                 <div>
                   <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
-                    {activeCategories.length + 7}. Payment Channel Reconciliation
+                    {activeCategories.length + 8}. Payment Channel Reconciliation
                   </CardTitle>
                   <CardDescription className="text-xs">Reconcile transaction collections by card, UPI, and cash per bank channel</CardDescription>
                 </div>
@@ -1501,48 +2383,60 @@ export function ReportForm({
                   {paymentChannels
                     .map((item, idx) => ({ item, idx }))
                     .map(({ item, idx }) => (
-                      <div key={idx} className="grid grid-cols-1 gap-3 sm:grid-cols-4 items-end bg-muted/15 p-3 rounded border">
-                        <Select
-                          label="Bank"
-                          options={BANKS}
-                          value={item.bank}
-                          onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, bank: e.target.value } : pc)))}
-                          required
-                        />
-                        <Select
-                          label="Channel"
-                          options={CHANNELS}
-                          value={item.channel}
-                          onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, channel: e.target.value } : pc)))}
-                          required
-                        />
-                        <div className="space-y-1">
-                          <Label className="text-[10px]">Description / Source</Label>
+                      <div key={idx} className="grid grid-cols-1 gap-2 sm:grid-cols-12 items-end bg-muted/15 p-2.5 rounded border">
+                        <div className="sm:col-span-5">
+                          <Autocomplete
+                            label="Bank"
+                            labelClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1"
+                            inputClassName="h-8 text-xs py-1"
+                            options={bankAutocompleteOptions}
+                            value={item.bank}
+                            onChange={(val) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, bank: val } : pc)))}
+                            placeholder="Search bank..."
+                            allowCustomValue
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Select
+                            label="Channel"
+                            labelClassName="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block mb-1"
+                            selectClassName="h-8 text-xs py-1 px-2"
+                            options={CHANNELS}
+                            value={item.channel}
+                            onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, channel: e.target.value } : pc)))}
+                            required
+                          />
+                        </div>
+                        <div className="sm:col-span-3 space-y-1">
+                          <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block">Description / Source</Label>
                           <Input
                             type="text"
                             placeholder="e.g. Front OPD card reader"
+                            className="h-8 text-xs px-2.5"
                             value={item.sourceLabel}
                             onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, sourceLabel: e.target.value } : pc)))}
                             required
                           />
                         </div>
-                        <div className="flex gap-2 items-center">
-                          <div className="space-y-1 flex-1">
-                            <Label className="text-[10px]">Amount (INR)</Label>
+                        <div className="sm:col-span-2 flex gap-1.5 items-end">
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <Label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground block truncate">Amount (INR)</Label>
                             <Input
                               type="number"
                               placeholder="0"
+                              className="h-8 text-xs font-semibold px-2 text-right"
                               value={item.amount || ""}
-                              onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: parseFloat(e.target.value) || 0 } : pc)))}
+                              onChange={(e) => setPaymentChannels(paymentChannels.map((pc, i) => (i === idx ? { ...pc, amount: e.target.value } : pc)))}
                               required
                             />
                           </div>
                           <button
                             type="button"
                             onClick={() => setPaymentChannels(paymentChannels.filter((_, i) => i !== idx))}
-                            className="p-2 border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer mb-0.5"
+                            className="h-8 w-8 shrink-0 flex items-center justify-center border rounded-md hover:bg-rose-500/10 text-rose-500 hover:border-rose-500/30 cursor-pointer"
+                            title="Delete"
                           >
-                            <Trash2 size={15} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </div>
@@ -1553,11 +2447,241 @@ export function ReportForm({
                 </CardContent>
               )}
             </Card>
+            </>)}
+            {/* ── Cash Tally Tab ────────────────────────────────── */}
+            {formTab === "tally" && (<>
+            {/* Cash Denomination Form & Closing Tally */}
+            <Card id="sec-cash-tally" className="border shadow-xs bg-white/70 dark:bg-slate-900/40 backdrop-blur scroll-mt-24">
+              <button
+                type="button"
+                onClick={() => toggleSection("denominations")}
+                className="w-full text-left p-5 border-b focus:outline-none flex justify-between items-center cursor-pointer"
+              >
+                <div>
+                  <CardTitle className="text-sm font-black uppercase tracking-wider text-teal-650 dark:text-teal-400">
+                    Cash Denomination &amp; Tally
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Tally physical cash notes/coins with calculated closing balance and set reconciliation tolerance
+                  </CardDescription>
+                </div>
+                <span className="text-xs font-bold text-teal-600">{openSections.denominations ? "COLLAPSE ✕" : "EXPAND ▾"}</span>
+              </button>
+              {openSections.denominations && (
+                <CardContent className="p-5 space-y-6">
+                  {/* Tolerance Input & Quick Actions */}
+                  <div className="flex flex-col gap-2 p-3.5 bg-muted/20 rounded-lg border">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="space-y-1">
+                          <Label htmlFor="recTolerance" className="text-xs font-bold uppercase text-muted-foreground">
+                            Reconciliation Tolerance (₹)
+                          </Label>
+                          <Input
+                            id="recTolerance"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={reconciliationTolerance}
+                            onChange={(e) => {
+                              setReconciliationTolerance(e.target.value);
+                            }}
+                            className={cn(
+                              "w-36 font-bold h-9 bg-background text-foreground",
+                              toNum(reconciliationTolerance) > 100 && "border-amber-500 ring-1 ring-amber-500 text-amber-600"
+                            )}
+                          />
+                        </div>
+                        <span className="text-[11px] text-rose-200 self-end pb-1.5">
+                          {toNum(reconciliationTolerance) > 100
+                            ? "Tolerance limit is set unusually high (> ₹100)."
+                            : "Tolerance allows minor count discrepancies (up to ±₹100)."}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleClearDenominations}
+                        className="text-xs font-semibold cursor-pointer"
+                        disabled={Object.keys(cashDenominations).length === 0}
+                      >
+                        Clear Denominations
+                      </Button>
+                    </div>
+
+                    {toNum(reconciliationTolerance) > 100 && (
+                      <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-md border border-amber-300 dark:border-amber-900/60 mt-1">
+                        <AlertTriangle size={15} className="shrink-0 text-amber-600" />
+                        <span>Warning: Reconciliation Tolerance (₹{reconciliationTolerance}) exceeds the allowed limit of ₹100! Submission is blocked until reduced.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Soiled Notes / Mutilated Currency Details */}
+                  <div className="space-y-1.5 p-3.5 bg-muted/20 rounded-lg border">
+                    <Label htmlFor="soiledNotes" className="text-xs font-bold uppercase text-muted-foreground">
+                      Soiled Notes Amount (INR)
+                    </Label>
+                    <Input
+                      id="soiledNotes"
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={soiledNotes}
+                      onChange={(e) => setSoiledNotes(e.target.value)}
+                      className="w-36 font-bold h-9 bg-background text-foreground"
+                    />
+                  </div>
+
+                  {/* Previous Day Cash Denominations Reference Banner */}
+                  {pastReportsQuery.isLoading ? (
+                    <div className="p-3 text-xs text-muted-foreground animate-pulse">
+                      Loading prior report details...
+                    </div>
+                  ) : priorReport ? (
+                    <div className="p-3 bg-muted/20 rounded-lg border space-y-2">
+                      <div className="flex justify-between items-center text-xs font-bold text-foreground">
+                        <span>Prior Report Reference ({priorReport.reportDate})</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleApplyPriorDenominations}
+                          className="h-7 text-xs font-semibold text-teal-650 dark:text-teal-400 hover:bg-teal-500/10 cursor-pointer"
+                        >
+                          Copy Denominations from {priorReport.reportDate}
+                        </Button>
+                      </div>
+                      {priorTotalDenominationAmount > 0 ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                            {CASH_DENOMINATIONS.filter((denom) => (priorDenominations[denom] || 0) > 0).map((denom) => {
+                              const count = priorDenominations[denom] || 0;
+                              const subtotal = count * denom;
+                              return (
+                                <div key={denom} className="p-2 rounded bg-background border flex justify-between items-center">
+                                  <span className="font-semibold text-muted-foreground">₹{denom} × {count}</span>
+                                  <span className="font-bold text-teal-650 dark:text-teal-400 text-[11px]">
+                                    = ₹{subtotal.toLocaleString("en-IN")}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex justify-between items-center text-xs font-bold pt-1 text-slate-700 dark:text-slate-300">
+                            <span>Prior Physical Cash Total:</span>
+                            <span className="text-teal-650 dark:text-teal-400">{fmt(priorTotalDenominationAmount)}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic">
+                          No cash denomination details recorded for previous report ({priorReport.reportDate}).
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg border border-dashed text-xs text-muted-foreground text-center">
+                      No prior daily closing report found for reference.
+                    </div>
+                  )}
+
+                  {/* Currency Denominations Grid */}
+                  <div className="space-y-2">
+                    <h5 className="text-xs font-bold text-foreground uppercase tracking-wider">
+                      Cash Currency Count
+                    </h5>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                      {CASH_DENOMINATIONS.map((denom) => {
+                        const count = cashDenominations[denom] || 0;
+                        const subtotal = count * denom;
+                        return (
+                          <div
+                            key={denom}
+                            className={cn(
+                              "p-3 rounded-lg border flex flex-col justify-between transition-colors",
+                              count > 0 ? "bg-teal-500/10 border-teal-500/30" : "bg-muted/10 border-slate-200 dark:border-slate-800"
+                            )}
+                          >
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-xs font-extrabold text-foreground">₹{denom}</span>
+                              <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+                                {denom >= 10 ? "Note" : "Coin"}
+                              </span>
+                            </div>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={count || ""}
+                              onChange={(e) => handleDenominationChange(denom, e.target.value)}
+                              className="text-center font-bold text-sm h-8"
+                            />
+                            <div className="mt-2 pt-1 border-t text-right text-[11px] font-bold text-teal-650 dark:text-teal-400">
+                              = ₹{subtotal.toLocaleString("en-IN")}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Summary Comparison & Status Banner */}
+                  <div className="p-4 rounded-xl border bg-card space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center border-b pb-3">
+                      <div>
+                        <span className="text-[11px] text-muted-foreground uppercase font-semibold block">Total Physical Cash</span>
+                        <span className="text-base font-black text-teal-650 dark:text-teal-400">{fmt(totalDenominationAmount)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground uppercase font-semibold block">Calculated Cash Closing</span>
+                        <span className="text-base font-black text-foreground">{fmt(closingBalance)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-muted-foreground uppercase font-semibold block">Variance / Difference</span>
+                        <span className={cn(
+                          "text-base font-black",
+                          cashTallyDiff === 0 ? "text-emerald-600 dark:text-emerald-400" :
+                            Math.abs(cashTallyDiff) <= toleranceVal ? "text-teal-600 dark:text-teal-400" :
+                              "text-rose-600 dark:text-rose-400"
+                        )}>
+                          {cashTallyDiff > 0 ? `+${fmt(cashTallyDiff)}` : fmt(cashTallyDiff)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={cn(
+                      "p-3 rounded-lg border text-xs font-bold flex items-center justify-between transition-all",
+                      isCashTallied
+                        ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                        : "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                    )}>
+                      <div className="flex items-center gap-2">
+                        {isCashTallied ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
+                        <span>
+                          {cashTallyDiff === 0
+                            ? "Physical cash exactly matches calculated cash closing balance!"
+                            : isCashTallied
+                              ? `Physical cash tallies within tolerance limit of ±${fmt(toleranceVal)} (Variance: ${fmt(cashTallyDiff)})`
+                              : `Cash Mismatch: ${cashTallyDiff > 0 ? "Excess" : "Shortage"} of ${fmt(Math.abs(cashTallyDiff))} exceeds tolerance of ±${fmt(toleranceVal)}`}
+                        </span>
+                      </div>
+                      <span className={cn(
+                        "px-2.5 py-0.5 rounded-full text-[10px] uppercase font-black tracking-wide shrink-0",
+                        isCashTallied ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"
+                      )}>
+                        {isCashTallied ? "Tallied" : "Mismatch"}
+                      </span>
+                    </div>
+                  </div>
+                </CardContent>
+              )}
+            </Card>
+            </>)}
           </form>
 
           {/* ── Live Summary Sidebar ────────────────────────────── */}
           <div className="lg:col-span-1 space-y-5 lg:sticky lg:top-24">
-            <Card className="border border-teal-600/30 bg-teal-500/5 shadow-md rounded-xl p-5 space-y-4">
+            <Card className="border border-teal-600/30 bg-amber-200/10 dark:bg-teal-500/5  shadow-md rounded-xl p-5 space-y-4">
               <h4 className="font-extrabold text-base border-b pb-2 text-slate-800 dark:text-slate-100 uppercase tracking-wide">
                 Live Summary
               </h4>
@@ -1567,58 +2691,101 @@ export function ReportForm({
                 <div className="space-y-2 border p-2 -mx-2 my-3 rounded-lg border-lime-800">
                   <p className="font-semibold text-lg">Income and Expenditure</p>
                   <hr className="border-b-2 border-fuchsia-800/30" />
-                  <div className="text-emerald-400  px-2">
+                  <div className="text-emerald-400 px-2 space-y-0.5">
                     {activeCategories.map((cat) => (
-                      <div key={cat.code} className="flex justify-between">
+                      <button
+                        type="button"
+                        key={cat.code}
+                        onClick={() => {
+                          setFormTab("income");
+                          setTimeout(() => document.getElementById(`sec-cat-${cat.code}`)?.scrollIntoView({ behavior: "smooth" }), 50);
+                        }}
+                        className="w-full flex justify-between hover:underline cursor-pointer text-left py-0.5"
+                      >
                         <span className="font-semibold">{cat.label}</span>
                         <span className="font-bold">{fmt(categoryTotals[cat.code] ?? 0)}</span>
-                      </div>
+                      </button>
                     ))}
 
                     {nightServicesTotal > 0 && (
-                      <div className="flex justify-between text-indigo-400">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormTab("income");
+                          setTimeout(() => document.getElementById("sec-night")?.scrollIntoView({ behavior: "smooth" }), 50);
+                        }}
+                        className="w-full flex justify-between text-indigo-400 hover:underline cursor-pointer text-left py-0.5"
+                      >
                         <span className="font-semibold">Night Income</span>
                         <span className="font-bold">{fmt(nightServicesTotal)}</span>
-                      </div>
+                      </button>
                     )}
 
                     {discountsTotal > 0 && (
-                      <div className="flex justify-between text-rose-400 dark:text-rose-300">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormTab("income");
+                          setTimeout(() => document.getElementById("sec-discounts")?.scrollIntoView({ behavior: "smooth" }), 50);
+                        }}
+                        className="w-full flex justify-between text-rose-400 dark:text-rose-300 hover:underline cursor-pointer text-left py-0.5"
+                      >
                         <span className="font-semibold">Less: Discounts/Returns:</span>
                         <span className="font-bold">-{fmt(discountsTotal)}</span>
-                      </div>
+                      </button>
                     )}
                   </div>
                   <div className="bg-emerald-500/40 pb-2 px-2 rounded-xl">
-                    <div className="grid grid-cols-2  pt-2 font-bold ">
+                    <div className="grid grid-cols-2 pt-2 font-bold">
                       <span>Total Income:</span>
                       <span className="text-right">{fmt(totalIncome)}</span>
                     </div>
 
-                    <div className="grid grid-cols-4  pt-2 font-bold ">
-                      <span>  </span>
-                      <span>Cash </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full grid grid-cols-4 pt-2 font-bold hover:underline cursor-pointer text-left"
+                    >
+                      <span></span>
+                      <span>Cash</span>
                       <span className="text-right col-span-2">{fmt(cashReceiptsSum)}</span>
-                    </div>
+                    </button>
 
-                    <div className="grid grid-cols-4  font-bold ">
-                      <span>  </span>
-                      <span>Bank </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full grid grid-cols-4 font-bold hover:underline cursor-pointer text-left"
+                    >
+                      <span></span>
+                      <span>Bank</span>
                       <span className="text-right col-span-2">{fmt(bankReceiptsSum)}</span>
-                    </div>
+                    </button>
                   </div>
 
-                  <div className="flex justify-between border-b pb-2 pt-1 px-2 bg-rose-500/60 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormTab("expenses");
+                      setTimeout(() => document.getElementById("sec-expenditures")?.scrollIntoView({ behavior: "smooth" }), 50);
+                    }}
+                    className="w-full flex justify-between border-b pb-2 pt-1 px-2 bg-rose-500/60 rounded-xl hover:opacity-90 cursor-pointer text-left"
+                  >
                     <span className="font-semibold text-slate-50">Total Expenditures:</span>
-                    <span className="font-bold ">{fmt(totalExpenditures)}</span>
-                  </div>
-                  <div className="flex justify-between font-bold  px-2">
+                    <span className="font-bold">{fmt(totalExpenditures)}</span>
+                  </button>
+                  <div className="flex justify-between font-bold px-2">
                     <span>Net Balance:</span>
                     <span>{fmt(netBalance)}</span>
                   </div>
                 </div>
                 {/* cash management section */}
-                <div className=" space-y-2 border p-2 -mx-2 rounded-lg border-lime-800">
+                <div className="space-y-2 border p-2 -mx-2 rounded-lg border-lime-800 bg-slate-700/60">
                   <span className="font-semibold text-lg">Cash Management</span>
                   <hr className="border-b-2 border-fuchsia-800/30" />
                   <div className="flex justify-between text-emerald-300 px-2">
@@ -1630,6 +2797,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Cash Receipt (Sir)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={cashReceiptSir}
                         onChange={(e) => handleCashReceiptChange("SIR", e.target.value)}
@@ -1639,6 +2807,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Cash Receipt (Mam)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={cashReceiptMam}
                         onChange={(e) => handleCashReceiptChange("MAM", e.target.value)}
@@ -1648,6 +2817,7 @@ export function ReportForm({
                       <Label className="text-emerald-300">Cash Receipt (Acon)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={cashReceiptAcon}
                         onChange={(e) => handleCashReceiptChange("ACON", e.target.value)}
@@ -1657,43 +2827,72 @@ export function ReportForm({
                       <Label className="text-emerald-300">Bank Receipt (Sir)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className="font-semibold text-right pr-0 bg-transparent"
                         value={bankReceiptSir}
                         onChange={(e) => setBankReceiptSir(e.target.value)}
                       />
                     </div>
-                    <div className="grid grid-cols-2 items-center mt-2 text-emerald-300">
+                    <div className="grid grid-cols-2 items-center mt-2 text-emerald-300 ">
                       <Label className="text-emerald-300">Receipt Bank</Label>
                       <select
-                        className="font-semibold text-right bg-slate-900 text-emerald-300 border-none outline-none cursor-pointer text-sm w-full pr-0 focus:ring-0 [&>option]:bg-slate-900 [&>option]:text-emerald-300"
+                        className="font-semibold dark:bg-slate-900 text-emerald-300 border outline-none cursor-pointer h-8 rounded-lg w-full text-left pl-2 focus:ring-0 [&>option]:bg-slate-800 [&>option]:text-emerald-300"
                         value={bankReceiptSirBank}
                         onChange={(e) => setBankReceiptSirBank(e.target.value)}
                       >
-                        <option value="">Select Bank</option>
-                        {BANKS.filter(b => b !== "CASH").map((b) => (
+                        <option value="" >Select Bank</option>
+                        {receiptBankOptions.map((b) => (
                           <option key={b} value={b}>
                             {b}
                           </option>
                         ))}
                       </select>
                     </div>
-                    <div className="flex justify-between text-emerald-300 mt-4">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-payment-channels")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between text-emerald-300 mt-4 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold">Add Cash Receipts:</span>
                       <span className="font-bold">{fmt(cashReceiptsSum)}</span>
-                    </div>
-                    <div className="flex justify-between text-rose-300 mt-2 mb-4">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("expenses");
+                        setTimeout(() => document.getElementById("sec-expenditures")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between text-rose-300 mt-2 mb-4 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold">Less Expenditure:</span>
                       <span className="font-bold">{fmt(totalExpenditures)}</span>
-                    </div>
+                    </button>
 
-                    <div className="flex justify-between items-baseline mt-2 text-rose-300">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("channels");
+                        setTimeout(() => document.getElementById("sec-bank-deposits")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between items-baseline mt-2 text-rose-300 hover:underline cursor-pointer text-left"
+                    >
                       <span className="font-semibold text-xs">Less Bank Deposit</span>
                       <span className="font-bold text-xs">{fmt(derivedBankDepositTotal)}</span>
-                    </div>
+                    </button>
+                    {bankDeposits.filter((bd) => toNum(bd.amount) > 0).map((bd, i) => (
+                      <div key={i} className="flex justify-between pl-3 text-[10px] text-rose-200/80">
+                        <span className="truncate max-w-[140px]">{bd.bankName || "Deposit"}:</span>
+                        <span>{fmt(toNum(bd.amount))}</span>
+                      </div>
+                    ))}
                     <div className="grid grid-cols-2 items-baseline mt-2 text-rose-300">
                       <Label className=" text-rose-300"> Handover (Sir)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className=" font-semibold text-right pr-0 bg-transparent"
                         value={fundHandoverSir}
                         onChange={(e) => setFundHandoverSir(e.target.value)}
@@ -1703,20 +2902,43 @@ export function ReportForm({
                       <Label className=" text-rose-300">Handover (Madam)</Label>
                       <Input
                         type="number" step="0.01"
+                        placeholder="0.00"
                         className=" font-semibold text-right pr-0 bg-transparent"
                         value={fundHandoverMadam}
                         onChange={(e) => setFundHandoverMadam(e.target.value)}
                       />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormTab("tally");
+                        setTimeout(() => document.getElementById("sec-cash-tally")?.scrollIntoView({ behavior: "smooth" }), 50);
+                      }}
+                      className="w-full flex justify-between text-slate-200 mt-3 pt-2 border-t border-slate-600/40 hover:underline cursor-pointer text-left"
+                    >
+                      <span className="font-semibold text-xs">Physical Cash (Tally):</span>
+                      <span className="font-bold text-xs">{fmt(totalDenominationAmount)}</span>
+                    </button>
+                    <div className="flex justify-between items-center mt-1">
+                      <span className="font-semibold text-xs text-slate-300">Tally Status:</span>
+                      <span className={cn(
+                        "text-[10px] font-black px-2 py-0.5 rounded-full",
+                        isCashTallied ? "bg-emerald-500 text-slate-950" : "bg-rose-500 text-white"
+                      )}>
+                        {isCashTallied ? "Tallied" : `Diff: ${fmt(cashTallyDiff)}`}
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-
 
                 <div className="space-y-1.5 border-t pt-3 mt-3">
                   <div className="flex justify-between items-center text-xs font-semibold text-slate-600 dark:text-slate-400">
                     <span>Calculated Closing:</span>
                     <span>{fmt(closingBalance)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                    <span>Tolerance Limit:</span>
+                    <span>±{fmt(toleranceVal)}</span>
                   </div>
                 </div>
 
@@ -1736,7 +2958,7 @@ export function ReportForm({
                   </div>
                   {!isReconciled && (
                     <p className="mt-1.5 text-[9px] font-bold uppercase text-rose-700 dark:text-rose-400">
-                      Mismatch: {fmt(Math.abs(paymentChannelsSum - revenueToReconcile))}
+                      Mismatch: {fmt(Math.abs(paymentChannelsSum - revenueToReconcile))} (Tolerance: ±{fmt(toleranceVal)})
                     </p>
                   )}
                 </div>
@@ -1744,6 +2966,20 @@ export function ReportForm({
 
               {/* Submission Actions */}
               <div className="space-y-2 pt-2">
+                {((status === "submitted" && (!isCashTallied || !isReconciled)) || toNum(reconciliationTolerance) > 100) && (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-bold space-y-1">
+                    <div className="flex items-center gap-1.5 font-extrabold text-rose-800 dark:text-rose-200">
+                      <AlertTriangle size={15} className="shrink-0 text-rose-600" />
+                      <span>Submission Blocked</span>
+                    </div>
+                    <ul className="list-disc list-inside text-[11px] font-medium space-y-0.5 opacity-90">
+                      {!isCashTallied && <li>Cash Tally Mismatch: Cash variance exceeds tolerance limit.</li>}
+                      {!isReconciled && <li>Channel Tally Mismatch: Channel receipts do not match total income.</li>}
+                      {toNum(reconciliationTolerance) > 100 && <li>Tolerance (₹{reconciliationTolerance}) exceeds max limit of ₹100.</li>}
+                    </ul>
+                  </div>
+                )}
+
                 <Select
                   label="Save Status"
                   options={[["draft", "Draft Log"], ["submitted", "Submit & Lock"]]}
@@ -1753,8 +2989,8 @@ export function ReportForm({
                 />
                 <Button
                   onClick={handleSubmit}
-                  className="w-full bg-teal-650 hover:bg-teal-700 text-white font-bold cursor-pointer gap-1.5 mt-2 h-10"
-                  disabled={isPending}
+                  className="w-full bg-teal-650 hover:bg-teal-700 text-white font-bold cursor-pointer gap-1.5 mt-2 h-10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isPending || (status === "submitted" && (!isCashTallied || !isReconciled)) || toNum(reconciliationTolerance) > 100}
                 >
                   <Save size={16} />
                   {isPending

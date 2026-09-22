@@ -20,6 +20,52 @@ import { code, idParam, jsonBody, staffInput } from "./shared.ts";
 
 export const staffRoutes = new Hono<AuthEnv>()
   /**
+   * GET /staff/me
+   * Returns current authenticated user's active staff profile with department and role.
+   */
+  .get("/staff/me", async (c) => {
+    const session = c.get("session");
+    if (!session?.user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const userEmail = session.user.email?.trim().toLowerCase();
+    const userId = session.user.id;
+
+    const rows = await db
+      .select({
+        staffId: staff.staffId,
+        employeeCode: staff.employeeCode,
+        name: staff.name,
+        role: staff.role,
+        departmentId: staffDepartments.departmentId,
+        departmentName: departments.name,
+        phone: staff.phone,
+        email: staff.email,
+        status: staff.status,
+        userId: staff.userId,
+        active: staff.active,
+        isExecutive: staff.isExecutive,
+      })
+      .from(staff)
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
+      )
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(
+        and(
+          eq(staff.active, true),
+          sql`(${staff.userId} = ${userId} OR LOWER(TRIM(${staff.email})) = ${userEmail})`
+        )
+      )
+      .limit(1);
+
+    return c.json(rows[0] || null);
+  })
+
+  /**
    * GET /hr/staff
    * Returns all active staff records (latest version for each employee).
    */
@@ -37,15 +83,22 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
@@ -53,6 +106,11 @@ export const staffRoutes = new Hono<AuthEnv>()
         version: staff.version,
         active: staff.active,
         isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
         userId: staff.userId,
         createdAt: staff.createdAt,
       })
@@ -91,15 +149,22 @@ export const staffRoutes = new Hono<AuthEnv>()
       basicSalary,
       hra,
       conveyance,
-      medical,
+      skillAllowance,
       special,
       epf,
       esi,
       professionalTax,
+      deductTds,
+      tdsPercent,
+      tds,
+      securityDepositTotal,
+      securityDeposit,
+      securityDepositStartMonth,
       otherDeductions,
       bankName,
       accountNumber,
       ifscCode,
+      bankAccountName,
       hrProfile,
       ...staffData
     } = input;
@@ -131,15 +196,22 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: String(basicSalary),
         hra: String(hra),
         conveyance: String(conveyance),
-        medical: String(medical),
+        skillAllowance: String(skillAllowance || 0),
         special: String(special),
         epf: String(epf),
         esi: String(esi),
         professionalTax: String(professionalTax),
+        deductTds: Boolean(deductTds),
+        tdsPercent: String(tdsPercent ?? 10),
+        tds: String(tds || 0),
+        securityDepositTotal: String(securityDepositTotal || 0),
+        securityDeposit: String(securityDeposit || 0),
+        securityDepositStartMonth: securityDepositStartMonth || null,
         otherDeductions: String(otherDeductions),
         bankName,
         accountNumber,
         ifscCode,
+        bankAccountName: bankAccountName || staffData.name,
       })
       .execute();
 
@@ -164,11 +236,11 @@ export const staffRoutes = new Hono<AuthEnv>()
           staffVersion: row.version,
           ...hrProfile,
           educationHistory: hrProfile.educationHistory
-            ? JSON.stringify(hrProfile.educationHistory)
-            : "[]",
+            ? hrProfile.educationHistory
+            : [],
           professionalHistory: hrProfile.professionalHistory
-            ? JSON.stringify(hrProfile.professionalHistory)
-            : "[]",
+            ? hrProfile.professionalHistory
+            : [],
           nominees: hrProfile.nominees
             ? JSON.stringify(hrProfile.nominees)
             : "[]",
@@ -199,15 +271,22 @@ export const staffRoutes = new Hono<AuthEnv>()
       basicSalary,
       hra,
       conveyance,
-      medical,
+      skillAllowance,
       special,
       epf,
       esi,
       professionalTax,
+      deductTds,
+      tdsPercent,
+      tds,
+      securityDepositTotal,
+      securityDeposit,
+      securityDepositStartMonth,
       otherDeductions,
       bankName,
       accountNumber,
       ifscCode,
+      bankAccountName,
       hrProfile,
       ...staffData
     } = input;
@@ -234,31 +313,47 @@ export const staffRoutes = new Hono<AuthEnv>()
     const finalBasicSalary = "basicSalary" in rawBody ? Number(basicSalary) : Number(currentSalary?.basicSalary ?? 0);
     const finalHra = "hra" in rawBody ? Number(hra) : Number(currentSalary?.hra ?? 0);
     const finalConveyance = "conveyance" in rawBody ? Number(conveyance) : Number(currentSalary?.conveyance ?? 0);
-    const finalMedical = "medical" in rawBody ? Number(medical) : Number(currentSalary?.medical ?? 0);
+    const finalSkillAllowance = "skillAllowance" in rawBody ? Number(skillAllowance) : Number(currentSalary?.skillAllowance ?? 0);
     const finalSpecial = "special" in rawBody ? Number(special) : Number(currentSalary?.special ?? 0);
     const finalEpf = "epf" in rawBody ? Number(epf) : Number(currentSalary?.epf ?? 0);
     const finalEsi = "esi" in rawBody ? Number(esi) : Number(currentSalary?.esi ?? 0);
     const finalPt = "professionalTax" in rawBody ? Number(professionalTax) : Number(currentSalary?.professionalTax ?? 0);
+    const finalDeductTds = "deductTds" in rawBody ? Boolean(deductTds) : Boolean(currentSalary?.deductTds ?? false);
+    const finalTdsPercent = "tdsPercent" in rawBody ? Number(tdsPercent) : Number(currentSalary?.tdsPercent ?? 10);
+    const finalTds = "tds" in rawBody ? Number(tds) : Number(currentSalary?.tds ?? 0);
+    const finalSecTotal = "securityDepositTotal" in rawBody ? Number(securityDepositTotal) : Number(currentSalary?.securityDepositTotal ?? 0);
+    const finalSecMonthly = "securityDeposit" in rawBody ? Number(securityDeposit) : Number(currentSalary?.securityDeposit ?? 0);
+    const finalSecStartMonth = "securityDepositStartMonth" in rawBody ? (securityDepositStartMonth || null) : (currentSalary?.securityDepositStartMonth ?? null);
     const finalOther = "otherDeductions" in rawBody ? Number(otherDeductions) : Number(currentSalary?.otherDeductions ?? 0);
     const finalBankName = "bankName" in rawBody ? bankName : (currentSalary?.bankName ?? null);
     const finalAccountNumber = "accountNumber" in rawBody ? accountNumber : (currentSalary?.accountNumber ?? null);
     const finalIfscCode = "ifscCode" in rawBody ? ifscCode : (currentSalary?.ifscCode ?? null);
+    const finalBankAccountName = "bankAccountName" in rawBody
+      ? (bankAccountName || staffData.name || currentStaff.name)
+      : (currentSalary?.bankAccountName ?? currentStaff.name);
 
     const hasSalaryChange = !currentSalary ||
       Number(currentSalary.basicSalary) !== finalBasicSalary ||
       Number(currentSalary.hra) !== finalHra ||
       Number(currentSalary.conveyance) !== finalConveyance ||
-      Number(currentSalary.medical) !== finalMedical ||
+      Number(currentSalary.skillAllowance) !== finalSkillAllowance ||
       Number(currentSalary.special) !== finalSpecial ||
       Number(currentSalary.epf) !== finalEpf ||
       Number(currentSalary.esi) !== finalEsi ||
       Number(currentSalary.professionalTax) !== finalPt ||
+      Boolean(currentSalary.deductTds) !== finalDeductTds ||
+      Number(currentSalary.tdsPercent) !== finalTdsPercent ||
+      Number(currentSalary.tds) !== finalTds ||
+      Number(currentSalary.securityDepositTotal) !== finalSecTotal ||
+      Number(currentSalary.securityDeposit) !== finalSecMonthly ||
+      (currentSalary.securityDepositStartMonth ?? null) !== finalSecStartMonth ||
       Number(currentSalary.otherDeductions) !== finalOther ||
       currentSalary.bankName !== finalBankName ||
       currentSalary.accountNumber !== finalAccountNumber ||
-      currentSalary.ifscCode !== finalIfscCode;
+      currentSalary.ifscCode !== finalIfscCode ||
+      currentSalary.bankAccountName !== finalBankAccountName;
 
-    const computedGross = finalBasicSalary + finalHra + finalConveyance + finalMedical + finalSpecial;
+    const computedGross = finalBasicSalary + finalHra + finalConveyance + finalSkillAllowance + finalSpecial;
 
     const newVersion = currentStaff.version + 1;
 
@@ -303,15 +398,22 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: String(finalBasicSalary),
         hra: String(finalHra),
         conveyance: String(finalConveyance),
-        medical: String(finalMedical),
+        skillAllowance: String(finalSkillAllowance),
         special: String(finalSpecial),
         epf: String(finalEpf),
         esi: String(finalEsi),
         professionalTax: String(finalPt),
+        deductTds: finalDeductTds,
+        tdsPercent: String(finalTdsPercent),
+        tds: String(finalTds),
+        securityDepositTotal: String(finalSecTotal),
+        securityDeposit: String(finalSecMonthly),
+        securityDepositStartMonth: finalSecStartMonth,
         otherDeductions: String(finalOther),
         bankName: finalBankName,
         accountNumber: finalAccountNumber,
         ifscCode: finalIfscCode,
+        bankAccountName: finalBankAccountName,
       })
       .returning()
       .execute();
@@ -394,31 +496,39 @@ export const staffRoutes = new Hono<AuthEnv>()
         staffId: newStaffRow.staffId,
         staffVersion: newStaffRow.version,
         dateOfBirth: hrProfile?.dateOfBirth ?? oldProfile?.dateOfBirth,
+        nationality: hrProfile?.nationality ?? oldProfile?.nationality,
         gender: hrProfile?.gender ?? oldProfile?.gender,
         maritalStatus: hrProfile?.maritalStatus ?? oldProfile?.maritalStatus,
         bloodGroup: hrProfile?.bloodGroup ?? oldProfile?.bloodGroup,
-        fatherName: hrProfile?.fatherName ?? oldProfile?.fatherName,
-        motherName: hrProfile?.motherName ?? oldProfile?.motherName,
-        spouseName: hrProfile?.spouseName ?? oldProfile?.spouseName,
         emergencyContactName:
           hrProfile?.emergencyContactName ?? oldProfile?.emergencyContactName,
         emergencyContactPhone:
           hrProfile?.emergencyContactPhone ?? oldProfile?.emergencyContactPhone,
         currentAddress: hrProfile?.currentAddress ?? oldProfile?.currentAddress,
+        landmarkCurrentAddress: hrProfile?.landmarkCurrentAddress ?? oldProfile?.landmarkCurrentAddress,
         permanentAddress: hrProfile?.permanentAddress ?? oldProfile?.permanentAddress,
+        landmarkPermanentAddress: hrProfile?.landmarkPermanentAddress ?? oldProfile?.landmarkPermanentAddress,
         uan: oldProfile?.uan,
         epfNumber: hrProfile?.epfNumber ?? oldProfile?.epfNumber,
         esiNumber: hrProfile?.esiNumber ?? oldProfile?.esiNumber,
         educationHistory: hrProfile?.educationHistory
-          ? JSON.stringify(hrProfile.educationHistory)
-          : (oldProfile?.educationHistory ?? "[]"),
+          ? hrProfile.educationHistory
+          : (oldProfile?.educationHistory ?? []),
         professionalHistory: hrProfile?.professionalHistory
-          ? JSON.stringify(hrProfile.professionalHistory)
-          : (oldProfile?.professionalHistory ?? "[]"),
+          ? hrProfile.professionalHistory
+          : (oldProfile?.professionalHistory ?? []),
         religion: hrProfile?.religion ?? oldProfile?.religion,
         nominees: hrProfile?.nominees
           ? JSON.stringify(hrProfile.nominees)
           : (oldProfile?.nominees ?? "[]"),
+        certifications: hrProfile?.certifications
+          ? hrProfile.certifications
+          : (oldProfile?.certifications ?? []),
+        familyMembers: hrProfile?.familyMembers
+          ? hrProfile.familyMembers
+          : (oldProfile?.familyMembers ?? []),
+        dateOfJoining: hrProfile?.dateOfJoining ?? oldProfile?.dateOfJoining,
+        lastWorkingDate: hrProfile?.lastWorkingDate ?? oldProfile?.lastWorkingDate,
         mncRegistrationNo: hrProfile?.mncRegistrationNo ?? oldProfile?.mncRegistrationNo,
         mncValidityUpto: hrProfile?.mncValidityUpto ?? oldProfile?.mncValidityUpto,
         mmcRegistrationNo: hrProfile?.mmcRegistrationNo ?? oldProfile?.mmcRegistrationNo,
@@ -487,15 +597,13 @@ export const staffRoutes = new Hono<AuthEnv>()
     if (profile) {
       return c.json({
         ...profile,
-        educationHistory: JSON.parse(profile.educationHistory || "[]"),
-        professionalHistory: JSON.parse(profile.professionalHistory || "[]"),
+        educationHistory: profile.educationHistory || [],
+        professionalHistory: profile.professionalHistory || [],
         nominees: JSON.parse(profile.nominees || "[]"),
       });
     }
 
     return c.json({
-      fatherName: "",
-      motherName: "",
       currentAddress: "",
       permanentAddress: "",
       epfNumber: "",
@@ -504,12 +612,13 @@ export const staffRoutes = new Hono<AuthEnv>()
       professionalHistory: [],
       religion: "",
       nominees: [],
+      certifications: [],
+      familyMembers: [],
       mncRegistrationNo: "",
       mncValidityUpto: "",
       mmcRegistrationNo: "",
       mmcValidityUpto: "",
       maritalStatus: "",
-      spouseName: "",
       gender: "",
     });
   })
@@ -535,21 +644,35 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)
@@ -597,21 +720,35 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)
@@ -670,21 +807,35 @@ export const staffRoutes = new Hono<AuthEnv>()
         basicSalary: staffSalaries.basicSalary,
         hra: staffSalaries.hra,
         conveyance: staffSalaries.conveyance,
-        medical: staffSalaries.medical,
+        skillAllowance: staffSalaries.skillAllowance,
         special: staffSalaries.special,
         epf: staffSalaries.epf,
         esi: staffSalaries.esi,
         professionalTax: staffSalaries.professionalTax,
+        deductTds: staffSalaries.deductTds,
+        tdsPercent: staffSalaries.tdsPercent,
+        tds: staffSalaries.tds,
+        securityDepositTotal: staffSalaries.securityDepositTotal,
+        securityDeposit: staffSalaries.securityDeposit,
+        securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
         ifscCode: staffSalaries.ifscCode,
+        bankAccountName: staffSalaries.bankAccountName,
         salary: staff.salary,
         status: staff.status,
         aadhar: staff.aadhar,
         pan: staff.pan,
         version: staff.version,
         active: staff.active,
+        isExecutive: staff.isExecutive,
+        effectiveDate: staff.effectiveDate,
+        employmentType: staff.employmentType,
+        permanentConfirmationDate: staff.permanentConfirmationDate,
+        employmentStartDate: staff.employmentStartDate,
+        employmentEndDate: staff.employmentEndDate,
+        userId: staff.userId,
         createdAt: staff.createdAt,
       })
       .from(staff)
@@ -729,15 +880,15 @@ export const staffRoutes = new Hono<AuthEnv>()
       .where(
         sql`${leaveRequests.staffId} = ${id}
           AND ${leaveRequests.status} = 'Approved'
-          AND ${leaveRequests.startDate} >= ${yearStart.toISOString()}
-          AND ${leaveRequests.startDate} <= ${yearEnd.toISOString()}`
+          AND ${leaveRequests.startDate} >= ${`${year}-01-01`}
+          AND ${leaveRequests.startDate} <= ${`${year}-12-31`}`
       )
       .execute();
 
     const daysByType: Record<string, number> = {};
     for (const lr of approvedLeaves) {
-      const start = lr.startDate;
-      const end = lr.endDate;
+      const start = new Date(`${String(lr.startDate).slice(0, 10)}T00:00:00Z`);
+      const end = new Date(`${String(lr.endDate).slice(0, 10)}T00:00:00Z`);
       const days = lr.isHalfDay 
         ? 0.5 
         : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);

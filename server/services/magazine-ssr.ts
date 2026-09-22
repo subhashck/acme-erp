@@ -1,0 +1,5506 @@
+export interface MagazineIssueData {
+  id: number;
+  issueNo: string;
+  title: string;
+  slug: string;
+  coverImageUrl?: string | null;
+  description?: string | null;
+  editorialTitle?: string | null;
+  editorialHtml?: string | null;
+  issueMonth: number;
+  issueYear: number;
+  status: string;
+  publishedAt?: Date | string | null;
+  createdAt: Date | string;
+}
+
+export interface MagazineSectionData {
+  id: number;
+  title: string;
+  subtitle?: string | null;
+  authorName?: string | null;
+  authorRole?: string | null;
+  contentHtml: string;
+  sortOrder: number;
+}
+
+export interface HospitalSettingsData {
+  name?: string | null;
+  tagline?: string | null;
+  logoUrl?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  website?: string | null;
+  emergencyPhone?: string | null;
+  opdPhone?: string | null;
+  editorialDivision?: string | null;
+  copyrightText?: string | null;
+}
+
+export interface MagazineMediaData {
+  id: number;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  width?: number | null;
+  height?: number | null;
+  url: string;
+  thumbnailUrl?: string | null;
+  tags?: string[] | null;
+  createdAt?: Date | string | null;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").trim();
+}
+
+function calculateReadingTime(html: string): number {
+  const text = stripHtml(html);
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(wordCount / 200));
+}
+
+/**
+ * Extracts balanced top-level HTML block elements preserving nested tags like
+ * tables (<table>...<p>...</p>...</table>), callouts, lists, and figures without truncation.
+ */
+function extractTopLevelHtmlBlocks(html: string): string[] {
+  if (!html || !html.trim()) return [];
+
+  const trimmed = html.trim();
+  const blocks: string[] = [];
+  const tagRegex = /<\/?([a-zA-Z0-9-]+)(?:\s+[^>]*)?\/?>/g;
+
+  const voidTags = new Set(["img", "hr", "br", "input", "meta", "link", "source"]);
+  let lastIndex = 0;
+  let topLevelTag: string | null = null;
+  let topLevelStart = 0;
+  let depth = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(trimmed)) !== null) {
+    const fullTag = match[0];
+    const tagName = match[1].toLowerCase();
+    const isClosing = fullTag.startsWith("</");
+    const isSelfClosing = fullTag.endsWith("/>") || voidTags.has(tagName);
+
+    if (topLevelTag === null) {
+      // Capture any text before this top-level tag
+      const textBefore = trimmed.slice(lastIndex, match.index).trim();
+      if (textBefore) {
+        blocks.push(textBefore.startsWith("<") ? textBefore : `<p>${textBefore}</p>`);
+      }
+
+      if (isSelfClosing) {
+        blocks.push(fullTag);
+        lastIndex = tagRegex.lastIndex;
+        continue;
+      }
+
+      if (!isClosing) {
+        topLevelTag = tagName;
+        topLevelStart = match.index;
+        depth = 1;
+      }
+    } else {
+      if (tagName === topLevelTag) {
+        if (isClosing) {
+          depth--;
+          if (depth === 0) {
+            const block = trimmed.slice(topLevelStart, tagRegex.lastIndex);
+            blocks.push(block);
+            topLevelTag = null;
+            lastIndex = tagRegex.lastIndex;
+          }
+        } else if (!isSelfClosing) {
+          depth++;
+        }
+      }
+    }
+  }
+
+  if (topLevelTag !== null) {
+    const remaining = trimmed.slice(topLevelStart).trim();
+    if (remaining) {
+      const closed = remaining.toLowerCase().endsWith(`</${topLevelTag}>`) ? remaining : `${remaining}</${topLevelTag}>`;
+      blocks.push(closed);
+    }
+  } else {
+    const remaining = trimmed.slice(lastIndex).trim();
+    if (remaining) {
+      blocks.push(remaining.startsWith("<") ? remaining : `<p>${remaining}</p>`);
+    }
+  }
+
+  return blocks;
+}
+
+/**
+ * Intelligent Layout Paginator for StPageFlip
+ * Calibrated for standard ISO A4 page dimensions (210mm x 297mm).
+ * Fits a balanced density of paragraphs and visual elements per A4 page.
+ */
+function splitHtmlIntoMagazinePages(html: string): string[] {
+  if (!html || !html.trim()) {
+    return ['<p class="empty-note">Story content is being compiled.</p>'];
+  }
+
+  const rawBlocks = extractTopLevelHtmlBlocks(html);
+  if (rawBlocks.length === 0) {
+    const rawParas = html.split(/<\/p>|<br\s*\/?>\s*<br\s*\/?>/i).filter(b => b.trim());
+    return rawParas.length > 0
+      ? rawParas.map(p => (p.trim().startsWith("<") ? p : `<p>${p}</p>`))
+      : ['<p class="empty-note">Story content is being compiled.</p>'];
+  }
+
+  // Preserve all blocks intact without slicing across internal HTML tags (spans, fonts, colors, marks)
+  const blocks: string[] = rawBlocks;
+
+  const pages: string[] = [];
+  let currentPageBlocks: string[] = [];
+  let currentWeight = 0;
+
+  // A4 Standard Dimensions:
+  // - Lead Page capacity ~1250 units (leaves room for story header, title, author byline)
+  // - Continuation Page capacity ~1950 units (full A4 body copy of ~350-450 words)
+  const getCapacity = (pageIdx: number) => (pageIdx === 0 ? 1250 : 1950);
+
+  for (const block of blocks) {
+    const isExplicitPageBreak =
+      /<hr[^>]*class="[^"]*page-break[^"]*"/i.test(block) ||
+      /data-page-break/i.test(block) ||
+      /class="[^"]*page-break-divider/i.test(block);
+
+    if (isExplicitPageBreak) {
+      if (currentPageBlocks.length > 0) {
+        pages.push(currentPageBlocks.join("\n"));
+        currentPageBlocks = [];
+        currentWeight = 0;
+      }
+      continue;
+    }
+
+    let weight = stripHtml(block).length;
+    if (/<img/i.test(block)) weight = 550;
+    if (/<iframe|<video|data-youtube-video/i.test(block)) weight = 600;
+    if (/<table/i.test(block)) weight = Math.round(weight * 0.9) + 400;
+    if (/class="[^"]*callout/i.test(block) || /data-callout-type/i.test(block)) weight = Math.round(weight * 1.15) + 120;
+    if (/<blockquote/i.test(block)) weight = Math.round(weight * 1.25) + 80;
+    if (/<h[1-6]/i.test(block)) weight += 80;
+    if (/<ul|<ol/i.test(block)) weight = Math.round(weight * 1.15) + 50;
+
+    const maxCap = getCapacity(pages.length);
+
+    if (currentPageBlocks.length > 0 && currentWeight + weight > maxCap) {
+      pages.push(currentPageBlocks.join("\n"));
+      currentPageBlocks = [block];
+      currentWeight = weight;
+    } else {
+      currentPageBlocks.push(block);
+      currentWeight += weight;
+    }
+  }
+
+  if (currentPageBlocks.length > 0) {
+    pages.push(currentPageBlocks.join("\n"));
+  }
+
+  return pages.length > 0 ? pages : ['<p class="empty-note">Story content is being compiled.</p>'];
+}
+
+export function enrichIframePermissions(html: string): string {
+  if (!html) return "";
+
+  // 1. Process div[data-youtube-video] and .video-wrapper containers
+  let processed = html.replace(
+    /<div([^>]*data-youtube-video[^>]*)>([\s\S]*?)<\/div>/gi,
+    (_fullDiv, divAttrs, inner) => {
+      const srcMatch = inner.match(/src="([^"]*)"/i);
+      const src = srcMatch ? srcMatch[1] : "";
+      const ytMatch = src.match(/(?:youtube\.com\/(?:embed\/|v\/|watch\?v=)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([a-zA-Z0-9_-]{11})/i);
+      const videoId = ytMatch ? ytMatch[1] : "";
+      const watchUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : (src || "https://www.youtube.com");
+
+      const enrichedInner = inner.replace(/<iframe\b([^>]*)>/gi, (_m: string, attrs: string) => {
+        let newAttrs = attrs;
+        if (!/allowfullscreen/i.test(newAttrs)) {
+          newAttrs += ' allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"';
+        }
+        if (/allow="/i.test(newAttrs)) {
+          newAttrs = newAttrs.replace(/allow="([^"]*)"/i, (_m2: string, permsStr: string) => {
+            const perms = permsStr.split(";").map((s) => s.trim()).filter(Boolean);
+            const required = ["accelerometer", "autoplay", "clipboard-write", "encrypted-media", "gyroscope", "picture-in-picture", "web-share", "fullscreen"];
+            required.forEach((r) => { if (!perms.includes(r)) perms.push(r); });
+            return `allow="${perms.join("; ")}"`;
+          });
+        } else {
+          newAttrs += ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"';
+        }
+        return `<iframe${newAttrs}>`;
+      });
+
+      const openTabBtn = `
+        <a href="${watchUrl}" target="_blank" rel="noopener noreferrer" class="yt-open-tab-btn" title="Open YouTube video in new tab (watch in fullscreen)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+          <span>Watch on YouTube ↗</span>
+        </a>
+      `;
+
+      return `<div${divAttrs}>${enrichedInner}${openTabBtn}</div>`;
+    }
+  );
+
+  // 2. Process any standalone iframes that weren't wrapped in div[data-youtube-video]
+  processed = processed.replace(/<iframe\b([^>]*)>/gi, (_match, attrs) => {
+    let newAttrs = attrs;
+    if (!/allowfullscreen/i.test(newAttrs)) {
+      newAttrs += ' allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true"';
+    }
+    if (/allow="/i.test(newAttrs)) {
+      newAttrs = newAttrs.replace(/allow="([^"]*)"/i, (_m: string, permsStr: string) => {
+        const perms = permsStr.split(";").map((s) => s.trim()).filter(Boolean);
+        const required = ["accelerometer", "autoplay", "clipboard-write", "encrypted-media", "gyroscope", "picture-in-picture", "web-share", "fullscreen"];
+        required.forEach((r) => { if (!perms.includes(r)) perms.push(r); });
+        return `allow="${perms.join("; ")}"`;
+      });
+    } else {
+      newAttrs += ' allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"';
+    }
+    return `<iframe${newAttrs}>`;
+  });
+
+  return processed;
+}
+
+export function renderMagazineHtml(
+  issue: MagazineIssueData,
+  sections: MagazineSectionData[],
+  hospital?: HospitalSettingsData | null,
+  mediaAssets: MagazineMediaData[] = []
+): string {
+  const monthName = MONTH_NAMES[issue.issueMonth - 1] || `Month ${issue.issueMonth}`;
+  const issueDateStr = `${monthName} ${issue.issueYear}`;
+  const hospitalName = hospital?.name?.trim() || "ACME Hospital & Healthcare";
+  const hospitalTagline = hospital?.tagline?.trim() || "";
+  const hospitalAddress = hospital?.address?.trim() || "";
+  const hospitalPhone = hospital?.phone?.trim() || "";
+  const hospitalEmail = hospital?.email?.trim() || "";
+  const hospitalWebsite = hospital?.website?.trim() || "";
+  const hospitalEmergency = hospital?.emergencyPhone?.trim() || "";
+  const hospitalOpd = hospital?.opdPhone?.trim() || "";
+  const hospitalDivision = hospital?.editorialDivision?.trim() || "";
+  const hospitalCopyright = hospital?.copyrightText?.trim() || "";
+
+  const totalMinutes = sections.reduce((acc, sec) => acc + calculateReadingTime(sec.contentHtml || ""), 0);
+
+  // Pre-calculate page splits and start page indices for each section with enriched permissions
+  const enrichedSections = sections.map((s) => ({
+    ...s,
+    contentHtml: enrichIframePermissions(s.contentHtml || ""),
+  }));
+
+  // Pre-paginate all sections for multi-page StPageFlip layout
+  const sectionPaging: {
+    section: MagazineSectionData;
+    pages: string[];
+    startFlipIndex: number; // 0-indexed in flipPages
+    startPageNum: number;   // 1-indexed display
+  }[] = [];
+
+  let nextFlipIndex = 2; // Index 0: Cover (P.1), Index 1: Inside Cover (P.2)
+
+  enrichedSections.forEach((sec) => {
+    const secPages = splitHtmlIntoMagazinePages(sec.contentHtml || "");
+    sectionPaging.push({
+      section: sec,
+      pages: secPages,
+      startFlipIndex: nextFlipIndex,
+      startPageNum: nextFlipIndex + 1,
+    });
+    nextFlipIndex += secPages.length;
+  });
+
+  const hasGallery = Array.isArray(mediaAssets) && mediaAssets.length > 0;
+  const galleryPhotosPerPage = 4;
+  const galleryPageCount = hasGallery ? Math.ceil(mediaAssets.length / galleryPhotosPerPage) : 0;
+  const galleryStartFlipIndex = nextFlipIndex;
+  const galleryStartPageNum = galleryStartFlipIndex + 1;
+  const uniqueTags = hasGallery
+    ? Array.from(new Set(mediaAssets.flatMap((m) => m.tags || []))).filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+    : [];
+
+  // Prepare table of contents for scroll mode and drawer
+  let tocItemsHtml = sectionPaging.map((item, idx) => {
+    const sec = item.section;
+    const anchor = `section-${sec.id}`;
+    const readMins = calculateReadingTime(sec.contentHtml || "");
+    return `
+      <a href="#${anchor}" class="toc-card group" data-section="${anchor}" onclick="handleTocClick('${anchor}', ${item.startFlipIndex}, event)">
+        <div class="toc-card-num">${String(idx + 1).padStart(2, "0")}</div>
+        <div class="toc-card-body">
+          <h3 class="toc-card-title">${escapeHtml(sec.title)}</h3>
+          ${sec.subtitle ? `<p class="toc-card-sub">${escapeHtml(sec.subtitle)}</p>` : ""}
+          <div class="toc-card-meta">
+            ${sec.authorName ? `<span class="toc-card-author">By ${escapeHtml(sec.authorName)}</span>` : ""}
+            <span class="toc-card-time">${readMins} min read &bull; P.${item.startPageNum}</span>
+          </div>
+        </div>
+        <div class="toc-card-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </div>
+      </a>
+    `;
+  }).join("");
+
+  if (hasGallery) {
+    tocItemsHtml += `
+      <a href="#gallery" class="toc-card group toc-gallery-card" data-section="gallery" onclick="handleTocClick('gallery', ${galleryStartFlipIndex}, event)">
+        <div class="toc-card-num" style="color:var(--primary);">★</div>
+        <div class="toc-card-body">
+          <h3 class="toc-card-title">Photo Gallery &amp; Highlights</h3>
+          <p class="toc-card-sub">Visual highlights and clinical moments from this edition</p>
+          <div class="toc-card-meta">
+            <span class="toc-card-time" style="color:var(--primary); font-weight:700;">${mediaAssets.length} Photos &bull; P.${galleryStartPageNum}</span>
+          </div>
+        </div>
+        <div class="toc-card-arrow">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+        </div>
+      </a>
+    `;
+  }
+
+  // Prepare scroll mode section articles
+  const scrollSectionsHtml = enrichedSections.map((sec, idx) => {
+    const anchor = `section-${sec.id}`;
+    const readMins = calculateReadingTime(sec.contentHtml || "");
+    const prevSec = enrichedSections[idx - 1];
+    const nextSec = enrichedSections[idx + 1];
+
+    return `
+      <article id="${anchor}" class="story-article">
+        <header class="story-header">
+          <div class="story-kicker">
+            <span class="story-badge">STORY ${String(idx + 1).padStart(2, "0")} OF ${String(sections.length).padStart(2, "0")}</span>
+            <span class="story-read-time">${readMins} MIN READ</span>
+          </div>
+
+          <h2 class="story-title">${escapeHtml(sec.title)}</h2>
+          ${sec.subtitle ? `<p class="story-subtitle">${escapeHtml(sec.subtitle)}</p>` : ""}
+
+          ${sec.authorName ? `
+            <div class="story-byline">
+              <div class="author-avatar">
+                <span>${escapeHtml(sec.authorName.charAt(0).toUpperCase())}</span>
+              </div>
+              <div class="author-info">
+                <span class="author-name">${escapeHtml(sec.authorName)}</span>
+                ${sec.authorRole ? `<span class="author-role">${escapeHtml(sec.authorRole)}</span>` : ""}
+              </div>
+            </div>
+          ` : ""}
+        </header>
+
+        <div class="story-body prose">
+          ${sec.contentHtml || '<p class="empty-note">Content for this section is currently being compiled.</p>'}
+        </div>
+
+        <footer class="story-footer">
+          ${prevSec ? `
+            <a href="#section-${prevSec.id}" class="footer-nav-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              <span>Prev: ${escapeHtml(prevSec.title.length > 24 ? prevSec.title.slice(0, 24) + '…' : prevSec.title)}</span>
+            </a>
+          ` : `
+            <a href="#toc" class="footer-nav-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+              <span>Table of Contents</span>
+            </a>
+          `}
+
+          ${nextSec ? `
+            <a href="#section-${nextSec.id}" class="footer-nav-btn primary">
+              <span>Next: ${escapeHtml(nextSec.title.length > 24 ? nextSec.title.slice(0, 24) + '…' : nextSec.title)}</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </a>
+          ` : `
+            <a href="#cover" class="footer-nav-btn primary">
+              <span>Back to Top</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+            </a>
+          `}
+        </footer>
+      </article>
+    `;
+  }).join("");
+
+  const stPages: { density: "hard" | "soft"; html: string }[] = [];
+
+  // Front Hard Cover (Page 1)
+  stPages.push({
+    density: "hard",
+    html: `
+      <div class="book-page-content cover-theme">
+        <div class="cover-top-box">
+          <div class="cover-org-label">${escapeHtml(hospitalName)}</div>
+          <div class="cover-badge-pill">${escapeHtml(issue.issueNo)} &bull; ${issueDateStr}</div>
+        </div>
+
+        <div class="cover-main-box">
+          <h1 class="cover-heading">${escapeHtml(issue.title)}</h1>
+          ${(issue.description || hospitalTagline) ? `<p class="cover-subtext">${escapeHtml(issue.description || hospitalTagline)}</p>` : ""}
+        </div>
+
+        ${issue.coverImageUrl ? `
+          <div class="cover-artwork">
+            <img src="${escapeHtml(issue.coverImageUrl)}" alt="Cover Artwork" />
+          </div>
+        ` : `
+          <div class="cover-artwork-mock">
+            <span class="cover-mock-emblem">MONTHLY EDITION</span>
+          </div>
+        `}
+
+        <div class="cover-footer-box">
+          <div class="cover-summary-line">${sections.length} Stories &bull; ${totalMinutes} Min Read</div>
+          <div class="cover-turn-hint">
+            <span>Drag Corner or Click to Open</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </div>
+        </div>
+      </div>
+    `,
+  });
+
+  // Prepare Editorial Desk Foreword (User-defined or fallback)
+  const editorialTitle = issue.editorialTitle?.trim() || "From the Editorial Desk";
+  let editorialContentHtml = "";
+  if (issue.editorialHtml && issue.editorialHtml.trim()) {
+    const raw = issue.editorialHtml.trim();
+    if (raw.includes("<") && raw.includes(">")) {
+      editorialContentHtml = raw;
+    } else {
+      editorialContentHtml = raw
+        .split(/\n+/)
+        .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
+        .join("");
+    }
+  } else {
+    editorialContentHtml = `
+      <p>
+        Welcome to the <strong>${issueDateStr}</strong> edition of <em>${escapeHtml(issue.title)}</em>.
+        Our clinical teams and departments continue to bring groundbreaking updates, 
+        healthcare insights, and medical excellence to our community.
+      </p>
+    `;
+  }
+
+  // Inside Cover: Editorial Foreword + Quick TOC (Page 2)
+  stPages.push({
+    density: "hard",
+    html: `
+      <div class="book-page-content standard-theme">
+        <div class="page-running-header">
+          <span>EDITORIAL FOREWORD</span>
+          <span>${issueDateStr}</span>
+        </div>
+
+        <div class="page-inner-scroll">
+          <div class="editorial-box">
+            <h2 class="editorial-title">${escapeHtml(editorialTitle)}</h2>
+            <div class="editorial-accent-bar"></div>
+            <div class="editorial-text">
+              ${editorialContentHtml}
+            </div>
+          </div>
+
+          <div class="flip-toc-box">
+            <div class="flip-toc-title">IN THIS ISSUE</div>
+            <div class="flip-toc-entries">
+              ${sectionPaging.map((item, sIdx) => `
+                <div class="flip-toc-row" onclick="goToFlipPage(${item.startFlipIndex})">
+                  <span class="toc-row-num">${String(sIdx + 1).padStart(2, "0")}</span>
+                  <span class="toc-row-title">${escapeHtml(item.section.title)}</span>
+                  <span class="toc-row-dots"></span>
+                  <span class="toc-row-page">P.${item.startPageNum}</span>
+                </div>
+              `).join("")}
+              ${hasGallery ? `
+                <div class="flip-toc-row gallery-toc-row" onclick="goToFlipPage(${galleryStartFlipIndex})">
+                  <span class="toc-row-num" style="color:var(--primary);">★</span>
+                  <span class="toc-row-title" style="font-weight:700; color:var(--primary);">Photo Gallery &amp; Highlights</span>
+                  <span class="toc-row-dots"></span>
+                  <span class="toc-row-page">P.${galleryStartPageNum}</span>
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="page-running-footer">
+          <span>${escapeHtml(hospitalName)}</span>
+          <span class="page-num-indicator">— 2 —</span>
+        </div>
+      </div>
+    `,
+  });
+
+  // Story Pages (Multi-Page Split: Lead Page + Continuation Pages)
+  sectionPaging.forEach((item, sIdx) => {
+    const sec = item.section;
+    const readMins = calculateReadingTime(sec.contentHtml || "");
+    const totalParts = item.pages.length;
+
+    item.pages.forEach((pageContent, partIdx) => {
+      const pageNum = stPages.length + 1;
+      const isLeadPage = partIdx === 0;
+      const isLastPart = partIdx === totalParts - 1;
+
+      if (isLeadPage) {
+        // Article Lead Page
+        stPages.push({
+          density: "soft",
+          html: `
+            <div class="book-page-content standard-theme">
+              <div class="page-running-header">
+                <span>${escapeHtml(issue.title)} &bull; ${escapeHtml(issue.issueNo)}</span>
+                <span>STORY ${String(sIdx + 1).padStart(2, "0")} ${totalParts > 1 ? `(1/${totalParts})` : ""}</span>
+              </div>
+
+              <div class="page-inner-scroll">
+                <div class="story-page-head">
+                  <div class="story-page-kicker">
+                    <span class="story-page-badge">FEATURE</span>
+                    <span class="story-page-time">${readMins} MIN READ</span>
+                  </div>
+                  <h2 class="story-page-title">${escapeHtml(sec.title)}</h2>
+                  ${sec.subtitle ? `<p class="story-page-subtitle">${escapeHtml(sec.subtitle)}</p>` : ""}
+
+                  ${sec.authorName ? `
+                    <div class="story-page-byline">
+                      <div class="story-page-avatar">${escapeHtml(sec.authorName.charAt(0).toUpperCase())}</div>
+                      <div class="story-page-author-info">
+                        <span class="story-page-author-name">${escapeHtml(sec.authorName)}</span>
+                        ${sec.authorRole ? `<span class="story-page-author-role">${escapeHtml(sec.authorRole)}</span>` : ""}
+                      </div>
+                    </div>
+                  ` : ""}
+                </div>
+
+                <div class="story-page-prose prose story-page-lead-prose">
+                  ${pageContent}
+                </div>
+              </div>
+
+              <div class="page-running-footer">
+                <span>${escapeHtml(hospitalName)}</span>
+                ${totalParts > 1 ? `<span class="page-continue-hint">Continued on P.${pageNum + 1} &rarr;</span>` : '<span class="page-end-mark">&#9632; End</span>'}
+                <span class="page-num-indicator">— ${pageNum} —</span>
+              </div>
+            </div>
+          `,
+        });
+      } else {
+        // Article Continuation Page
+        stPages.push({
+          density: "soft",
+          html: `
+            <div class="book-page-content standard-theme continuation-page">
+              <div class="page-running-header">
+                <span style="font-weight: 700;">${escapeHtml(sec.title)} (Continued)</span>
+                <span>Part ${partIdx + 1} of ${totalParts}</span>
+              </div>
+
+              <div class="page-inner-scroll">
+                <div class="story-page-prose prose continuation-prose">
+                  ${pageContent}
+                </div>
+              </div>
+
+              <div class="page-running-footer">
+                <span>${escapeHtml(hospitalName)}</span>
+                ${!isLastPart ? `<span class="page-continue-hint">Continued on P.${pageNum + 1} &rarr;</span>` : '<span class="page-end-mark">&#9632; End of Story</span>'}
+                <span class="page-num-indicator">— ${pageNum} —</span>
+              </div>
+            </div>
+          `,
+        });
+      }
+    });
+  });
+
+  // Photo Gallery Flip Pages
+  if (hasGallery) {
+    for (let gIdx = 0; gIdx < galleryPageCount; gIdx++) {
+      const pagePhotos = mediaAssets.slice(gIdx * galleryPhotosPerPage, (gIdx + 1) * galleryPhotosPerPage);
+      const pageNum = stPages.length + 1;
+      stPages.push({
+        density: "soft",
+        html: `
+          <div class="book-page-content standard-theme gallery-flip-page">
+            <div class="page-running-header">
+              <span>${escapeHtml(issue.title)} &bull; PHOTO GALLERY</span>
+              <span>PAGE ${gIdx + 1} OF ${galleryPageCount}</span>
+            </div>
+
+            <div class="page-inner-scroll">
+              <div class="flip-gallery-head">
+                <div class="flip-gallery-kicker">
+                  <span class="flip-gallery-badge">GALLERY</span>
+                  <span class="flip-gallery-count">${mediaAssets.length} TOTAL PHOTOS</span>
+                </div>
+                <h3 class="flip-gallery-title">Visual Highlights</h3>
+                <p class="flip-gallery-subtitle">Click on any photo to open full-resolution inspection.</p>
+              </div>
+
+              <div class="flip-gallery-grid">
+                ${pagePhotos.map((photo, pSubIdx) => {
+                  const overallIdx = gIdx * galleryPhotosPerPage + pSubIdx;
+                  return `
+                    <button type="button" class="flip-gallery-card" onclick="openLightbox(${overallIdx}, event)" onpointerdown="event.stopPropagation()" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+                      <div class="flip-gallery-img-box">
+                        <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+                        <div class="flip-gallery-card-hover">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                        </div>
+                      </div>
+                      <div class="flip-gallery-card-info">
+                        <span class="flip-gallery-card-name">${escapeHtml(photo.originalName)}</span>
+                        ${photo.tags && photo.tags.length > 0 ? `<span class="flip-gallery-tag">${escapeHtml(photo.tags[0])}</span>` : ""}
+                      </div>
+                    </button>
+                  `;
+                }).join("")}
+              </div>
+            </div>
+
+            <div class="page-running-footer">
+              <span>${escapeHtml(hospitalName)}</span>
+              <span class="page-num-indicator">— ${pageNum} —</span>
+            </div>
+          </div>
+        `,
+      });
+    }
+  }
+
+  stPages.push({
+    density: "hard",
+    html: `
+      <div class="book-page-content back-theme">
+        <div class="back-brand-box">
+          ${hospital?.logoUrl ? `<img src="${escapeHtml(hospital.logoUrl)}" alt="${escapeHtml(hospitalName)}" class="back-logo-img" style="max-height: 56px; max-width: 140px; object-fit: contain; margin: 0 auto 0.75rem auto; display: block;" />` : `<div class="back-crest">ACME</div>`}
+          <h2 class="back-hospital-title">${escapeHtml(hospitalName)}</h2>
+          ${hospitalTagline ? `<p class="back-hospital-tagline">${escapeHtml(hospitalTagline)}</p>` : ""}
+        </div>
+
+        ${(hospitalAddress || hospitalEmergency || hospitalOpd || hospitalEmail || hospitalWebsite || hospitalPhone) ? `
+          <div class="back-info-card">
+            ${hospitalAddress ? `
+              <div class="back-info-line">
+                <strong>Campus Location:</strong> ${escapeHtml(hospitalAddress)}
+              </div>
+            ` : ""}
+            ${hospitalEmergency ? `
+              <div class="back-info-line">
+                <strong>24/7 Emergency:</strong> <span style="color: #ef4444; font-weight:700;">${escapeHtml(hospitalEmergency)}</span>
+              </div>
+            ` : ""}
+            ${hospitalOpd ? `
+              <div class="back-info-line">
+                <strong>OPD & Appointments:</strong> ${escapeHtml(hospitalOpd)}
+              </div>
+            ` : ""}
+            ${hospitalPhone ? `
+              <div class="back-info-line">
+                <strong>Hospital Line:</strong> ${escapeHtml(hospitalPhone)}
+              </div>
+            ` : ""}
+            ${hospitalEmail ? `
+              <div class="back-info-line">
+                <strong>Editorial Desk:</strong> ${escapeHtml(hospitalEmail)}
+              </div>
+            ` : ""}
+            ${hospitalWebsite ? `
+              <div class="back-info-line">
+                <strong>Web Portal:</strong> ${escapeHtml(hospitalWebsite)}
+              </div>
+            ` : ""}
+          </div>
+        ` : ""}
+
+        <div class="back-bottom-note">
+          ${hospitalDivision ? `<p>${escapeHtml(hospitalDivision)}</p>` : ""}
+          <div class="back-edition-pill">${escapeHtml(issue.issueNo)} &bull; ${issueDateStr}</div>
+        </div>
+      </div>
+    `,
+  });
+
+  const stPagesHtml = stPages.map((p, idx) => `
+    <div class="page" data-density="${p.density}" data-page="${idx}">
+      ${p.html}
+    </div>
+  `).join("");
+
+  return `<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-font="normal" data-mode="flip">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('magazine-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(issue.title)} | ${escapeHtml(hospitalName)} Electronic Magazine</title>
+  <meta name="description" content="${escapeHtml(issue.description || `${issue.title} — ${issueDateStr} Edition`)}">
+  
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="${escapeHtml(issue.title)}">
+  <meta property="og:description" content="${escapeHtml(issue.description || `${issueDateStr} Edition`)}">
+  ${issue.coverImageUrl ? `<meta property="og:image" content="${escapeHtml(issue.coverImageUrl)}">` : ""}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Caveat:wght@400;600;700&family=Cinzel:wght@600;700;800;900&family=Dancing+Script:wght@500;600;700&family=EB+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300;1,400&family=Montserrat:wght@400;500;600;700;800&family=Oswald:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;0,900;1,400;1,600;1,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- StPageFlip Official Browser Library -->
+  <script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+
+  <style>
+    /* ==========================================================================
+       CSS Variables & Themes (Defaults strictly to Dark Luxury Theme)
+       ========================================================================== */
+    :root,
+    html[data-theme="dark"] {
+      --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-masthead: 'Cinzel', serif;
+      --font-prose: 'Lora', Georgia, serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-xl: 28px;
+      --radius-full: 9999px;
+
+      --bg-page: #06090e;
+      --bg-canvas: #0c121c;
+      --bg-card: #0e1624;
+      --bg-card-hover: #142033;
+      --bg-elevated: #152236;
+      --bg-glass: rgba(6, 9, 14, 0.94);
+
+      --page-bg: #0f172a;
+      --page-text: #e2e8f0;
+      --page-muted: #94a3b8;
+      --page-border: rgba(255, 255, 255, 0.09);
+      --page-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+      
+      --text-main: #f3f6fc;
+      --text-body: #d2dbe9;
+      --text-muted: #8b9bb4;
+      --text-dim: #5c6b84;
+
+      --border-main: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(56, 189, 248, 0.25);
+
+      --primary: #38bdf8;
+      --primary-rgb: 56, 189, 248;
+      --primary-glow: rgba(56, 189, 248, 0.2);
+      
+      --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+      --blockquote-bg: rgba(56, 189, 248, 0.06);
+      --blockquote-border: #38bdf8;
+      --blockquote-text: #e0f2fe;
+    }
+
+      --page-bg: #0f172a;
+      --page-text: #e2e8f0;
+      --page-muted: #94a3b8;
+      --page-border: rgba(255, 255, 255, 0.09);
+      --page-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+      
+      --text-main: #f3f6fc;
+      --text-body: #d2dbe9;
+      --text-muted: #8b9bb4;
+      --text-dim: #5c6b84;
+
+      --border-main: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(56, 189, 248, 0.25);
+
+      --primary: #38bdf8;
+      --primary-rgb: 56, 189, 248;
+      --primary-glow: rgba(56, 189, 248, 0.2);
+      
+      --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+      --blockquote-bg: rgba(56, 189, 248, 0.06);
+      --blockquote-border: #38bdf8;
+      --blockquote-text: #e0f2fe;
+    }
+
+    /* LIGHT EDITORIAL THEME */
+    html[data-theme="light"] {
+      --bg-page: #f1f4f9;
+      --bg-canvas: #ffffff;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f8fafc;
+      --bg-elevated: #f1f5f9;
+      --bg-glass: rgba(255, 255, 255, 0.9);
+
+      --page-bg: #ffffff;
+      --page-text: #1e293b;
+      --page-muted: #64748b;
+      --page-border: #e2e8f0;
+      --page-shadow: 0 12px 30px rgba(0, 0, 0, 0.1);
+
+      --text-main: #090e17;
+      --text-body: #233044;
+      --text-muted: #576882;
+      --text-dim: #8c9cb2;
+
+      --border-main: #e2e8f0;
+      --border-accent: rgba(2, 132, 199, 0.3);
+
+      --primary: #0284c7;
+      --primary-rgb: 2, 132, 199;
+      --primary-glow: rgba(2, 132, 199, 0.15);
+
+      --accent-gradient: linear-gradient(135deg, #0284c7 0%, #4f46e5 100%);
+      --blockquote-bg: #f0f9ff;
+      --blockquote-border: #0284c7;
+      --blockquote-text: #0369a1;
+    }
+
+    /* SEPIA PARCHMENT THEME */
+    html[data-theme="sepia"] {
+      --bg-page: #efe7d9;
+      --bg-canvas: #faf6ee;
+      --bg-card: #faf6ee;
+      --bg-card-hover: #f5eedf;
+      --bg-elevated: #ece2d0;
+      --bg-glass: rgba(250, 246, 238, 0.92);
+
+      --page-bg: #faf6ee;
+      --page-text: #2c2116;
+      --page-muted: #735e4b;
+      --page-border: #e6dac6;
+      --page-shadow: 0 12px 30px rgba(68, 43, 20, 0.12);
+
+      --text-main: #2b1f14;
+      --text-body: #3d2f21;
+      --text-muted: #6e5945;
+      --text-dim: #99836e;
+
+      --border-main: #dfd3c1;
+      --border-accent: rgba(161, 98, 7, 0.35);
+
+      --primary: #a16207;
+      --primary-rgb: 161, 98, 7;
+      --primary-glow: rgba(161, 98, 7, 0.15);
+
+      --accent-gradient: linear-gradient(135deg, #b45309 0%, #78350f 100%);
+      --blockquote-bg: #f5eedf;
+      --blockquote-border: #a16207;
+      --blockquote-text: #78350f;
+    }
+
+    /* FONT SCALING TIERS (Affects both Flipbook and Scroll Views) */
+    html[data-font="small"] {
+      --prose-font-size: 1rem;
+      --prose-line-height: 1.7;
+      --flip-font-size: 0.84rem;
+      --flip-line-height: 1.52;
+    }
+    html[data-font="normal"] {
+      --prose-font-size: 1.15rem;
+      --prose-line-height: 1.85;
+      --flip-font-size: 0.95rem;
+      --flip-line-height: 1.65;
+    }
+    html[data-font="large"] {
+      --prose-font-size: 1.32rem;
+      --prose-line-height: 1.95;
+      --flip-font-size: 1.08rem;
+      --flip-line-height: 1.75;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      font-family: var(--font-ui);
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    /* StPageFlip Mode Viewport Lock */
+    html[data-mode="flip"],
+    html[data-mode="flip"] body {
+      height: 100vh;
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+    }
+
+    html[data-mode="flip"] .site-footer {
+      display: none !important;
+    }
+
+    /* Scroll Mode */
+    html[data-mode="scroll"],
+    html[data-mode="scroll"] body {
+      height: auto;
+      overflow-y: auto;
+    }
+
+    html[data-mode="scroll"] .site-footer {
+      display: block;
+    }
+
+    /* Reading Progress Bar */
+    .progress-bar-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      z-index: 100;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent-gradient);
+      box-shadow: 0 0 12px var(--primary);
+      transition: width 0.1s ease-out;
+    }
+
+    /* Sticky Header - Dark Mode Default */
+    .sticky-header {
+      position: sticky;
+      top: 0;
+      z-index: 90;
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-main);
+      padding: 0.5rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 52px;
+      box-sizing: border-box;
+      transition: padding 0.2s ease, background 0.2s ease;
+    }
+
+    html[data-theme="dark"] .sticky-header {
+      background: rgba(6, 9, 14, 0.94);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="dark"] .sticky-header .control-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.1);
+      color: #f3f6fc;
+    }
+    html[data-theme="dark"] .sticky-header .control-btn:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: var(--primary);
+    }
+    html[data-theme="dark"] .sticky-header .mode-toggle-group {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="dark"] .sticky-header .mode-btn.active {
+      background: rgba(255, 255, 255, 0.14);
+      color: var(--primary);
+    }
+    html[data-theme="dark"] .sticky-header .brand-issue-pill {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+    }
+
+    .nav-left { display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1 1 auto; margin-right: 0.5rem; }
+    .brand-mark { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: inherit; min-width: 0; max-width: 100%; }
+    .brand-badge { font-family: var(--font-masthead); background: var(--accent-gradient); color: white; font-weight: 800; font-size: 0.72rem; letter-spacing: 0.15em; padding: 0.3rem 0.6rem; border-radius: var(--radius-sm); flex-shrink: 0; }
+    .brand-title { font-weight: 700; font-size: 0.92rem; display: flex; align-items: center; gap: 0.45rem; min-width: 0; flex: 1 1 auto; }
+    .brand-title-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: clamp(240px, 45vw, 650px); }
+    .brand-issue-pill { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); background: var(--bg-elevated); padding: 0.15rem 0.45rem; border-radius: var(--radius-sm); white-space: nowrap; flex-shrink: 0; }
+    
+    .nav-controls { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+    .mode-toggle-group { display: flex; align-items: center; background: var(--bg-elevated); border: 1px solid var(--border-main); border-radius: var(--radius-sm); padding: 2px; }
+    .mode-btn { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.65rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: var(--text-muted); border: none; background: transparent; cursor: pointer; transition: all 0.15s ease; white-space: nowrap; }
+    .mode-btn.active { background: var(--bg-card); color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+    .control-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-main); padding: 0.4rem 0.75rem; border-radius: var(--radius-sm); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: none; transition: all 0.15s ease; white-space: nowrap; }
+    .control-btn:hover { background: var(--bg-card-hover); border-color: var(--primary); transform: translateY(-1px); }
+    .control-icon-btn { width: 34px; height: 34px; padding: 0; border-radius: var(--radius-sm); }
+    .nav-btn-label { white-space: nowrap; }
+
+    @media (max-width: 1024px) {
+      .brand-title-text { max-width: clamp(180px, 32vw, 400px); }
+    }
+
+    @media (max-width: 860px) {
+      .print-btn { display: none !important; }
+      .brand-title-text { max-width: clamp(140px, 28vw, 260px); font-size: 0.86rem; }
+      .control-btn { padding: 0.35rem 0.6rem; font-size: 0.76rem; }
+    }
+
+    @media (max-width: 768px) {
+      /* Hide scroll mode and horizontal flip controls on mobile devices */
+      .mode-toggle-group,
+      #headerOrientBtn,
+      #dockOrientBtn {
+        display: none !important;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .sticky-header { padding: 0.35rem 0.5rem; height: 48px; }
+      .nav-btn-label { display: none; }
+      .brand-issue-pill { display: none; }
+      .brand-badge { padding: 0.25rem 0.45rem; font-size: 0.65rem; }
+      .brand-title-text { max-width: clamp(110px, 34vw, 200px); font-size: 0.8rem; }
+      .control-btn { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
+      .control-icon-btn { width: 32px; height: 32px; }
+      .nav-controls { gap: 0.25rem; }
+      .nav-left { gap: 0.4rem; margin-right: 0.25rem; }
+    }
+
+    /* ==========================================================================
+       StPageFlip OFFICIAL STAGE & BOOK SHELL
+       ========================================================================== */
+    .stpageflip-container {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      height: calc(100vh - 52px);
+      height: calc(100dvh - 52px);
+      max-height: calc(100dvh - 52px);
+      padding: 0.5rem 0.75rem 0.5rem;
+      position: relative;
+      user-select: none;
+      overflow: hidden;
+      box-sizing: border-box;
+      gap: 0.35rem;
+    }
+
+    html[data-mode="flip"] .stpageflip-container { display: flex; }
+    html[data-mode="scroll"] .stpageflip-container { display: none; }
+
+    @media (max-width: 640px) {
+      .stpageflip-container {
+        height: calc(100vh - 48px);
+        height: calc(100dvh - 48px);
+        max-height: calc(100dvh - 48px);
+        padding: 0.2rem 0.35rem 0.35rem;
+        gap: 0.2rem;
+      }
+    }
+
+    .stpageflip-stage-wrapper {
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      flex: 1 1 0;
+      min-height: 0;
+      max-width: 1400px;
+      margin: 0 auto;
+      gap: 0.75rem;
+    }
+
+    .stage-nav-arrow {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      flex-shrink: 0;
+      z-index: 20;
+    }
+
+    .stage-nav-arrow:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      transform: scale(1.08);
+      box-shadow: 0 6px 20px var(--primary-glow);
+    }
+
+    .stage-nav-arrow:active {
+      transform: scale(0.95);
+    }
+
+    @media (max-width: 860px) {
+      .stage-nav-arrow {
+        display: none !important;
+      }
+    }
+
+    .book-viewport-constrainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      overflow: visible;
+    }
+
+    #book {
+      margin: 0 auto;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+      border-radius: 4px;
+      background: transparent;
+    }
+
+    /* Vertical 3D Flip Mode (Mobile & Tablet) */
+    #book.vertical-mode {
+      position: relative;
+      width: 100%;
+      max-width: 540px;
+      height: 100%;
+      max-height: 100%;
+      transform-style: preserve-3d;
+      perspective: 1400px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: var(--bg-card);
+      touch-action: pan-y pinch-zoom;
+    }
+
+    @media (max-width: 640px) {
+      #book.vertical-mode {
+        border-radius: var(--radius-sm);
+        max-width: 100%;
+      }
+    }
+
+    #book.vertical-mode .page {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background-color: var(--page-bg);
+      color: var(--page-text);
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-sizing: border-box;
+      backface-visibility: hidden;
+      transform-origin: center top;
+      transition: transform 0.85s cubic-bezier(0.25, 1, 0.35, 1), opacity 0.75s ease, filter 0.75s ease, box-shadow 0.75s ease;
+      will-change: transform, opacity;
+      pointer-events: none;
+    }
+
+    @media (max-width: 640px) {
+      #book.vertical-mode .page {
+        border-radius: var(--radius-sm);
+      }
+    }
+
+    #book.vertical-mode .page.v-active {
+      z-index: 10;
+      transform: translateY(0) rotateX(0deg) scale(1);
+      opacity: 1;
+      filter: brightness(1);
+      pointer-events: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    #book.vertical-mode .page.v-next-peek {
+      z-index: 5;
+      transform: translateY(0) scale(0.96);
+      opacity: 0.85;
+      filter: brightness(0.85);
+      pointer-events: none;
+    }
+
+    #book.vertical-mode .page.v-past {
+      z-index: 20;
+      transform: translateY(-105%) rotateX(60deg) scale(0.92);
+      opacity: 0;
+      filter: brightness(0.6);
+      pointer-events: none;
+    }
+
+    #book.vertical-mode .page.v-future {
+      z-index: 1;
+      transform: translateY(105%) scale(0.9);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* StPageFlip Individual Page */
+    .page {
+      background-color: var(--page-bg);
+      color: var(--page-text);
+      overflow: hidden;
+      box-sizing: border-box;
+      border: 1px solid var(--page-border);
+      position: relative;
+    }
+
+    .page[data-density="hard"] {
+      background-color: var(--bg-elevated);
+    }
+
+    .book-page-content {
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 2.25rem 2.25rem 1.5rem;
+      box-sizing: border-box;
+      position: relative;
+      overflow: hidden;
+    }
+
+    @media (max-width: 900px) {
+      .book-page-content {
+        padding: 1.25rem 1.15rem 0.85rem;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .book-page-content {
+        padding: 0.65rem 0.65rem 0.35rem;
+      }
+    }
+
+    .page-running-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.58rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--page-muted);
+      border-bottom: 1px solid var(--page-border);
+      padding-bottom: 0.35rem;
+      margin-bottom: 0.55rem;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 640px) {
+      .page-running-header {
+        margin-bottom: 0.35rem;
+        padding-bottom: 0.2rem;
+        font-size: 0.5rem;
+      }
+    }
+
+    .page-inner-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border-accent) transparent;
+      padding-bottom: 1.25rem;
+    }
+
+    .page-inner-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .page-inner-scroll::-webkit-scrollbar-thumb {
+      background: var(--border-accent);
+      border-radius: 4px;
+    }
+
+    .page-running-footer {
+      margin-top: auto;
+      padding-top: 0.35rem;
+      border-top: 1px solid var(--page-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.64rem;
+      color: var(--page-muted);
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 640px) {
+      .page-running-footer {
+        padding-top: 0.25rem;
+        font-size: 0.55rem;
+      }
+    }
+
+    .page-num-indicator {
+      font-family: var(--font-display);
+      font-weight: 700;
+    }
+
+    .page-continue-hint {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--primary);
+      font-weight: 600;
+      font-style: italic;
+    }
+
+    .page-end-mark {
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      color: var(--page-muted);
+      font-weight: 700;
+    }
+
+    /* Story Lead Header in Flipbook */
+    .story-page-head {
+      margin-bottom: 0.65rem;
+      padding-bottom: 0.55rem;
+      border-bottom: 1px solid var(--page-border);
+      flex-shrink: 0;
+    }
+
+    .story-page-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.3rem;
+    }
+
+    .story-page-badge {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.12rem 0.45rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+    }
+
+    .story-page-time {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--page-muted);
+    }
+
+    .story-page-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.2rem, 2.2vw, 1.5rem);
+      font-weight: 800;
+      line-height: 1.2;
+      margin: 0 0 0.25rem 0;
+      color: var(--text-main);
+      word-break: break-word;
+    }
+
+    .story-page-subtitle {
+      font-family: var(--font-ui);
+      font-size: 0.82rem;
+      color: var(--page-muted);
+      line-height: 1.35;
+      margin: 0 0 0.4rem 0;
+    }
+
+    .story-page-byline {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-top: 0.35rem;
+    }
+
+    .story-page-avatar {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent-gradient);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.68rem;
+      flex-shrink: 0;
+    }
+
+    .story-page-author-info {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+    }
+
+    .story-page-author-name {
+      font-weight: 700;
+      font-size: 0.76rem;
+    }
+
+    .story-page-author-role {
+      font-size: 0.65rem;
+      color: var(--page-muted);
+    }
+
+    .continuation-page .continuation-prose {
+      padding-top: 0.15rem;
+    }
+
+    .continuation-prose > p:first-of-type::first-letter {
+      float: none !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      color: inherit !important;
+      padding: 0 !important;
+    }
+
+    .story-page-prose {
+      font-family: var(--font-prose);
+      font-size: var(--flip-font-size, 0.92rem);
+      line-height: var(--flip-line-height, 1.55);
+      color: var(--page-text);
+      transition: font-size 0.2s ease, line-height 0.2s ease;
+    }
+
+    .story-page-lead-prose > p:first-of-type::first-letter {
+      font-family: var(--font-display);
+      float: left;
+      font-size: clamp(1.8rem, 3.5vw, 2.2rem);
+      line-height: 0.85;
+      padding-top: 2px;
+      padding-right: 6px;
+      font-weight: 900;
+      color: var(--primary);
+    }
+
+    .continuation-prose > p:first-of-type::first-letter {
+      float: none !important;
+      font-size: inherit !important;
+      font-weight: inherit !important;
+      color: inherit !important;
+      padding: 0 !important;
+    }
+
+    .story-page-prose p {
+      margin-top: 0;
+      margin-bottom: 0.45rem;
+    }
+
+    .story-page-prose h1, .story-page-prose h2, .story-page-prose h3, .story-page-prose h4 {
+      font-family: var(--font-ui);
+      font-weight: 800;
+      margin-top: 0.65rem;
+      margin-bottom: 0.25rem;
+      line-height: 1.25;
+      color: var(--text-main);
+    }
+    .story-page-prose h1 { font-size: 1.22rem; }
+    .story-page-prose h2 { font-size: 1.12rem; }
+    .story-page-prose h3 { font-size: 1.02rem; }
+    .story-page-prose h4 { font-size: 0.92rem; }
+
+    .story-page-prose blockquote {
+      margin: 0.5rem 0;
+      padding: 0.5rem 0.85rem;
+      background: var(--blockquote-bg);
+      border-left: 3px solid var(--blockquote-border);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      font-family: var(--font-display);
+      font-style: italic;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: var(--blockquote-text);
+    }
+
+    /* Callout Boxes (Info, Success, Warning, Danger, Note) */
+    .story-page-prose .callout-box,
+    .story-body .callout-box {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding: 0.55rem 0.85rem;
+      margin: 0.55rem 0;
+      border-radius: var(--radius-sm);
+      border-left-width: 4px;
+      border-left-style: solid;
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    .story-page-prose .callout-box p,
+    .story-body .callout-box p {
+      margin: 0.1rem 0;
+    }
+    .callout-box.callout-info, [data-callout-type="info"] {
+      background: rgba(56, 189, 248, 0.1);
+      border-color: #38bdf8;
+      color: var(--text-main);
+    }
+    .callout-box.callout-success, [data-callout-type="success"] {
+      background: rgba(34, 197, 94, 0.1);
+      border-color: #22c55e;
+      color: var(--text-main);
+    }
+    .callout-box.callout-warning, [data-callout-type="warning"] {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: #f59e0b;
+      color: var(--text-main);
+    }
+    .callout-box.callout-danger, [data-callout-type="danger"] {
+      background: rgba(239, 68, 68, 0.1);
+      border-color: #ef4444;
+      color: var(--text-main);
+    }
+    .callout-box.callout-note, [data-callout-type="note"] {
+      background: rgba(168, 85, 247, 0.1);
+      border-color: #a855f7;
+      color: var(--text-main);
+    }
+
+    /* Tables */
+    .story-page-prose table,
+    .story-body table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      margin: 0.55rem 0;
+      display: table;
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .story-page-prose th,
+    .story-body th {
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      font-weight: 700;
+      text-align: left;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border-main);
+    }
+    .story-page-prose td,
+    .story-body td {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border-main);
+      color: var(--page-text);
+    }
+
+    /* Images */
+    .story-page-prose img,
+    .story-body img {
+      max-width: 100%;
+      height: auto;
+      max-height: 280px;
+      object-fit: cover;
+      border-radius: var(--radius-sm);
+      margin: 0.75rem auto;
+      display: block;
+      border: 1px solid var(--page-border);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Embedded Videos & YouTube */
+    .story-page-prose div[data-youtube-video],
+    .story-body div[data-youtube-video],
+    .story-page-prose .video-wrapper,
+    .story-body .video-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      aspect-ratio: 16 / 9;
+      margin: 0.85rem 0;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--page-border);
+      background: #000;
+    }
+
+    .story-page-prose div[data-youtube-video] iframe,
+    .story-body div[data-youtube-video] iframe,
+    .story-page-prose iframe,
+    .story-body iframe {
+      width: 100% !important;
+      max-width: 100% !important;
+      aspect-ratio: 16 / 9;
+      height: auto;
+      border: none;
+      display: block;
+      border-radius: var(--radius-sm);
+    }
+
+    .story-page-prose div[data-youtube-video] iframe,
+    .story-body div[data-youtube-video] iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      min-height: 100%;
+      border-radius: 0;
+    }
+
+    .story-page-prose video,
+    .story-body video {
+      width: 100%;
+      max-width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border-radius: var(--radius-sm);
+      margin: 0.85rem 0;
+      border: 1px solid var(--page-border);
+      display: block;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+    }
+
+    .yt-open-tab-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 30;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #ffffff !important;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      text-decoration: none !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+      pointer-events: auto !important;
+    }
+
+    .yt-open-tab-btn:hover {
+      background: #ef4444; /* YouTube Accent Red */
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateY(-1px) scale(1.03);
+      box-shadow: 0 6px 16px rgba(239, 68, 68, 0.45);
+      color: #ffffff !important;
+    }
+
+    .yt-open-tab-btn:active {
+      transform: scale(0.97);
+    }
+
+    @media (max-width: 600px) {
+      .story-page-prose div[data-youtube-video],
+      .story-body div[data-youtube-video],
+      .story-page-prose iframe,
+      .story-body iframe,
+      .story-page-prose video,
+      .story-body video {
+        margin: 0.45rem 0;
+      }
+      .yt-open-tab-btn {
+        top: 6px;
+        right: 6px;
+        padding: 4px 8px;
+        font-size: 0.65rem;
+      }
+    }
+
+    /* Lists */
+    .story-page-prose ul, .story-body ul {
+      list-style-type: disc;
+      padding-left: 1.35rem;
+      margin: 0.65rem 0;
+    }
+    .story-page-prose ol, .story-body ol {
+      list-style-type: decimal;
+      padding-left: 1.35rem;
+      margin: 0.65rem 0;
+    }
+    .story-page-prose li, .story-body li {
+      margin-bottom: 0.3rem;
+    }
+
+    /* Code blocks */
+    .story-page-prose pre, .story-body pre {
+      background: var(--bg-elevated);
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-sm);
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      margin: 0.75rem 0;
+      border: 1px solid var(--border-main);
+    }
+    .story-page-prose code, .story-body code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: var(--bg-elevated);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+
+    /* Inline Marks & Links */
+    .story-page-prose mark, .story-body mark {
+      background-color: rgba(253, 224, 71, 0.35);
+      color: inherit;
+      padding: 0.1em 0.3em;
+      border-radius: 3px;
+    }
+    .story-page-prose a, .story-body a {
+      color: var(--primary);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* Cover Styling */
+    .book-page-content.cover-theme {
+      background: radial-gradient(circle at top right, rgba(56, 189, 248, 0.22), transparent 60%),
+                  radial-gradient(circle at bottom left, rgba(147, 51, 234, 0.16), transparent 50%),
+                  var(--bg-elevated);
+      color: var(--text-main);
+      justify-content: space-between;
+      text-align: center;
+      padding: 3rem 2.5rem 2rem;
+    }
+
+    @media (max-width: 600px) {
+      .book-page-content.cover-theme {
+        padding: 1.5rem 1rem 1rem;
+      }
+    }
+
+    .cover-org-label {
+      font-family: var(--font-masthead);
+      font-size: 0.85rem;
+      font-weight: 900;
+      letter-spacing: 0.22em;
+      color: var(--primary);
+      text-transform: uppercase;
+      margin-bottom: 0.4rem;
+    }
+
+    .cover-badge-pill {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    .cover-heading {
+      font-family: var(--font-display);
+      font-size: clamp(1.4rem, 4vw, 2.75rem);
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin: 0.75rem 0 0.4rem;
+    }
+
+    .cover-subtext {
+      font-family: var(--font-prose);
+      font-size: clamp(0.82rem, 2vw, 0.95rem);
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .cover-artwork {
+      width: 100%;
+      height: 230px;
+      max-height: 35vh;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      margin: 1.25rem 0;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--border-main);
+    }
+
+    @media (max-width: 600px) {
+      .cover-artwork {
+        height: 140px;
+        margin: 0.65rem 0;
+      }
+    }
+
+    .cover-artwork img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .cover-artwork-mock {
+      width: 100%;
+      height: 200px;
+      max-height: 30vh;
+      border-radius: var(--radius-md);
+      background: var(--bg-card);
+      border: 1px dashed var(--border-accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 1.25rem 0;
+    }
+
+    @media (max-width: 600px) {
+      .cover-artwork-mock {
+        height: 130px;
+        margin: 0.65rem 0;
+      }
+    }
+
+    .cover-mock-emblem {
+      font-family: var(--font-masthead);
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.5rem 1.2rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      font-size: 0.8rem;
+    }
+
+    .cover-summary-line {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 0.5rem;
+    }
+
+    .cover-turn-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    /* Inside Cover & Editorial Foreword */
+    .editorial-box { margin-bottom: 1.5rem; }
+    .editorial-title { font-family: var(--font-display); font-size: clamp(1.2rem, 3vw, 1.5rem); font-weight: 800; margin-bottom: 0.35rem; }
+    .editorial-accent-bar { width: 40px; height: 3px; background: var(--primary); margin-bottom: 0.85rem; border-radius: var(--radius-full); }
+    .editorial-text { font-family: var(--font-prose); font-size: clamp(0.85rem, 2vw, 0.95rem); line-height: 1.65; color: var(--page-muted); }
+    .editorial-text p { margin-bottom: 0.75rem; }
+    .editorial-text p:last-child { margin-bottom: 0; }
+
+    .flip-toc-title { font-family: var(--font-ui); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--primary); font-weight: 800; margin-bottom: 0.75rem; }
+    .flip-toc-entries { display: flex; flex-direction: column; gap: 0.5rem; }
+    .flip-toc-row { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.88rem; cursor: pointer; padding: 0.35rem 0.5rem; border-radius: 6px; transition: all 0.15s ease; }
+    .flip-toc-row:hover { background: var(--primary-glow); color: var(--primary); }
+    .toc-row-num { font-family: var(--font-display); font-weight: 800; color: var(--primary); min-width: 1.5rem; flex-shrink: 0; }
+    .toc-row-title { font-weight: 600; white-space: normal; word-break: break-word; line-height: 1.35; flex: 1; min-width: 0; }
+    .toc-row-dots { flex: 1; border-bottom: 1px dotted var(--page-muted); margin: 0 0.25rem; opacity: 0.4; min-width: 8px; align-self: flex-end; margin-bottom: 4px; }
+    .toc-row-page { font-family: var(--font-mono); font-size: 0.75rem; color: var(--page-muted); flex-shrink: 0; white-space: nowrap; }
+
+    @media (max-width: 600px) {
+      .editorial-box { margin-bottom: 1rem; }
+      .flip-toc-row { font-size: 0.78rem; padding: 0.25rem 0.35rem; }
+    }
+
+    /* Story Page */
+    .story-page-head { margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--page-border); flex-shrink: 0; }
+    .story-page-kicker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; }
+    .story-page-badge { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em; color: var(--primary); background: var(--primary-glow); padding: 0.15rem 0.5rem; border-radius: var(--radius-full); border: 1px solid var(--border-accent); }
+    .story-page-time { font-family: var(--font-mono); font-size: 0.68rem; color: var(--page-muted); }
+    .story-page-title { font-family: var(--font-display); font-size: clamp(1.2rem, 3.5vw, 1.75rem); font-weight: 800; line-height: 1.2; letter-spacing: -0.015em; margin-bottom: 0.35rem; }
+    .story-page-subtitle { font-family: var(--font-ui); font-size: clamp(0.8rem, 2vw, 0.95rem); color: var(--page-muted); line-height: 1.45; margin-bottom: 0.75rem; }
+    .story-page-byline { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.5rem; }
+    .story-page-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent-gradient); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.85rem; flex-shrink: 0; }
+    .story-page-author-info { display: flex; flex-direction: column; }
+    .story-page-author-name { font-weight: 700; font-size: 0.85rem; }
+    .story-page-author-role { font-size: 0.72rem; color: var(--page-muted); }
+
+    @media (max-width: 600px) {
+      .story-page-head { margin-bottom: 0.75rem; padding-bottom: 0.5rem; }
+      .story-page-subtitle { margin-bottom: 0.4rem; }
+      .story-page-avatar { width: 28px; height: 28px; font-size: 0.75rem; }
+      .story-page-author-name { font-size: 0.78rem; }
+    }
+
+    /* Back Cover */
+    .book-page-content.back-theme {
+      background: radial-gradient(circle at center, rgba(56, 189, 248, 0.1), transparent 70%), var(--bg-elevated);
+      justify-content: space-between;
+      align-items: center;
+      text-align: center;
+      padding: 3.5rem 2.5rem;
+    }
+
+    @media (max-width: 600px) {
+      .book-page-content.back-theme {
+        padding: 1.75rem 1rem;
+      }
+    }
+
+    .back-crest { font-family: var(--font-masthead); font-size: 1.75rem; font-weight: 900; letter-spacing: 0.2em; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
+    .back-hospital-title { font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; margin-bottom: 0.35rem; }
+    .back-hospital-tagline { font-size: 0.85rem; color: var(--text-muted); max-width: 320px; margin: 0 auto; }
+    .back-info-card { background: var(--bg-card); border: 1px solid var(--border-main); border-radius: var(--radius-md); padding: 1.25rem 1.5rem; width: 100%; max-width: 340px; font-size: 0.8rem; text-align: left; display: flex; flex-direction: column; gap: 0.5rem; }
+    .back-bottom-note { font-size: 0.75rem; color: var(--text-dim); }
+    .back-edition-pill { font-family: var(--font-mono); font-size: 0.72rem; color: var(--primary); background: var(--primary-glow); padding: 0.25rem 0.65rem; border-radius: var(--radius-full); display: inline-block; margin-top: 0.5rem; border: 1px solid var(--border-accent); }
+
+    /* Bottom Control Dock (Outside the page) */
+    .dock-bar-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      flex-shrink: 0;
+      padding-bottom: max(0.15rem, env(safe-area-inset-bottom, 0.15rem));
+      z-index: 80;
+    }
+
+    .dock-bar {
+      position: relative;
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-main);
+      padding: 0.35rem 0.85rem;
+      border-radius: var(--radius-full);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      max-width: calc(100vw - 20px);
+      box-sizing: border-box;
+    }
+
+    html[data-mode="flip"] .dock-bar { display: flex; }
+
+    .dock-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--border-main);
+      background: var(--bg-card);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      flex-shrink: 0;
+    }
+
+    .dock-btn:hover {
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      transform: scale(1.08);
+    }
+
+    .dock-page-display {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-main);
+      padding: 0 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      white-space: nowrap;
+    }
+
+    .dock-divider { width: 1px; height: 20px; background: var(--border-main); margin: 0 0.15rem; flex-shrink: 0; }
+
+    @media (max-width: 520px) {
+      .dock-bar {
+        padding: 0.25rem 0.45rem;
+        gap: 0.25rem;
+      }
+      .dock-btn {
+        width: 32px;
+        height: 32px;
+      }
+      .dock-btn-secondary {
+        display: none !important;
+      }
+      .dock-page-display {
+        font-size: 0.75rem;
+        padding: 0 0.2rem;
+      }
+    }
+
+    /* ==========================================================================
+       SCROLL MODE INFINITE FLOW & FIXES
+       ========================================================================== */
+    .magazine-scroll-wrapper {
+      display: none;
+      width: 100%;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+      box-sizing: border-box;
+    }
+    html[data-mode="scroll"] .magazine-scroll-wrapper { display: block; }
+    html[data-mode="flip"] .magazine-scroll-wrapper { display: none; }
+
+    .magazine-scroll-wrapper hr.page-break,
+    .magazine-scroll-wrapper .page-break-divider {
+      display: none !important;
+    }
+
+    /* Key Anchor Fix: Scroll Margin Offset so Sticky Header Never Clips Section Heads */
+    .story-article,
+    .cover-hero-card,
+    .toc-section {
+      scroll-margin-top: 72px;
+    }
+
+    .cover-hero-card { position: relative; background: var(--bg-card); border-radius: var(--radius-xl); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55); border: 1px solid var(--border-main); overflow: hidden; margin-bottom: 3.5rem; }
+    .cover-masthead { position: relative; padding: 3.5rem 3rem 2.75rem; background: radial-gradient(circle at top right, rgba(56, 189, 248, 0.12), transparent 60%), radial-gradient(circle at bottom left, rgba(147, 51, 234, 0.1), transparent 50%), var(--bg-elevated); border-bottom: 1px solid var(--border-main); }
+    .masthead-eyebrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.5rem; }
+    .org-banner { font-family: var(--font-masthead); font-size: 0.85rem; font-weight: 800; letter-spacing: 0.2em; color: var(--primary); }
+    .edition-tag { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 700; color: var(--text-muted); background: var(--bg-card); padding: 0.3rem 0.75rem; border-radius: var(--radius-full); border: 1px solid var(--border-main); }
+    .cover-title { font-family: var(--font-display); font-size: clamp(2rem, 5vw, 3.8rem); font-weight: 900; line-height: 1.1; letter-spacing: -0.025em; margin-bottom: 1.25rem; }
+    .cover-description { font-family: var(--font-prose); font-size: clamp(1rem, 2.5vw, 1.2rem); line-height: 1.6; color: var(--text-muted); max-width: 720px; margin-bottom: 2rem; }
+    .cover-meta-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem 2rem; padding-top: 1.75rem; border-top: 1px solid var(--border-main); }
+    .meta-stat { display: flex; flex-direction: column; gap: 0.2rem; }
+    .meta-stat-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); }
+    .meta-stat-value { font-weight: 700; font-size: 0.95rem; }
+    .cover-actions { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+    .primary-action-btn { background: var(--accent-gradient); color: white; border: none; font-weight: 700; padding: 0.7rem 1.4rem; border-radius: var(--radius-sm); display: inline-flex; align-items: center; gap: 0.5rem; text-decoration: none; cursor: pointer; transition: all 0.2s ease; }
+    .cover-image-container { position: relative; width: 100%; max-height: 520px; overflow: hidden; background: #000; }
+    .cover-image-container img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    .editorial-scroll-section {
+      background: var(--bg-card);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-main);
+      padding: 2.5rem;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      margin-bottom: 3rem;
+    }
+    .editorial-scroll-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-main);
+    }
+    .editorial-scroll-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      display: inline-block;
+      margin-bottom: 0.6rem;
+    }
+    .editorial-scroll-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.35rem, 3.5vw, 1.85rem);
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 0.4rem;
+    }
+    .editorial-scroll-body {
+      font-family: var(--font-prose);
+      font-size: var(--prose-font-size, 1.12rem);
+      line-height: var(--prose-line-height, 1.8);
+      color: var(--text-body);
+    }
+    .editorial-scroll-body p {
+      margin-bottom: 1.25rem;
+    }
+    .editorial-scroll-body p:last-child {
+      margin-bottom: 0;
+    }
+
+    .toc-section { background: var(--bg-card); border-radius: var(--radius-lg); border: 1px solid var(--border-main); padding: 2.5rem; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3); margin-bottom: 4rem; }
+    .toc-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border-main); flex-wrap: wrap; gap: 0.75rem; }
+    .toc-section-title { font-family: var(--font-display); font-size: clamp(1.35rem, 3.5vw, 1.75rem); font-weight: 800; display: flex; align-items: center; gap: 0.75rem; }
+    .toc-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 680px) { .toc-grid { grid-template-columns: 1fr 1fr; } }
+    .toc-card { display: flex; align-items: flex-start; gap: 1rem; padding: 1.15rem; background: var(--bg-elevated); border: 1px solid var(--border-main); border-radius: var(--radius-md); text-decoration: none; color: inherit; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+    .toc-card:hover { background: var(--bg-card-hover); border-color: var(--primary); transform: translateY(-2px); }
+    .toc-card.active-reading { border-color: var(--primary); background: var(--primary-glow); }
+    .toc-card-num { font-family: var(--font-display); font-size: 1.4rem; font-weight: 800; color: var(--primary); min-width: 1.6rem; }
+    .toc-card-body { flex: 1; min-width: 0; }
+    .toc-card-title { font-weight: 700; font-size: 0.98rem; margin-bottom: 0.3rem; word-break: break-word; }
+    .toc-card-sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.4rem; line-height: 1.4; }
+    .toc-card-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.75rem; color: var(--text-dim); }
+    .toc-card-arrow { color: var(--text-dim); transition: transform 0.2s ease, color 0.2s ease; margin-top: 2px; }
+    .toc-card:hover .toc-card-arrow { color: var(--primary); transform: translateX(4px); }
+
+    /* ==========================================================================
+       SLIDE-OVER TABLE OF CONTENTS DRAWER
+       ========================================================================== */
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      z-index: 998;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+
+    .drawer-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .toc-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 100%;
+      max-width: 440px;
+      height: 100vh;
+      height: 100dvh;
+      max-height: 100dvh;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border-main);
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+      z-index: 999;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    .toc-drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border-main);
+      background: var(--bg-elevated);
+      flex-shrink: 0;
+    }
+
+    .drawer-title {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin: 0;
+    }
+
+    .drawer-body {
+      padding: 1.25rem 1.25rem calc(4.5rem + env(safe-area-inset-bottom, 1.5rem));
+      overflow-y: auto;
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      -webkit-overflow-scrolling: touch;
+      box-sizing: border-box;
+    }
+
+    .story-article { background: var(--bg-card); border-radius: var(--radius-xl); border: 1px solid var(--border-main); box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55); padding: 4rem 3.5rem; margin-bottom: 4rem; position: relative; }
+    .story-header { margin-bottom: 2.5rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--border-main); }
+    .story-kicker { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem; }
+    .story-badge { font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700; color: var(--primary); background: var(--primary-glow); padding: 0.2rem 0.6rem; border-radius: var(--radius-full); border: 1px solid var(--border-accent); }
+    .story-read-time { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted); }
+    .story-title { font-family: var(--font-display); font-size: clamp(1.85rem, 4vw, 2.85rem); font-weight: 800; line-height: 1.18; margin-bottom: 0.85rem; word-break: break-word; }
+    .story-subtitle { font-family: var(--font-ui); font-size: clamp(0.95rem, 2vw, 1.15rem); color: var(--text-muted); line-height: 1.5; margin-bottom: 1.25rem; }
+    .story-byline { display: flex; align-items: center; gap: 0.75rem; margin-top: 1rem; }
+    .author-avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-gradient); color: white; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.95rem; flex-shrink: 0; }
+    .author-info { display: flex; flex-direction: column; }
+    .author-name { font-weight: 700; font-size: 0.92rem; }
+    .author-role { font-size: 0.78rem; color: var(--text-muted); }
+
+    .story-body { font-family: var(--font-prose); font-size: var(--prose-font-size, 1.15rem); line-height: var(--prose-line-height, 1.85); color: var(--text-body); }
+    .story-body p { margin-bottom: 1.4rem; }
+    .story-body h2, .story-body h3, .story-body h4 { font-family: var(--font-ui); font-weight: 800; margin-top: 2rem; margin-bottom: 0.75rem; line-height: 1.3; }
+    .story-body h3 { font-size: 1.35rem; }
+    .story-body blockquote { margin: 2rem 0; padding: 1.25rem 1.75rem; background: var(--blockquote-bg); border-left: 4px solid var(--blockquote-border); border-radius: 0 var(--radius-md) var(--radius-md) 0; font-family: var(--font-display); font-style: italic; font-size: clamp(1.05rem, 2.5vw, 1.25rem); line-height: 1.6; color: var(--blockquote-text); }
+    .story-body img { width: 100%; max-width: 100%; height: auto; border-radius: var(--radius-md); margin: 2rem 0; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35); border: 1px solid var(--border-main); display: block; }
+    
+    .story-body table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.5rem 0;
+      display: block;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .story-body th, .story-body td {
+      padding: 0.6rem 0.85rem;
+      border: 1px solid var(--border-main);
+    }
+    .story-body pre {
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 1rem;
+      background: var(--bg-elevated);
+      border-radius: var(--radius-sm);
+      margin: 1.5rem 0;
+    }
+
+    .story-footer { margin-top: 3rem; padding-top: 1.75rem; border-top: 1px solid var(--border-main); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
+    .footer-nav-btn { display: inline-flex; align-items: center; gap: 0.5rem; font-family: var(--font-ui); font-size: 0.88rem; font-weight: 600; color: var(--text-muted); text-decoration: none; padding: 0.6rem 1.2rem; border-radius: var(--radius-sm); background: var(--bg-elevated); border: 1px solid var(--border-main); transition: all 0.2s ease; }
+    .footer-nav-btn.primary { color: var(--primary); background: var(--primary-glow); border-color: var(--border-accent); }
+
+    @media (max-width: 768px) {
+      .magazine-scroll-wrapper {
+        padding: 1rem 0.75rem 3rem;
+      }
+      .cover-hero-card {
+        border-radius: var(--radius-lg);
+        margin-bottom: 2rem;
+      }
+      .cover-masthead {
+        padding: 1.75rem 1.25rem 1.5rem;
+      }
+      .cover-title {
+        font-size: clamp(1.75rem, 6vw, 2.5rem);
+        margin-bottom: 0.75rem;
+      }
+      .cover-description {
+        font-size: 1rem;
+        line-height: 1.55;
+        margin-bottom: 1.25rem;
+      }
+      .cover-meta-bar {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        padding-top: 1.25rem;
+      }
+      .cover-actions {
+        grid-column: 1 / -1;
+        margin-left: 0;
+        width: 100%;
+        margin-top: 1rem;
+      }
+    }
+
+    /* Toast notification */
+    .toast-msg {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--text-main);
+      color: var(--bg-page);
+      font-weight: 600;
+      font-size: 0.85rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: var(--radius-full);
+      z-index: 200;
+      opacity: 0;
+      transition: all 0.3s;
+      pointer-events: none;
+    }
+    .toast-msg.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* ==========================================================================
+       LUXURY EDITORIAL FOOTER
+       ========================================================================== */
+    .site-footer {
+      position: relative;
+      background: radial-gradient(circle at top right, rgba(56, 189, 248, 0.08), transparent 60%),
+                  radial-gradient(circle at bottom left, rgba(147, 51, 234, 0.06), transparent 50%),
+                  var(--bg-card);
+      border-top: 1px solid var(--border-main);
+      padding: 4.5rem 1.5rem 2.5rem;
+      margin-top: auto;
+      color: var(--text-main);
+    }
+
+    @media (max-width: 768px) {
+      .site-footer {
+        padding: 3.5rem 1.25rem 2rem;
+      }
+    }
+
+    .footer-inner-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 3.5rem;
+    }
+
+    .footer-main-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1.3fr 1.1fr;
+      gap: 2.5rem;
+    }
+
+    @media (max-width: 992px) {
+      .footer-main-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 2.25rem;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .footer-main-grid {
+        grid-template-columns: 1fr;
+        gap: 2.25rem;
+      }
+    }
+
+    .footer-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .footer-col-title {
+      font-family: var(--font-masthead);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--primary);
+      margin-bottom: 0.25rem;
+    }
+
+    .footer-brand-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: var(--font-masthead);
+      font-weight: 900;
+      font-size: 1.15rem;
+      letter-spacing: 0.15em;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.15rem;
+    }
+
+    .footer-hospital-title {
+      font-family: var(--font-display);
+      font-size: 1.25rem;
+      font-weight: 800;
+      line-height: 1.25;
+      color: var(--text-main);
+    }
+
+    .footer-hospital-tagline {
+      font-family: var(--font-prose);
+      font-size: 0.88rem;
+      line-height: 1.55;
+      color: var(--text-muted);
+    }
+
+    .footer-meta-pill {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.3rem 0.75rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      display: inline-block;
+      width: fit-content;
+      margin-top: 0.35rem;
+    }
+
+    .footer-links-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .footer-link-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      padding: 0;
+      text-align: left;
+    }
+
+    .footer-link-item:hover {
+      color: var(--primary);
+      transform: translateX(4px);
+    }
+
+    .footer-contact-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+      font-size: 0.84rem;
+    }
+
+    .footer-contact-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .footer-contact-item svg {
+      flex-shrink: 0;
+      margin-top: 2px;
+      color: var(--primary);
+    }
+
+    .footer-contact-item.emergency {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      padding: 0.55rem 0.75rem;
+      border-radius: var(--radius-sm);
+      color: #fca5a5;
+      font-weight: 700;
+    }
+
+    html[data-theme="light"] .footer-contact-item.emergency {
+      color: #b91c1c;
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+
+    .footer-contact-item.emergency svg {
+      color: #ef4444;
+    }
+
+    .footer-disclaimer-text {
+      font-size: 0.82rem;
+      line-height: 1.6;
+      color: var(--text-dim);
+    }
+
+    .footer-bottom-bar {
+      padding-top: 2rem;
+      border-top: 1px solid var(--border-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    .footer-status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #10b981;
+    }
+
+    .footer-status-dot {
+      width: 7px;
+      height: 7px;
+      background: #10b981;
+      border-radius: 50%;
+      box-shadow: 0 0 8px #10b981;
+    }
+
+    .back-to-top-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      background: var(--bg-elevated);
+      padding: 0.35rem 0.8rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-main);
+      transition: all 0.2s ease;
+    }
+
+    .back-to-top-link:hover {
+      background: var(--primary);
+      color: white;
+      transform: translateY(-2px);
+    }
+
+    /* ==========================================================================
+       GALLERY & LIGHTBOX STYLES
+       ========================================================================== */
+    .nav-count-badge {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #fff;
+      background: var(--accent-gradient);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      margin-left: 0.25rem;
+      line-height: 1;
+    }
+
+    /* Flipbook Gallery Spread */
+    .gallery-flip-page {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    .flip-gallery-head {
+      margin-bottom: 0.85rem;
+      padding-bottom: 0.6rem;
+      border-bottom: 1px solid var(--page-border);
+    }
+    .flip-gallery-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+    }
+    .flip-gallery-badge {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      letter-spacing: 0.1em;
+    }
+    .flip-gallery-count {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--page-muted);
+      font-weight: 600;
+    }
+    .flip-gallery-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.1rem, 2.5vw, 1.45rem);
+      font-weight: 800;
+      margin-bottom: 0.2rem;
+      letter-spacing: -0.01em;
+    }
+    .flip-gallery-subtitle {
+      font-size: 0.76rem;
+      color: var(--page-muted);
+      margin: 0;
+    }
+    .flip-gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.65rem;
+      margin-top: 0.5rem;
+    }
+    .flip-gallery-card {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
+      border: 1px solid var(--page-border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font: inherit;
+      color: inherit;
+      padding: 0;
+      margin: 0;
+      text-align: left;
+      width: 100%;
+    }
+    .flip-gallery-card * {
+      pointer-events: none;
+    }
+    .flip-gallery-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--primary);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+    }
+    .flip-gallery-img-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      background: #000;
+    }
+    .flip-gallery-img-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+    .flip-gallery-card:hover .flip-gallery-img-box img {
+      transform: scale(1.06);
+    }
+    .flip-gallery-card-hover {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      color: #fff;
+    }
+    .flip-gallery-card:hover .flip-gallery-card-hover {
+      opacity: 1;
+    }
+    .flip-gallery-card-info {
+      padding: 0.4rem 0.55rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.35rem;
+      background: var(--bg-card);
+    }
+    .flip-gallery-card-name {
+      font-size: 0.72rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+    .flip-gallery-tag {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.1rem 0.35rem;
+      border-radius: var(--radius-full);
+      flex-shrink: 0;
+    }
+
+    /* Scroll Mode Photo Gallery Section */
+    .gallery-scroll-section {
+      background: var(--bg-card);
+      border-radius: var(--radius-xl);
+      border: 1px solid var(--border-main);
+      padding: clamp(1.5rem, 4vw, 3rem);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+      margin-bottom: 4rem;
+      scroll-margin-top: 72px;
+    }
+    .gallery-section-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 1.75rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-main);
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .gallery-head-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.2rem 0.65rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      display: inline-block;
+      margin-bottom: 0.5rem;
+    }
+    .gallery-head-title {
+      font-family: var(--font-display);
+      font-size: clamp(1.4rem, 3.5vw, 2rem);
+      font-weight: 800;
+      margin-bottom: 0.35rem;
+      letter-spacing: -0.015em;
+    }
+    .gallery-head-sub {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .gallery-open-tab-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+    .gallery-open-tab-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+    .gallery-filter-container {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.75rem;
+      flex-wrap: wrap;
+    }
+    .gallery-filter-btn {
+      font-family: var(--font-ui);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.35rem 0.85rem;
+      border-radius: var(--radius-full);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .gallery-filter-btn:hover {
+      color: var(--text-main);
+      border-color: var(--primary);
+    }
+    .gallery-filter-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .gallery-scroll-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.25rem;
+    }
+    .gallery-scroll-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    .gallery-scroll-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--primary);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+    }
+    .gallery-scroll-thumb-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      overflow: hidden;
+      background: #000;
+    }
+    .gallery-scroll-thumb-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.4s ease;
+    }
+    .gallery-scroll-card:hover .gallery-scroll-thumb-box img {
+      transform: scale(1.08);
+    }
+    .gallery-scroll-hover-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.55);
+      backdrop-filter: blur(2px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.35rem;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      color: #fff;
+    }
+    .gallery-scroll-card:hover .gallery-scroll-hover-overlay {
+      opacity: 1;
+    }
+    .gallery-hover-icon {
+      background: var(--primary);
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+    }
+    .gallery-hover-text {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .gallery-scroll-card-body {
+      padding: 0.85rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      flex: 1;
+    }
+    .gallery-scroll-card-title {
+      font-weight: 700;
+      font-size: 0.88rem;
+      line-height: 1.35;
+      color: var(--text-main);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .gallery-scroll-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+      margin-top: auto;
+    }
+    .gallery-scroll-tag {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    /* Slide-over Gallery Drawer */
+    .gallery-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 100%;
+      max-width: 460px;
+      height: 100vh;
+      height: 100dvh;
+      background: var(--bg-card);
+      border-left: 1px solid var(--border-main);
+      box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+      z-index: 999;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .gallery-drawer.open {
+      transform: translateX(0);
+    }
+    .drawer-header-title-box {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .drawer-gallery-search {
+      padding: 0.85rem 1.25rem;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-main);
+    }
+    .drawer-gallery-search input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-main);
+      padding: 0.55rem 0.85rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.15s ease;
+    }
+    .drawer-gallery-search input:focus {
+      border-color: var(--primary);
+    }
+    .drawer-gallery-grid {
+      padding: 1.25rem;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.85rem;
+      flex: 1;
+    }
+    .drawer-gallery-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .drawer-gallery-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+    .drawer-gallery-card img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+    }
+    .drawer-gallery-card-label {
+      padding: 0.4rem 0.55rem;
+      font-size: 0.74rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Lightbox Modal */
+    .lightbox-modal {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+    }
+    .lightbox-modal.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .lightbox-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.9);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .lightbox-content {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(0.75rem, 2.5vw, 1.75rem);
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .lightbox-modal.open .lightbox-content > * {
+      pointer-events: auto;
+    }
+    .lightbox-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-counter {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.05em;
+    }
+    .lightbox-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lightbox-control-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f1f5f9;
+      border-radius: var(--radius-full);
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .lightbox-control-btn:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .lightbox-control-btn.close-btn {
+      padding: 0.4rem 0.5rem;
+    }
+    .lightbox-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      padding: 0.75rem 0;
+      gap: 0.75rem;
+    }
+    .lightbox-image-box {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+    .lightbox-image-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: var(--radius-md);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .lightbox-nav-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .lightbox-nav-btn:hover {
+      background: var(--primary);
+      transform: scale(1.08);
+    }
+    .lightbox-footer {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-caption {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.01em;
+    }
+    .lightbox-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .lightbox-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    @media (max-width: 600px) {
+      .lightbox-nav-btn {
+        width: 38px;
+        height: 38px;
+      }
+      .lightbox-content {
+        padding: 0.5rem;
+      }
+    }
+
+    @media print {
+      .sticky-header,
+      .dock-toolbar,
+      .progress-bar-container,
+      .back-to-top-link,
+      .page-break-divider,
+      .page-break-pill,
+      hr.page-break,
+      [data-page-break] {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Real-time Reading Progress Bar -->
+  <div class="progress-bar-container">
+    <div id="progressBar" class="progress-bar-fill"></div>
+  </div>
+
+  <!-- Sticky Glassmorphic Header -->
+  <header class="sticky-header">
+    <div class="nav-left">
+      <a href="#cover" class="brand-mark" onclick="returnToStart(event)">
+        <span class="brand-badge">DIGEST</span>
+        <span class="brand-title">
+          <span class="brand-title-text">${escapeHtml(issue.title)}</span>
+          <span class="brand-issue-pill">${escapeHtml(issue.issueNo)}</span>
+        </span>
+      </a>
+    </div>
+
+    <div class="nav-controls">
+      <!-- Mode Toggle: StPageFlip vs Continuous Scroll Reader -->
+      <div class="mode-toggle-group" title="Switch Reading Experience">
+        <button onclick="setReaderMode('flip', true)" class="mode-btn active" id="modeFlipBtn" title="3D Page-Flip Mode">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          <span class="nav-btn-label">Page-Flip</span>
+        </button>
+        <button onclick="setReaderMode('scroll', true)" class="mode-btn" id="modeScrollBtn" title="Continuous Scroll Mode">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          <span class="nav-btn-label">Scroll</span>
+        </button>
+      </div>
+
+      <!-- Flip Orientation Switcher -->
+      <button onclick="toggleFlipOrientation()" class="control-btn" id="headerOrientBtn" title="Toggle Flip Orientation (Horizontal / Vertical)">
+        <svg id="headerOrientIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>
+        </svg>
+        <span class="nav-btn-label" id="headerOrientLabel">Flip</span>
+      </button>
+
+      <!-- Table of Contents Drawer Trigger -->
+      <button onclick="toggleTocDrawer()" class="control-btn" title="Open Table of Contents (T)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+        <span class="nav-btn-label">Contents</span>
+      </button>
+
+      <!-- Gallery Trigger Button -->
+      ${hasGallery ? `
+        <button onclick="handleGalleryButtonClick()" class="control-btn gallery-nav-btn" title="View Edition Photo Gallery (${mediaAssets.length} Photos)" id="headerGalleryBtn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+          <span class="nav-btn-label">Gallery</span>
+          <span class="nav-count-badge">${mediaAssets.length}</span>
+        </button>
+      ` : ""}
+
+      <!-- Font Size Toggle -->
+      <button onclick="cycleFontSize()" class="control-btn control-icon-btn" title="Change font size" id="fontBtn">
+        <span style="font-family: var(--font-prose); font-weight: bold; font-size: 0.95rem;">A+</span>
+      </button>
+
+      <!-- Theme Switcher (Dark / Light / Sepia - Defaults to Dark Moon Icon) -->
+      <button onclick="cycleTheme()" class="control-btn control-icon-btn" title="Toggle Theme (Dark / Light / Sepia)" id="themeBtn">
+        <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+
+      <!-- Share Link -->
+      <button onclick="shareMagazine()" class="control-btn control-icon-btn" title="Share Edition">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      </button>
+
+      <!-- Print / Export PDF -->
+      <button onclick="window.print()" class="control-btn control-icon-btn print-btn" title="Print / Save PDF (P)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect width="12" height="8" x="6" y="14"></rect></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- 1. StPageFlip OFFICIAL 3D PAGE FLIPPER VIEWPORT                           -->
+  <!-- ========================================================================= -->
+  <section class="stpageflip-container" id="stPageFlipSection">
+    <!-- Hidden pristine template so re-init and resize never lose DOM nodes -->
+    <div id="rawBookPages" style="display:none;" aria-hidden="true">
+      ${stPagesHtml}
+    </div>
+
+    <!-- Flipbook Stage (with side navigation arrows outside the book) -->
+    <div class="stpageflip-stage-wrapper">
+      <button class="stage-nav-arrow stage-nav-prev" onclick="flipPrev()" title="Previous Page (Left Arrow)" aria-label="Previous Page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+
+      <div class="book-viewport-constrainer">
+        <div id="book">
+          ${stPagesHtml}
+        </div>
+      </div>
+
+      <button class="stage-nav-arrow stage-nav-next" onclick="flipNext()" title="Next Page (Right Arrow)" aria-label="Next Page">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+      </button>
+    </div>
+
+    <!-- StPageFlip Bottom Page Control Dock (Outside the page, below book stage) -->
+    <div class="dock-bar-wrapper">
+      <div class="dock-bar">
+        <button class="dock-btn dock-btn-secondary" onclick="goToFlipPage(0)" title="First Page / Cover">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg>
+        </button>
+        <button class="dock-btn" onclick="flipPrev()" title="Previous Page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
+
+        <div class="dock-page-display">
+          <span id="dockCurrentDisplay">1</span>
+          <span style="opacity:0.5;">/</span>
+          <span id="dockTotalDisplay">${stPages.length}</span>
+        </div>
+
+        <button class="dock-btn" onclick="flipNext()" title="Next Page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        </button>
+        <button class="dock-btn dock-btn-secondary" onclick="goToFlipPage(${stPages.length - 1})" title="Last Page / Back Cover">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+        </button>
+
+        <div class="dock-divider"></div>
+
+        <!-- Orientation Switcher in Dock -->
+        <button class="dock-btn" id="dockOrientBtn" onclick="toggleFlipOrientation()" title="Toggle Vertical / Horizontal Flip Mode">
+          <svg id="dockOrientIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>
+          </svg>
+        </button>
+
+        <!-- Page Audio Sound Toggle -->
+        <button class="dock-btn" onclick="toggleAudio()" id="soundBtn" title="Toggle Page Turn Sound">
+          <svg id="soundIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================================================================= -->
+  <!-- 2. CONTINUOUS SCROLL MODE VIEWPORT (FIXED SCROLLVIEW)                     -->
+  <!-- ========================================================================= -->
+  <main class="magazine-scroll-wrapper" id="scrollSection">
+    <!-- Cover Section -->
+    <section id="cover" class="cover-hero-card">
+      <div class="cover-masthead">
+        <div class="masthead-eyebrow">
+          <div class="org-banner">${escapeHtml(hospitalName)}</div>
+          <div class="edition-tag">${issueDateStr}</div>
+        </div>
+
+        <h1 class="cover-title">${escapeHtml(issue.title)}</h1>
+        ${(issue.description || hospitalTagline) ? `<p class="cover-description">${escapeHtml(issue.description || hospitalTagline)}</p>` : ""}
+
+        <div class="cover-meta-bar">
+          <div class="meta-stat">
+            <span class="meta-stat-label">Reference ID</span>
+            <span class="meta-stat-value font-mono">${escapeHtml(issue.issueNo)}</span>
+          </div>
+          <div class="meta-stat">
+            <span class="meta-stat-label">Published</span>
+            <span class="meta-stat-value">${issueDateStr}</span>
+          </div>
+          <div class="meta-stat">
+            <span class="meta-stat-label">Total Articles</span>
+            <span class="meta-stat-value">${sections.length} Stories</span>
+          </div>
+          <div class="meta-stat">
+            <span class="meta-stat-label">Estimated Read</span>
+            <span class="meta-stat-value">${totalMinutes} Minutes</span>
+          </div>
+
+          <div class="cover-actions">
+            ${sections.length > 0 ? `
+              <button onclick="setReaderMode('flip', true)" class="primary-action-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                <span>Read in 3D Page-Flip Mode</span>
+              </button>
+            ` : ""}
+          </div>
+        </div>
+      </div>
+
+      ${issue.coverImageUrl ? `
+        <div class="cover-image-container">
+          <img src="${escapeHtml(issue.coverImageUrl)}" alt="Cover: ${escapeHtml(issue.title)}" loading="eager">
+        </div>
+      ` : ""}
+    </section>
+
+    <!-- Editorial Foreword Card -->
+    <section id="editorial" class="editorial-scroll-section">
+      <div class="editorial-scroll-header">
+        <span class="editorial-scroll-badge">EDITORIAL FOREWORD</span>
+        <h2 class="editorial-scroll-title">${escapeHtml(editorialTitle)}</h2>
+        <div class="editorial-accent-bar"></div>
+      </div>
+      <div class="editorial-scroll-body">
+        ${editorialContentHtml}
+      </div>
+    </section>
+
+    <!-- Table of Contents Card -->
+    ${sections.length > 0 ? `
+      <section id="toc" class="toc-section">
+        <div class="toc-section-header">
+          <h2 class="toc-section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+            Table of Contents
+          </h2>
+          <span class="brand-issue-pill">${sections.length} Stories</span>
+        </div>
+
+        <div class="toc-grid">
+          ${tocItemsHtml}
+        </div>
+      </section>
+    ` : ""}
+
+    <!-- Articles & Stories -->
+    <div class="stories-container">
+      ${scrollSectionsHtml}
+    </div>
+
+    ${hasGallery ? `
+      <!-- Photo Gallery & Highlights Section -->
+      <section id="gallery" class="gallery-scroll-section">
+        <div class="gallery-section-head">
+          <div class="gallery-head-left">
+            <span class="gallery-head-badge">VISUAL ARCHIVE</span>
+            <h2 class="gallery-head-title">Photo Gallery &amp; Highlights</h2>
+            <p class="gallery-head-sub">Photographic coverage, clinical milestones, and hospital life (${mediaAssets.length} Photos)</p>
+          </div>
+          <div class="gallery-head-actions">
+            <a href="/magazine/view/${escapeHtml(issue.slug)}/gallery" target="_blank" rel="noopener" class="gallery-open-tab-btn" title="Open Standalone Gallery in New Tab">
+              <span>Full Gallery Page</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>
+        </div>
+
+        ${uniqueTags.length > 0 ? `
+          <div class="gallery-filter-container" id="scrollGalleryFilters">
+            <button class="gallery-filter-btn active" onclick="filterScrollGallery('all', this)">All (${mediaAssets.length})</button>
+            ${uniqueTags.map(t => `
+              <button class="gallery-filter-btn" onclick="filterScrollGallery('${escapeHtml(t)}', this)">${escapeHtml(t)}</button>
+            `).join("")}
+          </div>
+        ` : ""}
+
+        <div class="gallery-scroll-grid" id="scrollGalleryGrid">
+          ${mediaAssets.map((photo, pIdx) => `
+            <div class="gallery-scroll-card" data-tags="${escapeHtml((photo.tags || []).join(',').toLowerCase())}" onclick="openLightbox(${pIdx})">
+              <div class="gallery-scroll-thumb-box">
+                <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+                <div class="gallery-scroll-hover-overlay">
+                  <div class="gallery-hover-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                  </div>
+                  <span class="gallery-hover-text">Inspect Photo</span>
+                </div>
+              </div>
+              <div class="gallery-scroll-card-body">
+                <div class="gallery-scroll-card-title">${escapeHtml(photo.originalName)}</div>
+                ${photo.tags && photo.tags.length > 0 ? `
+                  <div class="gallery-scroll-tags">
+                    ${photo.tags.slice(0, 3).map(t => `<span class="gallery-scroll-tag">${escapeHtml(t)}</span>`).join("")}
+                  </div>
+                ` : ""}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </section>
+    ` : ""}
+  </main>
+
+  <!-- Slide-over Table of Contents Drawer -->
+  <div id="drawerOverlay" class="drawer-overlay" onclick="closeAllDrawers()"></div>
+  <aside id="tocDrawer" class="toc-drawer" aria-label="Table of Contents Drawer">
+    <div class="drawer-header">
+      <h3 class="drawer-title">Contents</h3>
+      <button onclick="closeTocDrawer()" class="control-btn control-icon-btn" title="Close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="drawer-body">
+      ${tocItemsHtml}
+    </div>
+  </aside>
+
+  ${hasGallery ? `
+    <!-- Slide-over Photo Gallery Drawer -->
+    <aside id="galleryDrawer" class="gallery-drawer" aria-label="Photo Gallery Drawer">
+      <div class="drawer-header">
+        <div class="drawer-header-title-box">
+          <h3 class="drawer-title">Photo Gallery</h3>
+          <span class="nav-count-badge">${mediaAssets.length} Photos</span>
+        </div>
+        <button onclick="closeGalleryDrawer()" class="control-btn control-icon-btn" title="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="drawer-gallery-search">
+        <input type="text" id="drawerGallerySearchInput" placeholder="Search photos by title or tag..." oninput="searchDrawerGallery(this.value)" />
+      </div>
+      <div class="drawer-gallery-grid" id="drawerGalleryGrid">
+        ${mediaAssets.map((photo, pIdx) => `
+          <div class="drawer-gallery-card" data-title="${escapeHtml(photo.originalName.toLowerCase())}" data-tags="${escapeHtml((photo.tags || []).join(' ').toLowerCase())}" onclick="openLightboxFromDrawer(${pIdx})">
+            <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+            <div class="drawer-gallery-card-label">${escapeHtml(photo.originalName)}</div>
+          </div>
+        `).join("")}
+      </div>
+    </aside>
+
+    <!-- Full-Screen Interactive Lightbox Modal -->
+    <div id="lightboxModal" class="lightbox-modal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+      <div class="lightbox-content">
+        <div class="lightbox-top-bar">
+          <div class="lightbox-counter" id="lightboxCounter">Photo 1 of ${mediaAssets.length}</div>
+          <div class="lightbox-controls">
+            <a id="lightboxOriginalLink" href="#" target="_blank" rel="noopener" class="lightbox-control-btn" title="Open Full Resolution Asset">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              <span>Original</span>
+            </a>
+            <button onclick="toggleLightboxFullscreen()" class="lightbox-control-btn" title="Toggle Fullscreen">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            </button>
+            <button onclick="closeLightbox()" class="lightbox-control-btn close-btn" title="Close Lightbox (Esc)">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="lightbox-stage" id="lightboxStage">
+          <button class="lightbox-nav-btn prev-btn" onclick="lightboxPrev()" title="Previous Photo (Left Arrow)" aria-label="Previous">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+
+          <div class="lightbox-image-box" id="lightboxImageBox">
+            <img id="lightboxImg" src="" alt="" />
+          </div>
+
+          <button class="lightbox-nav-btn next-btn" onclick="lightboxNext()" title="Next Photo (Right Arrow)" aria-label="Next">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+
+        <div class="lightbox-footer">
+          <div class="lightbox-caption" id="lightboxCaption"></div>
+          <div class="lightbox-tags" id="lightboxTags"></div>
+        </div>
+      </div>
+    </div>
+  ` : ""}
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast-msg">Link copied to clipboard</div>
+
+  <!-- Luxury Editorial Footer -->
+  <footer class="site-footer">
+    <div class="footer-inner-container">
+      <div class="footer-main-grid">
+        <!-- Col 1: Brand & Institutional Identity -->
+        <div class="footer-col">
+          ${hospital?.logoUrl ? `<div style="margin-bottom: 0.65rem;"><img src="${escapeHtml(hospital.logoUrl)}" alt="${escapeHtml(hospitalName)}" style="max-height: 38px; max-width: 130px; object-fit: contain;" /></div>` : `<div class="footer-brand-badge">ACME HEALTHCARE</div>`}
+          <div class="footer-hospital-title">${escapeHtml(hospitalName)}</div>
+          ${hospitalTagline ? `<p class="footer-hospital-tagline">${escapeHtml(hospitalTagline)}</p>` : ""}
+          <div class="footer-meta-pill">${escapeHtml(issue.issueNo)} &bull; ${issueDateStr}</div>
+        </div>
+
+        <!-- Col 2: Navigation & Quick Jump -->
+        <div class="footer-col">
+          <div class="footer-col-title">Navigation</div>
+          <ul class="footer-links-list">
+            <li>
+              <button onclick="toggleTocDrawer()" class="footer-link-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+                <span>Table of Contents</span>
+              </button>
+            </li>
+            <li>
+              <a href="#cover" class="footer-link-item" onclick="returnToStart(event)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                <span>Front Cover</span>
+              </a>
+            </li>
+            <li>
+              <button onclick="setReaderMode('flip', true)" class="footer-link-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                <span>StPageFlip Experience</span>
+              </button>
+            </li>
+            <li>
+              <button onclick="setReaderMode('scroll', true)" class="footer-link-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line></svg>
+                <span>Continuous Scroll Mode</span>
+              </button>
+            </li>
+            <li>
+              <button onclick="window.print()" class="footer-link-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect width="12" height="8" x="6" y="14"></rect></svg>
+                <span>Print / Save PDF</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Col 3: Coordinates & Clinical Helplines -->
+        ${(hospitalEmergency || hospitalOpd || hospitalEmail || hospitalAddress || hospitalPhone) ? `
+          <div class="footer-col">
+            <div class="footer-col-title">Campus & Emergency</div>
+            <div class="footer-contact-list">
+              ${hospitalEmergency ? `
+                <div class="footer-contact-item emergency">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  <span>Emergency 24/7: ${escapeHtml(hospitalEmergency)}</span>
+                </div>
+              ` : ""}
+              ${hospitalOpd ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                  <span>OPD Desk: ${escapeHtml(hospitalOpd)}</span>
+                </div>
+              ` : ""}
+              ${hospitalPhone ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  <span>Phone: ${escapeHtml(hospitalPhone)}</span>
+                </div>
+              ` : ""}
+              ${hospitalEmail ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+                  <span>${escapeHtml(hospitalEmail)}</span>
+                </div>
+              ` : ""}
+              ${hospitalAddress ? `
+                <div class="footer-contact-item">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                  <span>${escapeHtml(hospitalAddress)}</span>
+                </div>
+              ` : ""}
+            </div>
+          </div>
+        ` : ""}
+
+        <!-- Col 4: Editorial Standards & Disclaimer -->
+        <div class="footer-col">
+          <div class="footer-col-title">Editorial Standards</div>
+          <p class="footer-disclaimer-text">
+            Articles in <em>${escapeHtml(issue.title)}</em> are compiled by clinical staff and research faculty for medical education and clinical updates.
+          </p>
+          ${hospitalDivision ? `
+            <p class="footer-disclaimer-text" style="margin-top: 0.25rem;">
+              ${escapeHtml(hospitalDivision)}
+            </p>
+          ` : ""}
+        </div>
+      </div>
+
+      <!-- Bottom Sub-bar -->
+      <div class="footer-bottom-bar">
+        <div>
+          &copy; ${new Date().getFullYear()} ${escapeHtml(hospitalName)}${hospitalCopyright ? `. ${escapeHtml(hospitalCopyright)}` : "."}
+        </div>
+        <div style="display: flex; align-items: center; gap: 1.25rem;">
+          <div class="footer-status-indicator">
+            <span class="footer-status-dot"></span>
+            <span>Digital Press Active</span>
+          </div>
+          <a href="#cover" class="back-to-top-link" onclick="returnToStart(event)">
+            <span>↑ Top</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ========================================================================= -->
+  <!-- StPageFlip OFFICIAL LIBRARY ENGINE & SCRIPT                               -->
+  <!-- ========================================================================= -->
+  <script>
+    let pageFlipInstance = null;
+    let currentFlipIndex = 0;
+    let totalFlipPages = ${stPages.length};
+    let flipOrientation = 'horizontal'; // 'horizontal' | 'vertical'
+    let soundEnabled = true;
+    let audioCtx = null;
+    let isTransitioning = false;
+
+    // 1. Reading Progress Bar (Scroll Mode & Flip Mode)
+    window.addEventListener('scroll', () => {
+      if (document.documentElement.getAttribute('data-mode') !== 'scroll') return;
+      const winScroll = document.documentElement.scrollTop || document.body.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = height > 0 ? (winScroll / height) * 100 : 0;
+      const pBar = document.getElementById('progressBar');
+      if (pBar) pBar.style.width = scrolled + '%';
+    });
+
+    // 2. Active Section Highlight in Scroll Mode
+    if ('IntersectionObserver' in window) {
+      const sectionObserver = new IntersectionObserver((entries) => {
+        if (document.documentElement.getAttribute('data-mode') !== 'scroll') return;
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const id = entry.target.getAttribute('id');
+            if (id) {
+              document.querySelectorAll('.toc-card').forEach(card => {
+                if (card.getAttribute('data-section') === id) {
+                  card.classList.add('active-reading');
+                } else {
+                  card.classList.remove('active-reading');
+                }
+              });
+            }
+          }
+        });
+      }, { rootMargin: '-20% 0px -70% 0px' });
+
+      document.querySelectorAll('.story-article').forEach(art => sectionObserver.observe(art));
+    }
+
+    // 3. Realistic Page Turn Audio
+    function playPageTurnAudio() {
+      if (!soundEnabled) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const bufferSize = audioCtx.sampleRate * 0.2;
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+        }
+
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1100;
+        filter.Q.value = 1.3;
+
+        const gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        noise.start();
+      } catch (err) {}
+    }
+
+    function toggleAudio() {
+      soundEnabled = !soundEnabled;
+      const soundIcon = document.getElementById('soundIcon');
+      if (soundEnabled) {
+        soundIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>';
+        showToast('Page sound ON');
+      } else {
+        soundIcon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>';
+        showToast('Page sound MUTED');
+      }
+    }
+
+    // 4. StPageFlip Dynamic A4 Aspect-Ratio & Dimension Calculator (210mm x 297mm)
+    function getFlipbookDimensions() {
+      const winW = window.innerWidth;
+      const winH = window.innerHeight;
+      const isPortrait = winW < 820;
+      const headerH = winW < 640 ? 48 : 52;
+      const dockH = winW < 520 ? 46 : 54;
+      const paddingH = winW < 640 ? 16 : 28;
+      const stageAvailH = Math.max(280, winH - headerH - dockH - paddingH);
+      const sideNavW = (!isPortrait && winW >= 860) ? 110 : 0;
+      const stageAvailW = isPortrait
+        ? Math.max(280, winW - 16)
+        : Math.max(560, Math.min(winW - sideNavW - 32, 1280));
+
+      // ISO 216 A4 standard ratio: 297mm height / 210mm width = 1.4142 (sqrt(2))
+      const a4Ratio = 297 / 210;
+
+      let bookW, bookH;
+      if (isPortrait) {
+        // Single A4 page portrait mode
+        const maxW = Math.min(stageAvailW, 580);
+        bookH = Math.min(stageAvailH, Math.round(maxW * a4Ratio));
+        bookW = Math.round(bookH / a4Ratio);
+        if (bookW > stageAvailW) {
+          bookW = stageAvailW;
+          bookH = Math.round(bookW * a4Ratio);
+        }
+      } else {
+        // 2-page A4 spread landscape mode (two A4 pages side-by-side)
+        const maxSinglePageW = Math.floor(stageAvailW / 2);
+        bookH = Math.min(stageAvailH, Math.round(maxSinglePageW * a4Ratio));
+        bookW = Math.round(bookH / a4Ratio);
+        if (bookW * 2 > stageAvailW) {
+          bookW = Math.floor(stageAvailW / 2);
+          bookH = Math.round(bookW * a4Ratio);
+        }
+      }
+
+      return {
+        width: Math.max(240, bookW),
+        height: Math.max(320, bookH),
+        isPortrait: isPortrait
+      };
+    }
+
+    function getRawPagesHtml() {
+      const rawEl = document.getElementById('rawBookPages');
+      return rawEl ? rawEl.innerHTML : '';
+    }
+
+    // 5. Unified Flip Engine Dispatcher (Desktop Horizontal + Mobile Vertical)
+    function initFlipEngine() {
+      const flipContainer = document.getElementById('book');
+      if (!flipContainer) return;
+
+      if (pageFlipInstance) {
+        try { pageFlipInstance.destroy(); } catch (e) {}
+        pageFlipInstance = null;
+      }
+
+      // Always restore clean unmutated HTML
+      flipContainer.innerHTML = getRawPagesHtml();
+
+      const isMobileDevice = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024 && window.innerHeight > window.innerWidth);
+      const savedOrient = localStorage.getItem('magazine-flip-orient');
+      flipOrientation = isMobileDevice ? 'vertical' : (savedOrient || 'horizontal');
+
+      updateOrientationUI(flipOrientation);
+
+      if (flipOrientation === 'vertical') {
+        initVerticalFlipMode(flipContainer);
+      } else {
+        initHorizontalStPageFlip(flipContainer);
+      }
+    }
+
+    function initHorizontalStPageFlip(flipContainer) {
+      flipContainer.classList.remove('vertical-mode');
+
+      if (!window.St || !window.St.PageFlip) {
+        let attempts = (flipContainer._stAttempts || 0) + 1;
+        flipContainer._stAttempts = attempts;
+        if (attempts < 40) {
+          setTimeout(() => initHorizontalStPageFlip(flipContainer), 80);
+        }
+        return;
+      }
+      flipContainer._stAttempts = 0;
+
+      const dims = getFlipbookDimensions();
+      const isMobileDevice = window.innerWidth < 768 || ('ontouchstart' in window && window.innerWidth < 1024 && window.innerHeight > window.innerWidth);
+
+      try {
+        pageFlipInstance = new St.PageFlip(flipContainer, {
+          width: dims.width,
+          height: dims.height,
+          size: 'stretch',
+          minWidth: 260,
+          maxWidth: 800,
+          minHeight: 360,
+          maxHeight: 1200,
+          maxShadowOpacity: 0.55,
+          showCover: true,
+          mobileScrollSupport: true,
+          useMouseEvents: !isMobileDevice, // Disable mouse/touch tap-to-flip on mobile
+          clickEventForward: !isMobileDevice,
+          disableFlipByClick: true,
+          swipeDistance: 35,
+          drawShadow: true,
+          flippingTime: 1000,
+          usePortrait: dims.isPortrait,
+          startPage: currentFlipIndex
+        });
+
+        const pages = flipContainer.querySelectorAll('.page');
+        pageFlipInstance.loadFromHTML(pages);
+
+        pageFlipInstance.on('flip', (e) => {
+          playPageTurnAudio();
+          currentFlipIndex = e.data;
+          updateFlipDock();
+        });
+
+        pageFlipInstance.on('init', () => {
+          totalFlipPages = pageFlipInstance.getPageCount();
+          updateFlipDock();
+        });
+      } catch (err) {
+        console.warn('PageFlip init error:', err);
+      }
+    }
+
+    function initVerticalFlipMode(flipContainer) {
+      flipContainer.classList.add('vertical-mode');
+
+      const pages = flipContainer.querySelectorAll('.page');
+      totalFlipPages = pages.length;
+      renderVerticalPages(currentFlipIndex);
+      updateFlipDock();
+
+      setupVerticalTouchEvents(flipContainer);
+    }
+
+    function renderVerticalPages(targetIdx) {
+      const flipContainer = document.getElementById('book');
+      if (!flipContainer) return;
+      const pages = flipContainer.querySelectorAll('.page');
+      if (!pages.length) return;
+
+      pages.forEach((p, idx) => {
+        p.classList.remove('v-active', 'v-next-peek', 'v-past', 'v-future');
+        if (idx < targetIdx) {
+          p.classList.add('v-past');
+        } else if (idx === targetIdx) {
+          p.classList.add('v-active');
+        } else if (idx === targetIdx + 1) {
+          p.classList.add('v-next-peek');
+        } else {
+          p.classList.add('v-future');
+        }
+      });
+
+      currentFlipIndex = targetIdx;
+      updateFlipDock();
+    }
+
+    function setupVerticalTouchEvents(container) {
+      if (container._vTouchBound) return;
+      container._vTouchBound = true;
+
+      let touchStartY = 0;
+      let touchStartX = 0;
+      let touchStartTime = 0;
+
+      const onTouchStart = (e) => {
+        if (e.touches.length === 1) {
+          touchStartY = e.touches[0].clientY;
+          touchStartX = e.touches[0].clientX;
+          touchStartTime = Date.now();
+        }
+      };
+
+      const onTouchEnd = (e) => {
+        if (e.changedTouches.length !== 1 || isTransitioning || flipOrientation !== 'vertical') return;
+        const deltaY = e.changedTouches[0].clientY - touchStartY;
+        const deltaX = e.changedTouches[0].clientX - touchStartX;
+
+        // Strictly enforce vertical swipe gesture:
+        // 1. Minimum vertical travel distance (45px) - rejects static taps & micro-touches
+        // 2. Strict vertical dominance (|deltaY| >= 1.4 * |deltaX|) - rejects horizontal swipes/taps
+        const isIntentionalVerticalSwipe = Math.abs(deltaY) >= 45 && Math.abs(deltaY) >= Math.abs(deltaX) * 1.4;
+        if (!isIntentionalVerticalSwipe) return;
+
+        // Check if inside inner-scrollable article copy on current page
+        const activePage = container.querySelector('.page.v-active');
+        const innerScroll = activePage ? activePage.querySelector('.page-inner-scroll') : null;
+        if (innerScroll && innerScroll.scrollHeight > innerScroll.clientHeight + 10) {
+          const atTop = innerScroll.scrollTop <= 8;
+          const atBottom = innerScroll.scrollTop + innerScroll.clientHeight >= innerScroll.scrollHeight - 8;
+
+          // Allow natural touch reading scroll inside article before triggering full page turn
+          if (deltaY > 0 && !atTop) return;
+          if (deltaY < 0 && !atBottom) return;
+        }
+
+        if (deltaY < 0) {
+          flipNext(); // Swipe Up -> Next Page
+        } else {
+          flipPrev(); // Swipe Down -> Previous Page
+        }
+      };
+
+      container.addEventListener('touchstart', onTouchStart, { passive: true });
+      container.addEventListener('touchend', onTouchEnd, { passive: true });
+
+      // Also attach to the parent stage section to catch swipes that start outside text boxes
+      const stageSection = document.getElementById('stPageFlipSection');
+      if (stageSection && stageSection !== container && !stageSection._vTouchBound) {
+        stageSection._vTouchBound = true;
+        stageSection.addEventListener('touchstart', onTouchStart, { passive: true });
+        stageSection.addEventListener('touchend', onTouchEnd, { passive: true });
+      }
+
+      let wheelTimer = null;
+      container.addEventListener('wheel', (e) => {
+        if (isTransitioning || flipOrientation !== 'vertical') return;
+        clearTimeout(wheelTimer);
+        wheelTimer = setTimeout(() => {
+          if (e.deltaY > 20) {
+            flipNext();
+          } else if (e.deltaY < -20) {
+            flipPrev();
+          }
+        }, 50);
+      }, { passive: true });
+    }
+
+    function flipNext() {
+      if (flipOrientation === 'horizontal') {
+        if (pageFlipInstance) pageFlipInstance.flipNext();
+      } else {
+        if (currentFlipIndex < totalFlipPages - 1) {
+          goToFlipPage(currentFlipIndex + 1);
+        }
+      }
+    }
+
+    function flipPrev() {
+      if (flipOrientation === 'horizontal') {
+        if (pageFlipInstance) pageFlipInstance.flipPrev();
+      } else {
+        if (currentFlipIndex > 0) {
+          goToFlipPage(currentFlipIndex - 1);
+        }
+      }
+    }
+
+    function goToFlipPage(idx) {
+      closeTocDrawer();
+      const clamped = Math.max(0, Math.min(idx, totalFlipPages - 1));
+
+      if (flipOrientation === 'horizontal') {
+        if (pageFlipInstance) {
+          pageFlipInstance.turnToPage(clamped);
+        } else {
+          currentFlipIndex = clamped;
+          initFlipEngine();
+        }
+      } else {
+        if (clamped === currentFlipIndex && isTransitioning) return;
+        isTransitioning = true;
+        playPageTurnAudio();
+        renderVerticalPages(clamped);
+        setTimeout(() => { isTransitioning = false; }, 850);
+      }
+    }
+
+    function updateFlipDock() {
+      const curDisplay = document.getElementById('dockCurrentDisplay');
+      const totDisplay = document.getElementById('dockTotalDisplay');
+      if (curDisplay) curDisplay.innerText = (currentFlipIndex + 1);
+      if (totDisplay) totDisplay.innerText = totalFlipPages;
+
+      if (document.documentElement.getAttribute('data-mode') === 'flip') {
+        const percent = totalFlipPages > 1 ? (currentFlipIndex / (totalFlipPages - 1)) * 100 : 100;
+        const pBar = document.getElementById('progressBar');
+        if (pBar) pBar.style.width = percent + '%';
+      }
+    }
+
+    function toggleFlipOrientation() {
+      const next = flipOrientation === 'vertical' ? 'horizontal' : 'vertical';
+      localStorage.setItem('magazine-flip-orient', next);
+      window.location.reload();
+    }
+
+    function updateOrientationUI(orient) {
+      const headerIcon = document.getElementById('headerOrientIcon');
+      const headerLabel = document.getElementById('headerOrientLabel');
+      const dockIcon = document.getElementById('dockOrientIcon');
+
+      const vSvg = '<path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/>';
+      const hSvg = '<path d="m15 7 5 5-5 5"/><path d="m9 7-5 5 5 5"/>';
+
+      if (orient === 'vertical') {
+        if (headerIcon) headerIcon.innerHTML = vSvg;
+        if (dockIcon) dockIcon.innerHTML = vSvg;
+        if (headerLabel) headerLabel.innerText = 'Vertical';
+      } else {
+        if (headerIcon) headerIcon.innerHTML = hSvg;
+        if (dockIcon) dockIcon.innerHTML = hSvg;
+        if (headerLabel) headerLabel.innerText = 'Horizontal';
+      }
+    }
+
+    // 6. Reader Mode Switcher (Page-Flip & Continuous Scroll)
+    function setReaderMode(mode, isUserAction = false) {
+      const currentMode = document.documentElement.getAttribute('data-mode');
+      localStorage.setItem('magazine-reader-mode', mode);
+
+      if (isUserAction && currentMode && currentMode !== mode) {
+        window.location.reload();
+        return;
+      }
+
+      document.documentElement.setAttribute('data-mode', mode);
+
+      const flipBtn = document.getElementById('modeFlipBtn');
+      const scrollBtn = document.getElementById('modeScrollBtn');
+      const orientBtn = document.getElementById('headerOrientBtn');
+
+      if (mode === 'flip') {
+        if (flipBtn) flipBtn.classList.add('active');
+        if (scrollBtn) scrollBtn.classList.remove('active');
+        if (orientBtn) orientBtn.style.display = 'inline-flex';
+        // Double requestAnimationFrame ensures browser calculates display:flex container dimensions before initializing PageFlip
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            initFlipEngine();
+          });
+        });
+      } else {
+        if (scrollBtn) scrollBtn.classList.add('active');
+        if (flipBtn) flipBtn.classList.remove('active');
+        if (orientBtn) orientBtn.style.display = 'none';
+        if (pageFlipInstance) {
+          try { pageFlipInstance.destroy(); } catch (e) {}
+          pageFlipInstance = null;
+        }
+      }
+    }
+
+    // 7. TOC Navigation (Handles both StPageFlip and Scroll Modes)
+    function handleTocClick(anchorId, pageIdx, event) {
+      closeTocDrawer();
+      const currentMode = document.documentElement.getAttribute('data-mode');
+      if (currentMode === 'flip') {
+        if (event) event.preventDefault();
+        goToFlipPage(pageIdx);
+      } else {
+        if (event) event.preventDefault();
+        const target = document.getElementById(anchorId);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', '#' + anchorId);
+        }
+      }
+    }
+
+    function returnToStart(e) {
+      const currentMode = document.documentElement.getAttribute('data-mode');
+      if (currentMode === 'flip') {
+        e.preventDefault();
+        goToFlipPage(0);
+      }
+    }
+
+    // 8. Theme Switcher
+    const themes = ['dark', 'light', 'sepia'];
+    const savedTheme = localStorage.getItem('magazine-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+
+    function cycleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const nextIndex = (themes.indexOf(current) + 1) % themes.length;
+      const nextTheme = themes[nextIndex];
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      localStorage.setItem('magazine-theme', nextTheme);
+      updateThemeIcon(nextTheme);
+      showToast('Theme: ' + nextTheme.toUpperCase());
+    }
+
+    function updateThemeIcon(theme) {
+      const icon = document.getElementById('themeIcon');
+      if (!icon) return;
+      if (theme === 'dark') {
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+      } else if (theme === 'light') {
+        icon.innerHTML = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>';
+      } else {
+        icon.innerHTML = '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>';
+      }
+    }
+
+    // 9. Font Scaling
+    const fontSizes = ['small', 'normal', 'large'];
+    const savedFont = localStorage.getItem('magazine-font') || 'normal';
+    document.documentElement.setAttribute('data-font', savedFont);
+    updateFontButtonLabel(savedFont);
+
+    function cycleFontSize() {
+      const current = document.documentElement.getAttribute('data-font') || 'normal';
+      const nextIndex = (fontSizes.indexOf(current) + 1) % fontSizes.length;
+      const nextFont = fontSizes[nextIndex];
+      document.documentElement.setAttribute('data-font', nextFont);
+      localStorage.setItem('magazine-font', nextFont);
+      updateFontButtonLabel(nextFont);
+      showToast('Font size: ' + nextFont.toUpperCase());
+    }
+
+    function updateFontButtonLabel(size) {
+      const fontBtn = document.getElementById('fontBtn');
+      if (!fontBtn) return;
+      const span = fontBtn.querySelector('span');
+      if (!span) return;
+      if (size === 'small') span.innerText = 'A-';
+      else if (size === 'large') span.innerText = 'A+';
+      else span.innerText = 'A';
+    }
+
+    // 10. Drawer Toggle
+    function toggleTocDrawer() {
+      closeGalleryDrawer();
+      const overlay = document.getElementById('drawerOverlay');
+      const drawer = document.getElementById('tocDrawer');
+      if (overlay && drawer) {
+        overlay.classList.toggle('open');
+        drawer.classList.toggle('open');
+      }
+    }
+
+    function closeTocDrawer() {
+      const drawer = document.getElementById('tocDrawer');
+      if (drawer) drawer.classList.remove('open');
+      const galleryDrawer = document.getElementById('galleryDrawer');
+      if (!galleryDrawer || !galleryDrawer.classList.contains('open')) {
+        const overlay = document.getElementById('drawerOverlay');
+        if (overlay) overlay.classList.remove('open');
+      }
+    }
+
+    function toggleGalleryDrawer() {
+      closeTocDrawer();
+      const overlay = document.getElementById('drawerOverlay');
+      const drawer = document.getElementById('galleryDrawer');
+      if (overlay && drawer) {
+        overlay.classList.toggle('open');
+        drawer.classList.toggle('open');
+      }
+    }
+
+    function closeGalleryDrawer() {
+      const drawer = document.getElementById('galleryDrawer');
+      if (drawer) drawer.classList.remove('open');
+      const tocDrawer = document.getElementById('tocDrawer');
+      if (!tocDrawer || !tocDrawer.classList.contains('open')) {
+        const overlay = document.getElementById('drawerOverlay');
+        if (overlay) overlay.classList.remove('open');
+      }
+    }
+
+    function closeAllDrawers() {
+      closeTocDrawer();
+      closeGalleryDrawer();
+    }
+
+    function searchDrawerGallery(val) {
+      const term = (val || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.drawer-gallery-card');
+      cards.forEach((card) => {
+        const title = (card.getAttribute('data-title') || '').toLowerCase();
+        const tags = (card.getAttribute('data-tags') || '').toLowerCase();
+        if (!term || title.includes(term) || tags.includes(term)) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function openLightboxFromDrawer(idx, e) {
+      closeGalleryDrawer();
+      openLightbox(idx, e);
+    }
+
+    function filterScrollGallery(tag, btn) {
+      if (btn && btn.parentElement) {
+        btn.parentElement.querySelectorAll('.gallery-filter-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const cleanTag = (tag || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.gallery-scroll-card');
+      cards.forEach((card) => {
+        const tags = (card.getAttribute('data-tags') || '').toLowerCase().split(',');
+        if (cleanTag === 'all' || tags.includes(cleanTag)) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    function handleGalleryButtonClick() {
+      const currentMode = document.documentElement.getAttribute('data-mode');
+      if (currentMode === 'flip') {
+        goToFlipPage(${galleryStartFlipIndex});
+      } else {
+        const el = document.getElementById('gallery');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          history.replaceState(null, '', '#gallery');
+        }
+      }
+    }
+
+    // 11. Lightbox Controller
+    const magazineMediaAssets = ${JSON.stringify(
+      mediaAssets.map((m) => ({
+        id: m.id,
+        originalName: m.originalName,
+        url: m.url,
+        thumbnailUrl: m.thumbnailUrl || m.url,
+        width: m.width || null,
+        height: m.height || null,
+        tags: m.tags || [],
+      }))
+    )};
+
+    let activeLightboxIndex = 0;
+    let isLightboxOpen = false;
+
+    function openLightbox(index, e) {
+      if (e) {
+        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+        if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+        if (typeof e.preventDefault === 'function') e.preventDefault();
+      }
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      if (index < 0) index = 0;
+      if (index >= magazineMediaAssets.length) index = magazineMediaAssets.length - 1;
+      activeLightboxIndex = index;
+      isLightboxOpen = true;
+
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      renderLightboxPhoto();
+    }
+
+    function closeLightbox() {
+      isLightboxOpen = false;
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function lightboxNext() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex + 1) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function lightboxPrev() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex - 1 + magazineMediaAssets.length) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function renderLightboxPhoto() {
+      const photo = magazineMediaAssets[activeLightboxIndex];
+      if (!photo) return;
+
+      const counter = document.getElementById('lightboxCounter');
+      if (counter) counter.innerText = 'Photo ' + (activeLightboxIndex + 1) + ' of ' + magazineMediaAssets.length;
+
+      const img = document.getElementById('lightboxImg');
+      if (img) {
+        img.src = photo.url;
+        img.alt = photo.originalName || 'Photo';
+      }
+
+      const caption = document.getElementById('lightboxCaption');
+      if (caption) caption.innerText = photo.originalName || '';
+
+      const origLink = document.getElementById('lightboxOriginalLink');
+      if (origLink) origLink.href = photo.url;
+
+      const tagsContainer = document.getElementById('lightboxTags');
+      if (tagsContainer) {
+        if (photo.tags && photo.tags.length) {
+          tagsContainer.innerHTML = photo.tags.map((t) => '<span class="lightbox-tag">#' + escapeClientHtml(t) + '</span>').join('');
+        } else {
+          tagsContainer.innerHTML = '';
+        }
+      }
+    }
+
+    function escapeClientHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function toggleLightboxFullscreen() {
+      const modal = document.getElementById('lightboxModal');
+      if (!document.fullscreenElement) {
+        if (modal && modal.requestFullscreen) modal.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Touch Swipe for Lightbox
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const stage = document.getElementById('lightboxStage');
+    if (stage) {
+      stage.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      stage.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 50) lightboxNext();
+        if (touchEndX > touchStartX + 50) lightboxPrev();
+      }, { passive: true });
+    }
+
+    // 12. Toast
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2400);
+    }
+
+    // 13. Share
+    async function shareMagazine() {
+      const url = window.location.href;
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: '${escapeHtml(issue.title)}',
+            text: '${escapeHtml(issue.description || `${issue.title} — ${issueDateStr}`)}',
+            url: url
+          });
+          return;
+        } catch (err) {}
+      }
+      navigator.clipboard.writeText(url);
+      showToast('Link copied to clipboard!');
+    }
+
+    // 14. Keyboard Navigation
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (isLightboxOpen) {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); lightboxNext(); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); return; }
+        return;
+      }
+
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        flipNext();
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        flipPrev();
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        flipPrev();
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        flipNext();
+      }
+      if (e.key === 't' || e.key === 'T') toggleTocDrawer();
+      if (e.key === 'g' || e.key === 'G') {
+        if (${hasGallery}) toggleGalleryDrawer();
+      }
+      if (e.key === 'Escape') {
+        closeAllDrawers();
+      }
+    });
+
+    // Auto-init on load (ensures immediate initialization even if document is already ready)
+    function initOnReady() {
+      const savedMode = localStorage.getItem('magazine-reader-mode') || 'flip';
+      setReaderMode(savedMode);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initOnReady);
+    } else {
+      initOnReady();
+    }
+
+    // Debounced resize & orientation change handler
+    let resizeTimer = null;
+    function handleWindowResize() {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (document.documentElement.getAttribute('data-mode') === 'flip') {
+          initFlipEngine();
+        }
+      }, 150);
+    }
+
+    window.addEventListener('resize', handleWindowResize);
+    window.addEventListener('orientationchange', handleWindowResize);
+  </script>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Standalone Public Photo Gallery SSR Page (/magazine/:slug/gallery)
+// ---------------------------------------------------------------------------
+
+export function renderMagazineGalleryHtml(
+  issue: MagazineIssueData,
+  mediaAssets: MagazineMediaData[] = [],
+  hospital?: HospitalSettingsData | null
+): string {
+  const monthName = MONTH_NAMES[issue.issueMonth - 1] || `Month ${issue.issueMonth}`;
+  const issueDateStr = `${monthName} ${issue.issueYear}`;
+  const hospitalName = hospital?.name?.trim() || "ACME Hospital & Healthcare";
+  const hospitalTagline = hospital?.tagline?.trim() || "";
+  const hospitalEmergency = hospital?.emergencyPhone?.trim() || "";
+  const hospitalOpd = hospital?.opdPhone?.trim() || "";
+  const hospitalDivision = hospital?.editorialDivision?.trim() || "";
+  const hospitalAddress = hospital?.address?.trim() || "";
+
+  const uniqueTags = Array.from(
+    new Set(mediaAssets.flatMap((m) => m.tags || []))
+  ).filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+
+  const heroImage = issue.coverImageUrl || (mediaAssets.length > 0 ? mediaAssets[0].url : null);
+
+  return `<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('magazine-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(issue.title)} — Photo Gallery | ${escapeHtml(hospitalName)}</title>
+  <meta name="description" content="Visual highlights, clinical events, and photographic coverage from ${escapeHtml(issue.title)} (${issueDateStr}).">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${escapeHtml(issue.title)} — Photo Gallery">
+  <meta property="og:description" content="Explore photographic moments from ${escapeHtml(issue.title)}.">
+  ${heroImage ? `<meta property="og:image" content="${escapeHtml(heroImage)}">` : ""}
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root,
+    html[data-theme="dark"] {
+      --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-display: 'Playfair Display', Georgia, serif;
+      --font-masthead: 'Cinzel', serif;
+      --font-mono: 'JetBrains Mono', monospace;
+
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-xl: 28px;
+      --radius-full: 9999px;
+
+      --bg-page: #06090e;
+      --bg-card: #0d121c;
+      --bg-elevated: #131b2a;
+      --border-main: rgba(255, 255, 255, 0.08);
+      --border-accent: rgba(56, 189, 248, 0.25);
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.15);
+      --accent-gradient: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+    }
+
+    html[data-theme="light"] {
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-elevated: #f1f5f9;
+      --border-main: rgba(0, 0, 0, 0.08);
+      --border-accent: rgba(2, 132, 199, 0.3);
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      --primary: #0284c7;
+      --primary-glow: rgba(2, 132, 199, 0.12);
+      --accent-gradient: linear-gradient(135deg, #0284c7 0%, #4f46e5 50%, #9333ea 100%);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      font-family: var(--font-ui);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Sticky Header */
+    .gallery-top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(6, 9, 14, 0.94);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-main);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    html[data-theme="dark"] .gallery-top-nav {
+      background: rgba(6, 9, 14, 0.94);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    html[data-theme="dark"] .gallery-btn-icon,
+    html[data-theme="dark"] .gallery-back-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+    html[data-theme="light"] .gallery-top-nav {
+      background: rgba(255, 255, 255, 0.85);
+    }
+
+    .gallery-back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--primary);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.45rem 0.95rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-main);
+      transition: all 0.2s ease;
+    }
+    .gallery-back-btn:hover {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      transform: translateX(-2px);
+    }
+
+    .gallery-nav-center {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+    .gallery-nav-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .gallery-btn-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-main);
+      background: var(--bg-elevated);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .gallery-btn-icon:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* Container */
+    .gallery-container {
+      width: 100%;
+      max-width: 1360px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+      flex: 1;
+    }
+
+    /* Hero Banner */
+    .gallery-hero {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-xl);
+      padding: clamp(2rem, 5vw, 3.5rem);
+      margin-bottom: 2.5rem;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+      position: relative;
+      overflow: hidden;
+    }
+    .gallery-hero-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .gallery-hero-badge {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.25rem 0.75rem;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--border-accent);
+      letter-spacing: 0.1em;
+    }
+    .gallery-hero-org {
+      font-family: var(--font-masthead);
+      font-size: 0.85rem;
+      font-weight: 800;
+      color: var(--text-muted);
+      letter-spacing: 0.15em;
+    }
+    .gallery-hero-title {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 900;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+    .gallery-hero-desc {
+      font-size: clamp(0.95rem, 2vw, 1.15rem);
+      color: var(--text-muted);
+      max-width: 720px;
+      line-height: 1.6;
+    }
+
+    /* Filter Bar */
+    .gallery-filters {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+    .gallery-filter-pill {
+      font-family: var(--font-ui);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.4rem 1rem;
+      border-radius: var(--radius-full);
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .gallery-filter-pill:hover {
+      color: var(--text-main);
+      border-color: var(--primary);
+    }
+    .gallery-filter-pill.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      box-shadow: 0 4px 14px rgba(56, 189, 248, 0.3);
+    }
+
+    /* Masonry Photo Grid */
+    .gallery-masonry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .gallery-photo-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-main);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    .gallery-photo-card:hover {
+      transform: translateY(-6px);
+      border-color: var(--primary);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+    }
+    .gallery-photo-thumb-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 11;
+      overflow: hidden;
+      background: #000;
+    }
+    .gallery-photo-thumb-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.45s ease;
+    }
+    .gallery-photo-card:hover .gallery-photo-thumb-wrap img {
+      transform: scale(1.08);
+    }
+    .gallery-photo-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.6);
+      backdrop-filter: blur(3px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      color: #fff;
+    }
+    .gallery-photo-card:hover .gallery-photo-overlay {
+      opacity: 1;
+    }
+    .gallery-zoom-badge {
+      background: var(--primary);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }
+    .gallery-zoom-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .gallery-photo-body {
+      padding: 1rem 1.15rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      flex: 1;
+    }
+    .gallery-photo-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      line-height: 1.35;
+      color: var(--text-main);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .gallery-photo-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-top: auto;
+      padding-top: 0.35rem;
+    }
+    .gallery-photo-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      flex-wrap: wrap;
+    }
+    .gallery-photo-tag {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      color: var(--primary);
+      background: var(--primary-glow);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    /* Empty State */
+    .gallery-empty-state {
+      background: var(--bg-card);
+      border: 1px dashed var(--border-main);
+      border-radius: var(--radius-xl);
+      padding: 4rem 2rem;
+      text-align: center;
+      max-width: 600px;
+      margin: 2rem auto;
+    }
+    .gallery-empty-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--primary-glow);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.25rem;
+    }
+    .gallery-empty-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+    }
+    .gallery-empty-desc {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Lightbox Modal */
+    .lightbox-modal {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.25s;
+    }
+    .lightbox-modal.open {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+    }
+    .lightbox-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .lightbox-content {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: clamp(0.75rem, 2.5vw, 1.75rem);
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .lightbox-modal.open .lightbox-content > * {
+      pointer-events: auto;
+    }
+    .lightbox-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-full);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-counter {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: 0.05em;
+    }
+    .lightbox-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .lightbox-control-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f1f5f9;
+      border-radius: var(--radius-full);
+      padding: 0.4rem 0.85rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .lightbox-control-btn:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .lightbox-control-btn.close-btn {
+      padding: 0.4rem 0.5rem;
+    }
+    .lightbox-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      padding: 0.75rem 0;
+      gap: 0.75rem;
+    }
+    .lightbox-image-box {
+      flex: 1;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+    .lightbox-image-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: var(--radius-md);
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .lightbox-nav-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .lightbox-nav-btn:hover {
+      background: var(--primary);
+      transform: scale(1.08);
+    }
+    .lightbox-footer {
+      background: rgba(15, 23, 42, 0.7);
+      backdrop-filter: blur(12px);
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-lg);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .lightbox-caption {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      letter-spacing: -0.01em;
+    }
+    .lightbox-tags {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .lightbox-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+
+    /* Footer */
+    .gallery-footer {
+      border-top: 1px solid var(--border-main);
+      background: var(--bg-card);
+      padding: 2.5rem 1.5rem;
+      margin-top: auto;
+    }
+    .gallery-footer-inner {
+      max-width: 1360px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .gallery-footer-brand {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .gallery-footer-org {
+      font-family: var(--font-masthead);
+      font-weight: 800;
+      color: var(--primary);
+      letter-spacing: 0.1em;
+    }
+
+    @media (max-width: 600px) {
+      .gallery-container { padding: 1.5rem 1rem 3rem; }
+      .gallery-hero { padding: 1.5rem 1.25rem; }
+      .gallery-masonry-grid { grid-template-columns: 1fr; }
+      .lightbox-nav-btn { width: 38px; height: 38px; }
+      .lightbox-content { padding: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Header -->
+  <header class="gallery-top-nav">
+    <a href="/magazine/view/${escapeHtml(issue.slug)}" class="gallery-back-btn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+      <span>Read Magazine</span>
+    </a>
+
+    <div class="gallery-nav-center">
+      <span>${escapeHtml(issue.issueNo)}</span>
+      <span>&bull;</span>
+      <span>${issueDateStr}</span>
+    </div>
+
+    <div class="gallery-nav-right">
+      <button onclick="cycleTheme()" class="gallery-btn-icon" title="Toggle Theme" id="themeBtn">
+        <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+        </svg>
+      </button>
+
+      <button onclick="shareGallery()" class="gallery-btn-icon" title="Share Photo Gallery">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="gallery-container">
+    <!-- Hero Banner -->
+    <div class="gallery-hero">
+      <div class="gallery-hero-eyebrow">
+        <span class="gallery-hero-badge">PHOTO ARCHIVE &bull; ${mediaAssets.length} PHOTOS</span>
+        <span class="gallery-hero-org">${escapeHtml(hospitalName)}</span>
+      </div>
+      <h1 class="gallery-hero-title">${escapeHtml(issue.title)}</h1>
+      <p class="gallery-hero-desc">Curated photographic coverage, clinical highlights, medical achievements, and campus moments from the ${issueDateStr} edition.</p>
+    </div>
+
+    ${uniqueTags.length > 0 ? `
+      <!-- Filter Bar -->
+      <div class="gallery-filters" id="galleryFilters">
+        <button class="gallery-filter-pill active" onclick="filterGallery('all', this)">All (${mediaAssets.length})</button>
+        ${uniqueTags.map((tag) => `
+          <button class="gallery-filter-pill" onclick="filterGallery('${escapeHtml(tag)}', this)">${escapeHtml(tag)}</button>
+        `).join("")}
+      </div>
+    ` : ""}
+
+    ${mediaAssets.length === 0 ? `
+      <!-- Empty State -->
+      <div class="gallery-empty-state">
+        <div class="gallery-empty-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        </div>
+        <h2 class="gallery-empty-title">No Photos Published Yet</h2>
+        <p class="gallery-empty-desc">The editorial team has not attached photographic assets to this issue yet. Please check back soon or enjoy the articles in the reader.</p>
+        <a href="/magazine/view/${escapeHtml(issue.slug)}" class="gallery-back-btn" style="display:inline-flex;">Return to Reader</a>
+      </div>
+    ` : `
+      <!-- Photo Grid -->
+      <div class="gallery-masonry-grid" id="galleryGrid">
+        ${mediaAssets.map((photo, pIdx) => `
+          <div class="gallery-photo-card" data-tags="${escapeHtml((photo.tags || []).join(',').toLowerCase())}" onclick="openLightbox(${pIdx})">
+            <div class="gallery-photo-thumb-wrap">
+              <img src="${escapeHtml(photo.thumbnailUrl || photo.url)}" alt="${escapeHtml(photo.originalName)}" loading="lazy" />
+              <div class="gallery-photo-overlay">
+                <div class="gallery-zoom-badge">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </div>
+                <span class="gallery-zoom-label">View High-Res</span>
+              </div>
+            </div>
+            <div class="gallery-photo-body">
+              <div class="gallery-photo-title">${escapeHtml(photo.originalName)}</div>
+              <div class="gallery-photo-meta-row">
+                <div class="gallery-photo-tags">
+                  ${photo.tags && photo.tags.length > 0 ? photo.tags.slice(0, 3).map((t) => `<span class="gallery-photo-tag">#${escapeHtml(t)}</span>`).join("") : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `}
+  </main>
+
+  <!-- Full-Screen Interactive Lightbox Modal -->
+  <div id="lightboxModal" class="lightbox-modal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+    <div class="lightbox-content">
+      <div class="lightbox-top-bar">
+        <div class="lightbox-counter" id="lightboxCounter">Photo 1 of ${mediaAssets.length}</div>
+        <div class="lightbox-controls">
+          <a id="lightboxOriginalLink" href="#" target="_blank" rel="noopener" class="lightbox-control-btn" title="Open Full Resolution Asset">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            <span>Original</span>
+          </a>
+          <button onclick="toggleLightboxFullscreen()" class="lightbox-control-btn" title="Toggle Fullscreen">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          </button>
+          <button onclick="closeLightbox()" class="lightbox-control-btn close-btn" title="Close Lightbox (Esc)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="lightbox-stage" id="lightboxStage">
+        <button class="lightbox-nav-btn prev-btn" onclick="lightboxPrev()" title="Previous Photo (Left Arrow)" aria-label="Previous">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+
+        <div class="lightbox-image-box" id="lightboxImageBox">
+          <img id="lightboxImg" src="" alt="" />
+        </div>
+
+        <button class="lightbox-nav-btn next-btn" onclick="lightboxNext()" title="Next Photo (Right Arrow)" aria-label="Next">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
+      <div class="lightbox-footer">
+        <div class="lightbox-caption" id="lightboxCaption"></div>
+        <div class="lightbox-tags" id="lightboxTags"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="gallery-footer">
+    <div class="gallery-footer-inner">
+      <div class="gallery-footer-brand">
+        <span class="gallery-footer-org">${escapeHtml(hospitalName)}</span>
+        ${hospitalDivision ? `<span>${escapeHtml(hospitalDivision)}</span>` : ""}
+        ${(hospitalEmergency || hospitalOpd) ? `
+          <span>
+            ${hospitalEmergency ? `Emergency: <strong style="color:#ef4444;">${escapeHtml(hospitalEmergency)}</strong>` : ""}
+            ${(hospitalEmergency && hospitalOpd) ? " &bull; " : ""}
+            ${hospitalOpd ? `OPD: ${escapeHtml(hospitalOpd)}` : ""}
+          </span>
+        ` : ""}
+      </div>
+      <div>
+        <span>${escapeHtml(issue.title)} &bull; ${escapeHtml(issue.issueNo)}</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Theme Switcher
+    const themes = ['dark', 'light'];
+    const savedTheme = localStorage.getItem('magazine-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    updateThemeIcon(savedTheme);
+
+    function cycleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const nextTheme = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', nextTheme);
+      localStorage.setItem('magazine-theme', nextTheme);
+      updateThemeIcon(nextTheme);
+    }
+
+    function updateThemeIcon(theme) {
+      const icon = document.getElementById('themeIcon');
+      if (!icon) return;
+      if (theme === 'dark') {
+        icon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>';
+      } else {
+        icon.innerHTML = '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>';
+      }
+    }
+
+    async function shareGallery() {
+      const url = window.location.href;
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: '${escapeHtml(issue.title)} — Photo Gallery',
+            text: 'Explore photos from ${escapeHtml(issue.title)} (${issueDateStr})',
+            url: url
+          });
+          return;
+        } catch (err) {}
+      }
+      navigator.clipboard.writeText(url);
+      alert('Photo Gallery link copied to clipboard!');
+    }
+
+    // Filter
+    function filterGallery(tag, btn) {
+      if (btn && btn.parentElement) {
+        btn.parentElement.querySelectorAll('.gallery-filter-pill').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const cleanTag = (tag || '').toLowerCase().trim();
+      const cards = document.querySelectorAll('.gallery-photo-card');
+      cards.forEach((card) => {
+        const tags = (card.getAttribute('data-tags') || '').toLowerCase().split(',');
+        if (cleanTag === 'all' || tags.includes(cleanTag)) {
+          card.style.display = 'flex';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    // Lightbox
+    const magazineMediaAssets = ${JSON.stringify(
+      mediaAssets.map((m) => ({
+        id: m.id,
+        originalName: m.originalName,
+        url: m.url,
+        thumbnailUrl: m.thumbnailUrl || m.url,
+        width: m.width || null,
+        height: m.height || null,
+        tags: m.tags || [],
+      }))
+    )};
+
+    let activeLightboxIndex = 0;
+    let isLightboxOpen = false;
+
+    function openLightbox(index) {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      if (index < 0) index = 0;
+      if (index >= magazineMediaAssets.length) index = magazineMediaAssets.length - 1;
+      activeLightboxIndex = index;
+      isLightboxOpen = true;
+
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+
+      renderLightboxPhoto();
+    }
+
+    function closeLightbox() {
+      isLightboxOpen = false;
+      const modal = document.getElementById('lightboxModal');
+      if (!modal) return;
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function lightboxNext() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex + 1) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function lightboxPrev() {
+      if (!magazineMediaAssets || !magazineMediaAssets.length) return;
+      activeLightboxIndex = (activeLightboxIndex - 1 + magazineMediaAssets.length) % magazineMediaAssets.length;
+      renderLightboxPhoto();
+    }
+
+    function renderLightboxPhoto() {
+      const photo = magazineMediaAssets[activeLightboxIndex];
+      if (!photo) return;
+
+      const counter = document.getElementById('lightboxCounter');
+      if (counter) counter.innerText = 'Photo ' + (activeLightboxIndex + 1) + ' of ' + magazineMediaAssets.length;
+
+      const img = document.getElementById('lightboxImg');
+      if (img) {
+        img.src = photo.url;
+        img.alt = photo.originalName || 'Photo';
+      }
+
+      const caption = document.getElementById('lightboxCaption');
+      if (caption) caption.innerText = photo.originalName || '';
+
+      const origLink = document.getElementById('lightboxOriginalLink');
+      if (origLink) origLink.href = photo.url;
+
+      const tagsContainer = document.getElementById('lightboxTags');
+      if (tagsContainer) {
+        if (photo.tags && photo.tags.length) {
+          tagsContainer.innerHTML = photo.tags.map((t) => '<span class="lightbox-tag">#' + escapeClientHtml(t) + '</span>').join('');
+        } else {
+          tagsContainer.innerHTML = '';
+        }
+      }
+    }
+
+    function escapeClientHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function toggleLightboxFullscreen() {
+      const modal = document.getElementById('lightboxModal');
+      if (!document.fullscreenElement) {
+        if (modal && modal.requestFullscreen) modal.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen().catch(() => {});
+      }
+    }
+
+    // Touch Swipe
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const stage = document.getElementById('lightboxStage');
+    if (stage) {
+      stage.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      stage.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        if (touchEndX < touchStartX - 50) lightboxNext();
+        if (touchEndX > touchStartX + 50) lightboxPrev();
+      }, { passive: true });
+    }
+
+    // Keyboard Navigation
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      if (isLightboxOpen) {
+        if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); lightboxNext(); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); lightboxPrev(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); closeLightbox(); return; }
+      }
+    });
+
+    // Check for ?photo= URL parameter on load
+    const urlParams = new URLSearchParams(window.location.search);
+    const photoParam = urlParams.get('photo');
+    if (photoParam) {
+      const photoIdx = parseInt(photoParam, 10);
+      if (!isNaN(photoIdx) && photoIdx >= 0 && photoIdx < magazineMediaAssets.length) {
+        openLightbox(photoIdx);
+      }
+    }
+  </script>
+</body>
+</html>`;
+}

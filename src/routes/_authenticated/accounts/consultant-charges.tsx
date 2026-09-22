@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Coins, Percent, Calendar, Calculator, Printer, Eye, AlertCircle, Wand2, RefreshCw } from "lucide-react";
+import {  Percent, Calendar, Calculator, Printer, Eye, AlertCircle, Wand2, RefreshCw } from "lucide-react";
 import * as React from "react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { useRpcQuery } from "../../../lib/query";
@@ -8,7 +8,6 @@ import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../../ui/card";
 import { Input } from "../../../ui/input";
 import { Label } from "../../../ui/label";
-import { Badge } from "../../../ui/badge";
 import { cn } from "../../../utils/cn";
 
 export const Route = createFileRoute("/_authenticated/accounts/consultant-charges")({
