@@ -201,11 +201,11 @@ export const getStructureComponents = (st: FeeStructure): FeeComponent[] => {
     createDefaultComponent("1", "Course Fee", toNum(st.tuitionFee), "annually", toNum(st.oneTimeRebatePercent), 0, createAllFrequencyRows("annually", toNum(st.oneTimeRebatePercent), 0)),
     createDefaultComponent("2", "Admission Fee", toNum(st.admissionFee), "annually", 0, 0),
     createDefaultComponent("4", "Uniform Fee", toNum(st.uniformFee), "annually", 0, 0),
-    createDefaultComponent("5", "Hostel Fee", toNum(st.hostelFee) > 0 ? toNum(st.hostelFee) : (toNum(st.hostelMessMonthlyFee) > 0 ? toNum(st.hostelMessMonthlyFee) * 12 * 0.6 : 36000), "monthly", 0, 0, [
+    createDefaultComponent("5", "Hostel Fee", toNum(st.hostelFee), "monthly", 0, 0, [
       { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
       { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
     ]),
-    createDefaultComponent("6", "Mess Fee", toNum(st.hostelMessMonthlyFee) > 0 ? toNum(st.hostelMessMonthlyFee) * 12 * 0.4 : 24000, "monthly", 0, 0, [
+    createDefaultComponent("6", "Mess Fee", toNum(st.hostelMessMonthlyFee) * 12, "monthly", 0, 0, [
       { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
       { id: "f-quarterly", key: "quarterly", label: "Quarterly", count: 4, rebatePercent: 0, surchargePercent: 0 },
       { id: "f-semester", key: "semester", label: "Per-Semester", count: 2, rebatePercent: 0, surchargePercent: 0 },

@@ -2337,14 +2337,36 @@ export const nursingRoutes = new Hono<AuthEnv>()
         }
       }
 
-      // Validate that Hostel & Mess Fee cannot be clubbed with other fee components
-      if (Array.isArray(parsedRemarks.breakdown) && parsedRemarks.breakdown.length > 1) {
+      // Validate component segregation using the current `items` payload, with
+      // `breakdown` retained only for legacy receipts.
+      const submittedItems = Array.isArray(parsedRemarks.items)
+        ? parsedRemarks.items
+        : (Array.isArray(parsedRemarks.breakdown) ? parsedRemarks.breakdown : []);
+      if (submittedItems.length > 1) {
         const isHostelOrMessComp = (name: string) => {
           const n = (name || "").toLowerCase();
           return n.includes("hostel") || n.includes("mess");
         };
-        const hasHostelOrMess = parsedRemarks.breakdown.some((b: any) => isHostelOrMessComp(b.name));
-        const hasAcademic = parsedRemarks.breakdown.some((b: any) => !isHostelOrMessComp(b.name));
+        const hasHostel = submittedItems.some((b: any) => (b.name || "").toLowerCase().includes("hostel"));
+        const hasMess = submittedItems.some((b: any) => (b.name || "").toLowerCase().includes("mess"));
+        const hasHostelOrMess = submittedItems.some((b: any) => isHostelOrMessComp(b.name));
+        const hasAcademic = submittedItems.some((b: any) => !isHostelOrMessComp(b.name));
+        if (hasHostel && hasMess) {
+          const accommodationFrequencies = new Set(
+            submittedItems
+              .filter((item: any) => {
+                const name = (item.name || "").toLowerCase();
+                return name.includes("hostel") || name.includes("mess");
+              })
+              .map((item: any) => String(item.frequencyKey || item.selectedFrequencyKey || ""))
+          );
+          if (accommodationFrequencies.size !== 1 || accommodationFrequencies.has("")) {
+            return c.json(
+              { error: "Hostel and Mess can share one receipt only when both use the same payment frequency and period." },
+              400
+            );
+          }
+        }
         if (hasHostelOrMess && hasAcademic) {
           return c.json(
             { error: "Hostel / Mess fees cannot be clubbed with academic fee payments (Course, Admission, Uniform, etc.). Please record hostel and mess fees as separate transactions from academic fees." },
@@ -2365,6 +2387,18 @@ export const nursingRoutes = new Hono<AuthEnv>()
         const n = (i.name || "").toLowerCase();
         return !n.includes("hostel") && !n.includes("mess");
       }) || (!targetHasHostel && !targetHasMess);
+
+      const componentKeys = (item: any): string[] => {
+        const componentId = String(item?.componentId || "").trim().toLowerCase();
+        const componentName = String(item?.name || "").trim().toLowerCase();
+        return [
+          ...(componentId ? [`id:${componentId}`] : []),
+          ...(componentName ? [`name:${componentName}`] : []),
+        ];
+      };
+      const targetComponentKeys = new Set(
+        targetItems.flatMap(componentKeys)
+      );
 
       if (targetPeriods.length > 0 && targetAy) {
         const studentPastTxs = await db
@@ -2397,10 +2431,17 @@ export const nursingRoutes = new Hono<AuthEnv>()
             return !n.includes("hostel") && !n.includes("mess");
           }) || (!pastHasHostel && !pastHasMess);
 
+          const pastComponentKeys = new Set(
+            pastItems.flatMap(componentKeys)
+          );
+          const sharesExplicitComponent = [...targetComponentKeys].some((key) => pastComponentKeys.has(key));
+
           const sharesCategory =
-            (targetHasHostel && pastHasHostel) ||
-            (targetHasMess && pastHasMess) ||
-            (targetHasAcademic && pastHasAcademic);
+            targetComponentKeys.size > 0 && pastComponentKeys.size > 0
+              ? sharesExplicitComponent
+              : (targetHasHostel && pastHasHostel) ||
+                (targetHasMess && pastHasMess) ||
+                (targetHasAcademic && pastHasAcademic);
 
           if (!sharesCategory) {
             continue;
@@ -2443,6 +2484,12 @@ export const nursingRoutes = new Hono<AuthEnv>()
             });
           }
           const pastBpVal = (pastRemarks.billingPeriodValue || "").trim();
+          const pastCoversAllPeriods =
+            pastBpVal.startsWith("All 12 Months") ||
+            pastBpVal.startsWith("All 4 Quarters") ||
+            pastBpVal.startsWith("All Quarters") ||
+            pastBpVal.startsWith("All Semesters") ||
+            pastBpVal === "Full Academic Year";
           if (pastBpVal) {
             const clean = pastBpVal.replace(/\s*\(\d+[^)]*\)/g, "");
             clean.split(",").forEach((s: string) => {
@@ -2452,7 +2499,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
           for (const reqPeriod of targetPeriods) {
             const reqClean = reqPeriod.replace(/\s*\(\d+[^)]*\)/g, "").toLowerCase().trim();
-            if (pastPeriods.includes(reqClean) || pastPeriods.includes(reqPeriod.toLowerCase().trim())) {
+            if (pastCoversAllPeriods || pastPeriods.includes(reqClean) || pastPeriods.includes(reqPeriod.toLowerCase().trim())) {
               return c.json(
                 {
                   error: `Duplicate payment error: '${reqPeriod}' has already been paid for AY ${targetAy} in receipt ${pastTx.receiptNumber}. Duplicate payments for the same period are not allowed.`
@@ -2540,6 +2587,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     }
 
     // 4. Duplicate payment prevention (idempotency check within last 2 minutes)
+    const duplicateCutoff = new Date(Date.now() - 2 * 60 * 1000);
     const recentDuplicates = await db
       .select({ id: nursingFeeTransactions.id, receiptNumber: nursingFeeTransactions.receiptNumber })
       .from(nursingFeeTransactions)
@@ -2549,6 +2597,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
           eq(nursingFeeTransactions.feeType, input.feeType ?? "Course Fee"),
           ...(input.feeStructureId ? [eq(nursingFeeTransactions.feeStructureId, input.feeStructureId)] : []),
           eq(nursingFeeTransactions.amount, input.amount.toFixed(2)),
+          gte(nursingFeeTransactions.createdAt, duplicateCutoff),
         )
       )
       .execute();
@@ -4426,8 +4475,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
               { name: "Course Fee", amount: toNum(yearFs.tuitionFee), frequency: "Annual", frequencyKey: "annually" },
               { name: "Admission Fee", amount: isFirstYear ? toNum(yearFs.admissionFee) : 0, frequency: "Annual / Initial", frequencyKey: "annually" },
               { name: "Uniform & Kit Fee", amount: isFirstYear ? toNum(yearFs.uniformFee) : 0, frequency: "Annual / Initial", frequencyKey: "annually" },
-              { name: "Hostel Fee", amount: toNum(yearFs.hostelFee) > 0 ? toNum(yearFs.hostelFee) : (toNum(yearFs.hostelMessMonthlyFee) > 0 ? toNum(yearFs.hostelMessMonthlyFee) * 12 * 0.6 : 36000), frequency: "Monthly", frequencyKey: "monthly" },
-              { name: "Mess Fee", amount: toNum(yearFs.hostelMessMonthlyFee) > 0 ? toNum(yearFs.hostelMessMonthlyFee) * 12 * 0.4 : 24000, frequency: "Monthly", frequencyKey: "monthly" },
+              { name: "Hostel Fee", amount: toNum(yearFs.hostelFee), frequency: "Monthly", frequencyKey: "monthly" },
+              { name: "Mess Fee", amount: toNum(yearFs.hostelMessMonthlyFee) * 12, frequency: "Monthly", frequencyKey: "monthly" },
               { name: "Examination Fee", amount: toNum(yearFs.examFee), frequency: "Semester", frequencyKey: "semester" },
               { name: "Security Deposit", amount: isFirstYear ? toNum(yearFs.securityDeposit) : 0, frequency: "One-Time", frequencyKey: "one_time" },
               { name: "Library & Misc Fee", amount: toNum(yearFs.miscFee), frequency: "Annual", frequencyKey: "annually" },

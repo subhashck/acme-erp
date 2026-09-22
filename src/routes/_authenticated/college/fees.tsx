@@ -113,6 +113,19 @@ const billingPeriodToFreqKey = (periodType: string): string => {
   }
 };
 
+const frequencyKeyToBillingPeriodType = (frequencyKey?: string): string => {
+  switch (frequencyKey) {
+    case "monthly": return "month";
+    case "quarterly": return "quarter";
+    case "semester": return "semester";
+    case "annually":
+    case "yearly":
+    case "one_time":
+      return "academic_year";
+    default: return "month";
+  }
+};
+
 const normalizedFeeName = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
@@ -1114,35 +1127,31 @@ function FeeManagementPage() {
   // Selected hostel fee item (if any)
   const selectedHostelItem = collectItems.find((i) => i.selected && isHostelOnlyFee(i.name));
   const isHostelAnnual = selectedHostelItem?.selectedFrequencyKey === "annually";
+  const selectedAccommodationItem = collectItems.find((i) => i.selected && isHostelOrMessFee(i.name));
+  const requiredAccommodationPeriodType = selectedAccommodationItem
+    ? frequencyKeyToBillingPeriodType(selectedAccommodationItem.selectedFrequencyKey)
+    : null;
 
   // Check if Course Fee is currently selected (or if no specific items are populated yet)
   const isCourseFeeActive = collectItems.length === 0 || collectItems.some((i) => i.selected && isTuitionFee(i.name));
 
   // Determine if period interval schedule is locked
   const isPeriodIntervalLocked =
-    (isHostelFeeSelected && isHostelAnnual) ||
-    (isHostelFeeSelected && !isHostelAnnual) ||
-    (isMessFeeSelected && !isHostelFeeSelected) ||
+    !!selectedAccommodationItem ||
     (isCourseFeeActive && !isHostelOrMessActive && !!lockedPeriodIntervalType);
 
   const [selectedPeriods, setSelectedPeriods] = React.useState<string[]>(["Semester 1"]);
 
   // Keep selectedPeriods in sync with period type changes and avoid preselecting already paid periods
-  const handlePeriodTypeChange = (newType: string) => {
-    if (isHostelFeeSelected && !isHostelAnnual && newType !== "month") {
-      toast.error("Monthly Hostel Fee is strictly billed on a monthly schedule.");
-      return;
-    }
-    if (isHostelFeeSelected && isHostelAnnual && newType !== "academic_year") {
-      toast.error("Annual Hostel Fee is billed on a full academic year schedule.");
-      return;
-    }
-    if (isMessFeeSelected && !isHostelFeeSelected && newType !== "month") {
-      toast.error("Mess Fee is billed on a monthly schedule.");
+  const handlePeriodTypeChange = (newType: string, forceComponentSchedule = false) => {
+    if (!forceComponentSchedule && requiredAccommodationPeriodType && newType !== requiredAccommodationPeriodType) {
+      toast.error(
+        `${selectedAccommodationItem?.name || "Accommodation fee"} uses the ${getPeriodIntervalLabel(requiredAccommodationPeriodType)} schedule configured in the Fee Structure Master.`
+      );
       return;
     }
 
-    if (!isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && newType !== lockedPeriodIntervalType) {
+    if (!forceComponentSchedule && !isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && newType !== lockedPeriodIntervalType) {
       toast.error(
         `Period interval type cannot be changed from ${getPeriodIntervalLabel(lockedPeriodIntervalType)} because prior payments were made in AY ${watchTargetAcademicYear}.`
       );
@@ -1203,16 +1212,12 @@ function FeeManagementPage() {
 
   // Automatically synchronize period interval type
   React.useEffect(() => {
-    if (isHostelFeeSelected && isHostelAnnual && watchBillingPeriodType !== "academic_year") {
-      handlePeriodTypeChange("academic_year");
-    } else if (isHostelFeeSelected && !isHostelAnnual && watchBillingPeriodType !== "month") {
-      handlePeriodTypeChange("month");
-    } else if (isMessFeeSelected && !isHostelFeeSelected && watchBillingPeriodType !== "month") {
-      handlePeriodTypeChange("month");
+    if (requiredAccommodationPeriodType && watchBillingPeriodType !== requiredAccommodationPeriodType) {
+      handlePeriodTypeChange(requiredAccommodationPeriodType, true);
     } else if (!isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && watchBillingPeriodType !== lockedPeriodIntervalType) {
-      handlePeriodTypeChange(lockedPeriodIntervalType);
+      handlePeriodTypeChange(lockedPeriodIntervalType, true);
     }
-  }, [isHostelFeeSelected, isHostelAnnual, isMessFeeSelected, isHostelOrMessActive, isCourseFeeActive, lockedPeriodIntervalType, watchBillingPeriodType]);
+  }, [requiredAccommodationPeriodType, isHostelOrMessActive, isCourseFeeActive, lockedPeriodIntervalType, watchBillingPeriodType]);
 
   const togglePeriodSelection = (periodStr: string) => {
     const paidInfo = getPaidInfoForPeriod(periodStr);
@@ -1456,11 +1461,11 @@ function FeeManagementPage() {
         createDefaultComponent("1", "Course Fee", toNum(fs.tuitionFee), "annually", toNum(fs.oneTimeRebatePercent), 0),
         createDefaultComponent("2", "Admission Fee", toNum(fs.admissionFee), "annually", 0, 0),
         createDefaultComponent("4", "Uniform Fee", toNum(fs.uniformFee), "annually", 0, 0),
-        createDefaultComponent("5", "Hostel Fee", toNum(fs.hostelFee) > 0 ? toNum(fs.hostelFee) : (toNum(fs.hostelMessMonthlyFee) > 0 ? toNum(fs.hostelMessMonthlyFee) * 12 * 0.6 : 36000), "monthly", 0, 0, [
+        createDefaultComponent("5", "Hostel Fee", toNum(fs.hostelFee), "monthly", 0, 0, [
           { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
           { id: "f-annually", key: "annually", label: "Annually (5% Rebate)", count: 1, rebatePercent: 5, surchargePercent: 0 },
         ]),
-        createDefaultComponent("6", "Mess Fee", toNum(fs.hostelMessMonthlyFee) > 0 ? toNum(fs.hostelMessMonthlyFee) * 12 * 0.4 : 24000, "monthly", 0, 0, [
+        createDefaultComponent("6", "Mess Fee", toNum(fs.hostelMessMonthlyFee) * 12, "monthly", 0, 0, [
           { id: "f-monthly", key: "monthly", label: "Monthly", count: 12, rebatePercent: 0, surchargePercent: 0 },
           { id: "f-quarterly", key: "quarterly", label: "Quarterly", count: 4, rebatePercent: 0, surchargePercent: 0 },
           { id: "f-semester", key: "semester", label: "Per-Semester", count: 2, rebatePercent: 0, surchargePercent: 0 },
@@ -1598,19 +1603,44 @@ function FeeManagementPage() {
 
       if (willSelect) {
         if (isHostelOrMessFee(target.name)) {
-          // Target is Hostel or Mess fee. Deselect all academic components.
-          const hadAcademicSelected = prev.some((item) => item.componentId !== compId && item.selected && !isHostelOrMessFee(item.name));
+          // Hostel and Mess may share one receipt only when their schedules match.
+          const selectedAccommodation = prev.find(
+            (item) => item.componentId !== compId && item.selected && isHostelOrMessFee(item.name)
+          );
+          const sharedFrequencyKey = selectedAccommodation?.selectedFrequencyKey || target.selectedFrequencyKey;
+          const targetFrequency = target.availableFrequencies.find((row) => row.key === sharedFrequencyKey);
+          if (
+            selectedAccommodation &&
+            (!targetFrequency || (target.isFrequencyLocked && target.selectedFrequencyKey !== sharedFrequencyKey))
+          ) {
+            toast.error(
+              `${target.name} does not support the ${selectedAccommodation.lockedFrequencyLabel || selectedAccommodation.selectedFrequencyKey} schedule. Collect the two fees separately.`
+            );
+            return prev;
+          }
+          const hadAcademicSelected = prev.some(
+            (item) => item.componentId !== compId && item.selected && !isHostelOrMessFee(item.name)
+          );
           if (hadAcademicSelected) {
-            toast.info("Hostel & Mess fees must be paid separately from Academic fees. Academic fee components have been deselected.");
+            toast.info("Hostel and Mess fees cannot be combined with academic fees. Academic components have been deselected.");
           }
-          if (isHostelOnlyFee(target.name) && target.selectedFrequencyKey === "annually") {
-            handlePeriodTypeChange("academic_year");
-          } else {
-            handlePeriodTypeChange("month");
-          }
+          handlePeriodTypeChange(frequencyKeyToBillingPeriodType(sharedFrequencyKey), true);
           return prev.map((item) => {
             if (!isHostelOrMessFee(item.name)) return { ...item, selected: false };
-            if (item.componentId === compId) return { ...item, selected: true };
+            if (item.componentId === compId) {
+              const unitAmount = calcInstallmentAmount(item.baseAmount, targetFrequency || item.availableFrequencies[0]);
+              const multiplier = sharedFrequencyKey === "annually" || sharedFrequencyKey === "one_time"
+                ? 1
+                : selectedPeriods.length;
+              return {
+                ...item,
+                selected: true,
+                selectedFrequencyKey: sharedFrequencyKey,
+                unitAmount,
+                multiplier,
+                amount: Math.round(unitAmount * multiplier),
+              };
+            }
             return item;
           });
         } else {
@@ -1632,9 +1662,31 @@ function FeeManagementPage() {
   };
 
   const changeCollectItemSchedule = (compId: string, newFreqKey: string) => {
+    const changedItem = collectItems.find((i) => i.componentId === compId);
+    const pairedAccommodation = changedItem && isHostelOrMessFee(changedItem.name)
+      ? collectItems.find((item) => item.componentId !== compId && item.selected && isHostelOrMessFee(item.name))
+      : undefined;
+    if (pairedAccommodation) {
+      const pairedFrequency = pairedAccommodation.availableFrequencies.find((row) => row.key === newFreqKey);
+      if (!pairedFrequency || (pairedAccommodation.isFrequencyLocked && pairedAccommodation.selectedFrequencyKey !== newFreqKey)) {
+        toast.error(
+          `${pairedAccommodation.name} cannot use this schedule. Deselect it or choose a frequency supported by both Hostel and Mess.`
+        );
+        return;
+      }
+    }
+
     setCollectItems((prev) =>
       prev.map((item) => {
-        if (item.componentId !== compId || item.isFrequencyLocked || isTuitionFee(item.name) || item.isOneTimePaid) return item;
+        const shouldSynchronizePair = Boolean(
+          pairedAccommodation && item.componentId === pairedAccommodation.componentId
+        );
+        if (
+          (item.componentId !== compId && !shouldSynchronizePair) ||
+          item.isFrequencyLocked ||
+          isTuitionFee(item.name) ||
+          item.isOneTimePaid
+        ) return item;
         const targetRow =
           item.availableFrequencies.find((r) => r.key === newFreqKey) || item.availableFrequencies[0];
         const newUnitAmt = calcInstallmentAmount(item.baseAmount, targetRow);
@@ -1657,15 +1709,10 @@ function FeeManagementPage() {
       })
     );
 
-    const changedItem = collectItems.find((i) => i.componentId === compId);
-    if (changedItem && isHostelOnlyFee(changedItem.name)) {
-      if (newFreqKey === "annually") {
-        toast.info("Hostel Fee schedule set to Annual (5% rebate applied).");
-        handlePeriodTypeChange("academic_year");
-      } else if (newFreqKey === "monthly") {
-        toast.info("Hostel Fee schedule set to Monthly.");
-        handlePeriodTypeChange("month");
-      }
+    if (changedItem && isHostelOrMessFee(changedItem.name)) {
+      const periodType = frequencyKeyToBillingPeriodType(newFreqKey);
+      toast.info(`${changedItem.name} schedule set to ${getPeriodIntervalLabel(periodType)}.`);
+      handlePeriodTypeChange(periodType, true);
     }
   };
 
@@ -1809,7 +1856,20 @@ function FeeManagementPage() {
                   }
 
                   const hasHostelOrMess = selectedPaidItems.some((i) => isHostelOrMessFee(i.name));
+                  const hasHostel = selectedPaidItems.some((i) => normalizedFeeName(i.name).includes("hostel"));
+                  const hasMess = selectedPaidItems.some((i) => normalizedFeeName(i.name).includes("mess"));
                   const hasAcademic = selectedPaidItems.some((i) => isAcademicFee(i.name));
+                  if (hasHostel && hasMess) {
+                    const accommodationFrequencies = new Set(
+                      selectedPaidItems
+                        .filter((item) => isHostelOrMessFee(item.name))
+                        .map((item) => item.frequencyKey)
+                    );
+                    if (accommodationFrequencies.size !== 1) {
+                      toast.error("Hostel and Mess can share one receipt only when both use the same payment frequency and period.");
+                      return;
+                    }
+                  }
                   if (hasHostelOrMess && hasAcademic) {
                     toast.error("Hostel & Mess fees cannot be clubbed with Academic fees (Course, Admission, Uniform, etc.). Please collect them as separate transactions.");
                     return;
@@ -1876,7 +1936,9 @@ function FeeManagementPage() {
                     billingPeriodValue: data.billingPeriodValue,
                     periodLabel,
                     feeType: feeSummaryTitle,
-                    paymentFrequency: data.paymentFrequency || "yearly",
+                    paymentFrequency: selectedPaidItems.length === 1
+                      ? selectedPaidItems[0].frequencyKey
+                      : (data.paymentFrequency || "mixed"),
                     grossSubtotal: grossCollectSubtotal,
                     discountAmount: watchDiscountAmount,
                     discountReason: data.discountReason ? data.discountReason.trim() : null,
@@ -1891,6 +1953,7 @@ function FeeManagementPage() {
                       academicYear: data.targetAcademicYear,
                       billingPeriodType: data.billingPeriodType,
                       billingPeriodValue: data.billingPeriodValue,
+                      selectedPeriods,
                       periodLabel,
                       grossSubtotal: grossCollectSubtotal,
                       discountAmount: watchDiscountAmount,
@@ -2008,17 +2071,9 @@ function FeeManagementPage() {
                         <label className="text-xs font-medium block text-foreground flex items-center gap-1">
                           Period Interval Type *
                         </label>
-                        {isHostelFeeSelected && isHostelAnnual ? (
+                        {selectedAccommodationItem && requiredAccommodationPeriodType ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.5 rounded font-semibold border border-purple-300 dark:border-purple-800">
-                            <Lock size={10} /> Read-Only (Annual - Hostel Fee 5% Rebate)
-                          </span>
-                        ) : isHostelFeeSelected && !isHostelAnnual ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.5 rounded font-semibold border border-purple-300 dark:border-purple-800">
-                            <Lock size={10} /> Read-Only (Monthly - Hostel Fee)
-                          </span>
-                        ) : isMessFeeSelected && !isHostelFeeSelected ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.5 rounded font-semibold border border-indigo-300 dark:border-indigo-800">
-                            <Lock size={10} /> Read-Only (Monthly - Mess Fee)
+                            <Lock size={10} /> Read-Only ({getPeriodIntervalLabel(requiredAccommodationPeriodType)} - {selectedAccommodationItem.name})
                           </span>
                         ) : isPeriodIntervalLocked ? (
                           <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded font-semibold border border-amber-300 dark:border-amber-800">
@@ -2057,17 +2112,9 @@ function FeeManagementPage() {
                           </Select>
                         )}
                       />
-                      {isHostelFeeSelected && isHostelAnnual ? (
+                      {selectedAccommodationItem && requiredAccommodationPeriodType ? (
                         <p className="text-[10px] text-purple-700 dark:text-purple-400 mt-1 flex items-center gap-1 font-medium">
-                          <Lock size={9} className="shrink-0" /> Annual Hostel Fee (5% rebate) covers the entire academic year.
-                        </p>
-                      ) : isHostelFeeSelected && !isHostelAnnual ? (
-                        <p className="text-[10px] text-purple-700 dark:text-purple-400 mt-1 flex items-center gap-1 font-medium">
-                          <Lock size={9} className="shrink-0" /> Monthly Hostel Fee is billed on a monthly schedule.
-                        </p>
-                      ) : isMessFeeSelected && !isHostelFeeSelected ? (
-                        <p className="text-[10px] text-indigo-700 dark:text-indigo-400 mt-1 flex items-center gap-1 font-medium">
-                          <Lock size={9} className="shrink-0" /> Mess Fee is billed on a monthly schedule.
+                          <Lock size={9} className="shrink-0" /> {selectedAccommodationItem.name} follows its {getPeriodIntervalLabel(requiredAccommodationPeriodType)} schedule from the Fee Structure Master.
                         </p>
                       ) : (isCourseFeeActive && isPeriodIntervalLocked) ? (
                         <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
@@ -2294,11 +2341,10 @@ function FeeManagementPage() {
                           onClick={() => {
                             setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelOnlyFee(i.name) && !i.isOneTimePaid })));
                             const hostelItem = collectItems.find((i) => isHostelOnlyFee(i.name));
-                            if (hostelItem?.selectedFrequencyKey === "annually") {
-                              handlePeriodTypeChange("academic_year");
-                            } else {
-                              handlePeriodTypeChange("month");
-                            }
+                            handlePeriodTypeChange(
+                              frequencyKeyToBillingPeriodType(hostelItem?.selectedFrequencyKey),
+                              true
+                            );
                           }}
                         >
                           Select Hostel Only
@@ -2309,21 +2355,14 @@ function FeeManagementPage() {
                           className="text-[11px] text-indigo-700 dark:text-indigo-300 hover:underline font-semibold"
                           onClick={() => {
                             setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isMessOnlyFee(i.name) && !i.isOneTimePaid })));
-                            handlePeriodTypeChange("month");
+                            const messItem = collectItems.find((i) => isMessOnlyFee(i.name));
+                            handlePeriodTypeChange(
+                              frequencyKeyToBillingPeriodType(messItem?.selectedFrequencyKey),
+                              true
+                            );
                           }}
                         >
                           Select Mess Only
-                        </button>
-                        <span className="text-muted-foreground">•</span>
-                        <button
-                          type="button"
-                          className="text-[11px] text-violet-700 dark:text-violet-300 hover:underline font-semibold"
-                          onClick={() => {
-                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelOrMessFee(i.name) && !i.isOneTimePaid })));
-                            handlePeriodTypeChange("month");
-                          }}
-                        >
-                          Select Hostel & Mess
                         </button>
                         <span className="text-muted-foreground">•</span>
                         <button

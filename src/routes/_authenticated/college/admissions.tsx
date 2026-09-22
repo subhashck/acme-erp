@@ -2202,7 +2202,7 @@ function AdmissionsPage() {
       dob: applicant.dob || "",
       referrerId: applicant.referrerId || null,
       referralAmount: applicant.referralAmount || "",
-      referralComments: applicant.referralComments || "",
+      referralComments: "",
       fatherDeceased: Boolean(applicant.fatherDeceased),
       fatherName: applicant.fatherName || "",
       fatherPhone: applicant.fatherPhone || "",
@@ -2801,7 +2801,7 @@ function AdmissionsPage() {
                               <Printer size={12} className="mr-1" /> Receipt
                             </Button>
                           )} */}
-                          {app.status !== "rejected" && (
+                          {app.status !== "rejected" && app.status !== "converted" && (
                             <Button
                               size="sm"
                               variant="outline"
@@ -3255,7 +3255,7 @@ function AdmissionsPage() {
                             </Button>
                           </>
                         )}
-                        {viewApplicant.status !== "rejected" && (
+                        {viewApplicant.status !== "rejected" && viewApplicant.status !== "converted" && (
                           <Button
                             size="sm"
                             className="bg-cyan-600 hover:bg-cyan-700 text-white text-xs h-7 px-2.5 gap-1 self-start sm:self-auto"
