@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { ArrowLeft, Edit2, Lock, FileText, FileSpreadsheet, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Edit2, Lock, FileText, FileSpreadsheet, CheckCircle, AlertTriangle, HelpCircle, ChevronDown, ChevronUp, MessageCircle, RefreshCw } from "lucide-react";
 import * as React from "react";
-import { exportClosingToExcel, exportClosingToPDF } from "../../../../lib/closing-export";
+import { exportClosingToExcel, exportClosingToPDF, shareClosingPDFViaWhatsApp } from "../../../../lib/closing-export";
 import { useRpcQuery } from "../../../../lib/query";
 import { client } from "../../../../services/rpc";
 import { Button } from "../../../../ui/button";
@@ -71,6 +71,7 @@ function ReportDetail() {
   const { isManagementApprover } = useUserPermissions();
   const { id } = Route.useParams();
   const router = useRouter();
+  const [isSharingWhatsApp, setIsSharingWhatsApp] = React.useState(false);
 
   // Query single report details
   const reportQuery = useRpcQuery<any>(
@@ -263,6 +264,17 @@ function ReportDetail() {
     exportClosingToExcel(report, categoriesList, expCategoriesList);
   };
 
+  const handleShareWhatsApp = async () => {
+    setIsSharingWhatsApp(true);
+    try {
+      await shareClosingPDFViaWhatsApp(report, categoriesList, expCategoriesList);
+    } catch (error: any) {
+      alert(error?.message || "Failed to prepare the report PDF for WhatsApp");
+    } finally {
+      setIsSharingWhatsApp(false);
+    }
+  };
+
 
   return (
     <div className="space-y-6">
@@ -305,6 +317,14 @@ function ReportDetail() {
           )}
           <Button onClick={handleExportPDF} className="bg-teal-600 hover:bg-teal-700 text-white font-semibold cursor-pointer gap-1.5">
             <FileText size={15} /> Export PDF
+          </Button>
+          <Button
+            onClick={handleShareWhatsApp}
+            disabled={isSharingWhatsApp}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer gap-1.5"
+          >
+            {isSharingWhatsApp ? <RefreshCw size={15} className="animate-spin" /> : <MessageCircle size={15} />}
+            WhatsApp PDF
           </Button>
           <Button onClick={handleExportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold cursor-pointer gap-1.5">
             <FileSpreadsheet size={15} /> Export to Excel

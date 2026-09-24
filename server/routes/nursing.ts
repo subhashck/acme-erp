@@ -24,7 +24,7 @@ import {
   monthlyBankExpenses,
   user,
 } from "../db/schema.ts";
-import { jsonBody, idParam, code, requireCollegeAccess } from "./shared.ts";
+import { jsonBody, idParam, code, requireAdmin, requireCollegeAccess } from "./shared.ts";
 import { saveStudentDocument, getDocumentStream, deleteDocument } from "../utils/upload.ts";
 
 function toNum(v: unknown): number {
@@ -464,6 +464,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .select({
         id: nursingApplicants.id,
         applicationNo: nursingApplicants.applicationNo,
+        batchId: nursingApplicants.batchId,
         courseId: nursingApplicants.courseId,
         courseName: nursingCourses.name,
         academicYear: nursingApplicants.academicYear,
@@ -578,6 +579,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const input = await jsonBody(
       c,
       z.object({
+        batchId: z.coerce.number().int().positive().optional().nullable(),
         courseId: z.coerce.number().int().positive("Select a valid program course"),
         academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 1}`; }),
         name: z.string().min(1, "Applicant name is required"),
@@ -686,6 +688,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const [row] = await db
       .insert(nursingApplicants)
       .values({
+        batchId: input.batchId || null,
         courseId: input.courseId,
         academicYear: input.academicYear,
         name: input.name.trim().toUpperCase(),
@@ -796,6 +799,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const input = await jsonBody(
       c,
       z.object({
+        batchId: z.coerce.number().int().positive().optional().nullable(),
         courseId: z.coerce.number().int().positive("Select a valid program course").optional(),
         academicYear: z.string().min(1).optional(),
         name: z.string().min(1, "Applicant name is required").optional(),
@@ -872,6 +876,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
     const updatePayload: Record<string, any> = { updatedAt: new Date() };
 
+    if (input.batchId !== undefined) updatePayload.batchId = input.batchId || null;
     if (input.courseId !== undefined) updatePayload.courseId = input.courseId;
     if (input.academicYear !== undefined) updatePayload.academicYear = input.academicYear;
     if (input.name !== undefined) updatePayload.name = input.name.trim().toUpperCase();
@@ -950,25 +955,52 @@ export const nursingRoutes = new Hono<AuthEnv>()
     if (input.status !== undefined) updatePayload.status = input.status;
     if (input.notes !== undefined) updatePayload.notes = input.notes || null;
 
-    const [updated] = await db
-      .update(nursingApplicants)
-      .set(updatePayload)
-      .where(eq(nursingApplicants.id, id))
-      .returning()
-      .execute();
+    const session = c.get("session");
+    const updated = await db.transaction(async (tx) => {
+      const [updatedApplicant] = await tx
+        .update(nursingApplicants)
+        .set(updatePayload)
+        .where(eq(nursingApplicants.id, id))
+        .returning()
+        .execute();
+
+      if (!updatedApplicant) return null;
+
+      const referralChanged =
+        input.referrerId !== undefined ||
+        input.referralAmount !== undefined ||
+        input.referralComments !== undefined;
+
+      // A converted applicant also has a nursing_students row. Keep referral
+      // attribution synchronized because the referrer ledger reads students
+      // from that table and would otherwise omit later pipeline assignments.
+      if (referralChanged) {
+        await tx
+          .update(nursingStudents)
+          .set({
+            referrerId: updatedApplicant.referrerId,
+            referralAmount: updatedApplicant.referralAmount,
+            referralComments: updatedApplicant.referralComments,
+            updatedAt: new Date(),
+          })
+          .where(eq(nursingStudents.applicantId, id))
+          .execute();
+      }
+
+      await tx.insert(nursingAuditLogs).values({
+        entity: "nursing_applicants",
+        entityId: String(id),
+        action: "UPDATE",
+        changedBy: session?.user?.id,
+        diff: updatedApplicant,
+      }).execute();
+
+      return updatedApplicant;
+    });
 
     if (!updated) {
       return c.json({ error: "Applicant not found" }, 404);
     }
-
-    const session = c.get("session");
-    await db.insert(nursingAuditLogs).values({
-      entity: "nursing_applicants",
-      entityId: String(id),
-      action: "UPDATE",
-      changedBy: session?.user?.id,
-      diff: updated,
-    }).execute();
 
     return c.json(updated);
   })
@@ -3088,13 +3120,17 @@ export const nursingRoutes = new Hono<AuthEnv>()
         name: nursingStudents.name,
         enrollmentNo: nursingStudents.enrollmentNo,
         status: nursingStudents.status,
-        referrerId: nursingStudents.referrerId,
-        referralAmount: nursingStudents.referralAmount,
-        referralComments: nursingStudents.referralComments,
+        // Older converted records can have referral attribution saved only on
+        // the applicant. Prefer the student value, then fall back to its source
+        // applicant so every mapped student remains visible in this ledger.
+        referrerId: sql<number | null>`COALESCE(${nursingStudents.referrerId}, ${nursingApplicants.referrerId})`,
+        referralAmount: sql<string | null>`COALESCE(${nursingStudents.referralAmount}, ${nursingApplicants.referralAmount})`,
+        referralComments: sql<string | null>`COALESCE(${nursingStudents.referralComments}, ${nursingApplicants.referralComments})`,
         createdAt: nursingStudents.createdAt,
       })
       .from(nursingStudents)
-      .where(sql`${nursingStudents.referrerId} IS NOT NULL`)
+      .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
+      .where(sql`COALESCE(${nursingStudents.referrerId}, ${nursingApplicants.referrerId}) IS NOT NULL`)
       .execute();
 
     // Fetch all payments and allocations
@@ -5002,6 +5038,221 @@ export const nursingRoutes = new Hono<AuthEnv>()
       console.error("Error in GET /nursing/reports/daily-income-expenses:", err);
       return c.json({ error: "Failed to generate daily income & expenses report: " + err.message }, 500);
     }
+  })
+
+  // -------------------------------------------------------------------------
+  // College Expense Vouchers (ACON entries from Daily Closing)
+  // -------------------------------------------------------------------------
+  .get("/nursing/college-expenses", async (c) => {
+    const page = Math.max(1, Number(c.req.query("page")) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(c.req.query("pageSize")) || 20));
+    const search = (c.req.query("search") || "").trim().toLowerCase();
+    const startDate = c.req.query("startDate") || "";
+    const endDate = c.req.query("endDate") || "";
+
+    const rows = await db
+      .select({
+        id: dailyExpenditures.id,
+        reportId: dailyExpenditures.reportId,
+        reportDate: dailyClosingReports.reportDate,
+        reportStatus: dailyClosingReports.status,
+        category: dailyExpenditures.category,
+        details: dailyExpenditures.details,
+        amount: dailyExpenditures.amount,
+        narration: dailyExpenditures.narration,
+      })
+      .from(dailyExpenditures)
+      .innerJoin(dailyClosingReports, eq(dailyExpenditures.reportId, dailyClosingReports.id))
+      .where(sql`UPPER(${dailyExpenditures.category}) = 'ACON'`)
+      .orderBy(desc(dailyClosingReports.reportDate), desc(dailyExpenditures.id))
+      .execute();
+
+    const referralPayments = await db
+      .select({
+        id: nursingReferrerPayments.id,
+        voucherNo: nursingReferrerPayments.voucherNo,
+        paymentMode: nursingReferrerPayments.paymentMode,
+        referenceNumber: nursingReferrerPayments.referenceNumber,
+        referrerName: nursingReferrers.name,
+      })
+      .from(nursingReferrerPayments)
+      .innerJoin(nursingReferrers, eq(nursingReferrerPayments.referrerId, nursingReferrers.id))
+      .execute();
+
+    const referralAllocations = await db
+      .select({
+        id: nursingReferrerPaymentAllocations.id,
+        paymentId: nursingReferrerPaymentAllocations.paymentId,
+        amount: nursingReferrerPaymentAllocations.amount,
+        notes: nursingReferrerPaymentAllocations.notes,
+        studentName: nursingStudents.name,
+        studentEnrollmentNo: nursingStudents.enrollmentNo,
+        applicantName: nursingApplicants.name,
+        applicantApplicationNo: nursingApplicants.applicationNo,
+      })
+      .from(nursingReferrerPaymentAllocations)
+      .leftJoin(nursingStudents, eq(nursingReferrerPaymentAllocations.studentId, nursingStudents.id))
+      .leftJoin(nursingApplicants, eq(nursingReferrerPaymentAllocations.applicantId, nursingApplicants.id))
+      .execute();
+
+    const referralPaymentsByVoucher = new Map(
+      referralPayments.map((payment) => [payment.voucherNo.trim().toUpperCase(), payment])
+    );
+
+    let filtered = rows.map((row) => {
+      const voucherMatch = (row.details || "").match(/\[Voucher:\s*([^\]]+)\]/i);
+      const voucherNo = voucherMatch ? voucherMatch[1] : `EXP-${row.id}`;
+      const referralPayment = referralPaymentsByVoucher.get(voucherNo.trim().toUpperCase());
+      return {
+        ...row,
+        voucherNo,
+        payee: (row.details || "").replace(/\[Voucher:\s*[^\]]+\]/i, "").trim() || "ACON Expense",
+        source: referralPayment ? "referrer_payout" as const : "daily_closing" as const,
+        status: referralPayment ? "submitted" as const : row.reportStatus,
+        referrerPaymentId: referralPayment?.id || null,
+        referrerName: referralPayment?.referrerName || null,
+        paymentMode: referralPayment?.paymentMode || "cash",
+        referenceNumber: referralPayment?.referenceNumber || null,
+        allocations: referralPayment
+          ? referralAllocations
+              .filter((allocation) => allocation.paymentId === referralPayment.id)
+              .map((allocation) => ({
+                id: allocation.id,
+                candidateName: allocation.studentName || allocation.applicantName || "Unknown candidate",
+                candidateNo: allocation.studentEnrollmentNo || allocation.applicantApplicationNo || "—",
+                candidateType: allocation.studentName ? "student" as const : "applicant" as const,
+                amount: allocation.amount,
+                notes: allocation.notes,
+              }))
+          : [],
+      };
+    });
+
+    if (startDate) filtered = filtered.filter((row) => row.reportDate >= startDate);
+    if (endDate) filtered = filtered.filter((row) => row.reportDate <= endDate);
+    if (search) {
+      filtered = filtered.filter((row) =>
+        row.voucherNo.toLowerCase().includes(search) ||
+        row.payee.toLowerCase().includes(search) ||
+        (row.referrerName || "").toLowerCase().includes(search) ||
+        row.allocations.some((allocation) =>
+          allocation.candidateName.toLowerCase().includes(search) ||
+          allocation.candidateNo.toLowerCase().includes(search)
+        ) ||
+        (row.narration || "").toLowerCase().includes(search)
+      );
+    }
+
+    const totalRecords = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+    const safePage = Math.min(page, totalPages);
+    const data = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+    return c.json({
+      data,
+      pagination: { page: safePage, pageSize, totalRecords, totalPages },
+      summary: {
+        totalAmount: filtered.reduce((sum, row) => sum + toNum(row.amount), 0),
+        voucherCount: totalRecords,
+      },
+    });
+  })
+
+  .put("/nursing/college-expenses/:id", requireAdmin, async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "Invalid expense voucher ID" }, 400);
+
+    const input = await jsonBody(c, z.object({
+      payee: z.string().trim().min(1, "Payee / details is required"),
+      amount: z.coerce.number().positive("Amount must be greater than 0"),
+      narration: z.string().trim().optional().nullable(),
+    }));
+    const session = c.get("session");
+
+    const result = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(dailyExpenditures)
+        .where(and(eq(dailyExpenditures.id, id), sql`UPPER(${dailyExpenditures.category}) = 'ACON'`))
+        .execute();
+      if (!existing) return null;
+
+      const voucherMatch = (existing.details || "").match(/\[Voucher:\s*([^\]]+)\]/i);
+      const details = voucherMatch ? `${input.payee} [Voucher: ${voucherMatch[1]}]` : input.payee;
+      const amountDelta = input.amount - toNum(existing.amount);
+
+      const [updated] = await tx
+        .update(dailyExpenditures)
+        .set({ details, amount: input.amount.toFixed(2), narration: input.narration || null })
+        .where(eq(dailyExpenditures.id, id))
+        .returning()
+        .execute();
+
+      if (amountDelta !== 0) {
+        await tx
+          .update(dailyClosingReports)
+          .set({
+            totalExpenditure: sql`${dailyClosingReports.totalExpenditure} + ${amountDelta}`,
+            closingBalance: sql`${dailyClosingReports.closingBalance} - ${amountDelta}`,
+            updatedAt: new Date(),
+          })
+          .where(eq(dailyClosingReports.id, existing.reportId))
+          .execute();
+      }
+
+      await tx.insert(nursingAuditLogs).values({
+        entity: "daily_expenditures",
+        entityId: String(id),
+        action: "UPDATE_COLLEGE_EXPENSE_VOUCHER",
+        changedBy: session?.user?.id,
+        diff: { before: existing, after: updated },
+      }).execute();
+
+      return updated;
+    });
+
+    if (!result) return c.json({ error: "College expense voucher not found" }, 404);
+    return c.json(result);
+  })
+
+  .delete("/nursing/college-expenses/:id", requireAdmin, async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "Invalid expense voucher ID" }, 400);
+    const session = c.get("session");
+
+    const deleted = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(dailyExpenditures)
+        .where(and(eq(dailyExpenditures.id, id), sql`UPPER(${dailyExpenditures.category}) = 'ACON'`))
+        .execute();
+      if (!existing) return null;
+
+      await tx.delete(dailyExpenditures).where(eq(dailyExpenditures.id, id)).execute();
+      const amount = toNum(existing.amount);
+      await tx
+        .update(dailyClosingReports)
+        .set({
+          totalExpenditure: sql`${dailyClosingReports.totalExpenditure} - ${amount}`,
+          closingBalance: sql`${dailyClosingReports.closingBalance} + ${amount}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(dailyClosingReports.id, existing.reportId))
+        .execute();
+
+      await tx.insert(nursingAuditLogs).values({
+        entity: "daily_expenditures",
+        entityId: String(id),
+        action: "DELETE_COLLEGE_EXPENSE_VOUCHER",
+        changedBy: session?.user?.id,
+        diff: existing,
+      }).execute();
+
+      return existing;
+    });
+
+    if (!deleted) return c.json({ error: "College expense voucher not found" }, 404);
+    return c.json({ message: "College expense voucher deleted successfully" });
   })
 
   // -------------------------------------------------------------------------

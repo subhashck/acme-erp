@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { CalendarClock, AlertCircle, Calendar as CalendarIcon, X, Plus, Paperclip } from "lucide-react";
+import { CalendarClock, AlertCircle, Calendar as CalendarIcon, Download, X, Plus, Paperclip } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
@@ -28,6 +28,9 @@ import { Label } from "../../../ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Calendar } from "../../../components/ui/calendar";
 import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import XLSX from "xlsx-js-style";
+import { toast } from "../../../lib/toast";
 
 export const Route = createFileRoute("/_authenticated/hr/leaves")({
   component: LeaveManagement
@@ -118,6 +121,7 @@ function LeaveManagement() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortOrder, setSortOrder] = useState("desc");
   const limit = 10;
@@ -128,7 +132,7 @@ function LeaveManagement() {
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const leaveTypesQuery = useRpcQuery<LeaveTypeRow[]>(["masters-leave-types"], () => client.masters["leave-types"].$get());
   const leavesQuery = useRpcQuery<{ data: LeaveRow[]; total: number; page: number; limit: number }>(
-    ["leaves", page, search, statusFilter, typeFilter, sortBy, sortOrder],
+    ["leaves", page, search, statusFilter, typeFilter, dateRange?.from, dateRange?.to, sortBy, sortOrder],
     () => client.hr.leaves.$get({
       query: {
         page: String(page),
@@ -136,6 +140,8 @@ function LeaveManagement() {
         search,
         status: statusFilter,
         leaveType: typeFilter,
+        startDate: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        endDate: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : "",
         sortBy,
         sortOrder
       }
@@ -195,6 +201,83 @@ function LeaveManagement() {
     if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   }, [startDateVal, endDateVal, isHalfDayVal]);
+
+  const handleExportExcel = async () => {
+    try {
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "100000",
+        search,
+        status: statusFilter,
+        leaveType: typeFilter,
+        startDate: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        endDate: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : "",
+        sortBy,
+        sortOrder,
+      });
+      const response = await fetch(`/api/hr/leaves?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch leave records for export");
+      const result = await response.json() as { data: LeaveRow[] };
+
+      if (!result.data.length) {
+        toast.error("No leave records match the selected filters");
+        return;
+      }
+
+      const exportRows = result.data.map((leave: LeaveRow & { createdAt?: string }) => {
+        const start = leave.startDate.slice(0, 10);
+        const end = leave.endDate.slice(0, 10);
+        const duration = leave.isHalfDay
+          ? 0.5
+          : Math.max(1, Math.round((new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) / 86400000) + 1);
+        return {
+          "Request No": leave.requestNo,
+          "Employee Code": leave.employeeCode,
+          "Employee Name": leave.staffName,
+          Department: leave.departmentName || "",
+          "Leave Type": leave.leaveType,
+          "Start Date": start,
+          "End Date": end,
+          "Duration (Days)": duration,
+          "Half Day": leave.isHalfDay ? "Yes" : "No",
+          Reason: leave.reason,
+          Status: leave.status,
+          "Reviewer Note": leave.reviewerNote || "",
+          "Requested On": leave.createdAt ? format(new Date(leave.createdAt), "yyyy-MM-dd HH:mm") : "",
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      worksheet["!cols"] = [
+        { wch: 18 }, { wch: 16 }, { wch: 24 }, { wch: 20 }, { wch: 20 },
+        { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 11 }, { wch: 36 },
+        { wch: 26 }, { wch: 32 }, { wch: 19 },
+      ];
+      const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:A1");
+      for (let column = range.s.c; column <= range.e.c; column += 1) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: 0, c: column })];
+        if (cell) {
+          cell.s = {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "0F766E" } },
+            alignment: { horizontal: "center", vertical: "center" },
+          };
+        }
+      }
+      worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+      worksheet["!autofilter"] = { ref: worksheet["!ref"] || "A1:M1" };
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Leave Requests");
+      const rangeLabel = dateRange?.from
+        ? `${format(dateRange.from, "yyyyMMdd")}-${format(dateRange.to || dateRange.from, "yyyyMMdd")}`
+        : "all-dates";
+      XLSX.writeFile(workbook, `leave-requests-${rangeLabel}.xlsx`);
+      toast.success(`Exported ${exportRows.length} leave records`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export leave records");
+    }
+  };
 
   const submitLeave = leaveForm.handleSubmit(async (values) => {
     // Force end date to be equal to start date for half day leaves
@@ -320,6 +403,49 @@ function LeaveManagement() {
                   </SelectContent>
                 </ShadcnSelect>
 
+                <div className="flex items-center gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "h-9 w-full justify-start text-left text-sm font-normal lg:w-64",
+                          !dateRange?.from && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                        {dateRange?.from
+                          ? dateRange.to
+                            ? `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
+                            : format(dateRange.from, "dd MMM yyyy")
+                          : "Filter by leave dates"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={(range) => {
+                          setDateRange(range);
+                          setPage(1);
+                        }}
+                        numberOfMonths={2}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {dateRange?.from && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      onClick={() => { setDateRange(undefined); setPage(1); }}
+                      title="Clear date range"
+                    >
+                      <X size={14} />
+                    </Button>
+                  )}
+                </div>
+
                 <ShadcnSelect value={`${sortBy}-${sortOrder}`} onValueChange={(val) => {
                   const [field, order] = val.split("-");
                   setSortBy(field);
@@ -338,6 +464,10 @@ function LeaveManagement() {
                     <SelectItem value="staffName-desc">Employee (Z-A)</SelectItem>
                   </SelectContent>
                 </ShadcnSelect>
+
+                <Button variant="outline" className="h-9 gap-2" onClick={handleExportExcel}>
+                  <Download size={15} /> Export Excel
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">

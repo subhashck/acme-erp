@@ -79,6 +79,7 @@ export interface ExamDetail {
 export interface Applicant {
   id: number;
   applicationNo: string;
+  batchId?: number | null;
   courseId: number;
   courseName: string;
   academicYear: string;
@@ -484,6 +485,9 @@ export function ApplicantFormPanels({
                             if (matched.courseId) {
                               form.setValue("courseId", Number(matched.courseId));
                               form.clearErrors("courseId");
+                            }
+                            if (matched.academicYear) {
+                              form.setValue("academicYear", matched.academicYear);
                             }
                           }
                         }
@@ -2006,6 +2010,7 @@ function AdmissionsPage() {
     onSuccess: () => {
       toast.success("Application registered successfully");
       queryClient.invalidateQueries({ queryKey: ["nursing", "applicants"] });
+      queryClient.invalidateQueries({ queryKey: ["nursing", "referrers"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       setIntakeDialogOpen(false);
       intakeForm.reset(defaultApplicantFormValues);
@@ -2031,6 +2036,7 @@ function AdmissionsPage() {
     onSuccess: (updated) => {
       toast.success(`Applicant status updated to ${updated.status}`);
       queryClient.invalidateQueries({ queryKey: ["nursing", "applicants"] });
+      queryClient.invalidateQueries({ queryKey: ["nursing", "referrers"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       if (updated && viewApplicant && viewApplicant.id === updated.id) {
         setViewApplicant((prev) => (prev ? { ...prev, status: updated.status } : null));
@@ -2058,6 +2064,7 @@ function AdmissionsPage() {
     onSuccess: (updated) => {
       toast.success("Applicant profile updated successfully");
       queryClient.invalidateQueries({ queryKey: ["nursing", "applicants"] });
+      queryClient.invalidateQueries({ queryKey: ["nursing", "referrers"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       setIsEditingProfile(false);
       if (updated) {
@@ -2095,6 +2102,7 @@ function AdmissionsPage() {
       toast.success(`Converted to student! Enrollment No: ${student.enrollmentNo}`);
       queryClient.invalidateQueries({ queryKey: ["nursing", "applicants"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "students"] });
+      queryClient.invalidateQueries({ queryKey: ["nursing", "referrers"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       setConvertModalOpen(false);
       setSelectedApplicant(null);
@@ -2186,8 +2194,8 @@ function AdmissionsPage() {
       });
     }
 
-    const matchedBatch = batches.find(
-      (b) => b.courseId === applicant.courseId && b.academicYear === applicant.academicYear
+    const matchedBatch = batches.find((batch) => batch.id === Number(applicant.batchId)) || batches.find(
+      (b) => Number(b.courseId) === Number(applicant.courseId) && b.academicYear === applicant.academicYear
     );
 
     profileForm.reset({
@@ -2202,7 +2210,7 @@ function AdmissionsPage() {
       dob: applicant.dob || "",
       referrerId: applicant.referrerId || null,
       referralAmount: applicant.referralAmount || "",
-      referralComments: "",
+      referralComments: applicant.referralComments || "",
       fatherDeceased: Boolean(applicant.fatherDeceased),
       fatherName: applicant.fatherName || "",
       fatherPhone: applicant.fatherPhone || "",
@@ -3022,12 +3030,16 @@ function AdmissionsPage() {
                           });
                         }
 
-                        const matchedBatch = batches.find(
-                          (b) => b.courseId === viewApplicant.courseId && b.academicYear === viewApplicant.academicYear
+                        const currentBatchId = Number(profileForm.getValues("batchId") || 0);
+                        const currentBatchIsValid = batches.some(
+                          (batch) => batch.id === currentBatchId && Number(batch.courseId) === Number(viewApplicant.courseId)
+                        );
+                        const matchedBatch = batches.find((batch) => batch.id === Number(viewApplicant.batchId)) || batches.find(
+                          (b) => Number(b.courseId) === Number(viewApplicant.courseId) && b.academicYear === viewApplicant.academicYear
                         );
 
                         profileForm.reset({
-                          batchId: matchedBatch ? matchedBatch.id : 0,
+                          batchId: currentBatchIsValid ? currentBatchId : (matchedBatch?.id || 0),
                           courseId: viewApplicant.courseId,
                           academicYear: viewApplicant.academicYear || defaultAcademicYear,
                           name: viewApplicant.name || "",
@@ -3036,6 +3048,9 @@ function AdmissionsPage() {
                           aadharNo: viewApplicant.aadharNo || "",
                           gender: viewApplicant.gender || "Female",
                           dob: viewApplicant.dob || "",
+                          referrerId: viewApplicant.referrerId || null,
+                          referralAmount: viewApplicant.referralAmount || "",
+                          referralComments: viewApplicant.referralComments || "",
                           fatherDeceased: Boolean(viewApplicant.fatherDeceased),
                           fatherName: viewApplicant.fatherName || "",
                           fatherPhone: viewApplicant.fatherPhone || "",

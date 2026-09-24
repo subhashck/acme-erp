@@ -257,6 +257,8 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const search = c.req.query("search");
     const status = c.req.query("status");
     const leaveType = c.req.query("leaveType");
+    const startDate = c.req.query("startDate");
+    const endDate = c.req.query("endDate");
     const sortBy = c.req.query("sortBy") ?? "createdAt";
     const sortOrder = c.req.query("sortOrder") ?? "desc";
 
@@ -357,6 +359,14 @@ export const leavesRoutes = new Hono<AuthEnv>()
     }
     if (leaveType && leaveType !== "All") {
       filteredRows = filteredRows.filter((row) => row.leaveType === leaveType);
+    }
+    if (startDate) {
+      // Include a leave when it ends on or after the beginning of the range.
+      filteredRows = filteredRows.filter((row) => row.endDate.slice(0, 10) >= startDate);
+    }
+    if (endDate) {
+      // Include a leave when it starts on or before the end of the range.
+      filteredRows = filteredRows.filter((row) => row.startDate.slice(0, 10) <= endDate);
     }
     if (search) {
       const s = search.toLowerCase();

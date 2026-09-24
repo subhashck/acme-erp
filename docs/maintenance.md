@@ -22,12 +22,26 @@ docker exec -i acme-erp-db sh -c "dropdb -U postgres acme_erp && createdb -U pos
 
 ### Restore in windows
 
-Get-Content D:\deploy\backups\backup_20260918_090406.sql | docker exec -i acme-erp-db psql -U postgres -d acme_erp
-
-
+Get-Content D:\deploy\backups\backup_20260923_050000.sql | docker exec -i acme-erp-db psql -U postgres -d acme_erp
 
 docker compose up --build -d
 
-
 ### execute commands inside docker container
 docker exec -it acme-erp-web sh
+
+# Overall filesystem usage
+df -h
+
+# Docker's view of disk consumption
+docker system df
+
+# More detailed Docker breakdown
+docker system df -v
+
+# Biggest top-level directories
+sudo du -xh --max-depth=1 / 2>/dev/null | sort -h
+
+# Specifically inspect Docker
+sudo du -xh --max-depth=1 /var/lib/docker 2>/dev/null | sort -h
+
+docker builder prune -a

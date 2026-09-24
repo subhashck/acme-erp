@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 // @ts-ignore
 import XLSX from "xlsx-js-style";
 
-export function exportClosingToPDF(report: any, categoriesList: any[], expCategoriesList: any[]) {
+export function buildClosingPDFDoc(report: any, categoriesList: any[], expCategoriesList: any[]) {
   const fmt = (num: number) => {
     const val = parseFloat(String(num)) || 0;
     const formatted = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.abs(val));
@@ -768,9 +768,38 @@ export function exportClosingToPDF(report: any, categoriesList: any[], expCatego
     drawPageFooter(i);
   }
 
-  // Save the PDF
+  return doc;
+}
+
+export function exportClosingToPDF(report: any, categoriesList: any[], expCategoriesList: any[]) {
+  const doc = buildClosingPDFDoc(report, categoriesList, expCategoriesList);
   const reportDateStr = new Date(report.reportDate).toISOString().split("T")[0];
   doc.save(`daily-closing-report-${reportDateStr}.pdf`);
+}
+
+export async function shareClosingPDFViaWhatsApp(report: any, categoriesList: any[], expCategoriesList: any[]) {
+  const reportDate = new Date(report.reportDate).toISOString().slice(0, 10);
+  const filename = `daily-closing-report-${reportDate}.pdf`;
+  const doc = buildClosingPDFDoc(report, categoriesList, expCategoriesList);
+  const pdfFile = new File([doc.output("blob")], filename, { type: "application/pdf" });
+  const message = `Daily Closing Report for ${new Date(`${reportDate}T00:00:00`).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  })}. PDF attached.`;
+
+  if (navigator.canShare?.({ files: [pdfFile] })) {
+    try {
+      await navigator.share({ files: [pdfFile], title: `Daily Closing Report - ${reportDate}`, text: message });
+      return true;
+    } catch (error: any) {
+      if (error?.name === "AbortError") return false;
+    }
+  }
+
+  doc.save(filename);
+  window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
+  return true;
 }
 
 export function exportClosingToExcel(report: any, categoriesList: any[], expCategoriesList: any[]) {

@@ -119,6 +119,7 @@ export const hospitalSettings = sqliteTable("hospital_settings", {
   opdPhone: text("opd_phone").default("+91 98765 43212"),
   editorialDivision: text("editorial_division").default("ACME Healthcare Communications & Editorial Division"),
   copyrightText: text("copyright_text").default("ACME Monthly Electronic Magazine. All rights reserved."),
+  showPublishedMagazines: boolean("show_published_magazines").notNull().default(false),
   ...timestamps
 });
 
@@ -1230,6 +1231,7 @@ export const nursingReferrers = sqliteTable("nursing_referrers", {
 export const nursingApplicants = sqliteTable("nursing_applicants", {
   id: serial("id").primaryKey(),
   applicationNo: text("application_no").notNull().unique(),
+  batchId: integer("batch_id").references(() => nursingBatches.id, { onDelete: "set null" }),
   courseId: integer("course_id").notNull().references(() => nursingCourses.id),
   academicYear: text("academic_year").notNull(),
   name: text("name").notNull(),

@@ -16,6 +16,7 @@ export interface HospitalDbSettings {
   opdPhone?: string | null;
   editorialDivision?: string | null;
   copyrightText?: string | null;
+  showPublishedMagazines: boolean;
 }
 
 const DEFAULT_SETTINGS: HospitalDbSettings = {
@@ -29,6 +30,7 @@ const DEFAULT_SETTINGS: HospitalDbSettings = {
   opdPhone: "+91 98765 43212",
   editorialDivision: "ACME Healthcare Communications & Editorial Division",
   copyrightText: "ACME Monthly Electronic Magazine. All rights reserved.",
+  showPublishedMagazines: false,
 };
 
 let tableEnsured = false;
@@ -50,9 +52,12 @@ export async function ensureHospitalSettingsTable(): Promise<void> {
         "opd_phone" TEXT DEFAULT '+91 98765 43212',
         "editorial_division" TEXT DEFAULT 'ACME Healthcare Communications & Editorial Division',
         "copyright_text" TEXT DEFAULT 'ACME Monthly Electronic Magazine. All rights reserved.',
+        "show_published_magazines" BOOLEAN NOT NULL DEFAULT FALSE,
         "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
         "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE "public"."hospital_settings"
+        ADD COLUMN IF NOT EXISTS "show_published_magazines" BOOLEAN NOT NULL DEFAULT FALSE;
     `;
     await pool.query(ddl);
     tableEnsured = true;
@@ -114,4 +119,3 @@ export async function updateHospitalSettingsInDb(
 
   return inserted || DEFAULT_SETTINGS;
 }
-

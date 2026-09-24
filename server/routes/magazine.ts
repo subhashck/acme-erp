@@ -939,6 +939,24 @@ export const magazineRoutes = new Hono<AuthEnv>()
     }
   })
 
+  .patch("/magazine/display-settings", requireMagazineAccess, async (c) => {
+    try {
+      const body = await jsonBody(
+        c,
+        z.object({ showPublishedMagazines: z.boolean() })
+      );
+      const updated = await updateHospitalSettingsInDb({
+        showPublishedMagazines: body.showPublishedMagazines,
+      });
+      return c.json({
+        showPublishedMagazines: updated.showPublishedMagazines,
+      });
+    } catch (err: any) {
+      console.error("[Update Magazine Display Settings Error]:", err);
+      return c.json({ error: err.message || "Failed to update display settings" }, 500);
+    }
+  })
+
   .put(
     "/magazine/settings",
     requireMagazineAccess,
@@ -967,4 +985,3 @@ export const magazineRoutes = new Hono<AuthEnv>()
       }
     }
   );
-

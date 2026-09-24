@@ -1,5 +1,5 @@
 import * as React from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Wallet,
   X,
+  Eye,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -100,6 +101,15 @@ interface ReportData {
   expenseRows: ExpenseRow[];
 }
 
+function VoucherField({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <span className="block text-[11px] text-muted-foreground">{label}</span>
+      <span className="block break-words font-medium text-foreground">{value || "—"}</span>
+    </div>
+  );
+}
+
 export default function DailyIncomeExpensesReportPage() {
   const { session } = Route.useRouteContext() as { session?: any };
   const userName = session?.data?.user?.name || session?.user?.name || "ACON Accounts";
@@ -114,6 +124,9 @@ export default function DailyIncomeExpensesReportPage() {
   // WhatsApp Share Modal
   const [whatsAppModalOpen, setWhatsAppModalOpen] = React.useState(false);
   const [whatsAppPhone, setWhatsAppPhone] = React.useState("");
+  const [selectedVoucher, setSelectedVoucher] = React.useState<
+    { type: "income"; row: IncomeRow } | { type: "expense"; row: ExpenseRow } | null
+  >(null);
 
   const setQuickRange = (preset: "today" | "yesterday" | "this_month" | "last_30_days") => {
     const now = new Date();
@@ -610,18 +623,19 @@ export default function DailyIncomeExpensesReportPage() {
                   <th className="p-3">Fee Type</th>
                   <th className="p-3 text-center">Payment Mode</th>
                   <th className="p-3 text-right">Amount</th>
+                  <th className="p-3 text-center">Voucher</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
                       Loading income transactions...
                     </td>
                   </tr>
                 ) : incomeRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
                       No income receipts recorded for the selected period.
                     </td>
                   </tr>
@@ -629,7 +643,16 @@ export default function DailyIncomeExpensesReportPage() {
                   incomeRows.map((r) => (
                     <tr key={r.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3 font-mono text-muted-foreground">{r.paymentDate}</td>
-                      <td className="p-3 font-bold text-foreground font-mono">{r.receiptNumber || r.invoiceNo}</td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVoucher({ type: "income", row: r })}
+                          className="font-bold font-mono text-teal-700 dark:text-teal-300 hover:underline underline-offset-2"
+                          title="View income voucher"
+                        >
+                          {r.receiptNumber || r.invoiceNo}
+                        </button>
+                      </td>
                       <td className="p-3 font-semibold text-foreground">
                         <div>
                           <span>{r.studentName}</span>
@@ -646,6 +669,17 @@ export default function DailyIncomeExpensesReportPage() {
                       </td>
                       <td className="p-3 text-right font-bold text-emerald-600 dark:text-emerald-400">
                         ₹{Number(r.amount).toLocaleString()}
+                      </td>
+                      <td className="p-3 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-[11px] text-teal-700 dark:text-teal-300"
+                          onClick={() => setSelectedVoucher({ type: "income", row: r })}
+                        >
+                          <Eye size={13} /> View
+                        </Button>
                       </td>
                     </tr>
                   ))
@@ -669,9 +703,14 @@ export default function DailyIncomeExpensesReportPage() {
                 Referral commission payouts and operational cash/bank expenditures
               </CardDescription>
             </div>
-            <span className="text-sm font-bold text-rose-700 dark:text-rose-400">
-              Total: ₹{summary.totalExpenses.toLocaleString()}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-rose-700 dark:text-rose-400">
+                Total: ₹{summary.totalExpenses.toLocaleString()}
+              </span>
+              <Button asChild variant="outline" size="sm" className="h-7 text-[11px]">
+                <Link to={"/college/expenses" as any}>Open Expense Vouchers</Link>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -685,18 +724,19 @@ export default function DailyIncomeExpensesReportPage() {
                   <th className="p-3 text-center">Payment Mode</th>
                   <th className="p-3">Reference / Notes</th>
                   <th className="p-3 text-right">Amount</th>
+                  <th className="p-3 text-center">Voucher</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
                       Loading expense payouts...
                     </td>
                   </tr>
                 ) : expenseRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
                       No expense payouts recorded for the selected period.
                     </td>
                   </tr>
@@ -704,7 +744,16 @@ export default function DailyIncomeExpensesReportPage() {
                   expenseRows.map((r) => (
                     <tr key={r.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3 font-mono text-muted-foreground">{r.paymentDate}</td>
-                      <td className="p-3 font-bold text-foreground font-mono">{r.voucherNo}</td>
+                      <td className="p-3">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedVoucher({ type: "expense", row: r })}
+                          className="font-bold font-mono text-rose-700 dark:text-rose-300 hover:underline underline-offset-2"
+                          title="View expense voucher"
+                        >
+                          {r.voucherNo}
+                        </button>
+                      </td>
                       <td className="p-3 font-semibold text-foreground">
                         <div>
                           <span>{r.payee}</span>
@@ -722,6 +771,17 @@ export default function DailyIncomeExpensesReportPage() {
                       <td className="p-3 text-right font-bold text-rose-600 dark:text-rose-400">
                         ₹{Number(r.amount).toLocaleString()}
                       </td>
+                      <td className="p-3 text-center">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-[11px] text-rose-700 dark:text-rose-300"
+                          onClick={() => setSelectedVoucher({ type: "expense", row: r })}
+                        >
+                          <Eye size={13} /> View
+                        </Button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -730,6 +790,77 @@ export default function DailyIncomeExpensesReportPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Income Receipt / Expense Voucher Detail */}
+      <Dialog open={Boolean(selectedVoucher)} onOpenChange={(open) => !open && setSelectedVoucher(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt
+                size={19}
+                className={selectedVoucher?.type === "expense" ? "text-rose-600" : "text-teal-600"}
+              />
+              {selectedVoucher?.type === "expense" ? "Expense Voucher" : "Income Receipt"}
+            </DialogTitle>
+            <DialogDescription>
+              Complete transaction details recorded in the ACON daily ledger.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedVoucher?.type === "income" && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-lg border bg-emerald-50/40 dark:bg-emerald-950/20 p-4 flex items-start justify-between gap-4">
+                <div>
+                  <span className="text-xs text-muted-foreground">Receipt number</span>
+                  <p className="font-mono font-bold text-emerald-700 dark:text-emerald-300">
+                    {selectedVoucher.row.receiptNumber || selectedVoucher.row.invoiceNo}
+                  </p>
+                  {selectedVoucher.row.invoiceNo && selectedVoucher.row.invoiceNo !== selectedVoucher.row.receiptNumber && (
+                    <p className="mt-1 text-xs text-muted-foreground">Invoice: {selectedVoucher.row.invoiceNo}</p>
+                  )}
+                </div>
+                <p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
+                  ₹{Number(selectedVoucher.row.amount).toLocaleString()}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-lg border p-4">
+                <VoucherField label="Date" value={selectedVoucher.row.paymentDate} />
+                <VoucherField label="Payment mode" value={formatCollegePaymentMode(selectedVoucher.row.paymentMode)} />
+                <VoucherField label="Student / Payee" value={selectedVoucher.row.studentName} />
+                <VoucherField label="Enrollment / Application No." value={selectedVoucher.row.enrollmentNo} />
+                <VoucherField label="Fee type" value={selectedVoucher.row.feeType || "Course Fee"} />
+                <VoucherField label="Status" value={selectedVoucher.row.status} />
+              </div>
+            </div>
+          )}
+
+          {selectedVoucher?.type === "expense" && (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-lg border bg-rose-50/40 dark:bg-rose-950/20 p-4 flex items-start justify-between gap-4">
+                <div>
+                  <span className="text-xs text-muted-foreground">Voucher number</span>
+                  <p className="font-mono font-bold text-rose-700 dark:text-rose-300">{selectedVoucher.row.voucherNo}</p>
+                </div>
+                <p className="text-xl font-bold text-rose-700 dark:text-rose-300">
+                  ₹{Number(selectedVoucher.row.amount).toLocaleString()}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 rounded-lg border p-4">
+                <VoucherField label="Date" value={selectedVoucher.row.paymentDate} />
+                <VoucherField label="Payment mode" value={formatCollegePaymentMode(selectedVoucher.row.paymentMode)} />
+                <VoucherField label="Payee" value={selectedVoucher.row.payee} />
+                <VoucherField label="Category" value={selectedVoucher.row.category} />
+                <VoucherField label="Reference number" value={selectedVoucher.row.referenceNumber || "—"} />
+                <VoucherField label="Notes" value={selectedVoucher.row.notes || "—"} />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedVoucher(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* WhatsApp Share Modal */}
       <Dialog open={whatsAppModalOpen} onOpenChange={setWhatsAppModalOpen}>

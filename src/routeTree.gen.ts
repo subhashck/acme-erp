@@ -63,6 +63,7 @@ import { Route as AuthenticatedCollegeGeneralReceiptsRouteImport } from './route
 import { Route as AuthenticatedCollegeFeesRouteImport } from './routes/_authenticated/college/fees'
 import { Route as AuthenticatedCollegeFeeStructuresRouteImport } from './routes/_authenticated/college/fee-structures'
 import { Route as AuthenticatedCollegeFeeDuesRouteImport } from './routes/_authenticated/college/fee-dues'
+import { Route as AuthenticatedCollegeExpensesRouteImport } from './routes/_authenticated/college/expenses'
 import { Route as AuthenticatedCollegeCoursesRouteImport } from './routes/_authenticated/college/courses'
 import { Route as AuthenticatedCollegeAttendanceRouteImport } from './routes/_authenticated/college/attendance'
 import { Route as AuthenticatedCollegeAdmissionsRouteImport } from './routes/_authenticated/college/admissions'
@@ -427,6 +428,12 @@ const AuthenticatedCollegeFeeDuesRoute =
     path: '/fee-dues',
     getParentRoute: () => AuthenticatedCollegeRoute,
   } as any)
+const AuthenticatedCollegeExpensesRoute =
+  AuthenticatedCollegeExpensesRouteImport.update({
+    id: '/expenses',
+    path: '/expenses',
+    getParentRoute: () => AuthenticatedCollegeRoute,
+  } as any)
 const AuthenticatedCollegeCoursesRoute =
   AuthenticatedCollegeCoursesRouteImport.update({
     id: '/courses',
@@ -772,6 +779,7 @@ export interface FileRoutesByFullPath {
   '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
   '/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
   '/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/college/expenses': typeof AuthenticatedCollegeExpensesRoute
   '/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
   '/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
   '/college/fees': typeof AuthenticatedCollegeFeesRoute
@@ -879,6 +887,7 @@ export interface FileRoutesByTo {
   '/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
   '/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
   '/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/college/expenses': typeof AuthenticatedCollegeExpensesRoute
   '/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
   '/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
   '/college/fees': typeof AuthenticatedCollegeFeesRoute
@@ -988,6 +997,7 @@ export interface FileRoutesById {
   '/_authenticated/college/admissions': typeof AuthenticatedCollegeAdmissionsRoute
   '/_authenticated/college/attendance': typeof AuthenticatedCollegeAttendanceRoute
   '/_authenticated/college/courses': typeof AuthenticatedCollegeCoursesRoute
+  '/_authenticated/college/expenses': typeof AuthenticatedCollegeExpensesRoute
   '/_authenticated/college/fee-dues': typeof AuthenticatedCollegeFeeDuesRoute
   '/_authenticated/college/fee-structures': typeof AuthenticatedCollegeFeeStructuresRoute
   '/_authenticated/college/fees': typeof AuthenticatedCollegeFeesRoute
@@ -1098,6 +1108,7 @@ export interface FileRouteTypes {
     | '/college/admissions'
     | '/college/attendance'
     | '/college/courses'
+    | '/college/expenses'
     | '/college/fee-dues'
     | '/college/fee-structures'
     | '/college/fees'
@@ -1205,6 +1216,7 @@ export interface FileRouteTypes {
     | '/college/admissions'
     | '/college/attendance'
     | '/college/courses'
+    | '/college/expenses'
     | '/college/fee-dues'
     | '/college/fee-structures'
     | '/college/fees'
@@ -1313,6 +1325,7 @@ export interface FileRouteTypes {
     | '/_authenticated/college/admissions'
     | '/_authenticated/college/attendance'
     | '/_authenticated/college/courses'
+    | '/_authenticated/college/expenses'
     | '/_authenticated/college/fee-dues'
     | '/_authenticated/college/fee-structures'
     | '/_authenticated/college/fees'
@@ -1782,6 +1795,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCollegeFeeDuesRouteImport
       parentRoute: typeof AuthenticatedCollegeRoute
     }
+    '/_authenticated/college/expenses': {
+      id: '/_authenticated/college/expenses'
+      path: '/expenses'
+      fullPath: '/college/expenses'
+      preLoaderRoute: typeof AuthenticatedCollegeExpensesRouteImport
+      parentRoute: typeof AuthenticatedCollegeRoute
+    }
     '/_authenticated/college/courses': {
       id: '/_authenticated/college/courses'
       path: '/courses'
@@ -2161,6 +2181,7 @@ interface AuthenticatedCollegeRouteChildren {
   AuthenticatedCollegeAdmissionsRoute: typeof AuthenticatedCollegeAdmissionsRoute
   AuthenticatedCollegeAttendanceRoute: typeof AuthenticatedCollegeAttendanceRoute
   AuthenticatedCollegeCoursesRoute: typeof AuthenticatedCollegeCoursesRoute
+  AuthenticatedCollegeExpensesRoute: typeof AuthenticatedCollegeExpensesRoute
   AuthenticatedCollegeFeeDuesRoute: typeof AuthenticatedCollegeFeeDuesRoute
   AuthenticatedCollegeFeeStructuresRoute: typeof AuthenticatedCollegeFeeStructuresRoute
   AuthenticatedCollegeFeesRoute: typeof AuthenticatedCollegeFeesRoute
@@ -2182,6 +2203,7 @@ const AuthenticatedCollegeRouteChildren: AuthenticatedCollegeRouteChildren = {
   AuthenticatedCollegeAdmissionsRoute: AuthenticatedCollegeAdmissionsRoute,
   AuthenticatedCollegeAttendanceRoute: AuthenticatedCollegeAttendanceRoute,
   AuthenticatedCollegeCoursesRoute: AuthenticatedCollegeCoursesRoute,
+  AuthenticatedCollegeExpensesRoute: AuthenticatedCollegeExpensesRoute,
   AuthenticatedCollegeFeeDuesRoute: AuthenticatedCollegeFeeDuesRoute,
   AuthenticatedCollegeFeeStructuresRoute:
     AuthenticatedCollegeFeeStructuresRoute,

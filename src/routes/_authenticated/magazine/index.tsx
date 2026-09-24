@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
 import { Badge } from "@/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +77,7 @@ function generateSlug(title: string, month: number, year: number) {
 
 export function MagazineDashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { isAdmin, canManageMagazine } = useUserPermissions();
 
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
@@ -116,6 +119,39 @@ export function MagazineDashboard() {
   // Media Library state
   const [isMediaLibraryOpen, setIsMediaLibraryOpen] = React.useState(false);
   const [mediaLibraryPurpose, setMediaLibraryPurpose] = React.useState<"general" | "createCover" | "editCover">("general");
+
+  const displaySettingsQuery = useRpcQuery<{ showPublishedMagazines: boolean }>(
+    ["magazine-hospital-settings"],
+    () => fetch("/api/magazine/settings")
+  );
+
+  const displaySettingsMutation = useMutation({
+    mutationFn: async (showPublishedMagazines: boolean) => {
+      const res = await fetch("/api/magazine/display-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showPublishedMagazines }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => null);
+        throw new Error(error?.error || "Failed to update magazine display setting");
+      }
+      return res.json() as Promise<{ showPublishedMagazines: boolean }>;
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["magazine-hospital-settings"], (current: any) => ({
+        ...current,
+        showPublishedMagazines: updated.showPublishedMagazines,
+      }));
+      queryClient.invalidateQueries({ queryKey: ["public-magazine-issues"] });
+      toast.success(
+        updated.showPublishedMagazines
+          ? "Magazine displays enabled on login and dashboard"
+          : "Magazine displays hidden from login and dashboard"
+      );
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
 
   const handleDownloadIssuePDF = async (issueItem: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -460,6 +496,23 @@ export function MagazineDashboard() {
       }
     >
       <div className="space-y-6">
+        <Card>
+          <CardContent className="flex items-center justify-between gap-4 p-4">
+            <div>
+              <p className="text-sm font-semibold">Display published magazines</p>
+              <p className="text-xs text-muted-foreground">
+                Show published magazine links on the login page and application dashboard.
+              </p>
+            </div>
+            <Switch
+              checked={displaySettingsQuery.data?.showPublishedMagazines ?? false}
+              disabled={displaySettingsQuery.isLoading || displaySettingsMutation.isPending}
+              onCheckedChange={(checked) => displaySettingsMutation.mutate(checked)}
+              aria-label="Display published magazines on login and dashboard"
+            />
+          </CardContent>
+        </Card>
+
         {/* Filter & Search Bar */}
         <Card>
           <CardContent className="p-4">

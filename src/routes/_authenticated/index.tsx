@@ -14,7 +14,11 @@ import {
   AlertTriangle, 
   Info, 
   Receipt,
-  AlertCircle 
+  AlertCircle,
+  Check,
+  ChevronsUpDown,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useStore } from "@tanstack/react-store";
 import { useMutation } from "@tanstack/react-query";
@@ -23,8 +27,11 @@ import { client } from "../../services/rpc";
 import { notificationsStore, notificationsActions } from "../../lib/notifications-store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../ui/card";
 import { Button } from "../../ui/button";
+import { Switch } from "../../components/ui/switch";
 import { cn } from "../../utils/cn";
 import { PublishedMagazineSection } from "../../components/PublishedMagazineSection";
+import { getShiftConfig } from "../../lib/roster-utils";
+import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import * as React from "react";
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -36,12 +43,42 @@ function Dashboard() {
   const userName = session.data?.user.name || "Administrator";
   const userRole = session.data?.user.role || "staff";
   const isAdminOrHr = userRole === "admin" || userRole === "hr";
+  const preferenceKeyPrefix = `dashboard:${session.data?.user.id || userRole}`;
+  const [showRecentNotifications, setShowRecentNotifications] = React.useState(() =>
+    !isAdminOrHr || (typeof window !== "undefined" && window.localStorage.getItem(`${preferenceKeyPrefix}:notifications`) === "true")
+  );
+  const [showQuickActions, setShowQuickActions] = React.useState(() =>
+    !isAdminOrHr || (typeof window !== "undefined" && window.localStorage.getItem(`${preferenceKeyPrefix}:quick-actions`) === "true")
+  );
+  const [scheduleDayOffset, setScheduleDayOffset] = React.useState(0);
+
+  const addUtcDays = React.useCallback((date: string, amount: number) => {
+    const value = new Date(`${date}T00:00:00Z`);
+    value.setUTCDate(value.getUTCDate() + amount);
+    return value.toISOString().slice(0, 10);
+  }, []);
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const scheduleAnchorDate = addUtcDays(todayDate, scheduleDayOffset);
 
   const { notifications } = useStore(notificationsStore);
 
   React.useEffect(() => {
-    notificationsActions.fetchNotifications();
-  }, []);
+    if (showRecentNotifications) {
+      notificationsActions.fetchNotifications();
+    }
+  }, [showRecentNotifications]);
+
+  const updateDashboardPreference = (
+    preference: "notifications" | "quick-actions",
+    visible: boolean
+  ) => {
+    window.localStorage.setItem(`${preferenceKeyPrefix}:${preference}`, String(visible));
+    if (preference === "notifications") {
+      setShowRecentNotifications(visible);
+    } else {
+      setShowQuickActions(visible);
+    }
+  };
 
   const { data, isLoading } = useRpcQuery<{
     metrics: {
@@ -58,8 +95,25 @@ function Dashboard() {
       clinicalStaffCount: number;
       clinicalDeptCount: number;
       clinicalOnLeaveOrOffToday: number;
-    }
-  }>(["dashboard"], () => client.dashboard.$get(), {
+    };
+    workforceSchedule: Array<{
+      departmentId: number | null;
+      departmentName: string;
+      days: Array<{
+        date: string;
+        entries: Array<{
+          staffId: number;
+          employeeCode: string;
+          staffName: string;
+          status: "leave" | "off" | "roster";
+          label: string;
+          startTime?: string;
+          endTime?: string;
+          isPreviousDayCarryOver?: boolean;
+        }>;
+      }>;
+    }>;
+  }>(["dashboard", scheduleAnchorDate], () => client.dashboard.$get({ query: { scheduleDate: scheduleAnchorDate } }), {
     enabled: !!session.data
   });
 
@@ -91,6 +145,20 @@ function Dashboard() {
 
   const deptName = data?.metrics.userDepartmentName;
   const isNursingSuper = Boolean(data?.metrics.isNursingSuper);
+  const [workforceDepartments, setWorkforceDepartments] = React.useState<string[]>([]);
+  const filteredWorkforceSchedule = React.useMemo(
+    () => (data?.workforceSchedule || []).filter((department) =>
+      workforceDepartments.length === 0 || workforceDepartments.includes(String(department.departmentId ?? "unassigned"))
+    ),
+    [data?.workforceSchedule, workforceDepartments]
+  );
+  const toggleWorkforceDepartment = (departmentId: string) => {
+    setWorkforceDepartments((current) =>
+      current.includes(departmentId)
+        ? current.filter((id) => id !== departmentId)
+        : [...current, departmentId]
+    );
+  };
 
   const metrics = isNursingSuper
     ? [
@@ -164,7 +232,7 @@ function Dashboard() {
       ];
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="flex max-w-7xl flex-col gap-6 mx-auto">
       {/* Welcome Greeting Banner */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 p-6 md:p-8 text-white shadow-md border border-slate-800 dark:border-slate-800/80">
         <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-teal-500/10 blur-3xl pointer-events-none" />
@@ -182,7 +250,7 @@ function Dashboard() {
               You are logged in with <span className="font-bold text-teal-400 capitalize">{isNursingSuper ? "Nursing Superintendent" : userRole}</span> privilege levels. {isAdminOrHr ? "Monitor clinical staffing compliance, handle statutory payroll overrides, and evaluate roster schedules below." : isNursingSuper ? "Monitor clinical department staffing compliance, shift rosters, and personnel coverage below." : "View your latest notifications, check your personal payslips, and request time off."}
             </p>
           </div>
-          <div className="shrink-0 flex gap-2">
+          <div className="shrink-0 flex flex-wrap items-center justify-end gap-2">
             {isAdminOrHr ? (
               <>
                 <Link to="/hr/staff-list">
@@ -190,6 +258,22 @@ function Dashboard() {
                     View Staff
                   </Button>
                 </Link>
+                <label className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/5 px-3 text-xs font-semibold text-slate-200">
+                  Notifications
+                  <Switch
+                    checked={showRecentNotifications}
+                    onCheckedChange={(checked) => updateDashboardPreference("notifications", checked)}
+                    aria-label="Show recent notifications"
+                  />
+                </label>
+                <label className="inline-flex h-10 items-center gap-2 rounded-md border border-white/20 bg-white/5 px-3 text-xs font-semibold text-slate-200">
+                  Quick Actions
+                  <Switch
+                    checked={showQuickActions}
+                    onCheckedChange={(checked) => updateDashboardPreference("quick-actions", checked)}
+                    aria-label="Show quick action console"
+                  />
+                </label>
                 <Link to="/hr/roster">
                   <Button variant="outline" className="font-bold border-white/20 text-white bg-white/5 hover:bg-white/10 h-10 px-4">
                     Shift Roster
@@ -236,6 +320,197 @@ function Dashboard() {
         </div>
       </div>
 
+      {isAdminOrHr && (
+        <Card className="order-last overflow-hidden border border-border bg-card shadow-sm">
+          <CardHeader className="flex flex-col gap-3 border-b border-border/50 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarClock className="text-teal-600 dark:text-teal-400" size={18} />
+                Three-Day Department Workforce Schedule
+              </CardTitle>
+              <CardDescription>
+                Approved leave, scheduled off days, and assigned roster shifts for the displayed three-day period.
+              </CardDescription>
+            </div>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setScheduleDayOffset((current) => current - 1)}
+                  aria-label="View previous day"
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
+                  D-1
+                </Button>
+                {scheduleDayOffset !== 0 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setScheduleDayOffset(0)}>
+                    Today
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setScheduleDayOffset((current) => current + 1)}
+                  aria-label="View next day"
+                >
+                  D+1
+                  <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+              <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full justify-between bg-background font-normal sm:w-72">
+                  <span className="truncate">
+                    {workforceDepartments.length === 0
+                      ? "All Departments"
+                      : `${workforceDepartments.length} department${workforceDepartments.length === 1 ? "" : "s"} selected`}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72 p-2">
+                <button
+                  type="button"
+                  onClick={() => setWorkforceDepartments([])}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
+                >
+                  <span className="flex h-4 w-4 items-center justify-center rounded border border-primary">
+                    {workforceDepartments.length === 0 && <Check className="h-3 w-3" />}
+                  </span>
+                  <span className="font-medium">All Departments</span>
+                </button>
+                <div className="my-1 border-t" />
+                <div className="max-h-64 overflow-y-auto">
+                  {(data?.workforceSchedule || []).map((department) => {
+                    const departmentId = String(department.departmentId ?? "unassigned");
+                    const selected = workforceDepartments.includes(departmentId);
+                    return (
+                      <button
+                        key={departmentId}
+                        type="button"
+                        onClick={() => toggleWorkforceDepartment(departmentId)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        <span className={cn("flex h-4 w-4 items-center justify-center rounded border", selected ? "border-primary bg-primary text-primary-foreground" : "border-input")}>
+                          {selected && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="truncate">{department.departmentName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+              </Popover>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">Loading workforce schedule...</div>
+            ) : !filteredWorkforceSchedule.length ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">No leave, off-day, or roster assignments found for this department.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-xs sm:min-w-[800px]">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="sticky left-0 z-20 hidden w-52 min-w-52 border-r bg-muted p-3 text-left font-bold sm:table-cell">Department</th>
+                      {filteredWorkforceSchedule[0]?.days.map((day, dayIndex) => {
+                        const isToday = day.date === todayDate;
+                        const date = new Date(`${day.date}T00:00:00Z`);
+                        return (
+                          <th key={day.date} className={cn("min-w-44 border-r p-3 text-left", dayIndex !== 1 && "hidden sm:table-cell", isToday && "bg-teal-50 dark:bg-teal-950/30")}>
+                            <span className="block text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                              {date.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" })}
+                            </span>
+                            <span className={cn("font-bold", isToday && "text-teal-700 dark:text-teal-300")}>
+                              {date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" })}
+                              {isToday && " · Today"}
+                            </span>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {filteredWorkforceSchedule.map((department) => (
+                      <tr key={department.departmentId ?? "unassigned"} className="align-top">
+                        <th className="sticky left-0 z-10 hidden border-r bg-card p-3 text-left font-bold shadow-[2px_0_4px_-3px_rgba(0,0,0,0.3)] sm:table-cell">
+                          {department.departmentName}
+                        </th>
+                        {department.days.map((day, dayIndex) => {
+                          const isToday = day.date === todayDate;
+                          return (
+                            <td key={day.date} className={cn("border-r p-2", dayIndex !== 1 && "hidden sm:table-cell", isToday && "bg-teal-50/40 dark:bg-teal-950/10")}>
+                              <div className="mb-2 border-b pb-2 font-bold text-foreground sm:hidden">
+                                {department.departmentName}
+                              </div>
+                              {day.entries.length === 0 ? (
+                                <span className="block py-2 text-center text-muted-foreground/50">—</span>
+                              ) : (
+                                <div className="max-h-52 space-y-1.5 overflow-y-auto pr-1">
+                                  {day.entries.map((entry) => {
+                                    const shiftConfig = entry.status === "roster" ? getShiftConfig(entry.label) : null;
+                                    const ShiftIcon = shiftConfig?.Icon;
+                                    return (
+                                      <div
+                                        key={`${entry.staffId}-${entry.isPreviousDayCarryOver ? "carry" : "primary"}`}
+                                        className={cn(
+                                          "rounded-md border p-2 shadow-xs",
+                                          entry.status !== "roster" && "bg-background",
+                                          shiftConfig?.bgClass,
+                                          shiftConfig?.borderClass,
+                                          shiftConfig?.textColorClass
+                                        )}
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="min-w-0">
+                                            <p className={cn("truncate font-semibold", entry.status !== "roster" && "text-foreground")} title={entry.staffName}>{entry.staffName}</p>
+                                            <p className={cn("font-mono text-[9px]", entry.status === "roster" ? "opacity-70" : "text-muted-foreground")}>{entry.employeeCode}</p>
+                                          </div>
+                                          <span className={cn(
+                                            "shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                                            entry.status === "leave" && "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300",
+                                            entry.status === "off" && "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300",
+                                            entry.status === "roster" && shiftConfig?.borderClass
+                                          )}>
+                                            {entry.isPreviousDayCarryOver ? "Previous night" : entry.status}
+                                          </span>
+                                        </div>
+                                        <p className={cn("mt-1 flex items-center gap-1 truncate text-[10px] font-semibold", entry.status !== "roster" && "text-muted-foreground")} title={entry.label}>
+                                          {ShiftIcon && <ShiftIcon size={11} className={cn("shrink-0", shiftConfig?.colorClass)} />}
+                                          <span>{entry.label}</span>
+                                          {entry.isPreviousDayCarryOver && entry.endTime
+                                            ? <span className="font-normal opacity-75">· until {entry.endTime.slice(0, 5)}</span>
+                                            : entry.startTime && entry.endTime
+                                              ? <span className="font-normal opacity-75">· {entry.startTime.slice(0, 5)}-{entry.endTime.slice(0, 5)}</span>
+                                              : null}
+                                        </p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-3 border-t bg-muted/20 px-4 py-3 text-[10px] text-muted-foreground">
+              <span><strong className="text-rose-700 dark:text-rose-300">LEAVE</strong> approved leave</span>
+              <span><strong className="text-amber-700 dark:text-amber-300">OFF</strong> weekly, approved, attendance, or rostered off</span>
+              <span><strong className="text-slate-700 dark:text-slate-300">ROSTER</strong> assigned shift using roster shift colors</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Latest Published Magazine Issues */}
       <PublishedMagazineSection variant="dashboard" limit={3} />
 
@@ -273,9 +548,11 @@ function Dashboard() {
         </div>
 
       {/* Charts & Shortcuts Panel */}
+      {(showRecentNotifications || showQuickActions) && (
       <div className="grid gap-6 xl:grid-cols-3">
         {/* Recent Notifications Card */}
-        <Card className="xl:col-span-2 shadow-sm border border-border bg-card">
+        {showRecentNotifications && (
+        <Card className={cn("shadow-sm border border-border bg-card", showQuickActions ? "xl:col-span-2" : "xl:col-span-3")}>
             <CardHeader className="border-b border-border/50 pb-4 flex flex-row items-center justify-between gap-4">
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
@@ -343,9 +620,11 @@ function Dashboard() {
               )}
             </CardContent>
           </Card>
+        )}
 
         {/* Quick Action Console */}
-        <Card className="xl:col-span-1 border border-border bg-card">
+        {showQuickActions && (
+        <Card className={cn("border border-border bg-card", showRecentNotifications ? "xl:col-span-1" : "xl:col-span-3")}>
           <CardHeader className="border-b border-border/50 pb-4">
             <CardTitle className="text-base flex items-center gap-2">
               <Settings className="text-slate-600 dark:text-slate-400" size={18} />
@@ -504,7 +783,9 @@ function Dashboard() {
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
+      )}
     </div>
   );
 }

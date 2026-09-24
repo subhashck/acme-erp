@@ -252,6 +252,11 @@ export const publicRoutes = new Hono()
    * Returns list of all published magazine issues.
    */
   .get("/public/magazine", async (c) => {
+    const settings = await getHospitalSettingsFromDb();
+    if (!settings.showPublishedMagazines) {
+      return c.json([]);
+    }
+
     const issues = await db
       .select({
         id: magazineIssues.id,

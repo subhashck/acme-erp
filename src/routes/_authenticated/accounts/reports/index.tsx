@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown, Share2, Copy, CheckCheck, X, History, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Plus, Calendar as CalendarIcon, Coins, FileText, Lock, Trash2, RefreshCw, TrendingUp, ArrowUp, ArrowDown, Share2, Copy, CheckCheck, X, History, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, MessageCircle } from "lucide-react";
 import * as React from "react";
 import { Calendar } from "../../../../components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../../components/ui/popover";
@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import { Badge } from "@/ui/badge";
 import { useUserPermissions } from "@/lib/permissions";
+import { shareClosingPDFViaWhatsApp } from "@/lib/closing-export";
 
 export const Route = createFileRoute("/_authenticated/accounts/reports/")({
   component: ReportsHistory,
@@ -165,6 +166,32 @@ function ReportsHistory() {
   );
 
   const reportsData = reportsQuery.data ?? [];
+  const categoriesQuery = useRpcQuery<any[]>(
+    ["service-categories"],
+    () => (client["daily-closing"] as any).categories.$get()
+  );
+  const expCategoriesQuery = useRpcQuery<any[]>(
+    ["expense-categories"],
+    () => (client["daily-closing"] as any)["expense-categories"].$get()
+  );
+  const [sharingReportId, setSharingReportId] = React.useState<number | null>(null);
+
+  const shareReportPdfViaWhatsApp = async (reportId: number) => {
+    setSharingReportId(reportId);
+    try {
+      const response = await client["daily-closing"].reports[":id"].$get({
+        param: { id: String(reportId) },
+      });
+      if (!response.ok) throw new Error("Unable to load the complete report");
+
+      const report = await response.json();
+      await shareClosingPDFViaWhatsApp(report, categoriesQuery.data ?? [], expCategoriesQuery.data ?? []);
+    } catch (error: any) {
+      alert(error?.message || "Failed to prepare the report PDF for WhatsApp");
+    } finally {
+      setSharingReportId(null);
+    }
+  };
 
   // Pagination state for Reconciliation Log History
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -669,6 +696,21 @@ function ReportsHistory() {
                             <Link to="/accounts/reports/$id" params={{ id: String(report.id) }}>
                               <FileText size={16} />
                             </Link>
+                          </Button>
+
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => shareReportPdfViaWhatsApp(report.id)}
+                            disabled={sharingReportId !== null || categoriesQuery.isLoading || expCategoriesQuery.isLoading}
+                            title="Send report PDF via WhatsApp"
+                            className="h-8 cursor-pointer gap-1.5 border-emerald-300 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/10 hover:text-emerald-800 dark:border-emerald-700 dark:text-emerald-400"
+                          >
+                            {sharingReportId === report.id
+                              ? <RefreshCw size={13} className="animate-spin" />
+                              : <MessageCircle size={13} />}
+                            WhatsApp PDF
                           </Button>
 
                           {/* Publish button — available for all statuses */}

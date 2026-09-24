@@ -243,6 +243,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Fee Ledger & Collection", to: "/college/fees" });
     } else if (sub === "general-receipts") {
       items.push({ label: "General & Misc Receipts", to: "/college/general-receipts" });
+    } else if (sub === "expenses") {
+      items.push({ label: "Expense Vouchers", to: "/college/expenses" });
     } else if (sub === "fee-dues") {
       items.push({ label: "Student Fee Due Tracking", to: "/college/fee-dues" });
     } else if (sub === "attendance") {
@@ -609,6 +611,13 @@ function ShellContent({ session }: { session: any }) {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         General Receipts
+                      </Link>
+                      <Link
+                        to={"/college/expenses" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Expense Vouchers
                       </Link>
                       <Link
                         to={"/college/fee-dues" as any}
