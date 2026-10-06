@@ -1396,7 +1396,7 @@ export const nursingFeeTransactions = sqliteTable("nursing_fee_transactions", {
   receiptNumber: text("receipt_number").notNull().unique(),
   feeType: text("fee_type"),
   paymentFrequency: text("payment_frequency"),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull().default("0"),
+  amount: numeric("amount", { precision: 12, scale: 0 }).notNull().default("0"),
   paymentMode: text("payment_mode").notNull().default("cash"), // cash, bank_transfer, upi, card, cheque
   paymentDate: text("payment_date").notNull(),
   status: text("status").notNull().default("paid"), // paid, pending, partially_paid, refunded, adjusted

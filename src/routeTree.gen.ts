@@ -55,6 +55,7 @@ import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authent
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
 import { Route as AuthenticatedFrontOfficeRazorpayReconciliationRouteImport } from './routes/_authenticated/front-office/razorpay-reconciliation'
 import { Route as AuthenticatedFrontOfficePatientsRouteImport } from './routes/_authenticated/front-office/patients'
+import { Route as AuthenticatedFrontOfficeOpdCollectionRouteImport } from './routes/_authenticated/front-office/opd-collection'
 import { Route as AuthenticatedFrontOfficeNewRouteImport } from './routes/_authenticated/front-office/new'
 import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
 import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
@@ -378,6 +379,12 @@ const AuthenticatedFrontOfficePatientsRoute =
   AuthenticatedFrontOfficePatientsRouteImport.update({
     id: '/front-office/patients',
     path: '/front-office/patients',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedFrontOfficeOpdCollectionRoute =
+  AuthenticatedFrontOfficeOpdCollectionRouteImport.update({
+    id: '/front-office/opd-collection',
+    path: '/front-office/opd-collection',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedFrontOfficeNewRoute =
@@ -788,6 +795,7 @@ export interface FileRoutesByFullPath {
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/front-office/opd-collection': typeof AuthenticatedFrontOfficeOpdCollectionRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
@@ -896,6 +904,7 @@ export interface FileRoutesByTo {
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/front-office/opd-collection': typeof AuthenticatedFrontOfficeOpdCollectionRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
@@ -1006,6 +1015,7 @@ export interface FileRoutesById {
   '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/_authenticated/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
+  '/_authenticated/front-office/opd-collection': typeof AuthenticatedFrontOfficeOpdCollectionRoute
   '/_authenticated/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/_authenticated/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
@@ -1117,6 +1127,7 @@ export interface FileRouteTypes {
     | '/college/students'
     | '/college/subjects'
     | '/front-office/new'
+    | '/front-office/opd-collection'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
@@ -1225,6 +1236,7 @@ export interface FileRouteTypes {
     | '/college/students'
     | '/college/subjects'
     | '/front-office/new'
+    | '/front-office/opd-collection'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
@@ -1334,6 +1346,7 @@ export interface FileRouteTypes {
     | '/_authenticated/college/students'
     | '/_authenticated/college/subjects'
     | '/_authenticated/front-office/new'
+    | '/_authenticated/front-office/opd-collection'
     | '/_authenticated/front-office/patients'
     | '/_authenticated/front-office/razorpay-reconciliation'
     | '/_authenticated/hr/add-staff'
@@ -1737,6 +1750,13 @@ declare module '@tanstack/react-router' {
       path: '/front-office/patients'
       fullPath: '/front-office/patients'
       preLoaderRoute: typeof AuthenticatedFrontOfficePatientsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/front-office/opd-collection': {
+      id: '/_authenticated/front-office/opd-collection'
+      path: '/front-office/opd-collection'
+      fullPath: '/front-office/opd-collection'
+      preLoaderRoute: typeof AuthenticatedFrontOfficeOpdCollectionRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/front-office/new': {
@@ -2290,6 +2310,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCapitalRepaymentsRoute: typeof AuthenticatedCapitalRepaymentsRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
   AuthenticatedFrontOfficeNewRoute: typeof AuthenticatedFrontOfficeNewRoute
+  AuthenticatedFrontOfficeOpdCollectionRoute: typeof AuthenticatedFrontOfficeOpdCollectionRoute
   AuthenticatedFrontOfficePatientsRoute: typeof AuthenticatedFrontOfficePatientsRoute
   AuthenticatedFrontOfficeRazorpayReconciliationRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
@@ -2381,6 +2402,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
   AuthenticatedFrontOfficeNewRoute: AuthenticatedFrontOfficeNewRoute,
+  AuthenticatedFrontOfficeOpdCollectionRoute:
+    AuthenticatedFrontOfficeOpdCollectionRoute,
   AuthenticatedFrontOfficePatientsRoute: AuthenticatedFrontOfficePatientsRoute,
   AuthenticatedFrontOfficeRazorpayReconciliationRoute:
     AuthenticatedFrontOfficeRazorpayReconciliationRoute,

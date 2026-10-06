@@ -83,10 +83,12 @@ interface ComponentPayment {
 
 interface InstallmentPeriod {
   period: string;
+  dueDate?: string | null;
   expectedAmount: number;
   paidAmount: number;
   dueAmount: number;
-  status: "paid" | "partial" | "due";
+  scheduledBalance?: number;
+  status: "paid" | "partial" | "due" | "upcoming";
 }
 
 interface ComponentDue {
@@ -96,7 +98,9 @@ interface ComponentDue {
   expectedAmount: number;
   paidAmount: number;
   dueAmount: number;
-  status: "paid" | "partial" | "due";
+  scheduledBalance?: number;
+  remainingBalance?: number;
+  status: "paid" | "partial" | "due" | "upcoming";
   payments: ComponentPayment[];
   installments: InstallmentPeriod[];
 }
@@ -107,6 +111,7 @@ interface YearlyComponentDue {
   totalExpected: number;
   totalPaid: number;
   totalDue: number;
+  scheduledBalance?: number;
   components: ComponentDue[];
 }
 
@@ -134,9 +139,12 @@ interface StudentDue {
   courseName: string;
   quotaCategory: string;
   semester: number;
+  grossFee?: number;
   totalFee: number;
   paidAmount: number;
   balanceDue: number;
+  remainingBalance?: number;
+  scheduledBalance?: number;
   totalDiscountConcessions?: number;
   termStartDate: string | null;
   feeDueDate: string | null;
@@ -500,7 +508,7 @@ function StudentFeeDueTrackingPage() {
                                   <div className="flex items-center gap-4 text-xs">
                                     <div>
                                       <span className="text-muted-foreground block text-[11px]">Gross Course Liability</span>
-                                      <strong className="text-foreground">₹{st.totalFee.toLocaleString()}</strong>
+                                      <strong className="text-foreground">₹{Number(st.grossFee ?? st.totalFee).toLocaleString()}</strong>
                                     </div>
                                     {Number(st.totalDiscountConcessions || 0) > 0 && (
                                       <div>
@@ -518,6 +526,10 @@ function StudentFeeDueTrackingPage() {
                                         ₹{st.balanceDue.toLocaleString()}
                                       </strong>
                                     </div>
+                                    <div>
+                                      <span className="text-sky-600 block text-[11px]">Future Scheduled Balance</span>
+                                      <strong className="text-sky-600">₹{Number(st.scheduledBalance || 0).toLocaleString()}</strong>
+                                    </div>
                                   </div>
 
                                   <div className="flex items-center gap-2">
@@ -526,7 +538,7 @@ function StudentFeeDueTrackingPage() {
                                         Student Profile
                                       </Link>
                                     </Button>
-                                    {st.balanceDue > 0 && (
+                                    {Number(st.remainingBalance ?? st.balanceDue) > 0 && (
                                       <Button size="sm" asChild className="h-7 text-xs bg-teal-600 text-white hover:bg-teal-700">
                                         <Link to="/college/fees">
                                           Collect Payment
@@ -563,8 +575,9 @@ function StudentFeeDueTrackingPage() {
                                               </div>
                                               <div className="flex items-center gap-3 text-[11px]">
                                                 <span>Expected: <strong>₹{yearGroup.totalExpected.toLocaleString()}</strong></span>
-                                                <span>Paid: <strong className="text-emerald-600">₹{yearGroup.totalPaid.toLocaleString()}</strong></span>
-                                                <span>Due: <strong className={yearGroup.totalDue > 0 ? "text-rose-600" : "text-emerald-600"}>₹{yearGroup.totalDue.toLocaleString()}</strong></span>
+                                                <span>Settled: <strong className="text-emerald-600">₹{yearGroup.totalPaid.toLocaleString()}</strong></span>
+                                                <span>Due Now: <strong className={yearGroup.totalDue > 0 ? "text-rose-600" : "text-emerald-600"}>₹{yearGroup.totalDue.toLocaleString()}</strong></span>
+                                                <span>Scheduled: <strong className="text-sky-600">₹{Number(yearGroup.scheduledBalance || 0).toLocaleString()}</strong></span>
                                               </div>
                                             </div>
 
@@ -575,8 +588,9 @@ function StudentFeeDueTrackingPage() {
                                                   <th className="p-2">Fee Type / Component</th>
                                                   <th className="p-2">Payment Schedule</th>
                                                   <th className="p-2 text-right">Expected Fee</th>
-                                                  <th className="p-2 text-right">Paid Amount</th>
-                                                  <th className="p-2 text-right">Outstanding Due</th>
+                                                  <th className="p-2 text-right">Settled Amount</th>
+                                                  <th className="p-2 text-right">Due Now</th>
+                                                  <th className="p-2 text-right">Future Scheduled</th>
                                                   <th className="p-2 pr-3">Status</th>
                                                 </tr>
                                               </thead>
@@ -628,6 +642,9 @@ function StudentFeeDueTrackingPage() {
                                                             <span className="text-emerald-600">₹0</span>
                                                           )}
                                                         </td>
+                                                        <td className="p-2 text-right font-medium text-sky-600">
+                                                          ₹{Number(comp.scheduledBalance || 0).toLocaleString()}
+                                                        </td>
                                                         <td className="p-2 pr-3">
                                                           {comp.status === "paid" && (
                                                             <span className="text-emerald-600 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded text-[10px] font-medium inline-block">
@@ -644,13 +661,18 @@ function StudentFeeDueTrackingPage() {
                                                               ● Due
                                                             </span>
                                                           )}
+                                                          {comp.status === "upcoming" && (
+                                                            <span className="text-sky-600 bg-sky-50 dark:bg-sky-950 px-2 py-0.5 rounded text-[10px] font-medium inline-block">
+                                                              ● Scheduled
+                                                            </span>
+                                                          )}
                                                         </td>
                                                       </tr>
 
                                                       {/* Expanded Component Details */}
                                                       {isCompExpanded && (
                                                         <tr className="bg-muted/10">
-                                                          <td colSpan={7} className="p-0">
+                                                          <td colSpan={8} className="p-0">
                                                             <div className="px-6 py-3 space-y-3 border-t border-dashed">
                                                               {/* Installment Period Breakdown */}
                                                               {comp.installments?.length > 0 && comp.frequencyKey !== "annually" && comp.frequencyKey !== "one_time" && (
@@ -666,7 +688,8 @@ function StudentFeeDueTrackingPage() {
                                                                           "p-2 rounded border text-[11px]",
                                                                           inst.status === "paid" && "bg-emerald-50/50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900",
                                                                           inst.status === "partial" && "bg-amber-50/50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-900",
-                                                                          inst.status === "due" && "bg-muted/30 border-muted"
+                                                                          inst.status === "due" && "bg-rose-50/40 border-rose-200 dark:bg-rose-950/20 dark:border-rose-900",
+                                                                          inst.status === "upcoming" && "bg-sky-50/40 border-sky-200 dark:bg-sky-950/20 dark:border-sky-900"
                                                                         )}
                                                                       >
                                                                         <div className="font-semibold text-foreground truncate">{inst.period}</div>
@@ -676,6 +699,10 @@ function StudentFeeDueTrackingPage() {
                                                                             <span className="text-emerald-600 font-medium">✓ Paid</span>
                                                                           ) : inst.status === "partial" ? (
                                                                             <span className="text-amber-600 font-medium">₹{inst.dueAmount.toLocaleString()} due</span>
+                                                                          ) : inst.status === "upcoming" ? (
+                                                                            <span className="text-sky-600 font-medium">
+                                                                              {inst.dueDate ? `Due ${format(new Date(inst.dueDate + "T00:00:00"), "MMM d")}` : "Scheduled"}
+                                                                            </span>
                                                                           ) : (
                                                                             <span className="text-rose-500 font-medium">Due</span>
                                                                           )}

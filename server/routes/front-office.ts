@@ -26,6 +26,7 @@ import {
   resetStuckSync,
 } from "../services/docterz.ts";
 import { jsonBody, requireFrontOfficeAccess } from "./shared.ts";
+import { generateHmsOpdCollectionReport } from "../services/hms-opd-report.ts";
 
 function parseHistoryDate(value: unknown): Date | null {
   const text = String(value ?? "").trim();
@@ -47,6 +48,16 @@ function parseHistoryDate(value: unknown): Date | null {
 
 export const frontOfficeRoutes = new Hono<AuthEnv>()
   .use("/front-office/*", requireFrontOfficeAccess)
+
+  .post("/front-office/opd-collection/generate", async (c) => {
+    try {
+      const report = await generateHmsOpdCollectionReport();
+      return c.json({ success: true, ...report });
+    } catch (error) {
+      console.error("HMS OPD collection report generation failed", error);
+      return c.json({ success: false, error: error instanceof Error ? error.message : "Report generation failed" }, 502);
+    }
+  })
 
   .post("/front-office/appointment-history/sync", async (c) => {
     const input = await jsonBody(c, z.object({

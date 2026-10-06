@@ -37,6 +37,7 @@ import {
   Send,
   FileText,
   Share2,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Autocomplete } from "@/ui/autocomplete";
@@ -47,6 +48,7 @@ import { toast } from "@/lib/toast";
 import { toNum } from "@/utils/math";
 import { cn } from "@/lib/utils";
 import { formatCollegePaymentMode } from "@/lib/college-payment";
+import { useUserPermissions } from "@/lib/permissions";
 import {
   Select,
   SelectContent,
@@ -126,6 +128,196 @@ const frequencyKeyToBillingPeriodType = (frequencyKey?: string): string => {
   }
 };
 
+const formatPeriodOption = (period: string, periodType: string): string => {
+  if (periodType !== "month") return period;
+  const match = period.trim().match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (!match) return period;
+  return `${match[1].slice(0, 3).toUpperCase()}-${match[2].slice(-2)}`;
+};
+
+interface AcademicScheduleRow {
+  id: number;
+  batchId: number;
+  academicYear: string;
+  semester: number;
+  startDate: string;
+  endDate: string;
+  feeDueDate?: string | null;
+}
+
+interface BillingPeriodDefinition {
+  value: string;
+  monthKeys: string[];
+}
+
+const fallbackAcademicYearMonths = (academicYear: string): string[] => {
+  const startYear = parseInt(academicYear.split("-")[0], 10);
+  if (!Number.isFinite(startYear)) return [];
+  return [
+    `${startYear}-06`, `${startYear}-07`, `${startYear}-08`, `${startYear}-09`,
+    `${startYear}-10`, `${startYear}-11`, `${startYear}-12`, `${startYear + 1}-01`,
+    `${startYear + 1}-02`, `${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`,
+  ];
+};
+
+const monthKeyFromDate = (date: Date): string =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+
+const monthKeysBetween = (startDate: string, endDate: string): string[] => {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+  const result: string[] = [];
+  while (cursor <= last) {
+    result.push(monthKeyFromDate(cursor));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return result;
+};
+
+const scheduledDaysInMonth = (schedule: AcademicScheduleRow, monthKey: string): number => {
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthStart = Date.UTC(year, month - 1, 1);
+  const monthEnd = Date.UTC(year, month, 0);
+  const scheduleStart = new Date(`${schedule.startDate}T00:00:00Z`).getTime();
+  const scheduleEnd = new Date(`${schedule.endDate}T00:00:00Z`).getTime();
+  const overlapStart = Math.max(monthStart, scheduleStart);
+  const overlapEnd = Math.min(monthEnd, scheduleEnd);
+  return overlapEnd < overlapStart ? 0 : Math.floor((overlapEnd - overlapStart) / 86_400_000) + 1;
+};
+
+const inferScheduleMonthPlan = (schedules: AcademicScheduleRow[]) => {
+  const sortedSchedules = [...schedules].sort(
+    (a, b) => a.startDate.localeCompare(b.startDate) || a.semester - b.semester
+  );
+  const candidateMonths = Array.from(
+    new Set(sortedSchedules.flatMap((schedule) => monthKeysBetween(schedule.startDate, schedule.endDate)))
+  ).sort();
+  const semesterMonths = new Map<number, string[]>();
+
+  // A calendar month is atomic. If two terms touch the same month, assign it
+  // to the term containing the greatest number of scheduled days so it cannot
+  // be charged twice (for example, January between Semester 1 and Semester 2).
+  candidateMonths.forEach((monthKey) => {
+    const owner = sortedSchedules
+      .map((schedule) => ({ schedule, days: scheduledDaysInMonth(schedule, monthKey) }))
+      .filter((entry) => entry.days > 0)
+      .sort((a, b) => b.days - a.days || a.schedule.semester - b.schedule.semester)[0]?.schedule;
+    if (!owner) return;
+    const current = semesterMonths.get(owner.semester) || [];
+    current.push(monthKey);
+    semesterMonths.set(owner.semester, current);
+  });
+
+  return {
+    months: candidateMonths.filter((monthKey) =>
+      Array.from(semesterMonths.values()).some((semester) => semester.includes(monthKey))
+    ),
+    semesters: sortedSchedules.map((schedule) => ({
+      schedule,
+      monthKeys: semesterMonths.get(schedule.semester) || [],
+    })).filter((entry) => entry.monthKeys.length > 0),
+  };
+};
+
+const formatMonthKeyLong = (monthKey: string): string => {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+};
+
+const formatMonthKeyShort = (monthKey: string): string => {
+  const [year, month] = monthKey.split("-").map(Number);
+  const mon = new Date(Date.UTC(year, month - 1, 1))
+    .toLocaleString("en-US", { month: "short", timeZone: "UTC" })
+    .toUpperCase();
+  return `${mon}-${String(year).slice(-2)}`;
+};
+
+const buildBillingPeriodDefinitions = (
+  academicYear: string,
+  periodType: string,
+  schedules: AcademicScheduleRow[]
+): BillingPeriodDefinition[] => {
+  const plan = inferScheduleMonthPlan(schedules);
+  const months = plan.months.length > 0 ? plan.months : fallbackAcademicYearMonths(academicYear);
+  if (months.length === 0) return [];
+
+  if (periodType === "month") {
+    return months.map((monthKey) => ({ value: formatMonthKeyLong(monthKey), monthKeys: [monthKey] }));
+  }
+  if (periodType === "semester") {
+    return plan.semesters.map(({ schedule, monthKeys }) => ({
+      value: `Semester ${schedule.semester} (${formatMonthKeyShort(monthKeys[0])} - ${formatMonthKeyShort(monthKeys[monthKeys.length - 1])})`,
+      monthKeys,
+    }));
+  }
+  if (periodType === "quarter") {
+    const result: BillingPeriodDefinition[] = [];
+    for (let index = 0; index < months.length; index += 3) {
+      const monthKeys = months.slice(index, index + 3);
+      result.push({
+        value: `Q${result.length + 1} (${formatMonthKeyShort(monthKeys[0])} - ${formatMonthKeyShort(monthKeys[monthKeys.length - 1])})`,
+        monthKeys,
+      });
+    }
+    return result;
+  }
+  return [{
+    value: `Full Academic Year (${formatMonthKeyShort(months[0])} - ${formatMonthKeyShort(months[months.length - 1])})`,
+    monthKeys: months,
+  }];
+};
+
+const expandPeriodsToMonths = (
+  academicYear: string,
+  periodType: string,
+  periods: string[],
+  schedules: AcademicScheduleRow[] = []
+): string[] => {
+  const definitions = buildBillingPeriodDefinitions(academicYear, periodType, schedules);
+  if (definitions.length > 0 && schedules.length > 0) {
+    return Array.from(new Set(
+      periods.flatMap((period) =>
+        definitions.find((definition) => definition.value === period)?.monthKeys || []
+      )
+    )).sort();
+  }
+
+  const months = fallbackAcademicYearMonths(academicYear);
+  if (months.length !== 12) return [];
+  const indexes = new Set<number>();
+  const addRange = (start: number, end: number) => {
+    for (let index = start; index <= end; index += 1) indexes.add(index);
+  };
+
+  if (periodType === "academic_year") addRange(0, 11);
+  for (const period of periods) {
+    const value = period.trim().toLowerCase();
+    if (periodType === "month") {
+      const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
+      if (match) {
+        const date = new Date(`${match[1]} 1, ${match[2]}`);
+        const key = Number.isNaN(date.getTime()) ? "" : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        const index = months.indexOf(key);
+        if (index >= 0) indexes.add(index);
+      }
+    } else if (periodType === "semester") {
+      const semester = Number(value.match(/semester\s*(\d+)/)?.[1] || 1);
+      addRange(semester % 2 === 0 ? 6 : 0, semester % 2 === 0 ? 11 : 5);
+    } else if (periodType === "quarter") {
+      const quarter = Number(value.match(/q([1-4])/)?.[1] || 1);
+      addRange((quarter - 1) * 3, quarter * 3 - 1);
+    }
+  }
+  return [...indexes].sort((a, b) => a - b).map((index) => months[index]);
+};
+
 const normalizedFeeName = (value: unknown): string =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
@@ -201,12 +393,14 @@ export interface PaidPeriodInfo {
   isMess: boolean;
   isAcademic: boolean;
   components: string[];
+  componentIds: string[];
 }
 
 function extractPaidPeriodsFromTx(
   tx: FeeTransaction,
   allPeriodOptions: string[],
-  targetPeriodType: string
+  targetPeriodType: string,
+  schedules: AcademicScheduleRow[]
 ): PaidPeriodInfo[] {
   const r = parseRemarks(tx.remarks);
   const receiptNumber = tx.receiptNumber;
@@ -214,6 +408,9 @@ function extractPaidPeriodsFromTx(
   const feeType = tx.feeType || "Course Fee";
   const items = Array.isArray(r?.items) ? r.items : [];
   const components = items.map((i: any) => i.name);
+  const componentIds = items
+    .map((i: any) => String(i?.componentId || "").trim())
+    .filter(Boolean);
   if (components.length === 0 && feeType) {
     components.push(feeType);
   }
@@ -238,9 +435,34 @@ function extractPaidPeriodsFromTx(
         isMess,
         isAcademic,
         components,
+        componentIds,
       });
     }
   };
+
+  const receiptPeriods: string[] = Array.isArray(r?.selectedPeriods)
+    ? r.selectedPeriods
+    : (r?.billingPeriodValue ? [r.billingPeriodValue] : []);
+  const coveredMonths = Array.isArray(r?.coveredMonths) && r.coveredMonths.length > 0
+    ? r.coveredMonths.map((month: unknown) => String(month)).filter(Boolean)
+    : expandPeriodsToMonths(
+        String(r?.academicYear || ""),
+        String(r?.billingPeriodType || ""),
+        receiptPeriods,
+        schedules.filter((schedule) => schedule.academicYear === r?.academicYear)
+      );
+  if (coveredMonths.length > 0 && r?.academicYear) {
+    for (const option of allPeriodOptions) {
+      const optionMonths = expandPeriodsToMonths(
+        String(r.academicYear),
+        targetPeriodType,
+        [option],
+        schedules.filter((schedule) => schedule.academicYear === r.academicYear)
+      );
+      if (optionMonths.some((month) => coveredMonths.includes(month))) addPeriod(option);
+    }
+    return result;
+  }
 
   // 1. Array of selectedPeriods
   if (Array.isArray(r?.selectedPeriods) && r.selectedPeriods.length > 0) {
@@ -736,6 +958,7 @@ export const shareReceiptPDFViaWhatsApp = async (
 
 function FeeManagementPage() {
   const queryClient = useQueryClient();
+  const { isAdmin } = useUserPermissions();
   const { session } = Route.useRouteContext() as { session?: any };
   const currentUserName = session?.data?.user?.name || session?.data?.user?.email || session?.user?.name || "Cashier / Accounts Officer";
   const [collectModalOpen, setCollectModalOpen] = React.useState(false);
@@ -744,6 +967,7 @@ function FeeManagementPage() {
   const [collectItems, setCollectItems] = React.useState<CollectFeeItem[]>([]);
   const [receiptTx, setReceiptTx] = React.useState<FeeTransaction | null>(null);
   const [receiptModalOpen, setReceiptModalOpen] = React.useState(false);
+  const [deletingReceipt, setDeletingReceipt] = React.useState<FeeTransaction | null>(null);
   const [whatsAppModalOpen, setWhatsAppModalOpen] = React.useState(false);
   const [whatsAppTx, setWhatsAppTx] = React.useState<FeeTransaction | null>(null);
   const [whatsAppStudent, setWhatsAppStudent] = React.useState<any | null>(null);
@@ -815,6 +1039,15 @@ function FeeManagementPage() {
     },
   });
 
+  const { data: academicSchedules = [] } = useQuery<AcademicScheduleRow[]>({
+    queryKey: ["nursing", "academic-schedules"],
+    queryFn: async () => {
+      const res = await fetch("/api/nursing/academic-schedules");
+      if (!res.ok) throw new Error("Failed to fetch academic schedules");
+      return res.json();
+    },
+  });
+
   const { data: txResponse, isLoading: isLoadingTx } = useQuery<{
     transactions: FeeTransaction[];
     pagination: {
@@ -855,6 +1088,21 @@ function FeeManagementPage() {
   });
 
   const feeTransactions = txResponse?.transactions || [];
+
+  const deleteReceiptMutation = useMutation({
+    mutationFn: async (receipt: FeeTransaction) => {
+      const res = await fetch(`/api/nursing/fees/transactions/${receipt.id}`, { method: "DELETE" });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Failed to delete fee receipt");
+      return body;
+    },
+    onSuccess: async (_data, receipt) => {
+      setDeletingReceipt(null);
+      await queryClient.invalidateQueries({ queryKey: ["nursing"] });
+      toast.success(`Receipt ${receipt.receiptNumber} deleted successfully`);
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
   const pagination = txResponse?.pagination;
   const totalTransactionsCount = txResponse?.metrics?.totalTransactions ?? 0;
   const totalCollectedAmount = txResponse?.metrics?.totalCollectedAmount ?? 0;
@@ -881,7 +1129,7 @@ function FeeManagementPage() {
       feeStructureId: 0,
       targetAcademicYear: getAcademicYear(),
       billingPeriodType: "semester", // "semester" | "month" | "quarter" | "academic_year"
-      billingPeriodValue: "Semester 1",
+      billingPeriodValue: "",
       feeType: "Course Fee",
       paymentFrequency: "annually",
       grossAmount: 0,
@@ -907,7 +1155,7 @@ function FeeManagementPage() {
     : feeStructures;
 
   const currentCalYear = new Date().getFullYear();
-  const academicYearOptions = [
+  const fallbackAcademicYearOptions = [
     `${currentCalYear - 2}-${currentCalYear - 1}`,
     `${currentCalYear - 1}-${currentCalYear}`,
     `${currentCalYear}-${currentCalYear + 1}`,
@@ -915,47 +1163,32 @@ function FeeManagementPage() {
     `${currentCalYear + 2}-${currentCalYear + 3}`,
   ];
 
-  const periodValueOptions = React.useMemo(() => {
-    if (watchBillingPeriodType === "semester") {
-      return [
-        "Semester 1",
-        "Semester 2",
-        "Semester 3",
-        "Semester 4",
-        "Semester 5",
-        "Semester 6",
-        "Semester 7",
-        "Semester 8",
-      ];
-    }
-    if (watchBillingPeriodType === "quarter") {
-      return [
-        "Q1 (Apr - Jun)",
-        "Q2 (Jul - Sep)",
-        "Q3 (Oct - Dec)",
-        "Q4 (Jan - Mar)",
-      ];
-    }
-    if (watchBillingPeriodType === "month") {
-      const startYear = parseInt(watchTargetAcademicYear.split("-")[0], 10) || currentCalYear;
-      const endYear = startYear + 1;
-      return [
-        `June ${startYear}`,
-        `July ${startYear}`,
-        `August ${startYear}`,
-        `September ${startYear}`,
-        `October ${startYear}`,
-        `November ${startYear}`,
-        `December ${startYear}`,
-        `January ${endYear}`,
-        `February ${endYear}`,
-        `March ${endYear}`,
-        `April ${endYear}`,
-        `May ${endYear}`,
-      ];
-    }
-    return ["Full Academic Year"];
-  }, [watchBillingPeriodType, watchTargetAcademicYear, currentCalYear]);
+  const selectedBatchSchedules = React.useMemo(
+    () => academicSchedules.filter((schedule) => schedule.batchId === selectedStudentForCollect?.batchId),
+    [academicSchedules, selectedStudentForCollect?.batchId]
+  );
+  const targetAcademicYearSchedules = React.useMemo(
+    () => selectedBatchSchedules.filter((schedule) => schedule.academicYear === watchTargetAcademicYear),
+    [selectedBatchSchedules, watchTargetAcademicYear]
+  );
+  const academicYearOptions = React.useMemo(() => {
+    const configured = Array.from(new Set(selectedBatchSchedules.map((schedule) => schedule.academicYear))).sort();
+    return configured.length > 0 ? configured : fallbackAcademicYearOptions;
+  }, [selectedBatchSchedules, currentCalYear]);
+  const periodDefinitions = React.useMemo(
+    () => targetAcademicYearSchedules.length > 0
+      ? buildBillingPeriodDefinitions(
+          watchTargetAcademicYear,
+          watchBillingPeriodType,
+          targetAcademicYearSchedules
+        )
+      : [],
+    [watchTargetAcademicYear, watchBillingPeriodType, targetAcademicYearSchedules]
+  );
+  const periodValueOptions = React.useMemo(
+    () => periodDefinitions.map((definition) => definition.value),
+    [periodDefinitions]
+  );
 
   const { data: lockedStudentFrequencies = [] } = useQuery<any[]>({
     queryKey: ["nursing", "student-frequencies", watchStudentId, watchTargetAcademicYear],
@@ -994,7 +1227,12 @@ function FeeManagementPage() {
       const txAy = r?.academicYear || "";
       if (txAy && txAy !== watchTargetAcademicYear) return;
 
-      const infos = extractPaidPeriodsFromTx(tx, periodValueOptions, watchBillingPeriodType);
+      const infos = extractPaidPeriodsFromTx(
+        tx,
+        periodValueOptions,
+        watchBillingPeriodType,
+        targetAcademicYearSchedules
+      );
       infos.forEach((info) => {
         const key = normalizedFeeName(info.period);
         if (!key) return;
@@ -1005,7 +1243,7 @@ function FeeManagementPage() {
     });
 
     return map;
-  }, [watchStudentId, studentTransactions, watchTargetAcademicYear, periodValueOptions, watchBillingPeriodType]);
+  }, [watchStudentId, studentTransactions, watchTargetAcademicYear, periodValueOptions, watchBillingPeriodType, targetAcademicYearSchedules]);
 
   // Build a map of one-time fee components already paid by this student across all transactions
   const paidOneTimeMap = React.useMemo(() => {
@@ -1064,83 +1302,80 @@ function FeeManagementPage() {
       const list = paidPeriodsMap.get(opt.toLowerCase()) || [];
       if (list.length === 0) return null;
 
-      const hasHostel = collectItems.some((i) => i.selected && isHostelOnlyFee(i.name));
-      const hasMess = collectItems.some((i) => i.selected && isMessOnlyFee(i.name));
-      const hasAcademic = collectItems.some((i) => i.selected && isAcademicFee(i.name));
+      const selectedComponent = collectItems.find((item) => item.selected);
+      if (!selectedComponent) return null;
 
-      if (hasHostel && !hasMess && !hasAcademic) {
-        return list.find((x) => x.isHostel) || null;
-      }
-      if (hasMess && !hasHostel && !hasAcademic) {
-        return list.find((x) => x.isMess) || null;
-      }
-      if (hasHostel && hasMess) {
-        return list.find((x) => x.isHostel || x.isMess) || null;
-      }
-      if (hasAcademic) {
-        return list.find((x) => x.isAcademic) || null;
-      }
-      return list[0] || null;
+      const selectedId = String(selectedComponent.componentId || "").trim();
+      const selectedName = normalizedFeeName(selectedComponent.name);
+      return list.find((info) => {
+        if (selectedId && info.componentIds.includes(selectedId)) return true;
+        if (selectedName && info.components.some((name) => normalizedFeeName(name) === selectedName)) return true;
+
+        // Legacy receipts may not have an itemized component list. Only use
+        // their fee type when it names the selected component exactly; never
+        // fall back to the broad Academic/Hostel/Mess category.
+        return info.componentIds.length === 0 &&
+          info.components.length === 1 &&
+          normalizedFeeName(info.feeType) === selectedName;
+      }) || null;
     },
     [paidPeriodsMap, collectItems]
   );
 
-  // Detect prior Course Fee payments made for this student in the target academic year
-  const priorCoursePaymentsInYear = React.useMemo(() => {
-    if (!watchStudentId || studentTransactions.length === 0) return [];
-    return studentTransactions.filter((tx) => {
-      if (tx.status === "refunded") return false;
-      const r = parseRemarks(tx.remarks);
-      const txAy = r?.academicYear || "";
-      if (txAy && txAy !== watchTargetAcademicYear) return false;
-
-      // Check if this transaction was for Course Fee
-      const hasCourseItem = Array.isArray(r?.items) && r.items.some((i: any) => isTuitionFee(i.name));
-      const isCourseFeeTx = isTuitionFee(tx.feeType || "") || hasCourseItem;
-      return isCourseFeeTx;
-    });
-  }, [watchStudentId, studentTransactions, watchTargetAcademicYear]);
-
-  // If a prior Course Fee payment has already been recorded in this academic year, lock the interval schedule for Course Fee
-  const lockedPeriodIntervalType = React.useMemo(() => {
-    if (priorCoursePaymentsInYear.length === 0) return null;
-    for (const tx of priorCoursePaymentsInYear) {
-      const r = parseRemarks(tx.remarks);
-      if (r?.billingPeriodType) {
-        return r.billingPeriodType as string;
-      }
-    }
-    const firstFreq = priorCoursePaymentsInYear[0]?.paymentFrequency;
-    if (firstFreq === "monthly") return "month";
-    if (firstFreq === "quarterly") return "quarter";
-    if (firstFreq === "semester") return "semester";
-    if (firstFreq === "yearly" || firstFreq === "annually") return "academic_year";
-    return null;
-  }, [priorCoursePaymentsInYear]);
-
   const isHostelFeeSelected = collectItems.some((i) => i.selected && isHostelOnlyFee(i.name));
   const isMessFeeSelected = collectItems.some((i) => i.selected && isMessOnlyFee(i.name));
-  const watchFeeType = collectForm.watch("feeType");
-  const isHostelFeeType = isHostelOrMessFee(watchFeeType || "");
-  const isHostelOrMessActive = isHostelFeeSelected || isMessFeeSelected || isHostelFeeType;
-
   // Selected hostel fee item (if any)
   const selectedHostelItem = collectItems.find((i) => i.selected && isHostelOnlyFee(i.name));
+  const selectedFeeComponent = collectItems.find((i) => i.selected);
   const isHostelAnnual = selectedHostelItem?.selectedFrequencyKey === "annually";
   const selectedAccommodationItem = collectItems.find((i) => i.selected && isHostelOrMessFee(i.name));
   const requiredAccommodationPeriodType = selectedAccommodationItem
     ? frequencyKeyToBillingPeriodType(selectedAccommodationItem.selectedFrequencyKey)
     : null;
 
-  // Check if Course Fee is currently selected (or if no specific items are populated yet)
-  const isCourseFeeActive = collectItems.length === 0 || collectItems.some((i) => i.selected && isTuitionFee(i.name));
-
   // Determine if period interval schedule is locked
   const isPeriodIntervalLocked =
-    !!selectedAccommodationItem ||
-    (isCourseFeeActive && !isHostelOrMessActive && !!lockedPeriodIntervalType);
+    !!selectedAccommodationItem;
 
-  const [selectedPeriods, setSelectedPeriods] = React.useState<string[]>(["Semester 1"]);
+  const [selectedPeriods, setSelectedPeriods] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (!selectedStudentForCollect) {
+      setSelectedPeriods([]);
+      return;
+    }
+    const configuredYears = Array.from(
+      new Set(selectedBatchSchedules.map((schedule) => schedule.academicYear))
+    ).sort();
+    if (configuredYears.length === 0) {
+      setSelectedPeriods([]);
+      return;
+    }
+    const paymentAcademicYear = getAcademicYear(watchPaymentDate);
+    const nextAcademicYear = configuredYears.includes(paymentAcademicYear)
+      ? paymentAcademicYear
+      : configuredYears[0];
+    if (collectForm.getValues("targetAcademicYear") !== nextAcademicYear) {
+      collectForm.setValue("targetAcademicYear", nextAcademicYear);
+    }
+    setSelectedPeriods([]);
+  }, [selectedStudentForCollect?.id, selectedBatchSchedules]);
+
+  React.useEffect(() => {
+    if (!selectedFeeComponent) {
+      if (selectedPeriods.length > 0) setSelectedPeriods([]);
+      return;
+    }
+    const stillValid = selectedPeriods.filter(
+      (period) => periodValueOptions.includes(period) && !getPaidInfoForPeriod(period)
+    );
+    if (stillValid.length > 0) {
+      if (stillValid.length !== selectedPeriods.length) setSelectedPeriods(stillValid);
+      return;
+    }
+    const firstUnpaid = periodValueOptions.find((period) => !getPaidInfoForPeriod(period));
+    if (firstUnpaid) setSelectedPeriods([firstUnpaid]);
+  }, [selectedFeeComponent?.componentId, periodValueOptions, paidPeriodsMap]);
 
   // Keep selectedPeriods in sync with period type changes and avoid preselecting already paid periods
   const handlePeriodTypeChange = (newType: string, forceComponentSchedule = false) => {
@@ -1151,43 +1386,16 @@ function FeeManagementPage() {
       return;
     }
 
-    if (!forceComponentSchedule && !isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && newType !== lockedPeriodIntervalType) {
-      toast.error(
-        `Period interval type cannot be changed from ${getPeriodIntervalLabel(lockedPeriodIntervalType)} because prior payments were made in AY ${watchTargetAcademicYear}.`
-      );
-      return;
-    }
-
     collectForm.setValue("billingPeriodType", newType);
 
-    const allOpts =
-      newType === "semester"
-        ? ["Semester 1", "Semester 2", "Semester 3", "Semester 4", "Semester 5", "Semester 6", "Semester 7", "Semester 8"]
-        : newType === "quarter"
-        ? ["Q1 (Apr - Jun)", "Q2 (Jul - Sep)", "Q3 (Oct - Dec)", "Q4 (Jan - Mar)"]
-        : newType === "month"
-        ? (() => {
-            const sY = parseInt(watchTargetAcademicYear.split("-")[0], 10) || currentCalYear;
-            const eY = sY + 1;
-            return [
-              `June ${sY}`,
-              `July ${sY}`,
-              `August ${sY}`,
-              `September ${sY}`,
-              `October ${sY}`,
-              `November ${sY}`,
-              `December ${sY}`,
-              `January ${eY}`,
-              `February ${eY}`,
-              `March ${eY}`,
-              `April ${eY}`,
-              `May ${eY}`,
-            ];
-          })()
-        : ["Full Academic Year"];
+    const allOpts = buildBillingPeriodDefinitions(
+      watchTargetAcademicYear,
+      newType,
+      targetAcademicYearSchedules
+    ).map((definition) => definition.value);
 
-    const firstUnpaid = allOpts.find((opt) => !paidPeriodsMap.has(opt.toLowerCase())) || allOpts[0];
-    setSelectedPeriods([firstUnpaid]);
+    const firstUnpaid = allOpts.find((opt) => !paidPeriodsMap.has(opt.toLowerCase()));
+    setSelectedPeriods(firstUnpaid ? [firstUnpaid] : []);
 
     // Sync Course Fee frequency to match the new billing period type
     const newFreqKey = billingPeriodToFreqKey(newType);
@@ -1214,10 +1422,8 @@ function FeeManagementPage() {
   React.useEffect(() => {
     if (requiredAccommodationPeriodType && watchBillingPeriodType !== requiredAccommodationPeriodType) {
       handlePeriodTypeChange(requiredAccommodationPeriodType, true);
-    } else if (!isHostelOrMessActive && isCourseFeeActive && lockedPeriodIntervalType && watchBillingPeriodType !== lockedPeriodIntervalType) {
-      handlePeriodTypeChange(lockedPeriodIntervalType, true);
     }
-  }, [requiredAccommodationPeriodType, isHostelOrMessActive, isCourseFeeActive, lockedPeriodIntervalType, watchBillingPeriodType]);
+  }, [requiredAccommodationPeriodType, watchBillingPeriodType]);
 
   const togglePeriodSelection = (periodStr: string) => {
     const paidInfo = getPaidInfoForPeriod(periodStr);
@@ -1282,10 +1488,10 @@ function FeeManagementPage() {
   }, [paidPeriodsMap, getPaidInfoForPeriod, periodValueOptions]);
 
   const formattedPeriodValue = React.useMemo(() => {
-    if (selectedPeriods.length === 0) return periodValueOptions[0] || "Semester 1";
+    if (selectedPeriods.length === 0) return "No period selected";
     if (selectedPeriods.length === 1) return selectedPeriods[0];
     if (watchBillingPeriodType === "month") {
-      if (selectedPeriods.length === 12) return `All 12 Months (Full AY ${watchTargetAcademicYear})`;
+      if (selectedPeriods.length === periodValueOptions.length) return `All ${selectedPeriods.length} Months (Full AY ${watchTargetAcademicYear})`;
       return `${selectedPeriods.join(", ")} (${selectedPeriods.length} Months)`;
     }
     if (watchBillingPeriodType === "semester") {
@@ -1293,7 +1499,7 @@ function FeeManagementPage() {
       return `${selectedPeriods.join(", ")} (${selectedPeriods.length} Semesters)`;
     }
     if (watchBillingPeriodType === "quarter") {
-      if (selectedPeriods.length === 4) return `All 4 Quarters (Full Year)`;
+      if (selectedPeriods.length === periodValueOptions.length) return `All ${selectedPeriods.length} Quarters (Full Schedule)`;
       return `${selectedPeriods.join(", ")} (${selectedPeriods.length} Quarters)`;
     }
     return selectedPeriods.join(", ");
@@ -1599,65 +1805,10 @@ function FeeManagementPage() {
         );
         return prev;
       }
-      const willSelect = !target.selected;
-
-      if (willSelect) {
-        if (isHostelOrMessFee(target.name)) {
-          // Hostel and Mess may share one receipt only when their schedules match.
-          const selectedAccommodation = prev.find(
-            (item) => item.componentId !== compId && item.selected && isHostelOrMessFee(item.name)
-          );
-          const sharedFrequencyKey = selectedAccommodation?.selectedFrequencyKey || target.selectedFrequencyKey;
-          const targetFrequency = target.availableFrequencies.find((row) => row.key === sharedFrequencyKey);
-          if (
-            selectedAccommodation &&
-            (!targetFrequency || (target.isFrequencyLocked && target.selectedFrequencyKey !== sharedFrequencyKey))
-          ) {
-            toast.error(
-              `${target.name} does not support the ${selectedAccommodation.lockedFrequencyLabel || selectedAccommodation.selectedFrequencyKey} schedule. Collect the two fees separately.`
-            );
-            return prev;
-          }
-          const hadAcademicSelected = prev.some(
-            (item) => item.componentId !== compId && item.selected && !isHostelOrMessFee(item.name)
-          );
-          if (hadAcademicSelected) {
-            toast.info("Hostel and Mess fees cannot be combined with academic fees. Academic components have been deselected.");
-          }
-          handlePeriodTypeChange(frequencyKeyToBillingPeriodType(sharedFrequencyKey), true);
-          return prev.map((item) => {
-            if (!isHostelOrMessFee(item.name)) return { ...item, selected: false };
-            if (item.componentId === compId) {
-              const unitAmount = calcInstallmentAmount(item.baseAmount, targetFrequency || item.availableFrequencies[0]);
-              const multiplier = sharedFrequencyKey === "annually" || sharedFrequencyKey === "one_time"
-                ? 1
-                : selectedPeriods.length;
-              return {
-                ...item,
-                selected: true,
-                selectedFrequencyKey: sharedFrequencyKey,
-                unitAmount,
-                multiplier,
-                amount: Math.round(unitAmount * multiplier),
-              };
-            }
-            return item;
-          });
-        } else {
-          // Target is academic / other fee. Deselect any hostel/mess fee components.
-          const hadHostelOrMessSelected = prev.some((item) => isHostelOrMessFee(item.name) && item.selected);
-          if (hadHostelOrMessSelected) {
-            toast.info("Hostel & Mess fees cannot be clubbed with Academic fees. Hostel/Mess fee has been deselected.");
-          }
-          return prev.map((item) => {
-            if (isHostelOrMessFee(item.name)) return { ...item, selected: false };
-            if (item.componentId === compId) return { ...item, selected: true };
-            return item;
-          });
-        }
-      } else {
-        return prev.map((item) => (item.componentId === compId ? { ...item, selected: false } : item));
+      if (isHostelOrMessFee(target.name)) {
+        handlePeriodTypeChange(frequencyKeyToBillingPeriodType(target.selectedFrequencyKey), true);
       }
+      return prev.map((item) => ({ ...item, selected: item.componentId === compId }));
     });
   };
 
@@ -1736,6 +1887,7 @@ function FeeManagementPage() {
       queryClient.invalidateQueries({ queryKey: ["nursing", "fee-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "student-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "student-frequencies"] });
+      queryClient.invalidateQueries({ queryKey: ["nursing", "student-advance-balance"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "dashboard-stats"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "fees", "due-dashboard"] });
       setConfirmModalOpen(false);
@@ -1800,6 +1952,7 @@ function FeeManagementPage() {
                 onClick={() => {
                   collectForm.reset();
                   setCollectItems([]);
+                  setSelectedPeriods([]);
                 }}
               >
                 <Plus size={16} /> Record Fee Payment
@@ -1812,7 +1965,7 @@ function FeeManagementPage() {
             >
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-teal-600">
-                  <Receipt size={20} /> Multi-Component Student Fee Collection
+                  <Receipt size={20} /> Student Fee Collection
                 </DialogTitle>
               </DialogHeader>
 
@@ -1850,8 +2003,17 @@ function FeeManagementPage() {
                       };
                     });
 
-                  if (selectedPaidItems.length === 0) {
-                    toast.error("Please select at least one fee component to collect.");
+                  if (selectedPaidItems.length !== 1) {
+                    toast.error("Please select one fee component to collect.");
+                    return;
+                  }
+
+                  if (targetAcademicYearSchedules.length === 0) {
+                    toast.error(`No Academic Schedule master entries exist for this student's batch in AY ${data.targetAcademicYear}.`);
+                    return;
+                  }
+                  if (selectedPeriods.length === 0) {
+                    toast.error("Please select at least one billing period from the Academic Schedule master.");
                     return;
                   }
 
@@ -1872,15 +2034,6 @@ function FeeManagementPage() {
                   }
                   if (hasHostelOrMess && hasAcademic) {
                     toast.error("Hostel & Mess fees cannot be clubbed with Academic fees (Course, Admission, Uniform, etc.). Please collect them as separate transactions.");
-                    return;
-                  }
-
-                  // Validate that interval schedule is not altered if prior Course Fee payments were recorded
-                  const hasCourseFeeInSubmission = selectedPaidItems.some((i) => isTuitionFee(i.name));
-                  if (hasCourseFeeInSubmission && lockedPeriodIntervalType && data.billingPeriodType !== lockedPeriodIntervalType) {
-                    toast.error(
-                      `Period interval type cannot be changed from ${getPeriodIntervalLabel(lockedPeriodIntervalType)} because prior payments were made in AY ${data.targetAcademicYear}.`
-                    );
                     return;
                   }
 
@@ -1925,6 +2078,12 @@ function FeeManagementPage() {
 
                   const feeSummaryTitle = selectedPaidItems.map((i) => i.name).join(", ");
                   const periodLabel = `AY ${data.targetAcademicYear} • ${data.billingPeriodValue}`;
+                  const coveredMonths = expandPeriodsToMonths(
+                    data.targetAcademicYear,
+                    data.billingPeriodType,
+                    selectedPeriods,
+                    targetAcademicYearSchedules
+                  );
                   const payload = {
                     studentId: Number(data.studentId),
                     studentName: targetStudent.name,
@@ -1934,11 +2093,10 @@ function FeeManagementPage() {
                     academicYear: data.targetAcademicYear,
                     billingPeriodType: data.billingPeriodType,
                     billingPeriodValue: data.billingPeriodValue,
+                    coveredMonths,
                     periodLabel,
                     feeType: feeSummaryTitle,
-                    paymentFrequency: selectedPaidItems.length === 1
-                      ? selectedPaidItems[0].frequencyKey
-                      : (data.paymentFrequency || "mixed"),
+                    paymentFrequency: selectedPaidItems[0].frequencyKey,
                     grossSubtotal: grossCollectSubtotal,
                     discountAmount: watchDiscountAmount,
                     discountReason: data.discountReason ? data.discountReason.trim() : null,
@@ -1954,6 +2112,7 @@ function FeeManagementPage() {
                       billingPeriodType: data.billingPeriodType,
                       billingPeriodValue: data.billingPeriodValue,
                       selectedPeriods,
+                      coveredMonths,
                       periodLabel,
                       grossSubtotal: grossCollectSubtotal,
                       discountAmount: watchDiscountAmount,
@@ -1989,6 +2148,7 @@ function FeeManagementPage() {
                             field.onChange(sid);
                             collectForm.setValue("feeStructureId", 0);
                             setCollectItems([]);
+                            setSelectedPeriods([]);
                           }}
                         />
                       )}
@@ -2021,8 +2181,39 @@ function FeeManagementPage() {
                   </div>
                 </div>
 
+                {collectItems.length > 0 && (
+                  <div className="space-y-1.5 rounded-xl border border-teal-200 bg-teal-50/40 p-3.5 dark:border-teal-900 dark:bg-teal-950/20">
+                    <label className="text-sm font-semibold text-teal-800 dark:text-teal-300">
+                      Fee component to collect *
+                    </label>
+                    <Select
+                      value={collectItems.find((item) => item.selected)?.componentId || ""}
+                      onValueChange={toggleCollectItemSelect}
+                    >
+                      <SelectTrigger className="w-full bg-background">
+                        <SelectValue placeholder="Select one fee component" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {collectItems.map((item) => (
+                          <SelectItem
+                            key={item.componentId}
+                            value={item.componentId}
+                            disabled={item.isOneTimePaid}
+                          >
+                            {item.name}{item.isOneTimePaid ? " — Already paid" : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      Each receipt can contain one fee component only.
+                    </p>
+                  </div>
+                )}
+
                 {/* Target Period & Academic Year Multi-Selection */}
-                <div className="border rounded-xl p-3.5 bg-teal-50/40 dark:bg-teal-950/20 border-teal-200 dark:border-teal-900 space-y-3">
+                {selectedFeeComponent && (
+                  <div className="border rounded-xl p-3.5 bg-teal-50/40 dark:bg-teal-950/20 border-teal-200 dark:border-teal-900 space-y-3">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-teal-200/60 pb-2 text-xs font-semibold text-teal-800 dark:text-teal-300 gap-1">
                     <span className="flex items-center gap-1.5">
                       <CalendarDays className="h-4 w-4 text-teal-600 shrink-0" /> Target Billing Period (Multi-Period Supported)
@@ -2044,10 +2235,7 @@ function FeeManagementPage() {
                             value={field.value || getAcademicYear()}
                             onValueChange={(val) => {
                               field.onChange(val);
-                              if (watchBillingPeriodType === "month") {
-                                const startY = parseInt(val.split("-")[0], 10) || currentCalYear;
-                                setSelectedPeriods([`June ${startY}`]);
-                              }
+                              setSelectedPeriods([]);
                             }}
                           >
                             <SelectTrigger className="w-full h-8 text-xs bg-background">
@@ -2075,10 +2263,6 @@ function FeeManagementPage() {
                           <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.5 rounded font-semibold border border-purple-300 dark:border-purple-800">
                             <Lock size={10} /> Read-Only ({getPeriodIntervalLabel(requiredAccommodationPeriodType)} - {selectedAccommodationItem.name})
                           </span>
-                        ) : isPeriodIntervalLocked ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded font-semibold border border-amber-300 dark:border-amber-800">
-                            <Lock size={10} /> Locked ({getPeriodIntervalLabel(lockedPeriodIntervalType)})
-                          </span>
                         ) : null}
                       </div>
                       <Controller
@@ -2093,13 +2277,11 @@ function FeeManagementPage() {
                             <SelectTrigger className={cn(
                               "w-full h-8 text-xs font-medium",
                               isPeriodIntervalLocked
-                                ? isHostelOrMessActive
-                                  ? "bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-300 dark:border-purple-800 cursor-not-allowed"
-                                  : "bg-muted/80 text-muted-foreground border-amber-300 dark:border-amber-800 cursor-not-allowed"
+                                ? "bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-300 dark:border-purple-800 cursor-not-allowed"
                                 : "bg-background"
                             )}>
                               <div className="flex items-center gap-1 truncate">
-                                {isPeriodIntervalLocked && <Lock size={11} className={cn("shrink-0", isHostelOrMessActive ? "text-purple-600 dark:text-purple-400" : "text-amber-600 dark:text-amber-400")} />}
+                                {isPeriodIntervalLocked && <Lock size={11} className="shrink-0 text-purple-600 dark:text-purple-400" />}
                                 <SelectValue placeholder="Period Type" />
                               </div>
                             </SelectTrigger>
@@ -2116,16 +2298,18 @@ function FeeManagementPage() {
                         <p className="text-[10px] text-purple-700 dark:text-purple-400 mt-1 flex items-center gap-1 font-medium">
                           <Lock size={9} className="shrink-0" /> {selectedAccommodationItem.name} follows its {getPeriodIntervalLabel(requiredAccommodationPeriodType)} schedule from the Fee Structure Master.
                         </p>
-                      ) : (isCourseFeeActive && isPeriodIntervalLocked) ? (
-                        <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1 flex items-center gap-1 font-medium">
-                          <Lock size={9} className="shrink-0" /> Prior Course Fee payment exists for AY {watchTargetAcademicYear}. Course Fee interval cannot be changed mid-year.
-                        </p>
                       ) : null}
                     </div>
                   </div>
 
                   {/* Multi-Period Toggle Selector & Presets */}
                   <div className="space-y-2 pt-1">
+                    {targetAcademicYearSchedules.length === 0 && (
+                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>No Academic Schedule master entry is configured for this batch and academic year. Add the schedule before recording payment.</span>
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
                       <span className="font-semibold text-foreground flex items-center gap-1">
                         Select Target {watchBillingPeriodType === "month" ? "Months" : watchBillingPeriodType === "semester" ? "Semesters" : watchBillingPeriodType === "quarter" ? "Quarters" : "Period"}:
@@ -2143,35 +2327,35 @@ function FeeManagementPage() {
                               onClick={selectAllPeriods}
                               className="text-teal-600 hover:underline font-medium px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950 border border-teal-200 dark:border-teal-800"
                             >
-                              All 12 Months
+                              All {periodValueOptions.length} Months
                             </button>
                             <button
                               type="button"
                               onClick={() => selectPeriodPreset(periodValueOptions.slice(0, 3))}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
-                              Q1 (Jun-Aug)
+                              Q1 ({periodValueOptions.slice(0, 3).map((period) => formatPeriodOption(period, "month")).join("–")})
                             </button>
                             <button
                               type="button"
                               onClick={() => selectPeriodPreset(periodValueOptions.slice(3, 6))}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
-                              Q2 (Sep-Nov)
+                              Q2 ({periodValueOptions.slice(3, 6).map((period) => formatPeriodOption(period, "month")).join("–")})
                             </button>
                             <button
                               type="button"
                               onClick={() => selectPeriodPreset(periodValueOptions.slice(6, 9))}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
-                              Q3 (Dec-Feb)
+                              Q3 ({periodValueOptions.slice(6, 9).map((period) => formatPeriodOption(period, "month")).join("–")})
                             </button>
                             <button
                               type="button"
                               onClick={() => selectPeriodPreset(periodValueOptions.slice(9, 12))}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
-                              Q4 (Mar-May)
+                              Q4 ({periodValueOptions.slice(9, 12).map((period) => formatPeriodOption(period, "month")).join("–")})
                             </button>
                             <button
                               type="button"
@@ -2194,24 +2378,10 @@ function FeeManagementPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => selectPeriodPreset(["Semester 1", "Semester 2"])}
+                              onClick={selectAllPeriods}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
-                              Sem 1 & 2 (Yr 1)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(["Semester 3", "Semester 4"])}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Sem 3 & 4 (Yr 2)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(["Semester 5", "Semester 6"])}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Sem 5 & 6 (Yr 3)
+                              Full Academic Year
                             </button>
                           </>
                         )}
@@ -2223,18 +2393,18 @@ function FeeManagementPage() {
                               onClick={selectAllPeriods}
                               className="text-teal-600 hover:underline font-medium px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950 border border-teal-200 dark:border-teal-800"
                             >
-                              All 4 Quarters
+                              All {periodValueOptions.length} Quarters
                             </button>
                             <button
                               type="button"
-                              onClick={() => selectPeriodPreset(["Q1 (Apr - Jun)", "Q2 (Jul - Sep)"])}
+                              onClick={() => selectPeriodPreset(periodValueOptions.slice(0, 2))}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
                               H1 (Q1 & Q2)
                             </button>
                             <button
                               type="button"
-                              onClick={() => selectPeriodPreset(["Q3 (Oct - Dec)", "Q4 (Jan - Mar)"])}
+                              onClick={() => selectPeriodPreset(periodValueOptions.slice(2, 4))}
                               className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
                             >
                               H2 (Q3 & Q4)
@@ -2245,7 +2415,7 @@ function FeeManagementPage() {
                     </div>
 
                     {/* All Periods Paid Notice */}
-                    {periodValueOptions.length > 0 && periodValueOptions.every((opt) => !!getPaidInfoForPeriod(opt)) && (
+                    {selectedFeeComponent && periodValueOptions.length > 0 && periodValueOptions.every((opt) => !!getPaidInfoForPeriod(opt)) && (
                       <div className="flex items-center gap-2 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 p-2.5 rounded-lg border border-emerald-300 dark:border-emerald-800 font-medium">
                         <CheckCircle size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
                         <span>All {watchBillingPeriodType === "month" ? "12 months" : watchBillingPeriodType === "semester" ? "semesters" : watchBillingPeriodType === "quarter" ? "quarters" : "periods"} for Academic Year {watchTargetAcademicYear} are already paid for this student.</span>
@@ -2253,9 +2423,14 @@ function FeeManagementPage() {
                     )}
 
                     {/* Pills Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-1.5">
+                    <div className={cn(
+                      "grid gap-1.5",
+                      watchBillingPeriodType === "quarter"
+                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+                        : "grid-cols-2 sm:grid-cols-4 md:grid-cols-6"
+                    )}>
                       {periodValueOptions.map((opt) => {
-                        const paidInfo = getPaidInfoForPeriod(opt);
+                        const paidInfo = selectedFeeComponent ? getPaidInfoForPeriod(opt) : undefined;
                         const isPaid = !!paidInfo;
                         const isSelected = selectedPeriods.includes(opt);
 
@@ -2279,7 +2454,9 @@ function FeeManagementPage() {
                             )}
                           >
                             <div className="flex items-center justify-between w-full gap-1">
-                              <span className={cn("truncate font-semibold", isPaid && "text-emerald-950 dark:text-emerald-100")}>{opt}</span>
+                              <span className={cn("truncate font-semibold", isPaid && "text-emerald-950 dark:text-emerald-100")}>
+                                {formatPeriodOption(opt, watchBillingPeriodType)}
+                              </span>
                               {isSelected && !isPaid && <Check className="h-3.5 w-3.5 shrink-0 ml-1" />}
                               {isPaid && (
                                 <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-white shrink-0">
@@ -2298,9 +2475,10 @@ function FeeManagementPage() {
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Itemized Checkbox Selector for Components with Multipliers */}
-                {collectItems.length > 0 && (
+                {selectedFeeComponent && (
                   <div className="border rounded-xl p-3 bg-muted/20 space-y-3">
                     {lockedStudentFrequencies.length > 0 && (
                       <div className="flex items-center gap-1.5 text-[11px] bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 px-2.5 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 font-medium">
@@ -2324,62 +2502,8 @@ function FeeManagementPage() {
                       </div>
                     )}
 
-                    <div className="flex justify-between items-center border-b pb-1.5 text-xs font-semibold flex-wrap gap-2">
-                      <span className="text-teal-800 dark:text-teal-300">Select Components to Collect:</span>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                          type="button"
-                          className="text-[11px] text-teal-600 dark:text-teal-400 hover:underline font-medium"
-                          onClick={() => setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isAcademicFee(i.name) && !i.isOneTimePaid })))}
-                        >
-                          Select Academic Fees
-                        </button>
-                        <span className="text-muted-foreground">•</span>
-                        <button
-                          type="button"
-                          className="text-[11px] text-purple-700 dark:text-purple-300 hover:underline font-semibold"
-                          onClick={() => {
-                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isHostelOnlyFee(i.name) && !i.isOneTimePaid })));
-                            const hostelItem = collectItems.find((i) => isHostelOnlyFee(i.name));
-                            handlePeriodTypeChange(
-                              frequencyKeyToBillingPeriodType(hostelItem?.selectedFrequencyKey),
-                              true
-                            );
-                          }}
-                        >
-                          Select Hostel Only
-                        </button>
-                        <span className="text-muted-foreground">•</span>
-                        <button
-                          type="button"
-                          className="text-[11px] text-indigo-700 dark:text-indigo-300 hover:underline font-semibold"
-                          onClick={() => {
-                            setCollectItems((prev) => prev.map((i) => ({ ...i, selected: isMessOnlyFee(i.name) && !i.isOneTimePaid })));
-                            const messItem = collectItems.find((i) => isMessOnlyFee(i.name));
-                            handlePeriodTypeChange(
-                              frequencyKeyToBillingPeriodType(messItem?.selectedFrequencyKey),
-                              true
-                            );
-                          }}
-                        >
-                          Select Mess Only
-                        </button>
-                        <span className="text-muted-foreground">•</span>
-                        <button
-                          type="button"
-                          className="text-[11px] text-muted-foreground hover:text-foreground hover:underline font-medium"
-                          onClick={() => setCollectItems((prev) => prev.map((i) => ({ ...i, selected: false })))}
-                        >
-                          Deselect All
-                        </button>
-                        <span className="text-muted-foreground ml-1 font-normal">
-                          ({collectItems.filter((i) => i.selected).length} of {collectItems.length} selected)
-                        </span>
-                      </div>
-                    </div>
-
                     <div className="space-y-2">
-                      {collectItems.map((item) => {
+                      {collectItems.filter((item) => item.selected).map((item) => {
                         const isHostel = isHostelOnlyFee(item.name);
                         const isMess = isMessOnlyFee(item.name);
                         const isCombined = item.name.toLowerCase().includes("hostel & mess");
@@ -2398,24 +2522,8 @@ function FeeManagementPage() {
                             )}
                           >
                             <div className="flex items-center gap-2 flex-1">
-                              <input
-                                type="checkbox"
-                                id={`item-cb-${item.componentId}`}
-                                checked={item.selected}
-                                disabled={item.isOneTimePaid}
-                                onChange={() => toggleCollectItemSelect(item.componentId)}
-                                className={cn(
-                                  "h-4 w-4 rounded text-teal-600 focus:ring-teal-500",
-                                  item.isOneTimePaid ? "cursor-not-allowed opacity-50" : "cursor-pointer"
-                                )}
-                              />
-                              <label
-                                htmlFor={`item-cb-${item.componentId}`}
-                                className={cn(
-                                  "font-semibold text-foreground flex items-center gap-1.5 flex-wrap",
-                                  item.isOneTimePaid ? "cursor-not-allowed text-muted-foreground" : "cursor-pointer select-none"
-                                )}
-                              >
+                              <CheckCircle size={16} className="shrink-0 text-teal-600" />
+                              <div className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
                                 <span className={cn(item.isOneTimePaid && "line-through opacity-75")}>
                                   {item.name}
                                 </span>
@@ -2445,7 +2553,7 @@ function FeeManagementPage() {
                                     <Lock size={9} /> Locked ({item.lockedFrequencyLabel || item.selectedFrequencyKey})
                                   </span>
                                 )}
-                              </label>
+                              </div>
                             </div>
 
                           <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">
@@ -3275,6 +3383,17 @@ function FeeManagementPage() {
                               >
                                 <MessageCircle size={13} className="mr-1" /> WhatsApp
                               </Button>
+                              {isAdmin && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  title="Delete fee receipt"
+                                  onClick={() => setDeletingReceipt(tx)}
+                                >
+                                  <Trash2 size={13} className="mr-1" /> Delete
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -3378,6 +3497,39 @@ function FeeManagementPage() {
       </Card>
 
       {/* Printable & Downloadable PDF Receipt Modal */}
+      <Dialog
+        open={Boolean(deletingReceipt)}
+        onOpenChange={(open) => {
+          if (!open && !deleteReceiptMutation.isPending) setDeletingReceipt(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete fee receipt?</DialogTitle>
+            <DialogDescription>
+              Receipt <strong>{deletingReceipt?.receiptNumber}</strong> for ₹
+              {toNum(deletingReceipt?.amount).toLocaleString()} will be permanently removed. This action is recorded in the audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeletingReceipt(null)}
+              disabled={deleteReceiptMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletingReceipt && deleteReceiptMutation.mutate(deletingReceipt)}
+              disabled={!deletingReceipt || deleteReceiptMutation.isPending}
+            >
+              {deleteReceiptMutation.isPending ? "Deleting..." : "Delete Receipt"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={receiptModalOpen} onOpenChange={setReceiptModalOpen}>
         <DialogContent
           className="sm:max-w-[650px] p-0 overflow-hidden"

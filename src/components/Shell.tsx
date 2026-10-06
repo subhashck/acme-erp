@@ -26,6 +26,7 @@ import {
   CreditCard,
   Syringe,
   Bell,
+  ExternalLink,
   Check,
   CheckCircle,
   AlertTriangle,
@@ -334,6 +335,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Patient Directory", to: "/front-office/patients" });
     } else if (pathname === "/front-office/razorpay-reconciliation") {
       items.push({ label: "Razorpay Reconciliation", to: "/front-office/razorpay-reconciliation" });
+    } else if (pathname === "/front-office/opd-collection") {
+      items.push({ label: "OPD Collection Detail", to: "/front-office/opd-collection" });
     }
     return items;
   }
@@ -559,6 +562,9 @@ function ShellContent({ session }: { session: any }) {
                       </Link>
                       <Link to="/front-office/patients" className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
                         <Users size={14} />Patient Directory
+                      </Link>
+                      <Link to="/front-office/opd-collection" className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
+                        <ExternalLink size={14} />OPD Collection Detail
                       </Link>
                     </div>
                   )}

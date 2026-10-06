@@ -96,7 +96,7 @@ interface ReportData {
 }
 
 export default function DueReportPeriodicPage() {
-  const [academicYear, setAcademicYear] = React.useState("2025-2026");
+  const [academicYear, setAcademicYear] = React.useState("2026-2027");
   const [frequency, setFrequency] = React.useState<"monthly" | "quarterly" | "annually">("monthly");
   const [courseFilter, setCourseFilter] = React.useState("all");
 
@@ -121,6 +121,24 @@ export default function DueReportPeriodicPage() {
       return res.json();
     },
   });
+
+  const { data: academicSchedules = [] } = useQuery<any[]>({
+    queryKey: ["nursing", "academic-schedules"],
+    queryFn: async () => {
+      const res = await fetch("/api/nursing/academic-schedules");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const academicYearOptions = React.useMemo(
+    () => Array.from(new Set(academicSchedules.map((schedule) => String(schedule.academicYear)))).sort(),
+    [academicSchedules]
+  );
+  React.useEffect(() => {
+    if (academicYearOptions.length > 0 && !academicYearOptions.includes(academicYear)) {
+      setAcademicYear(academicYearOptions[academicYearOptions.length - 1]);
+    }
+  }, [academicYearOptions, academicYear]);
 
   const { data, isLoading, isFetching, refetch } = useQuery<ReportData>({
     queryKey: ["nursing", "reports", "due-periodic", academicYear, frequency, courseFilter],
@@ -450,8 +468,11 @@ export default function DueReportPeriodicPage() {
                   <SelectValue placeholder="Select Academic Year" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="2025-2026" className="text-xs">2025 - 2026</SelectItem>
-                  <SelectItem value="2026-2027" className="text-xs">2026 - 2027</SelectItem>
+                  {academicYearOptions.map((year) => (
+                    <SelectItem key={year} value={year} className="text-xs">
+                      {year.replace("-", " - ")}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

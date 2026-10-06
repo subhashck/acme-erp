@@ -52,6 +52,167 @@ export function getAcademicYear(dateStr?: string): string {
   return month >= 6 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
 }
 
+function getAcademicYearMonths(academicYear: string): string[] {
+  const startYear = parseInt(academicYear.split("-")[0], 10);
+  if (!Number.isFinite(startYear)) return [];
+  return [
+    `${startYear}-06`, `${startYear}-07`, `${startYear}-08`, `${startYear}-09`,
+    `${startYear}-10`, `${startYear}-11`, `${startYear}-12`, `${startYear + 1}-01`,
+    `${startYear + 1}-02`, `${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`,
+  ];
+}
+
+type ScheduleRange = {
+  id?: number;
+  semester: number;
+  startDate: string;
+  endDate: string;
+  feeDueDate?: string | null;
+};
+
+function monthKeysBetween(startDate: string, endDate: string): string[] {
+  const start = new Date(`${startDate}T00:00:00Z`);
+  const end = new Date(`${endDate}T00:00:00Z`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const last = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
+  const result: string[] = [];
+  while (cursor <= last) {
+    result.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, "0")}`);
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return result;
+}
+
+function scheduledDaysInMonth(schedule: ScheduleRange, monthKey: string): number {
+  const [year, month] = monthKey.split("-").map(Number);
+  const monthStart = Date.UTC(year, month - 1, 1);
+  const monthEnd = Date.UTC(year, month, 0);
+  const scheduleStart = new Date(`${schedule.startDate}T00:00:00Z`).getTime();
+  const scheduleEnd = new Date(`${schedule.endDate}T00:00:00Z`).getTime();
+  const overlapStart = Math.max(monthStart, scheduleStart);
+  const overlapEnd = Math.min(monthEnd, scheduleEnd);
+  return overlapEnd < overlapStart ? 0 : Math.floor((overlapEnd - overlapStart) / 86_400_000) + 1;
+}
+
+function inferScheduleMonthPlan(schedules: ScheduleRange[]) {
+  const sortedSchedules = [...schedules].sort(
+    (a, b) => a.startDate.localeCompare(b.startDate) || a.semester - b.semester
+  );
+  const candidateMonths = Array.from(
+    new Set(sortedSchedules.flatMap((schedule) => monthKeysBetween(schedule.startDate, schedule.endDate)))
+  ).sort();
+  const semesterMonths = new Map<number, string[]>();
+  const monthOwners = new Map<string, ScheduleRange>();
+
+  candidateMonths.forEach((monthKey) => {
+    const owner = sortedSchedules
+      .map((schedule) => ({ schedule, days: scheduledDaysInMonth(schedule, monthKey) }))
+      .filter((entry) => entry.days > 0)
+      .sort((a, b) => b.days - a.days || a.schedule.semester - b.schedule.semester)[0]?.schedule;
+    if (!owner) return;
+    const current = semesterMonths.get(owner.semester) || [];
+    current.push(monthKey);
+    semesterMonths.set(owner.semester, current);
+    monthOwners.set(monthKey, owner);
+  });
+
+  const monthDueDates = new Map<string, string>();
+  sortedSchedules.forEach((schedule) => {
+    const ownedMonths = semesterMonths.get(schedule.semester) || [];
+    const baseDueDate = new Date(`${schedule.feeDueDate || schedule.startDate}T00:00:00Z`);
+    if (Number.isNaN(baseDueDate.getTime())) return;
+    ownedMonths.forEach((monthKey, index) => {
+      const dueDate = new Date(baseDueDate);
+      dueDate.setUTCMonth(dueDate.getUTCMonth() + index);
+      monthDueDates.set(monthKey, dueDate.toISOString().slice(0, 10));
+    });
+  });
+
+  return {
+    months: candidateMonths.filter((monthKey) =>
+      Array.from(semesterMonths.values()).some((semester) => semester.includes(monthKey))
+    ),
+    semesterMonths,
+    monthOwners,
+    monthDueDates,
+  };
+}
+
+function expandBillingPeriodsToMonths(
+  academicYear: string,
+  periodType: string,
+  periods: string[],
+  schedules: ScheduleRange[] = []
+): string[] {
+  if (schedules.length > 0) {
+    const plan = inferScheduleMonthPlan(schedules);
+    const selected = new Set<string>();
+    if (periodType === "academic_year") plan.months.forEach((month) => selected.add(month));
+    for (const period of periods) {
+      const value = period.trim().toLowerCase();
+      if (periodType === "month") {
+        const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
+        if (match) {
+          const date = new Date(`${match[1]} 1, ${match[2]} UTC`);
+          const key = Number.isNaN(date.getTime())
+            ? ""
+            : `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+          if (plan.months.includes(key)) selected.add(key);
+        }
+      } else if (periodType === "semester") {
+        const semester = Number(value.match(/semester\s*(\d+)/)?.[1] || 0);
+        (plan.semesterMonths.get(semester) || []).forEach((month) => selected.add(month));
+      } else if (periodType === "quarter") {
+        const quarter = Number(value.match(/q(\d+)/)?.[1] || 0);
+        plan.months.slice((quarter - 1) * 3, quarter * 3).forEach((month) => selected.add(month));
+      }
+    }
+    return [...selected].sort();
+  }
+
+  // Legacy receipts created before Academic Schedule inference retain the
+  // historical June-May interpretation when no master rows are available.
+  const months = getAcademicYearMonths(academicYear);
+  if (months.length !== 12) return [];
+  const indexes = new Set<number>();
+  const addRange = (start: number, end: number) => {
+    for (let index = start; index <= end; index += 1) indexes.add(index);
+  };
+
+  if (periodType === "academic_year") addRange(0, 11);
+  for (const period of periods) {
+    const value = period.trim().toLowerCase();
+    if (periodType === "month") {
+      const match = period.match(/^([A-Za-z]+)\s+(\d{4})$/);
+      if (match) {
+        const date = new Date(`${match[1]} 1, ${match[2]}`);
+        const key = Number.isNaN(date.getTime()) ? "" : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        const index = months.indexOf(key);
+        if (index >= 0) indexes.add(index);
+      }
+    } else if (periodType === "semester") {
+      const semester = Number(value.match(/semester\s*(\d+)/)?.[1] || 1);
+      addRange(semester % 2 === 0 ? 6 : 0, semester % 2 === 0 ? 11 : 5);
+    } else if (periodType === "quarter") {
+      const quarter = Number(value.match(/q([1-4])/)?.[1] || 1);
+      addRange((quarter - 1) * 3, quarter * 3 - 1);
+    }
+  }
+  return [...indexes].sort((a, b) => a - b).map((index) => months[index]);
+}
+
+function splitAmountAcrossMonths(amount: number, months: string[]): Array<{ month: string; amount: number }> {
+  if (months.length === 0) return [];
+  const totalRupees = Math.round(amount);
+  const baseRupees = Math.floor(totalRupees / months.length);
+  let remainder = totalRupees - baseRupees * months.length;
+  return months.map((month) => {
+    const monthlyAmount = baseRupees + (remainder-- > 0 ? 1 : 0);
+    return { month, amount: monthlyAmount };
+  });
+}
+
 export async function syncAconCashReceiptToDailyClosing(paymentDate: string) {
   if (!paymentDate) return;
   try {
@@ -1011,7 +1172,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const input = await jsonBody(
       c,
       z.object({
-        amount: z.number().positive("Seat booking advance amount must be greater than 0"),
+        amount: z.number().int("Seat booking advance must be a whole-rupee amount").positive("Seat booking advance amount must be greater than 0"),
         paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]).default("cash"),
         paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
         notes: z.string().optional().nullable(),
@@ -1065,7 +1226,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
         paymentFrequency: "one_time",
         invoiceNo,
         receiptNumber,
-        amount: input.amount.toFixed(2),
+        amount: String(input.amount),
         paymentMode: input.paymentMode,
         paymentDate: input.paymentDate,
         status: "paid",
@@ -1084,7 +1245,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
     // 2. Update nursingApplicants (accumulate total advance amount)
     const currentTotal = toNum(applicant.seatBookingAmount);
-    const newTotalAdvance = (currentTotal + input.amount).toFixed(2);
+    const newTotalAdvance = String(Math.round(currentTotal + input.amount));
 
     const [updatedApplicant] = await db
       .update(nursingApplicants)
@@ -2284,7 +2445,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
         feeStructureId: z.number().int().positive().optional().nullable(),
         feeType: z.string().optional().nullable(),
         paymentFrequency: z.string().optional().nullable(),
-        amount: z.number().min(0, "Payment amount cannot be negative"),
+        amount: z.number().int("Payment amount must be a whole-rupee amount").min(0, "Payment amount cannot be negative"),
         paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]).default("cash"),
         paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
         remarks: z.string().optional().nullable(),
@@ -2322,6 +2483,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
     // 3. Parse remarks and validate discounts/advance adjustments/gross subtotals
     let parsedRemarks: any = null;
+    let normalizedRemarks = input.remarks;
+    let resolvedCoveredMonths: string[] = [];
+    let resolvedScheduleRows: ScheduleRange[] = [];
     if (input.remarks) {
       try {
         parsedRemarks = JSON.parse(input.remarks);
@@ -2375,42 +2539,53 @@ export const nursingRoutes = new Hono<AuthEnv>()
         ? parsedRemarks.items
         : (Array.isArray(parsedRemarks.breakdown) ? parsedRemarks.breakdown : []);
       if (submittedItems.length > 1) {
-        const isHostelOrMessComp = (name: string) => {
-          const n = (name || "").toLowerCase();
-          return n.includes("hostel") || n.includes("mess");
-        };
-        const hasHostel = submittedItems.some((b: any) => (b.name || "").toLowerCase().includes("hostel"));
-        const hasMess = submittedItems.some((b: any) => (b.name || "").toLowerCase().includes("mess"));
-        const hasHostelOrMess = submittedItems.some((b: any) => isHostelOrMessComp(b.name));
-        const hasAcademic = submittedItems.some((b: any) => !isHostelOrMessComp(b.name));
-        if (hasHostel && hasMess) {
-          const accommodationFrequencies = new Set(
-            submittedItems
-              .filter((item: any) => {
-                const name = (item.name || "").toLowerCase();
-                return name.includes("hostel") || name.includes("mess");
-              })
-              .map((item: any) => String(item.frequencyKey || item.selectedFrequencyKey || ""))
-          );
-          if (accommodationFrequencies.size !== 1 || accommodationFrequencies.has("")) {
-            return c.json(
-              { error: "Hostel and Mess can share one receipt only when both use the same payment frequency and period." },
-              400
-            );
-          }
-        }
-        if (hasHostelOrMess && hasAcademic) {
-          return c.json(
-            { error: "Hostel / Mess fees cannot be clubbed with academic fee payments (Course, Admission, Uniform, etc.). Please record hostel and mess fees as separate transactions from academic fees." },
-            400
-          );
-        }
+        return c.json(
+          { error: "Each fee receipt can contain only one fee component. Record separate payments for additional components." },
+          400
+        );
       }
       // 3.6 Validate duplicate period payments for the same academic year
       const targetAy = parsedRemarks.academicYear;
       const targetPeriods: string[] = Array.isArray(parsedRemarks.selectedPeriods)
         ? parsedRemarks.selectedPeriods
         : (parsedRemarks.billingPeriodValue ? [parsedRemarks.billingPeriodValue] : []);
+      const targetScheduleRows = targetAy
+        ? await db
+            .select({
+              id: nursingAcademicSchedules.id,
+              semester: nursingAcademicSchedules.semester,
+              startDate: nursingAcademicSchedules.startDate,
+              endDate: nursingAcademicSchedules.endDate,
+            })
+            .from(nursingAcademicSchedules)
+            .where(
+              and(
+                eq(nursingAcademicSchedules.batchId, student.batchId),
+                eq(nursingAcademicSchedules.academicYear, String(targetAy))
+              )
+            )
+            .execute()
+        : [];
+      if (targetPeriods.length > 0 && targetScheduleRows.length === 0) {
+        return c.json(
+          { error: `No Academic Schedule master entries exist for this student's batch in AY ${targetAy}. Configure the schedule before recording payment.` },
+          400
+        );
+      }
+      resolvedScheduleRows = targetScheduleRows;
+      const targetCoveredMonths = expandBillingPeriodsToMonths(
+        String(targetAy || ""),
+        String(parsedRemarks.billingPeriodType || ""),
+        targetPeriods,
+        targetScheduleRows
+      );
+      if (targetPeriods.length > 0 && targetCoveredMonths.length === 0) {
+        return c.json(
+          { error: "The selected billing period does not match the configured Academic Schedule master." },
+          400
+        );
+      }
+      resolvedCoveredMonths = targetCoveredMonths;
 
       const targetItems = Array.isArray(parsedRemarks.items) ? parsedRemarks.items : (Array.isArray(parsedRemarks.breakdown) ? parsedRemarks.breakdown : []);
       const targetHasHostel = (input.feeType || "").toLowerCase().includes("hostel") || targetItems.some((i: any) => (i.name || "").toLowerCase().includes("hostel"));
@@ -2479,31 +2654,22 @@ export const nursingRoutes = new Hono<AuthEnv>()
             continue;
           }
 
-          // Validate that period interval type cannot be changed mid-year for Course Fee if a prior Course Fee payment was already made
-          const isTuitionName = (name: string) => {
-            const n = (name || "").toLowerCase();
-            return n.includes("course") || n.includes("tuition");
-          };
-
-          const targetHasCourseFee =
-            isTuitionName(input.feeType || "") ||
-            (Array.isArray(parsedRemarks.items) && parsedRemarks.items.some((i: any) => isTuitionName(i.name)));
-
-          const pastHasCourseFee =
-            isTuitionName(pastTx.feeType || "") ||
-            (Array.isArray(pastRemarks.items) && pastRemarks.items.some((i: any) => isTuitionName(i.name)));
-
-          const targetPeriodType = parsedRemarks.billingPeriodType;
-          if (
-            targetHasCourseFee &&
-            pastHasCourseFee &&
-            targetPeriodType &&
-            pastRemarks.billingPeriodType &&
-            pastRemarks.billingPeriodType !== targetPeriodType
-          ) {
+          const pastPeriodsForMonths: string[] = Array.isArray(pastRemarks.selectedPeriods)
+            ? pastRemarks.selectedPeriods
+            : (pastRemarks.billingPeriodValue ? [pastRemarks.billingPeriodValue] : []);
+          const pastCoveredMonths = Array.isArray(pastRemarks.coveredMonths)
+            ? pastRemarks.coveredMonths.map((month: unknown) => String(month))
+            : expandBillingPeriodsToMonths(
+                String(pastRemarks.academicYear || targetAy || ""),
+                String(pastRemarks.billingPeriodType || ""),
+                pastPeriodsForMonths,
+                targetScheduleRows
+              );
+          const overlappingMonths = targetCoveredMonths.filter((month) => pastCoveredMonths.includes(month));
+          if (overlappingMonths.length > 0) {
             return c.json(
               {
-                error: `Period interval type cannot be changed from '${pastRemarks.billingPeriodType}' for AY ${targetAy} because prior Course Fee payments were already recorded under that schedule (Receipt: ${pastTx.receiptNumber}).`
+                error: `Duplicate payment error: ${overlappingMonths.join(", ")} is already covered by receipt ${pastTx.receiptNumber}.`,
               },
               400
             );
@@ -2618,6 +2784,32 @@ export const nursingRoutes = new Hono<AuthEnv>()
       }
     }
 
+    if (parsedRemarks && typeof parsedRemarks === "object") {
+      const periods: string[] = Array.isArray(parsedRemarks.selectedPeriods)
+        ? parsedRemarks.selectedPeriods
+        : (parsedRemarks.billingPeriodValue ? [parsedRemarks.billingPeriodValue] : []);
+      const coveredMonths = resolvedCoveredMonths.length > 0
+        ? resolvedCoveredMonths
+        : expandBillingPeriodsToMonths(
+            String(parsedRemarks.academicYear || getAcademicYear(input.paymentDate)),
+            String(parsedRemarks.billingPeriodType || ""),
+            periods,
+            resolvedScheduleRows
+          );
+      parsedRemarks.coveredMonths = coveredMonths;
+      parsedRemarks.scheduleSource = "academic_schedule_master";
+      parsedRemarks.scheduleIds = resolvedScheduleRows
+        .map((schedule) => schedule.id)
+        .filter((id): id is number => typeof id === "number");
+      if (Array.isArray(parsedRemarks.items)) {
+        parsedRemarks.items = parsedRemarks.items.map((item: any) => ({
+          ...item,
+          monthlyAllocations: splitAmountAcrossMonths(toNum(item.amount), coveredMonths),
+        }));
+      }
+      normalizedRemarks = JSON.stringify(parsedRemarks);
+    }
+
     // 4. Duplicate payment prevention (idempotency check within last 2 minutes)
     const duplicateCutoff = new Date(Date.now() - 2 * 60 * 1000);
     const recentDuplicates = await db
@@ -2628,7 +2820,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
           eq(nursingFeeTransactions.studentId, input.studentId),
           eq(nursingFeeTransactions.feeType, input.feeType ?? "Course Fee"),
           ...(input.feeStructureId ? [eq(nursingFeeTransactions.feeStructureId, input.feeStructureId)] : []),
-          eq(nursingFeeTransactions.amount, input.amount.toFixed(2)),
+          eq(nursingFeeTransactions.amount, String(input.amount)),
           gte(nursingFeeTransactions.createdAt, duplicateCutoff),
         )
       )
@@ -2648,42 +2840,85 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const receiptNumber = code(`RCP-${currentYear}`);
     const session = c.get("session");
 
-    const [tx] = await db
-      .insert(nursingFeeTransactions)
-      .values({
-        studentId: input.studentId,
-        applicantId: student.applicantId ?? null,
-        feeStructureId: input.feeStructureId ?? null,
-        feeType: input.feeType ?? "Course Fee",
-        paymentFrequency: input.paymentFrequency ?? "yearly",
-        invoiceNo,
-        receiptNumber,
-        amount: input.amount.toFixed(2),
-        paymentMode: input.paymentMode,
-        paymentDate: input.paymentDate,
-        status: "paid",
-        remarks: input.remarks ?? null,
-        collectedBy: session?.user?.id,
-      })
-      .returning()
-      .execute();
+    const creationResult = await db.transaction(async (dbTx) => {
+      if (advanceAdjustedAmount > 0) {
+        if (!student.applicantId) {
+          return { error: "This student has no booking advance available for adjustment." } as const;
+        }
+
+        const [priorAdjustment] = await dbTx
+          .select({
+            id: nursingFeeTransactions.id,
+            receiptNumber: nursingFeeTransactions.receiptNumber,
+          })
+          .from(nursingFeeTransactions)
+          .where(
+            and(
+              eq(nursingFeeTransactions.applicantId, student.applicantId),
+              ne(nursingFeeTransactions.status, "refunded"),
+              sql`COALESCE(NULLIF(${nursingFeeTransactions.remarks}->>'advanceAdjustedAmount', '')::numeric, 0) > 0`
+            )
+          )
+          .limit(1)
+          .execute();
+        if (priorAdjustment) {
+          return {
+            error: `The booking advance was already adjusted in receipt ${priorAdjustment.receiptNumber}. It cannot be adjusted again.`,
+          } as const;
+        }
+
+        const [adjustedApplicant] = await dbTx
+          .update(nursingApplicants)
+          .set({
+            seatBookingStatus: "adjusted",
+            notes: sql`CONCAT(COALESCE(${nursingApplicants.notes}, ''), ' | Seat booking advance of ₹' || ${advanceAdjustedAmount} || ' adjusted against Fee Receipt ' || ${receiptNumber})`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(nursingApplicants.id, student.applicantId),
+              eq(nursingApplicants.seatBookingStatus, "unadjusted"),
+              gte(nursingApplicants.seatBookingAmount, String(advanceAdjustedAmount))
+            )
+          )
+          .returning({ id: nursingApplicants.id })
+          .execute();
+        if (!adjustedApplicant) {
+          return { error: "The booking advance is no longer available or has already been adjusted." } as const;
+        }
+      }
+
+      const [createdTransaction] = await dbTx
+        .insert(nursingFeeTransactions)
+        .values({
+          studentId: input.studentId,
+          applicantId: student.applicantId ?? null,
+          feeStructureId: input.feeStructureId ?? null,
+          feeType: input.feeType ?? "Course Fee",
+          paymentFrequency: input.paymentFrequency ?? "yearly",
+          invoiceNo,
+          receiptNumber,
+          amount: String(input.amount),
+          paymentMode: input.paymentMode,
+          paymentDate: input.paymentDate,
+          status: "paid",
+          remarks: normalizedRemarks ?? null,
+          collectedBy: session?.user?.id,
+        })
+        .returning()
+        .execute();
+
+      return { transaction: createdTransaction } as const;
+    });
+
+    if ("error" in creationResult) {
+      return c.json({ error: creationResult.error }, 409);
+    }
+    const tx = creationResult.transaction;
 
     // Auto-sync ACON Cash Receipt to Daily Closing if payment mode is cash
     if (input.paymentMode.toLowerCase() === "cash") {
       await syncAconCashReceiptToDailyClosing(input.paymentDate);
-    }
-
-    // If advance payment was adjusted, mark the applicant seat booking as adjusted
-    if (advanceAdjustedAmount > 0 && student.applicantId) {
-      await db
-        .update(nursingApplicants)
-        .set({
-          seatBookingStatus: "adjusted",
-          notes: sql`CONCAT(COALESCE(${nursingApplicants.notes}, ''), ' | Seat booking advance of ₹' || ${advanceAdjustedAmount} || ' adjusted against Fee Receipt ' || ${receiptNumber})`,
-          updatedAt: new Date(),
-        })
-        .where(eq(nursingApplicants.id, student.applicantId))
-        .execute();
     }
 
     // Lock student payment frequencies for each component in this academic year
@@ -2764,6 +2999,153 @@ export const nursingRoutes = new Hono<AuthEnv>()
     }).execute();
 
     return c.json(tx, 201);
+  })
+
+  .delete("/nursing/fees/transactions/:id", requireAdmin, async (c) => {
+    const id = Number(c.req.param("id"));
+    if (!Number.isInteger(id) || id <= 0) {
+      return c.json({ error: "Invalid fee receipt ID" }, 400);
+    }
+
+    const session = c.get("session");
+    const deleted = await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(nursingFeeTransactions)
+        .where(eq(nursingFeeTransactions.id, id))
+        .execute();
+      if (!existing) return null;
+
+      await tx.delete(nursingFeeTransactions).where(eq(nursingFeeTransactions.id, id)).execute();
+
+      // Frequency selections are persisted after the first payment so that a
+      // student's installment schedule cannot silently change mid-year. When
+      // the last receipt for a component is deleted, its lock must be removed
+      // as well; otherwise the deleted receipt continues to control the UI.
+      if (existing.studentId) {
+        const deletedDetails = parseRemarks(existing.remarks);
+        const deletedAcademicYear = String(deletedDetails?.academicYear || "").trim();
+        const deletedItems = Array.isArray(deletedDetails?.items)
+          ? deletedDetails.items
+          : Array.isArray(deletedDetails?.breakdown)
+            ? deletedDetails.breakdown
+            : [];
+
+        if (deletedAcademicYear && deletedItems.length > 0) {
+          const remainingStudentReceipts = await tx
+            .select({ remarks: nursingFeeTransactions.remarks })
+            .from(nursingFeeTransactions)
+            .where(
+              and(
+                eq(nursingFeeTransactions.studentId, existing.studentId),
+                ne(nursingFeeTransactions.status, "refunded")
+              )
+            )
+            .execute();
+          const existingLocks = await tx
+            .select()
+            .from(nursingStudentFeeFrequencies)
+            .where(
+              and(
+                eq(nursingStudentFeeFrequencies.studentId, existing.studentId),
+                eq(nursingStudentFeeFrequencies.academicYear, deletedAcademicYear)
+              )
+            )
+            .execute();
+          const normalizeComponentName = (value: unknown) => String(value || "").trim().toLowerCase();
+
+          for (const deletedItem of deletedItems) {
+            const componentId = String(deletedItem?.componentId || "").trim();
+            const componentName = normalizeComponentName(deletedItem?.name);
+            if (!componentId && !componentName) continue;
+
+            const stillUsed = remainingStudentReceipts.some((receipt) => {
+              const details = parseRemarks(receipt.remarks);
+              if (String(details?.academicYear || "").trim() !== deletedAcademicYear) return false;
+              const items = Array.isArray(details?.items)
+                ? details.items
+                : Array.isArray(details?.breakdown)
+                  ? details.breakdown
+                  : [];
+              return items.some((item: any) => {
+                const remainingId = String(item?.componentId || "").trim();
+                const remainingName = normalizeComponentName(item?.name);
+                return (componentId && remainingId === componentId) || (componentName && remainingName === componentName);
+              });
+            });
+
+            if (!stillUsed) {
+              const matchingLockIds = existingLocks
+                .filter((lock) =>
+                  (componentId && lock.componentId === componentId) ||
+                  (componentName && normalizeComponentName(lock.componentName) === componentName)
+                )
+                .map((lock) => lock.id);
+              for (const lockId of matchingLockIds) {
+                await tx
+                  .delete(nursingStudentFeeFrequencies)
+                  .where(eq(nursingStudentFeeFrequencies.id, lockId))
+                  .execute();
+              }
+            }
+          }
+        }
+      }
+
+      if (existing.applicantId) {
+        const remainingReceipts = await tx
+          .select()
+          .from(nursingFeeTransactions)
+          .where(
+            and(
+              eq(nursingFeeTransactions.applicantId, existing.applicantId),
+              ne(nursingFeeTransactions.status, "refunded")
+            )
+          )
+          .orderBy(desc(nursingFeeTransactions.id))
+          .execute();
+
+        const remainingAdvances = remainingReceipts.filter((receipt) => {
+          const details = parseRemarks(receipt.remarks);
+          return details?.isSeatBookingAdvance || receipt.feeType?.toLowerCase().includes("seat booking");
+        });
+        const remainingAdvanceTotal = remainingAdvances.reduce((sum, receipt) => sum + toNum(receipt.amount), 0);
+        const hasRemainingAdjustment = remainingReceipts.some(
+          (receipt) => Number(parseRemarks(receipt.remarks)?.advanceAdjustedAmount || 0) > 0
+        );
+        const latestAdvance = remainingAdvances[0];
+
+        await tx
+          .update(nursingApplicants)
+          .set({
+            seatBookingAmount: String(Math.round(remainingAdvanceTotal)),
+            seatBookingStatus: remainingAdvanceTotal <= 0 ? "none" : hasRemainingAdjustment ? "adjusted" : "unadjusted",
+            seatBookingReceiptNo: latestAdvance?.receiptNumber ?? null,
+            seatBookingDate: latestAdvance?.paymentDate ?? null,
+            seatBookingPaymentMode: latestAdvance?.paymentMode ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(nursingApplicants.id, existing.applicantId))
+          .execute();
+      }
+
+      await tx.insert(nursingAuditLogs).values({
+        entity: "nursing_fee_transactions",
+        entityId: String(id),
+        action: "DELETE_FEE_RECEIPT",
+        changedBy: session?.user?.id,
+        diff: existing,
+      }).execute();
+
+      return existing;
+    });
+
+    if (!deleted) return c.json({ error: "Fee receipt not found" }, 404);
+    if (deleted.paymentMode.toLowerCase() === "cash") {
+      await syncAconCashReceiptToDailyClosing(deleted.paymentDate);
+    }
+
+    return c.json({ message: `Receipt ${deleted.receiptNumber} deleted successfully` });
   })
 
   // -------------------------------------------------------------------------
@@ -2984,12 +3366,12 @@ export const nursingRoutes = new Hono<AuthEnv>()
               description: z.string(),
               quantity: z.number().min(1).default(1),
               unitPrice: z.number().min(0).default(0),
-              amount: z.number().min(0),
+              amount: z.number().int("Item amount must be a whole-rupee amount").min(0),
             })
           )
           .optional()
           .nullable(),
-        amount: z.number().min(0.01, "Payment amount must be greater than zero"),
+        amount: z.number().int("Payment amount must be a whole-rupee amount").positive("Payment amount must be greater than zero"),
         paymentMode: z.enum(["cash", "bank_transfer", "upi", "upi_bank_transfer_dr_je", "card", "cheque"]).default("cash"),
         paymentDate: z.string().default(() => new Date().toISOString().split("T")[0]),
         academicYear: z.string().optional().nullable(),
@@ -3038,7 +3420,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
         paymentFrequency: "one_time",
         invoiceNo,
         receiptNumber,
-        amount: input.amount.toFixed(2),
+        amount: String(input.amount),
         paymentMode: input.paymentMode,
         paymentDate: input.paymentDate,
         status: "paid",
@@ -4236,11 +4618,19 @@ export const nursingRoutes = new Hono<AuthEnv>()
         // Total fees collected and concessions recorded for this student across all transactions
         let paidAmount = 0;
         let totalDiscountConcessions = 0;
-        const studentTxList = feeTx.filter((tx) => tx.studentId === st.id);
+        const studentTxList = feeTx.filter((tx) => {
+          if (tx.studentId !== st.id) return false;
+          const parsed = parseRemarks(tx.remarks);
+          const isGeneralReceipt = parsed?.isGeneralReceipt || tx.receiptNumber?.startsWith("RCP-GEN-");
+          const isSeatBookingAdvance =
+            parsed?.isSeatBookingAdvance ||
+            tx.feeType?.toLowerCase().includes("seat booking");
+          return !isGeneralReceipt && !isSeatBookingAdvance;
+        });
         for (const tx of studentTxList) {
-          paidAmount += toNum(tx.amount);
+          const parsed = parseRemarks(tx.remarks);
+          paidAmount += toNum(tx.amount) + toNum(parsed?.advanceAdjustedAmount);
           if (tx.remarks) {
-            const parsed = parseRemarks(tx.remarks);
             if (parsed && Number(parsed.discountAmount) > 0) {
               totalDiscountConcessions += Number(parsed.discountAmount);
             }
@@ -4461,6 +4851,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
         const yearlyComponentDues = distinctAcademicYears.map((acadYear, yIdx) => {
           const yearNum = yIdx + 1;
           const isFirstYear = yearNum === 1;
+          const yearScheduleRows = batchSchedules.filter((schedule) => schedule.academicYear === acadYear);
+          const scheduleMonthPlan = inferScheduleMonthPlan(yearScheduleRows);
+          const scheduledMonthKeys = scheduleMonthPlan.months.length > 0
+            ? scheduleMonthPlan.months
+            : getAcademicYearMonths(acadYear);
 
           // Find fee structure for this specific academic year or fallback to base
           const yearFs =
@@ -4521,14 +4916,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
             yearMasterComps = yearMasterComps.filter((c) => c.frequencyKey !== "one_time");
           }
 
-          // Compute total expected for all components this year (needed for proportional distribution)
-          const yearTotalExpectedForProportion = yearMasterComps.reduce((sum, c) => {
-            const lk = studentFreqs.find(
-              (f) => f.studentId === st.id && f.academicYear === acadYear && f.componentName.toLowerCase() === c.name.toLowerCase()
-            );
-            return sum + (lk && toNum(lk.baseAmount) > 0 ? toNum(lk.baseAmount) : c.amount);
-          }, 0);
-
           const comps = yearMasterComps.map((comp) => {
             const locked = studentFreqs.find(
               (f) => f.studentId === st.id && f.academicYear === acadYear && f.componentName.toLowerCase() === comp.name.toLowerCase()
@@ -4537,10 +4924,30 @@ export const nursingRoutes = new Hono<AuthEnv>()
             const freqLabel = locked?.frequencyLabel || comp.frequency;
             const freqKey = locked?.frequencyKey || comp.frequencyKey;
             const baseCompAmount = locked && toNum(locked.baseAmount) > 0 ? toNum(locked.baseAmount) : comp.amount;
-            const expectedCompAmount = baseCompAmount;
+            const installmentCount = Number(
+              locked?.installmentCount ||
+              (freqKey === "monthly" ? 12 : freqKey === "quarterly" ? 4 : freqKey === "semester" ? 2 : 1)
+            );
+            let installmentAmount = toNum(locked?.installmentAmount);
+            if (
+              locked &&
+              installmentCount > 1 &&
+              baseCompAmount > 0 &&
+              installmentAmount > (baseCompAmount / installmentCount) * 1.5
+            ) {
+              installmentAmount = baseCompAmount / installmentCount;
+            }
+            // Once a student selects a payment frequency, rebates/surcharges
+            // make the locked installment schedule the authoritative liability.
+            // Using baseAmount here caused the component ledger to ignore the
+            // annual rebate even though the headline calculation applied it.
+            const expectedCompAmount = locked && installmentAmount > 0
+              ? Math.round(installmentAmount * installmentCount)
+              : baseCompAmount;
 
             // Collect individual payment records attributed to this component
             let paidForComp = 0;
+            const paidByMonth = new Map<string, number>();
             const compPayments: Array<{
               receiptNumber: string;
               paymentDate: string;
@@ -4552,7 +4959,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
             for (const tx of studentTxList) {
               let txTargetAcadYear = getAcademicYear(tx.paymentDate);
-              let hasItemizedBreakdown = false;
               let txTargetPeriod: string | null = null;
               const parsed = tx.remarks ? parseRemarks(tx.remarks) : null;
 
@@ -4565,7 +4971,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
                 const matchesYear = txTargetAcadYear === acadYear || distinctAcademicYears.length === 1;
 
                 if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
-                  hasItemizedBreakdown = true;
                   const item = parsed.items.find(
                     (i: any) => {
                       const iname = String(i.name || "").toLowerCase().trim();
@@ -4577,6 +4982,25 @@ export const nursingRoutes = new Hono<AuthEnv>()
                   if (item && matchesYear) {
                     const amt = toNum(item.amount);
                     paidForComp += amt;
+                    const receiptPeriods: string[] = Array.isArray(parsed.selectedPeriods)
+                      ? parsed.selectedPeriods
+                      : (parsed.billingPeriodValue ? [parsed.billingPeriodValue] : []);
+                    const receiptMonths = Array.isArray(parsed.coveredMonths)
+                      ? parsed.coveredMonths.map((month: unknown) => String(month))
+                      : expandBillingPeriodsToMonths(
+                          String(parsed.academicYear || txTargetAcadYear),
+                          String(parsed.billingPeriodType || ""),
+                          receiptPeriods,
+                          yearScheduleRows
+                        );
+                    const allocations = Array.isArray(item.monthlyAllocations) && item.monthlyAllocations.length > 0
+                      ? item.monthlyAllocations
+                      : splitAmountAcrossMonths(amt, receiptMonths);
+                    for (const allocation of allocations) {
+                      const month = String(allocation?.month || "");
+                      if (!month) continue;
+                      paidByMonth.set(month, (paidByMonth.get(month) || 0) + toNum(allocation?.amount));
+                    }
                     compPayments.push({
                       receiptNumber: tx.receiptNumber,
                       paymentDate: tx.paymentDate,
@@ -4586,37 +5010,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
                       isProportional: false,
                     });
                   }
-                } else if (matchesYear && !hasItemizedBreakdown) {
-                  if (yearTotalExpectedForProportion > 0) {
-                    const proportion = expectedCompAmount / yearTotalExpectedForProportion;
-                    const amt = Math.round(toNum(tx.amount) * proportion * 100) / 100;
-                    paidForComp += amt;
-                    compPayments.push({
-                      receiptNumber: tx.receiptNumber,
-                      paymentDate: tx.paymentDate,
-                      amount: amt,
-                      paymentMode: tx.paymentMode,
-                      targetPeriod: txTargetPeriod,
-                      isProportional: true,
-                    });
-                  }
-                }
-              } else {
-                const fallbackAcadYear = getAcademicYear(tx.paymentDate);
-                if (fallbackAcadYear === acadYear || distinctAcademicYears.length === 1) {
-                  if (yearTotalExpectedForProportion > 0) {
-                    const proportion = expectedCompAmount / yearTotalExpectedForProportion;
-                    const amt = Math.round(toNum(tx.amount) * proportion * 100) / 100;
-                    paidForComp += amt;
-                    compPayments.push({
-                      receiptNumber: tx.receiptNumber,
-                      paymentDate: tx.paymentDate,
-                      amount: amt,
-                      paymentMode: tx.paymentMode,
-                      targetPeriod: null,
-                      isProportional: true,
-                    });
-                  }
                 }
               }
             }
@@ -4624,109 +5017,72 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
             // Build installment-level breakdown based on frequency
             // Shows what's expected per period and how much has been covered
-            const acadYearStartNum = parseInt(acadYear.split(/[-/]/)[0].trim(), 10) || batchStartYear;
-
             interface InstallmentPeriod {
               period: string;
+              dueDate: string | null;
               expectedAmount: number;
               paidAmount: number;
               dueAmount: number;
-              status: "paid" | "partial" | "due";
+              scheduledBalance: number;
+              status: "paid" | "partial" | "due" | "upcoming";
             }
             const installments: InstallmentPeriod[] = [];
 
-            const monthNames = ["Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May"];
-
-            if (freqKey === "monthly") {
-              const rawInst = locked ? toNum(locked.installmentAmount) : 0;
-              const count = 12;
-              const safeInst = (rawInst > 0 && expectedCompAmount > 0 && rawInst <= expectedCompAmount / 6)
-                ? rawInst
-                : Math.round((expectedCompAmount / count) * 100) / 100;
-              const instAmt = safeInst > 0 ? safeInst : Math.round((expectedCompAmount / count) * 100) / 100;
-              for (let m = 0; m < 12; m++) {
-                const mName = monthNames[m];
-                const mYear = m < 7 ? acadYearStartNum : acadYearStartNum + 1;
-                installments.push({
-                  period: `${mName} ${mYear}`,
-                  expectedAmount: instAmt,
-                  paidAmount: 0,
-                  dueAmount: instAmt,
-                  status: "due",
-                });
-              }
-            } else if (freqKey === "quarterly") {
-              const rawInst = locked ? toNum(locked.installmentAmount) : 0;
-              const count = 4;
-              const safeInst = (rawInst > 0 && expectedCompAmount > 0 && rawInst <= expectedCompAmount / 2)
-                ? rawInst
-                : Math.round((expectedCompAmount / count) * 100) / 100;
-              const instAmt = safeInst > 0 ? safeInst : Math.round((expectedCompAmount / count) * 100) / 100;
-              const quarters = [`Q1 (Jun-Aug ${acadYearStartNum})`, `Q2 (Sep-Nov ${acadYearStartNum})`, `Q3 (Dec ${acadYearStartNum}-Feb ${acadYearStartNum + 1})`, `Q4 (Mar-May ${acadYearStartNum + 1})`];
-              for (const q of quarters) {
-                installments.push({
-                  period: q,
-                  expectedAmount: instAmt,
-                  paidAmount: 0,
-                  dueAmount: instAmt,
-                  status: "due",
-                });
-              }
-            } else if (freqKey === "semester") {
-              const rawInst = locked ? toNum(locked.installmentAmount) : 0;
-              const count = 2;
-              const safeInst = (rawInst > 0 && expectedCompAmount > 0 && rawInst <= expectedCompAmount * 0.75)
-                ? rawInst
-                : Math.round((expectedCompAmount / count) * 100) / 100;
-              const instAmt = safeInst > 0 ? safeInst : Math.round((expectedCompAmount / count) * 100) / 100;
-              installments.push({
-                period: `Sem 1 (Jun-Nov ${acadYearStartNum})`,
-                expectedAmount: instAmt,
-                paidAmount: 0,
-                dueAmount: instAmt,
-                status: "due",
-              });
-              installments.push({
-                period: `Sem 2 (Dec ${acadYearStartNum}-May ${acadYearStartNum + 1})`,
-                expectedAmount: instAmt,
-                paidAmount: 0,
-                dueAmount: instAmt,
-                status: "due",
-              });
-            } else if (freqKey === "one_time") {
+            if (freqKey === "one_time") {
+              const oneTimeDueDate = yearScheduleRows
+                .map((schedule) => schedule.feeDueDate || schedule.startDate)
+                .filter(Boolean)
+                .sort()[0] || null;
+              const isMatured = !oneTimeDueDate || oneTimeDueDate <= todayStr;
+              const remaining = Math.max(0, expectedCompAmount - paidForComp);
               installments.push({
                 period: `One-Time (Year ${yearNum})`,
+                dueDate: oneTimeDueDate,
                 expectedAmount: expectedCompAmount,
-                paidAmount: 0,
-                dueAmount: expectedCompAmount,
-                status: "due",
+                paidAmount: Math.min(expectedCompAmount, paidForComp),
+                dueAmount: isMatured ? remaining : 0,
+                scheduledBalance: isMatured ? 0 : remaining,
+                status: paidForComp >= expectedCompAmount
+                  ? "paid"
+                  : !isMatured
+                    ? "upcoming"
+                    : paidForComp > 0 ? "partial" : "due",
               });
             } else {
-              // annually or default
-              installments.push({
-                period: `AY ${acadYear}`,
-                expectedAmount: expectedCompAmount,
-                paidAmount: 0,
-                dueAmount: expectedCompAmount,
-                status: "due",
-              });
+              const expectedAllocations = splitAmountAcrossMonths(expectedCompAmount, scheduledMonthKeys);
+              for (const allocation of expectedAllocations) {
+                const [year, month] = allocation.month.split("-");
+                const monthLabel = new Date(Number(year), Number(month) - 1, 1)
+                  .toLocaleString("en-US", { month: "short" })
+                  .toUpperCase();
+                const paid = Math.min(allocation.amount, Math.round((paidByMonth.get(allocation.month) || 0) * 100) / 100);
+                const remaining = Math.max(0, Math.round((allocation.amount - paid) * 100) / 100);
+                const dueDate = scheduleMonthPlan.monthDueDates.get(allocation.month) || `${allocation.month}-01`;
+                const isMatured = dueDate <= todayStr;
+                installments.push({
+                  period: `${monthLabel}-${year.slice(-2)}`,
+                  dueDate,
+                  expectedAmount: allocation.amount,
+                  paidAmount: paid,
+                  dueAmount: isMatured ? remaining : 0,
+                  scheduledBalance: isMatured ? 0 : remaining,
+                  status: paid >= allocation.amount
+                    ? "paid"
+                    : !isMatured
+                      ? "upcoming"
+                      : paid > 0 ? "partial" : "due",
+                });
+              }
             }
 
-            // Distribute paid amount across installments chronologically
-            let remainingPaid = paidForComp;
-            for (const inst of installments) {
-              if (remainingPaid <= 0) break;
-              const applied = Math.min(remainingPaid, inst.expectedAmount);
-              inst.paidAmount = Math.round(applied * 100) / 100;
-              inst.dueAmount = Math.max(0, Math.round((inst.expectedAmount - inst.paidAmount) * 100) / 100);
-              inst.status = inst.paidAmount >= inst.expectedAmount ? "paid" : inst.paidAmount > 0 ? "partial" : "due";
-              remainingPaid -= applied;
-            }
-
-            const dueAmount = Math.max(0, expectedCompAmount - paidForComp);
-            let compStatus: "paid" | "partial" | "due" = "due";
-            if (paidForComp >= expectedCompAmount && expectedCompAmount > 0) {
+            const remainingBalance = Math.max(0, expectedCompAmount - paidForComp);
+            const dueAmount = installments.reduce((sum, installment) => sum + installment.dueAmount, 0);
+            const scheduledBalance = installments.reduce((sum, installment) => sum + installment.scheduledBalance, 0);
+            let compStatus: "paid" | "partial" | "due" | "upcoming" = "due";
+            if (remainingBalance <= 0 && expectedCompAmount > 0) {
               compStatus = "paid";
+            } else if (dueAmount <= 0 && scheduledBalance > 0) {
+              compStatus = "upcoming";
             } else if (paidForComp > 0) {
               compStatus = "partial";
             }
@@ -4738,6 +5094,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
               expectedAmount: expectedCompAmount,
               paidAmount: paidForComp,
               dueAmount,
+              scheduledBalance,
+              remainingBalance,
               status: compStatus,
               payments: compPayments.sort((a, b) => (a.paymentDate || "").localeCompare(b.paymentDate || "")),
               installments,
@@ -4746,7 +5104,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
           const yearTotalExpected = comps.reduce((sum, c) => sum + c.expectedAmount, 0);
           const yearTotalPaid = comps.reduce((sum, c) => sum + c.paidAmount, 0);
-          const yearTotalDue = Math.max(0, yearTotalExpected - yearTotalPaid);
+          const yearTotalDue = comps.reduce((sum, c) => sum + c.dueAmount, 0);
+          const yearScheduledBalance = comps.reduce((sum, c) => sum + c.scheduledBalance, 0);
 
           return {
             academicYear: acadYear,
@@ -4754,11 +5113,53 @@ export const nursingRoutes = new Hono<AuthEnv>()
             totalExpected: yearTotalExpected,
             totalPaid: yearTotalPaid,
             totalDue: yearTotalDue,
+            scheduledBalance: yearScheduledBalance,
             components: comps,
           };
         });
 
         const allFlatComponentDues = yearlyComponentDues.flatMap((y) => y.components);
+        const reconciledGrossFee = yearlyComponentDues.reduce((sum, year) => sum + year.totalExpected, 0);
+        const reconciledTotalFee = Math.max(0, reconciledGrossFee - totalDiscountConcessions);
+        const reconciledCurrentDue = yearlyComponentDues.reduce((sum, year) => sum + year.totalDue, 0);
+        const reconciledScheduledBalance = yearlyComponentDues.reduce(
+          (sum, year) => sum + year.scheduledBalance,
+          0
+        );
+        const reconciledRemainingBalance = Math.max(0, reconciledTotalFee - paidAmount);
+
+        // The component master is the authoritative source of liability. This
+        // also keeps unpaid/unlocked components in the headline total; the old
+        // term calculation only included components that already had a saved
+        // frequency lock and could therefore understate outstanding dues.
+        const unpaidInstallments = allFlatComponentDues
+          .flatMap((component) => component.installments)
+          .filter((installment) => installment.status !== "paid" && installment.dueDate)
+          .sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+        const earliestMaturedInstallment = unpaidInstallments.find(
+          (installment) => String(installment.dueDate) <= todayStr
+        );
+        const nextScheduledInstallment = unpaidInstallments.find(
+          (installment) => String(installment.dueDate) > todayStr
+        );
+
+        if (reconciledRemainingBalance <= 0) {
+          dueStatus = "paid";
+          daysDiffText = "Fully Paid";
+        } else if (earliestMaturedInstallment) {
+          dueStatus = "overdue";
+          const dueTs = new Date(`${earliestMaturedInstallment.dueDate}T00:00:00`).getTime();
+          const diffDays = Math.max(1, Math.round((todayTs - dueTs) / 86_400_000));
+          daysDiffText = `Overdue by ${diffDays} day${diffDays === 1 ? "" : "s"}`;
+        } else if (nextScheduledInstallment) {
+          dueStatus = "upcoming";
+          const dueTs = new Date(`${nextScheduledInstallment.dueDate}T00:00:00`).getTime();
+          const diffDays = Math.max(0, Math.round((dueTs - todayTs) / 86_400_000));
+          daysDiffText = diffDays === 0 ? "Due Today" : `Due in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
+        } else {
+          dueStatus = "upcoming";
+          daysDiffText = "Scheduled";
+        }
 
         // Build compact payment history for this student
         const paymentHistory = studentTxList
@@ -4808,12 +5209,15 @@ export const nursingRoutes = new Hono<AuthEnv>()
           courseName: batch?.courseName || "B.Sc Nursing",
           quotaCategory: st.quotaCategory || "general",
           semester,
-          totalFee,
+          grossFee: reconciledGrossFee,
+          totalFee: reconciledTotalFee,
           paidAmount,
-          balanceDue,
+          balanceDue: reconciledCurrentDue,
+          remainingBalance: reconciledRemainingBalance,
+          scheduledBalance: reconciledScheduledBalance,
           totalDiscountConcessions,
           termStartDate,
-          feeDueDate,
+          feeDueDate: earliestMaturedInstallment?.dueDate || nextScheduledInstallment?.dueDate || feeDueDate,
           dueStatus,
           daysDiffText,
           termDetails,
@@ -5424,10 +5828,18 @@ export const nursingRoutes = new Hono<AuthEnv>()
         .innerJoin(nursingBatches, eq(nursingStudents.batchId, nursingBatches.id))
         .innerJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
         .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
-        .where(eq(nursingBatches.academicYear, academicYear))
         .execute()) || [];
 
-      let targetStudents = studentRows;
+      const scheduleRows = (await db
+        .select()
+        .from(nursingAcademicSchedules)
+        .where(eq(nursingAcademicSchedules.academicYear, academicYear))
+        .execute()) || [];
+      const scheduledBatchIds = new Set(scheduleRows.map((schedule) => schedule.batchId));
+
+      let targetStudents = studentRows.filter((student) =>
+        student.batchId !== null && scheduledBatchIds.has(student.batchId)
+      );
       if (courseId && !isNaN(Number(courseId))) {
         targetStudents = targetStudents.filter((s) => s && s.courseId === Number(courseId));
       }
@@ -5444,8 +5856,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
         .where(eq(nursingFeeStructures.academicYear, academicYear))
         .execute()) || [];
 
-      const startYear = parseInt((academicYear || "2025-2026").split(/[-/]/)[0], 10) || new Date().getFullYear();
-
       interface PeriodDef {
         key: string;
         name: string;
@@ -5453,62 +5863,46 @@ export const nursingRoutes = new Hono<AuthEnv>()
       }
 
       let periods: PeriodDef[] = [];
-      let periodDivisor = 12;
+      const scheduledMonths = Array.from(new Set(
+        Array.from(scheduledBatchIds).flatMap((batchId) =>
+          inferScheduleMonthPlan(scheduleRows.filter((schedule) => schedule.batchId === batchId)).months
+        )
+      )).sort();
 
       if (frequency === "quarterly") {
-        periodDivisor = 4;
-        periods = [
-          {
-            key: "Q1",
-            name: `Q1 (Jun - Aug ${startYear})`,
-            monthKeys: [`${startYear}-06`, `${startYear}-07`, `${startYear}-08`],
-          },
-          {
-            key: "Q2",
-            name: `Q2 (Sep - Nov ${startYear})`,
-            monthKeys: [`${startYear}-09`, `${startYear}-10`, `${startYear}-11`],
-          },
-          {
-            key: "Q3",
-            name: `Q3 (Dec ${startYear} - Feb ${startYear + 1})`,
-            monthKeys: [`${startYear}-12`, `${startYear + 1}-01`, `${startYear + 1}-02`],
-          },
-          {
-            key: "Q4",
-            name: `Q4 (Mar - May ${startYear + 1})`,
-            monthKeys: [`${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`],
-          },
-        ];
+        for (let index = 0; index < scheduledMonths.length; index += 3) {
+          const monthKeys = scheduledMonths.slice(index, index + 3);
+          const first = monthKeys[0];
+          const last = monthKeys[monthKeys.length - 1];
+          periods.push({
+            key: `Q${periods.length + 1}`,
+            name: `Q${periods.length + 1} (${first} - ${last})`,
+            monthKeys,
+          });
+        }
       } else if (frequency === "annually") {
-        periodDivisor = 1;
         periods = [
           {
             key: "ANNUAL",
-            name: `Annual Academic Year (${academicYear})`,
-            monthKeys: [
-              `${startYear}-06`, `${startYear}-07`, `${startYear}-08`, `${startYear}-09`,
-              `${startYear}-10`, `${startYear}-11`, `${startYear}-12`, `${startYear + 1}-01`,
-              `${startYear + 1}-02`, `${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`,
-            ],
+            name: scheduledMonths.length > 0
+              ? `Annual Schedule (${scheduledMonths[0]} - ${scheduledMonths[scheduledMonths.length - 1]})`
+              : `Annual Schedule (${academicYear})`,
+            monthKeys: scheduledMonths,
           },
         ];
       } else {
-        // Monthly
-        periodDivisor = 12;
-        periods = [
-          { key: `${startYear}-06`, name: `June ${startYear}`, monthKeys: [`${startYear}-06`] },
-          { key: `${startYear}-07`, name: `July ${startYear}`, monthKeys: [`${startYear}-07`] },
-          { key: `${startYear}-08`, name: `August ${startYear}`, monthKeys: [`${startYear}-08`] },
-          { key: `${startYear}-09`, name: `September ${startYear}`, monthKeys: [`${startYear}-09`] },
-          { key: `${startYear}-10`, name: `October ${startYear}`, monthKeys: [`${startYear}-10`] },
-          { key: `${startYear}-11`, name: `November ${startYear}`, monthKeys: [`${startYear}-11`] },
-          { key: `${startYear}-12`, name: `December ${startYear}`, monthKeys: [`${startYear}-12`] },
-          { key: `${startYear + 1}-01`, name: `January ${startYear + 1}`, monthKeys: [`${startYear + 1}-01`] },
-          { key: `${startYear + 1}-02`, name: `February ${startYear + 1}`, monthKeys: [`${startYear + 1}-02`] },
-          { key: `${startYear + 1}-03`, name: `March ${startYear + 1}`, monthKeys: [`${startYear + 1}-03`] },
-          { key: `${startYear + 1}-04`, name: `April ${startYear + 1}`, monthKeys: [`${startYear + 1}-04`] },
-          { key: `${startYear + 1}-05`, name: `May ${startYear + 1}`, monthKeys: [`${startYear + 1}-05`] },
-        ];
+        periods = scheduledMonths.map((monthKey) => {
+          const [year, month] = monthKey.split("-").map(Number);
+          return {
+            key: monthKey,
+            name: new Date(Date.UTC(year, month - 1, 1)).toLocaleString("en-US", {
+              month: "long",
+              year: "numeric",
+              timeZone: "UTC",
+            }),
+            monthKeys: [monthKey],
+          };
+        });
       }
 
       // Group target students by batch
@@ -5531,6 +5925,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
       // Calculate total demanded fee for each student for full year
       const studentYearDemanded = new Map<number, number>();
+      const studentMonthlyDemanded = new Map<number, Map<string, number>>();
       for (const st of targetStudents) {
         if (!st || !st.id) continue;
         const quota = (st.quotaCategory || "general").toLowerCase();
@@ -5550,7 +5945,49 @@ export const nursingRoutes = new Hono<AuthEnv>()
           ) ||
           feeStructures.find((f) => f && f.courseId === st.courseId);
 
-        studentYearDemanded.set(st.id, fs ? (parseFloat(fs.totalAmount || "0") || 0) : 0);
+        const annualDemand = fs ? (parseFloat(fs.totalAmount || "0") || 0) : 0;
+        studentYearDemanded.set(st.id, annualDemand);
+        const batchScheduleRows = scheduleRows.filter((schedule) => schedule.batchId === st.batchId);
+        const batchMonths = inferScheduleMonthPlan(batchScheduleRows).months;
+        studentMonthlyDemanded.set(
+          st.id,
+          new Map(splitAmountAcrossMonths(annualDemand, batchMonths).map((allocation) => [allocation.month, allocation.amount]))
+        );
+      }
+
+      const targetStudentById = new Map(targetStudents.map((student) => [student.id, student]));
+      const studentPaidByMonth = new Map<number, Map<string, number>>();
+      const receiptMonthsById = new Map<number, string[]>();
+      for (const tx of feeTransactions) {
+        if (!tx.studentId) continue;
+        const student = targetStudentById.get(tx.studentId);
+        if (!student) continue;
+        const parsed = parseRemarks(tx.remarks);
+        if (parsed?.academicYear && String(parsed.academicYear) !== academicYear) continue;
+        const batchScheduleRows = scheduleRows.filter((schedule) => schedule.batchId === student.batchId);
+        const selectedPeriods: string[] = Array.isArray(parsed?.selectedPeriods)
+          ? parsed.selectedPeriods.map((period: unknown) => String(period))
+          : (parsed?.billingPeriodValue ? [String(parsed.billingPeriodValue)] : []);
+        let receiptMonths = Array.isArray(parsed?.coveredMonths)
+          ? parsed.coveredMonths.map((month: unknown) => String(month)).filter(Boolean)
+          : expandBillingPeriodsToMonths(
+              academicYear,
+              String(parsed?.billingPeriodType || ""),
+              selectedPeriods,
+              batchScheduleRows
+            );
+        if (receiptMonths.length === 0) {
+          const paymentMonth = String(tx.paymentDate || "").slice(0, 7);
+          const scheduledForBatch = inferScheduleMonthPlan(batchScheduleRows).months;
+          receiptMonths = scheduledForBatch.includes(paymentMonth) ? [paymentMonth] : [];
+        }
+        receiptMonthsById.set(tx.id, receiptMonths);
+        const monthlyPayments = splitAmountAcrossMonths(toNum(tx.amount), receiptMonths);
+        const paidMap = studentPaidByMonth.get(tx.studentId) || new Map<string, number>();
+        monthlyPayments.forEach((allocation) => {
+          paidMap.set(allocation.month, (paidMap.get(allocation.month) || 0) + allocation.amount);
+        });
+        studentPaidByMonth.set(tx.studentId, paidMap);
       }
 
       // Total Academic Year Demand across all target students
@@ -5563,17 +6000,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
       // Period Breakdown with Batch -> Student Drill-Down
       const periodsBreakdown = periods.map((p) => {
-        // Find transactions in this period
-        const periodTxs = feeTransactions.filter((t) =>
-          t && t.paymentDate && p.monthKeys.some((mKey) => String(t.paymentDate).startsWith(mKey))
+        const periodTxs = feeTransactions.filter((tx) =>
+          (receiptMonthsById.get(tx.id) || []).some((monthKey) => p.monthKeys.includes(monthKey))
         );
-
-        const periodTxsMap = new Map<number, number>();
-        for (const tx of periodTxs) {
-          if (tx && tx.studentId) {
-            periodTxsMap.set(tx.studentId, (periodTxsMap.get(tx.studentId) || 0) + (parseFloat(tx.amount || "0") || 0));
-          }
-        }
 
         let periodExpectedTarget = 0;
         let periodCollectedAmount = 0;
@@ -5583,9 +6012,10 @@ export const nursingRoutes = new Hono<AuthEnv>()
           let batchCollectedAmount = 0;
 
           const studentList = b.students.map((st) => {
-            const yrDemanded = studentYearDemanded.get(st.id) || 0;
-            const stPeriodTarget = Math.round(yrDemanded / periodDivisor);
-            const stPeriodCollected = periodTxsMap.get(st.id) || 0;
+            const demandedByMonth = studentMonthlyDemanded.get(st.id) || new Map<string, number>();
+            const paidByMonth = studentPaidByMonth.get(st.id) || new Map<string, number>();
+            const stPeriodTarget = p.monthKeys.reduce((sum, monthKey) => sum + (demandedByMonth.get(monthKey) || 0), 0);
+            const stPeriodCollected = p.monthKeys.reduce((sum, monthKey) => sum + (paidByMonth.get(monthKey) || 0), 0);
             const stPeriodBalance = Math.max(0, stPeriodTarget - stPeriodCollected);
 
             let status: "paid" | "partial" | "unpaid" = "unpaid";
