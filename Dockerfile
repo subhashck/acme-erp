@@ -33,6 +33,9 @@ RUN pnpm install --frozen-lockfile
 # Copy build artifacts and server source
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
+# Shared assessment helpers are imported by the API at runtime.
+COPY --from=builder /app/src/lib/exam-question-mix.ts /app/src/lib/cbt-certificate.ts ./src/lib/
+RUN pnpm exec tsx -e "Promise.all([import('./src/lib/exam-question-mix.ts'), import('./src/lib/cbt-certificate.ts')]).catch(error => { console.error(error); process.exit(1); })"
 COPY --from=builder /app/tsconfig.json /app/tsconfig.server.json ./
 COPY --from=builder /app/drizzle.config.ts ./
 
