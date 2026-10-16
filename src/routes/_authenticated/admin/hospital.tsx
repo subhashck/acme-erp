@@ -35,6 +35,7 @@ function HospitalProfilePage() {
   const [hFloors, setHFloors] = React.useState(1);
   const [hIcu, setHIcu] = React.useState(0);
   const [hEmergency, setHEmergency] = React.useState(0);
+  const [isSavingDb, setIsSavingDb] = React.useState(false);
   const [hospitalMessage, setHospitalMessage] = React.useState<string | null>(null);
 
   React.useEffect(() => {
@@ -46,10 +47,12 @@ function HospitalProfilePage() {
     setHFloors(hospitalSettings.floorCount);
     setHIcu(hospitalSettings.icuBeds);
     setHEmergency(hospitalSettings.emergencyCapacity);
+
   }, [hospitalSettings]);
 
-  const handleSaveHospitalSettings = (e: React.FormEvent) => {
+  const handleSaveHospitalSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingDb(true);
     const settings: HospitalSettings = {
       name: hName,
       address: hAddress,
@@ -61,8 +64,26 @@ function HospitalProfilePage() {
       emergencyCapacity: Number(hEmergency) || 0
     };
     saveHospitalSettings(settings);
-    setHospitalMessage("Hospital configurations saved successfully.");
-    setTimeout(() => setHospitalMessage(null), 3000);
+
+    try {
+      await fetch("/api/admin/hospital-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: hName,
+          address: hAddress,
+          phone: hPhone,
+          email: hEmail,
+          website: hWebsite,
+        }),
+      });
+      setHospitalMessage("Hospital profile settings saved successfully.");
+    } catch {
+      setHospitalMessage("Hospital configurations saved locally, but database sync encountered an issue.");
+    } finally {
+      setIsSavingDb(false);
+      setTimeout(() => setHospitalMessage(null), 3500);
+    }
   };
 
   return (
@@ -120,35 +141,6 @@ function HospitalProfilePage() {
                 onChange={(e) => setHAddress(e.target.value)}
               />
 
-              <div className="w-full h-px bg-border my-4" />
-              
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Institutional Capacities</h4>
-                <div className="grid gap-4 grid-cols-3">
-                  <Field
-                    label="Floors Count"
-                    type="number"
-                    min="1"
-                    value={hFloors}
-                    onChange={(e) => setHFloors(Number(e.target.value))}
-                  />
-                  <Field
-                    label="ICU Bed capacity"
-                    type="number"
-                    min="0"
-                    value={hIcu}
-                    onChange={(e) => setHIcu(Number(e.target.value))}
-                  />
-                  <Field
-                    label="Emergency Ward beds"
-                    type="number"
-                    min="0"
-                    value={hEmergency}
-                    onChange={(e) => setHEmergency(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-
               {hospitalMessage && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/20 dark:border-emerald-900/30 dark:text-emerald-300 rounded-lg text-xs flex gap-2 items-center">
                   <CheckCircle2 size={15} />
@@ -156,9 +148,13 @@ function HospitalProfilePage() {
                 </div>
               )}
 
-              <Button type="submit" className="font-bold bg-slate-900 hover:bg-slate-800 text-white gap-2 h-10 px-4">
+              <Button
+                type="submit"
+                disabled={isSavingDb}
+                className="font-bold bg-slate-900 hover:bg-slate-800 text-white gap-2 h-10 px-4"
+              >
                 <Save size={14} />
-                Save institutional profile
+                {isSavingDb ? "Saving..." : "Save institutional profile"}
               </Button>
             </form>
           </CardContent>

@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -18,8 +19,11 @@ import {
   dailyExpenditures,
   managementApprovers,
   securityDepositRefunds,
+  securityDepositRuleChanges,
 } from "../db/schema.ts";
 import { idParam, getCurrentStaff, isManagementApprover } from "./shared.ts";
+
+import { nextSecurityDepositDeduction, securityDepositBalances } from "../services/security-deposit.ts";
 
 function formatPayslipWithBankDetails(row: any) {
   if (!row) return row;
@@ -709,9 +713,9 @@ export const payrollRoutes = new Hono<AuthEnv>()
       return c.json({ error: "Only Accounts staff or Admins can mark payslips as Paid." }, 403);
     }
 
-    const ids = items.map((i) => i.id);
+    const ids = [...new Set(items.map((i) => i.id))];
     const existingList = await db
-      .select({
+      .selectDistinctOn([payslips.id], {
         id: payslips.id,
         staffId: payslips.staffId,
         month: payslips.month,
@@ -723,13 +727,14 @@ export const payrollRoutes = new Hono<AuthEnv>()
         departmentName: departments.name,
       })
       .from(payslips)
-      .leftJoin(staff, eq(payslips.staffId, staff.staffId))
+      .leftJoin(staff, and(eq(payslips.staffId, staff.staffId), eq(staff.active, true)))
       .leftJoin(
         staffDepartments,
-        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active'`
+        sql`${staff.staffId} = ${staffDepartments.staffId} AND ${staffDepartments.status} = 'Active' AND ${staffDepartments.staffVersion} = ${staff.version}`
       )
       .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
-      .where(inArray(payslips.id, ids));
+      .where(inArray(payslips.id, ids))
+      .orderBy(payslips.id, departments.id);
 
     const itemNoteMap = new Map(items.map((i) => [i.id, i.note]));
 
@@ -742,10 +747,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
         const [up] = await db
           .update(payslips)
           .set({ status: targetStatus, hrNotes: note })
-          .where(eq(payslips.id, existing.id))
+          .where(and(eq(payslips.id, existing.id), eq(payslips.status, existing.status)))
           .returning()
           .execute();
-        updatedResults.push(up);
+        if (up) updatedResults.push(up);
       } else if (
         targetStatus === "Approved by Management" ||
         targetStatus === "Approved by COO"
@@ -754,10 +759,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
         const [up] = await db
           .update(payslips)
           .set({ status: "Approved by Management", cooNotes: note })
-          .where(eq(payslips.id, existing.id))
+          .where(and(eq(payslips.id, existing.id), eq(payslips.status, existing.status)))
           .returning()
           .execute();
-        updatedResults.push(up);
+        if (up) updatedResults.push(up);
       } else if (targetStatus === "Paid") {
         if (
           existing.status !== "Approved by Management" &&
@@ -767,9 +772,12 @@ export const payrollRoutes = new Hono<AuthEnv>()
         const [up] = await db
           .update(payslips)
           .set({ status: "Paid", accountsNotes: note })
-          .where(eq(payslips.id, existing.id))
+          .where(and(eq(payslips.id, existing.id), eq(payslips.status, existing.status)))
           .returning()
           .execute();
+
+        // A concurrent approval may already have advanced this payslip.
+        if (!up) continue;
 
         // If CASH payment mode, auto-create expense item in Accounts Daily Closing Report
         const paymentMode = (up.paymentMode || "Bank Transfer").trim();
@@ -813,7 +821,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
               .execute();
           }
         }
-        updatedResults.push(up);
+        if (up) updatedResults.push(up);
       } else if (targetStatus === "Cancelled") {
         if (
           existing.status === "Approved by Management" ||
@@ -824,6 +832,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
         )
           continue;
 
+        if (existing.status === "Approved by HR"
+          ? !isHrOrAdmin && !isAuthorizedManagement
+          : !isHrOrAdmin) continue;
+
         let noteField: "hrNotes" | "cooNotes" = "hrNotes";
         if (existing.status === "Approved by HR") {
           noteField = isAuthorizedManagement ? "cooNotes" : "hrNotes";
@@ -831,10 +843,10 @@ export const payrollRoutes = new Hono<AuthEnv>()
         const [up] = await db
           .update(payslips)
           .set({ status: "Cancelled", [noteField]: note || "Cancelled" })
-          .where(eq(payslips.id, existing.id))
+          .where(and(eq(payslips.id, existing.id), eq(payslips.status, existing.status)))
           .returning()
           .execute();
-        updatedResults.push(up);
+        if (up) updatedResults.push(up);
       }
     }
 
@@ -1123,39 +1135,16 @@ export const payrollRoutes = new Hono<AuthEnv>()
         const secMonthly = Number(structure.securityDeposit || 0);
         const startMonth = structure.securityDepositStartMonth;
 
-        if (secTotal > 0 && secMonthly > 0) {
-          if (startMonth && month < startMonth) {
-            securityDeposit = 0;
-          } else {
-            let precedingPaid = 0;
-            if (startMonth) {
-              const joinDateStr = employee.employmentStartDate || employee.createdAt;
-              const joinMonth = joinDateStr ? getLocalDateStr(new Date(joinDateStr)).slice(0, 7) : startMonth;
-              if (joinMonth < startMonth) {
-                const [jY, jM] = joinMonth.split("-").map(Number);
-                const [sY, sM] = startMonth.split("-").map(Number);
-                const precedingMonthsCount = Math.max(0, (sY - jY) * 12 + (sM - jM));
-                precedingPaid = Math.min(secTotal, precedingMonthsCount * secMonthly);
-              }
-            }
-
-            const pastPayslips = await db
-              .select({ secDep: payslips.securityDeposit })
-              .from(payslips)
-              .where(
-                and(
-                  eq(payslips.staffId, employee.staffId),
-                  sql`${payslips.status} != 'Superseded'`,
-                  sql`${payslips.month} != ${month}`
-                )
-              )
-              .execute();
-            const actualDeducted = pastPayslips.reduce((s, p) => s + Number(p.secDep || 0), 0);
-            const alreadyCollected = Math.min(secTotal, precedingPaid + actualDeducted);
-            const remainingSec = Math.max(0, secTotal - alreadyCollected);
-            securityDeposit = Math.min(secMonthly, remainingSec);
-          }
-        }
+        const otherPayslips = await db
+          .select({ securityDeposit: payslips.securityDeposit, status: payslips.status })
+          .from(payslips)
+          .where(and(eq(payslips.staffId, employee.staffId), sql`${payslips.month} != ${month}`))
+          .execute();
+        securityDeposit = nextSecurityDepositDeduction({
+          target: secTotal, monthly: secMonthly,
+          openingBalance: structure.securityDepositOpeningBalance,
+          startMonth, month, deductions: otherPayslips,
+        });
       } else {
         const total = Number(employee.salary || 0);
         basic = Math.round(total * 0.5);
@@ -1298,7 +1287,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
     }
 
     const activeStaff = await db
-      .select({
+      .selectDistinctOn([staff.staffId], {
         staffId: staff.staffId,
         version: staff.version,
         employeeCode: staff.employeeCode,
@@ -1311,6 +1300,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
         securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
+        securityDepositOpeningBalance: staffSalaries.securityDepositOpeningBalance,
       })
       .from(staff)
       .leftJoin(
@@ -1323,22 +1313,13 @@ export const payrollRoutes = new Hono<AuthEnv>()
         sql`${staff.staffId} = ${staffSalaries.staffId} AND ${staff.version} = ${staffSalaries.staffVersion}`
       )
       .where(eq(staff.active, true))
-      .orderBy(staff.name)
+      .orderBy(staff.staffId, departments.id)
       .execute();
 
     const allDeductions = await db
-      .select({
-        staffId: payslips.staffId,
-        securityDeposit: payslips.securityDeposit,
-      })
+      .select({ staffId: payslips.staffId, securityDeposit: payslips.securityDeposit, status: payslips.status })
       .from(payslips)
-      .where(sql`${payslips.status} != 'Superseded'`)
       .execute();
-
-    const deductionsByStaff: Record<number, number> = {};
-    for (const p of allDeductions) {
-      deductionsByStaff[p.staffId] = (deductionsByStaff[p.staffId] || 0) + Number(p.securityDeposit || 0);
-    }
 
     const allRefunds = await db
       .select({
@@ -1353,32 +1334,16 @@ export const payrollRoutes = new Hono<AuthEnv>()
       .orderBy(desc(securityDepositRefunds.createdAt))
       .execute();
 
-    const refundsByStaff: Record<number, number> = {};
-    for (const r of allRefunds) {
-      refundsByStaff[r.staffId] = (refundsByStaff[r.staffId] || 0) + Number(r.amount || 0);
-    }
-
     const list = activeStaff.map((s) => {
       const target = Number(s.securityDepositTotal || 0);
       const monthlyDeduction = Number(s.securityDeposit || 0);
       const startMonth = s.securityDepositStartMonth;
-
-      let precedingPaid = 0;
-      if (target > 0 && monthlyDeduction > 0 && startMonth) {
-        const joinDateStr = s.employmentStartDate || s.createdAt;
-        const joinMonth = joinDateStr ? String(joinDateStr).slice(0, 7) : startMonth;
-        if (joinMonth < startMonth) {
-          const [jY, jM] = joinMonth.split("-").map(Number);
-          const [sY, sM] = startMonth.split("-").map(Number);
-          const precedingMonthsCount = Math.max(0, (sY - jY) * 12 + (sM - jM));
-          precedingPaid = Math.min(target, precedingMonthsCount * monthlyDeduction);
-        }
-      }
-
-      const actualDeducted = deductionsByStaff[s.staffId] || 0;
-      const totalDeducted = Math.min(target, precedingPaid + actualDeducted);
-      const totalRefunded = refundsByStaff[s.staffId] || 0;
-      const netHeld = Math.max(0, totalDeducted - totalRefunded);
+      const openingBalance = Number(s.securityDepositOpeningBalance || 0);
+      const { totalDeducted, pendingDeduction, totalRefunded, netHeld } = securityDepositBalances(
+        openingBalance,
+        allDeductions.filter((p) => p.staffId === s.staffId),
+        allRefunds.filter((r) => r.staffId === s.staffId),
+      );
 
       let status = "Not Started";
       if (totalRefunded > 0 && netHeld === 0) {
@@ -1387,7 +1352,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
         status = "Partially Refunded";
       } else if (target > 0 && totalDeducted >= target) {
         status = "Fully Collected";
-      } else if (totalDeducted > 0) {
+      } else if (totalDeducted > 0 || pendingDeduction > 0) {
         status = "In Progress";
       }
 
@@ -1401,13 +1366,15 @@ export const payrollRoutes = new Hono<AuthEnv>()
         targetAmount: target,
         monthlyDeduction,
         securityDepositStartMonth: startMonth,
+        openingBalance,
+        pendingDeduction,
         totalDeducted,
         totalRefunded,
         netHeld,
         status,
         refundHistory: allRefunds.filter((r) => r.staffId === s.staffId),
       };
-    });
+    }).sort((a, b) => a.name.localeCompare(b.name));
 
     const summary = {
       totalTarget: list.reduce((acc, curr) => acc + curr.targetAmount, 0),
@@ -1427,57 +1394,53 @@ export const payrollRoutes = new Hono<AuthEnv>()
     if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
       return c.json({ error: "Unauthorized" }, 403);
     }
-    const staffId = parseInt(c.req.param("staffId"), 10);
-    const { securityDepositTotal, securityDeposit, securityDepositStartMonth } = z
-      .object({
-        securityDepositTotal: z.coerce.number().min(0),
-        securityDeposit: z.coerce.number().min(0),
-        securityDepositStartMonth: z.string().optional().nullable(),
-      })
-      .parse(await c.req.json());
+    const staffId = z.coerce.number().int().positive().parse(c.req.param("staffId"));
+    const input = z.object({
+      securityDepositTotal: z.coerce.number().min(0).max(9999999999.99).multipleOf(0.01),
+      securityDeposit: z.coerce.number().min(0).max(9999999999.99).multipleOf(0.01),
+      securityDepositStartMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional().nullable(),
+      securityDepositOpeningBalance: z.coerce.number().min(0).max(9999999999.99).multipleOf(0.01).optional(),
+    }).parse(await c.req.json());
 
-    const activeStaff = await db
-      .select()
-      .from(staff)
-      .where(and(eq(staff.staffId, staffId), eq(staff.active, true)))
-      .limit(1)
-      .then((res: any) => res[0]);
-
-    if (!activeStaff) {
-      return c.json({ error: "Staff member not found" }, 404);
-    }
-
-    const currentSalary = await db
-      .select()
-      .from(staffSalaries)
-      .where(and(eq(staffSalaries.staffId, staffId), eq(staffSalaries.staffVersion, activeStaff.version)))
-      .limit(1)
-      .then((res: any) => res[0]);
-
-    if (currentSalary) {
-      await db
-        .update(staffSalaries)
-        .set({
-          securityDepositTotal: String(securityDepositTotal),
-          securityDeposit: String(securityDeposit),
-          securityDepositStartMonth: securityDepositStartMonth || null,
-        })
-        .where(eq(staffSalaries.id, currentSalary.id))
-        .execute();
-    } else {
-      await db
-        .insert(staffSalaries)
-        .values({
-          staffId,
-          staffVersion: activeStaff.version,
-          securityDepositTotal: String(securityDepositTotal),
-          securityDeposit: String(securityDeposit),
-          securityDepositStartMonth: securityDepositStartMonth || null,
-        })
-        .execute();
-    }
-
-    return c.json({ ok: true, staffId, securityDepositTotal, securityDeposit });
+    await db.transaction(async (tx) => {
+      // Serialize balance edits and refunds for this employee.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(73421, ${staffId})`);
+      const [activeStaff] = await tx.select().from(staff)
+        .where(and(eq(staff.staffId, staffId), eq(staff.active, true))).limit(1).for("update");
+      if (!activeStaff) throw new HTTPException(404, { message: "Staff member not found" });
+      const [currentSalary] = await tx.select().from(staffSalaries)
+        .where(and(eq(staffSalaries.staffId, staffId), eq(staffSalaries.staffVersion, activeStaff.version))).limit(1);
+      const openingBalance = input.securityDepositOpeningBalance ?? Number(currentSalary?.securityDepositOpeningBalance || 0);
+      const deductions = await tx.select({ status: payslips.status, securityDeposit: payslips.securityDeposit })
+        .from(payslips).where(eq(payslips.staffId, staffId));
+      const refunds = await tx.select({ amount: securityDepositRefunds.amount }).from(securityDepositRefunds)
+        .where(eq(securityDepositRefunds.staffId, staffId));
+      if (securityDepositBalances(openingBalance, deductions, refunds).netHeld < 0) {
+        throw new HTTPException(400, { message: "Opening balance cannot be reduced below deposits already refunded." });
+      }
+      const rules = {
+        securityDepositTotal: String(input.securityDepositTotal),
+        securityDeposit: String(input.securityDeposit),
+        securityDepositStartMonth: input.securityDepositStartMonth || null,
+        securityDepositOpeningBalance: String(openingBalance),
+      };
+      if (currentSalary) {
+        await tx.update(staffSalaries).set(rules).where(eq(staffSalaries.id, currentSalary.id));
+      } else {
+        await tx.insert(staffSalaries).values({ staffId, staffVersion: activeStaff.version, ...rules });
+      }
+      await tx.insert(securityDepositRuleChanges).values({
+        staffId, processedBy: session.user.id,
+        previousRules: {
+          securityDepositTotal: currentSalary?.securityDepositTotal ?? "0",
+          securityDeposit: currentSalary?.securityDeposit ?? "0",
+          securityDepositStartMonth: currentSalary?.securityDepositStartMonth ?? null,
+          securityDepositOpeningBalance: currentSalary?.securityDepositOpeningBalance ?? "0",
+        },
+        newRules: rules,
+      });
+    });
+    return c.json({ ok: true, staffId, ...input });
   })
   /**
    * POST /hr/security-deposits/:staffId/refund
@@ -1488,26 +1451,30 @@ export const payrollRoutes = new Hono<AuthEnv>()
     if (!session || (session.user.role !== "admin" && session.user.role !== "hr")) {
       return c.json({ error: "Unauthorized" }, 403);
     }
-    const staffId = parseInt(c.req.param("staffId"), 10);
-    const { amount, refundDate, notes } = z
-      .object({
-        amount: z.coerce.number().positive(),
-        refundDate: z.string().min(1),
-        notes: z.string().optional(),
-      })
-      .parse(await c.req.json());
+    const staffId = z.coerce.number().int().positive().parse(c.req.param("staffId"));
+    const { amount, refundDate, notes } = z.object({
+      amount: z.coerce.number().positive().max(9999999999.99).multipleOf(0.01),
+      refundDate: z.iso.date(),
+      notes: z.string().trim().min(1, "A refund reason is required"),
+    }).parse(await c.req.json());
 
-    const [row] = await db
-      .insert(securityDepositRefunds)
-      .values({
-        staffId,
-        amount: String(amount),
-        refundDate,
-        notes: notes || null,
-        processedBy: session.user.id,
-      })
-      .returning()
-      .execute();
-
+    const row = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(73421, ${staffId})`);
+      const [activeStaff] = await tx.select().from(staff)
+        .where(and(eq(staff.staffId, staffId), eq(staff.active, true))).limit(1).for("update");
+      if (!activeStaff) throw new HTTPException(404, { message: "Staff member not found" });
+      const [salary] = await tx.select().from(staffSalaries)
+        .where(and(eq(staffSalaries.staffId, staffId), eq(staffSalaries.staffVersion, activeStaff.version))).limit(1);
+      const deductions = await tx.select({ status: payslips.status, securityDeposit: payslips.securityDeposit })
+        .from(payslips).where(eq(payslips.staffId, staffId));
+      const refunds = await tx.select({ amount: securityDepositRefunds.amount }).from(securityDepositRefunds)
+        .where(eq(securityDepositRefunds.staffId, staffId));
+      const { netHeld } = securityDepositBalances(salary?.securityDepositOpeningBalance, deductions, refunds);
+      if (amount > netHeld) throw new HTTPException(400, { message: "Refund exceeds the available collected security deposit balance." });
+      const [created] = await tx.insert(securityDepositRefunds).values({
+        staffId, amount: String(amount), refundDate, notes, processedBy: session.user.id,
+      }).returning();
+      return created;
+    });
     return c.json(row);
   });

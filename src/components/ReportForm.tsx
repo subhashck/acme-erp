@@ -400,7 +400,7 @@ export function ReportForm({
       }
     });
     if (initialData?.paymentChannels) {
-      initialData.paymentChannels.forEach((pc) => {
+      initialData.paymentChannels.forEach((pc: any) => {
         if (pc.bank && !seenValues.has(pc.bank)) {
           seenValues.add(pc.bank);
           options.push([pc.bank, pc.bank, "Saved Report Value"]);

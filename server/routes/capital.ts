@@ -437,12 +437,11 @@ export const capitalRoutes = new Hono<AuthEnv>()
     if (paymentType && paymentType !== "all") conditions.push(eq(capitalRepayments.paymentType, paymentType));
     if (search && search.trim().length > 0) {
       const q = `%${search.trim()}%`;
-      conditions.push(
-        or(
-          ilike(capitalRepayments.referenceNumber, q),
-          ilike(capitalRepayments.paymentCode, q)
-        )
+      const orCond = or(
+        ilike(capitalRepayments.referenceNumber, q),
+        ilike(capitalRepayments.paymentCode, q)
       );
+      if (orCond) conditions.push(orCond);
     }
 
     // Fetch repayments for this facility

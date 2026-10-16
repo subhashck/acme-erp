@@ -194,6 +194,20 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
     });
   }, [monthPayslips, selectedStage, selectedDeptId, searchQuery, departmentsQuery.data]);
 
+  // Filter changes must not leave hidden payslips selected for approval.
+  const visibleSelectedIds = React.useMemo(() => {
+    const visibleIds = new Set(filteredPayslips.map((p) => p.id));
+    return new Set(Array.from(selectedIds).filter((id) => visibleIds.has(id)));
+  }, [filteredPayslips, selectedIds]);
+
+  React.useEffect(() => {
+    setSelectedIds((previous) => {
+      const visibleIds = new Set(filteredPayslips.map((p) => p.id));
+      const next = new Set(Array.from(previous).filter((id) => visibleIds.has(id)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [filteredPayslips]);
+
   // Group filtered payslips department-wise
   const departmentGroups = React.useMemo(() => {
     const map = new Map<string, PayslipRow[]>();
@@ -243,29 +257,29 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
 
   // Bulk Approval submit
   const handleBulkAction = async (targetStatus: "Approved by HR" | "Approved by Management" | "Paid" | "Cancelled") => {
-    if (selectedIds.size === 0) return;
+    if (processing || visibleSelectedIds.size === 0) return;
 
     if (targetStatus === "Paid") {
-      const hasCash = Array.from(selectedIds).some((id) => {
+      const hasCash = Array.from(visibleSelectedIds).some((id) => {
         const row = monthPayslips.find((p) => p.id === id);
         return (row?.paymentMode || "Bank Transfer").toLowerCase() === "cash";
       });
       if (hasCash) {
         const confirmCash = window.confirm(
-          `Mark ${selectedIds.size} selected payslip(s) as PAID?\n\nFor any CASH payments, Cash Salary Expense entries will be automatically logged in today's Daily Closing Report.`
+          `Mark ${visibleSelectedIds.size} selected payslip(s) as PAID?\n\nFor any CASH payments, Cash Salary Expense entries will be automatically logged in today's Daily Closing Report.`
         );
         if (!confirmCash) return;
       }
     }
 
     if (targetStatus === "Cancelled") {
-      const confirmCancel = window.confirm(`Are you sure you want to CANCEL ${selectedIds.size} selected payslip(s)?`);
+      const confirmCancel = window.confirm(`Are you sure you want to CANCEL ${visibleSelectedIds.size} selected payslip(s)?`);
       if (!confirmCancel) return;
     }
 
     setProcessing(true);
     try {
-      const items = Array.from(selectedIds).map((id) => ({
+      const items = Array.from(visibleSelectedIds).map((id) => ({
         id,
         note: perStaffNotes[id]?.trim() || globalNote.trim() || null,
       }));
@@ -284,6 +298,7 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
       setSelectedIds(new Set());
       setGlobalNote("");
       queryClient.invalidateQueries({ queryKey: ["payslips"] });
+      queryClient.invalidateQueries({ queryKey: ["security-deposits"] });
     } catch (err: any) {
       alert("Error: " + (err.message || String(err)));
     } finally {
@@ -460,12 +475,12 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
       </Card>
 
       {/* ── Bulk Actions Floating / Fixed Sticky Header Bar ── */}
-      {selectedIds.size > 0 && (
+      {visibleSelectedIds.size > 0 && (
         <Card className="border border-teal-300 dark:border-teal-900 bg-teal-50/90 dark:bg-teal-950/60 shadow-lg animate-in slide-in-from-top-2 duration-200 sticky top-2 z-30 backdrop-blur">
           <CardContent className="p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <span className="inline-flex items-center justify-center h-7 px-2.5 rounded-full bg-teal-600 text-white font-extrabold text-xs">
-                {selectedIds.size} Selected
+                {visibleSelectedIds.size} Selected
               </span>
               <Button
                 variant="ghost"

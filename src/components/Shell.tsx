@@ -43,7 +43,9 @@ import {
   FileBarChart,
   GraduationCap,
   BookOpen,
-  FlaskConical
+  FlaskConical,
+  Award,
+  FileQuestion
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
@@ -75,6 +77,16 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
+  if (pathname === "/assessments" || pathname.startsWith("/assessments/")) {
+    items.push({ label: "Assessments", to: "/assessments" });
+    if (pathname.startsWith("/assessments/skill-assessments")) items.push({ label: "Skill Assessments", to: "/assessments/skill-assessments" });
+    if (pathname.startsWith("/assessments/question-bank")) items.push({ label: "Question Bank", to: "/assessments/question-bank" });
+    if (pathname.startsWith("/assessments/online-cbt")) items.push({ label: "Online CBT", to: "/assessments/online-cbt" });
+    if (pathname.startsWith("/assessments/settings")) items.push({ label: "Settings", to: "/assessments/settings" });
+    if (pathname.startsWith("/assessments/certificates/")) items.push({ label: "CBT Result Certificate", to: pathname });
+    return items;
+  }
+
   if (pathname.startsWith("/hr/")) {
     items.push({ label: "HR Management", to: "/hr/staff-list" });
     const sub = pathname.replace("/hr/", "");
@@ -84,6 +96,8 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Leave Management", to: "/hr/leaves" });
     } else if (sub === "attendance") {
       items.push({ label: "Attendance", to: "/hr/attendance" });
+    } else if (sub === "payroll-deductions") {
+      items.push({ label: "Payroll Deductions", to: "/hr/payroll-deductions" });
     } else if (sub === "payroll") {
       items.push({ label: "Payroll", to: "/hr/payroll" });
     } else if (sub === "add-staff") {
@@ -98,6 +112,10 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Staff List", to: "/hr/staff-list" });
     } else if (sub === "off-day-requests") {
       items.push({ label: "Off-Day Requests", to: "/hr/off-day-requests" });
+    } else if (sub === "question-bank" || sub.startsWith("question-bank")) {
+      items.push({ label: "Question Bank (NABH)", to: "/assessments/question-bank" });
+    } else if (sub === "skill-assessments" || sub.startsWith("skill-assessments")) {
+      items.push({ label: "Skill Assessments (NABH)", to: "/assessments/skill-assessments" });
     }
     return items;
   }
@@ -363,6 +381,7 @@ function ShellContent({ session }: { session: any }) {
   const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
   const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
+  const [assessmentsOpen, setAssessmentsOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
   const [capitalOpen, setCapitalOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
@@ -374,7 +393,7 @@ function ShellContent({ session }: { session: any }) {
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
-  const { currentStaff, isManagementApprover, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine, canViewLab } = useUserPermissions();
+  const { isAdmin, isHr, currentStaff, isManagementApprover, canViewAssessments, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine, canViewLab } = useUserPermissions();
   const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
 
   React.useEffect(() => {
@@ -392,6 +411,7 @@ function ShellContent({ session }: { session: any }) {
       setCollegeMastersOpen(true);
     }
     if (location.pathname.startsWith("/hr/")) setHrOpen(true);
+    if (location.pathname.startsWith("/assessments")) setAssessmentsOpen(true);
     if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
     if (location.pathname.startsWith("/capital")) setCapitalOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
@@ -749,6 +769,24 @@ function ShellContent({ session }: { session: any }) {
                 </div>
               )}
 
+              {canViewAssessments && <div className="flex flex-col">
+                <button type="button" aria-expanded={assessmentsOpen} aria-controls="assessments-sidebar-links"
+                  onClick={event => { event.stopPropagation(); setAssessmentsOpen(!assessmentsOpen); }}
+                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer">
+                  <span className="flex items-center gap-3"><Award size={18} />Assessments</span>
+                  {assessmentsOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {assessmentsOpen && <div id="assessments-sidebar-links" className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                  <Link to="/assessments" activeOptions={{ exact: true }} className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Assessments Home</Link>
+                  <Link to="/assessments/online-cbt" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Online CBT</Link>
+                  {(isAdmin || isHr) && <>
+                    <Link to="/assessments/skill-assessments" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Skill Assessments</Link>
+                    <Link to="/assessments/question-bank" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}><FileQuestion size={14} />Question Bank</Link>
+                    <Link to="/assessments/settings" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Settings</Link>
+                  </>}
+                </div>}
+              </div>}
+
               {/* Collapsible HR group */}
               <div className="flex flex-col">
                 <button
@@ -809,6 +847,9 @@ function ShellContent({ session }: { session: any }) {
                     >
                       Payroll
                     </Link>
+                    {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
+                      <Link to="/hr/payroll-deductions" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors" activeProps={{ className: "text-primary bg-muted" }}>Payroll Deductions</Link>
+                    )}
                     {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
                       <Link
                         to="/admin/users"
@@ -1487,6 +1528,15 @@ function ShellContent({ session }: { session: any }) {
               >
                 <Receipt size={20} />
               </Link>
+
+              {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && <Link to="/hr/payroll-deductions" title="Payroll Deductions" className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" activeProps={{ className: "bg-primary text-primary-foreground" }}><Receipt size={20} /></Link>}
+
+              {canViewAssessments && <Link
+                to="/assessments"
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Assessments"
+              ><Award size={20} /></Link>}
 
               <Link
                 to="/clinical/immunization"

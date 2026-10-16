@@ -287,6 +287,7 @@ function ViewPayslipPage() {
       const newPayslip = await res.json();
       setIsEditing(false);
       queryClient.invalidateQueries({ queryKey: ["payslips"] });
+      queryClient.invalidateQueries({ queryKey: ["security-deposits"] });
       queryClient.invalidateQueries({ queryKey: ["payslip", newPayslip.id] });
       navigate({ to: "/hr/view-payslip", search: { payslipId: newPayslip.id } });
     } catch (err) {
@@ -326,6 +327,7 @@ function ViewPayslipPage() {
         throw new Error(err?.error || `HTTP ${res.status}`);
       }
       queryClient.invalidateQueries({ queryKey: ["payslips"] });
+      queryClient.invalidateQueries({ queryKey: ["security-deposits"] });
       queryClient.invalidateQueries({ queryKey: ["payslip", payslipId] });
       if (targetStatus === "Paid" && (p?.paymentMode || "Bank Transfer").toLowerCase() === "cash") {
         alert("Payslip marked as Paid. A Cash Salary Expense item has been automatically added to today's Daily Closing Report.");
@@ -360,6 +362,7 @@ function ViewPayslipPage() {
       alert("Payment details updated successfully");
       setShowPaymentModal(false);
       queryClient.invalidateQueries({ queryKey: ["payslips"] });
+      queryClient.invalidateQueries({ queryKey: ["security-deposits"] });
       queryClient.invalidateQueries({ queryKey: ["payslip", p.id] });
     } catch (err: any) {
       alert(err.message || "Failed to update payment details");

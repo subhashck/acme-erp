@@ -69,8 +69,9 @@ This document serves as the persistent knowledge index and architecture guide fo
   - `view-payslip.tsx`: Detailed payslip viewer and printable salary slip.
   - `attendance.tsx`: Daily attendance logs and biometric machine mapping.
   - `off-day-requests.tsx`: Shift swap, off-day requests, and weekly off-day rules.
-- **Backend Route Files**: `server/routes/staff.ts`, `server/routes/roster.ts`, `server/routes/leaves.ts`, `server/routes/attendance.ts`, `server/routes/payroll.ts`, `server/routes/off-days.ts`.
-- **Key Tables**: `staff`, `staffDepartments`, `departmentLeaders`, `staffSalaries`, `staffHrProfiles`, `staffSupervisors`, `shifts`, `rosters`, `staffOffDayRequests`, `staffWeeklyOffDays`, `leaveRequests`, `leaveTypes`, `payslips`, `securityDepositRefunds`, `attendance`, `biometricMappings`.
+  - Skill Assessments and Question Bank now belong to the standalone Assessments module (see section I). The old HR routes redirect there.
+- **Backend Route Files**: `server/routes/staff.ts`, `server/routes/roster.ts`, `server/routes/leaves.ts`, `server/routes/attendance.ts`, `server/routes/payroll.ts`, `server/routes/off-days.ts`, `server/routes/skill-assessment.ts`.
+- **Key Tables**: `staff`, `staffDepartments`, `departmentLeaders`, `staffSalaries`, `staffHrProfiles`, `staffSupervisors`, `shifts`, `rosters`, `staffOffDayRequests`, `staffWeeklyOffDays`, `leaveRequests`, `leaveTypes`, `payslips`, `securityDepositRefunds`, `attendance`, `biometricMappings`, `skill_assessment.competency_domains`, `skill_assessment.competency_criteria`, `skill_assessment.assessment_cycles`, `skill_assessment.staff_skill_assessments`, `skill_assessment.staff_skill_assessment_items`.
 
 ---
 
@@ -165,6 +166,17 @@ This document serves as the persistent knowledge index and architecture guide fo
   - `server/services/loan-engine.ts`: Reducing balance EMI calculations (`calculateMonthlyEmi`), multi-phase moratoriums (`generateCanonicalAmortizationSchedule`), interest capitalization (`capitalizeInterest`), split installments, recast amortization, and ledger invariants (`verifyLedgerInvariant`).
 - **Unit Test Suite**: `tests/unit/capital-loan-engine.test.ts` (20-point test suite for NEDFi ₹5Cr canonical loan scenario `LIABILITY-LOAN-001` through `LIABILITY-LOAN-020`).
 - **Documentation Guide**: [`docs/capital-financing-guide.md`](file:///d:/dev/acme/acme-erp/docs/capital-financing-guide.md) (Complete theoretical foundation, formulas, instrument mechanics, and operational tutorials).
+
+---
+
+### I. Assessments
+- **Frontend Routes** (`src/routes/_authenticated/assessments/`, layout `src/routes/_authenticated/assessments.tsx`):
+  - `index.tsx`: Staff home with personal assessment history, current self-assessment and recent CBT attempts. HR/Admin retain the existing management workspace at this home route.
+  - `skill-assessments.tsx`: Existing clinical skill assessment/review workspace for HR, Admin, department incharges and nursing supervisors.
+  - `question-bank.tsx`: Question bank and exam configuration, restricted to HR/Admin.
+- **Shared UI**: `src/components/assessments/` (home, skill assessment workspace, question bank, CBT exam and exam settings).
+- **Backend and Persistence**: Existing `server/routes/skill-assessment.ts`, `/api/skill-assessment/*`, and `server/db/schema-skill-assessment.ts`; no data migration is needed for the route move.
+- **Navigation**: Independent Assessments sidebar group guarded by `canViewAssessments`; legacy `/hr/skill-assessments` and `/hr/question-bank` redirect to the module.
 
 ---
 

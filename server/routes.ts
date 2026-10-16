@@ -7,6 +7,7 @@ import { leavesRoutes } from "./routes/leaves.ts";
 import { mastersRoutes } from "./routes/masters.ts";
 import { messagesRoutes } from "./routes/messages.ts";
 import { notificationRoutes } from "./routes/notifications.ts";
+import { payrollDeductionRoutes } from "./routes/payroll-deductions.ts";
 import { payrollRoutes } from "./routes/payroll.ts";
 import { rosterRoutes } from "./routes/roster.ts";
 import { staffRoutes } from "./routes/staff.ts";
@@ -26,6 +27,7 @@ import { magazineRoutes } from "./routes/magazine.ts";
 import { frontOfficeRoutes } from "./routes/front-office.ts";
 import { labRoutes } from "./routes/lab.ts";
 import { capitalRoutes } from "./routes/capital.ts";
+import { skillAssessmentRoutes } from "./routes/skill-assessment.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
@@ -37,6 +39,7 @@ export const api = new Hono<AuthEnv>()
   .route("/", attendanceRoutes)
   .route("/", rosterRoutes)
   .route("/", payrollRoutes)
+  .route("/", payrollDeductionRoutes)
   .route("/", messagesRoutes)
   .route("/", monthlyReportRoutes)
   .route("/", accountsRoutes)
@@ -53,6 +56,7 @@ export const api = new Hono<AuthEnv>()
   .route("/", magazineRoutes)
   .route("/", frontOfficeRoutes)
   .route("/", labRoutes)
-  .route("/", capitalRoutes);
+  .route("/", capitalRoutes)
+  .route("/", skillAssessmentRoutes);
 
 export type AppType = typeof api;

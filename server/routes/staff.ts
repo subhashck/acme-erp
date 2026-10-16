@@ -1,4 +1,4 @@
-import { and, desc, eq, sql, max } from "drizzle-orm";
+import { and, asc, desc, eq, sql, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -66,6 +66,64 @@ export const staffRoutes = new Hono<AuthEnv>()
   })
 
   /**
+   * GET /staff
+   * Returns active staff directory (with department, designation, employee code).
+   * Supports search, departmentId filter, and pageSize.
+   */
+  .get("/staff", async (c) => {
+    const search = c.req.query("search")?.trim().toLowerCase();
+    const departmentId = c.req.query("departmentId");
+    const pageSize = c.req.query("pageSize");
+
+    const rows = await db
+      .select({
+        id: staff.staffId,
+        staffId: staff.staffId,
+        employeeCode: staff.employeeCode,
+        name: staff.name,
+        role: staff.role,
+        designation: staff.role,
+        departmentId: staffDepartments.departmentId,
+        department: departments.name,
+        departmentName: departments.name,
+        phone: staff.phone,
+        email: staff.email,
+        status: staff.status,
+        active: staff.active,
+      })
+      .from(staff)
+      .leftJoin(
+        staffDepartments,
+        sql`${staff.staffId} = ${staffDepartments.staffId}
+          AND ${staff.version} = ${staffDepartments.staffVersion}
+          AND ${staffDepartments.status} = 'Active'`
+      )
+      .leftJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(eq(staff.active, true))
+      .orderBy(asc(staff.name))
+      .execute();
+
+    let filtered = rows;
+    if (departmentId) {
+      filtered = filtered.filter((s) => String(s.departmentId) === departmentId);
+    }
+    if (search) {
+      filtered = filtered.filter(
+        (s) =>
+          s.name?.toLowerCase().includes(search) ||
+          s.employeeCode?.toLowerCase().includes(search) ||
+          s.departmentName?.toLowerCase().includes(search) ||
+          s.role?.toLowerCase().includes(search)
+      );
+    }
+    if (pageSize && !isNaN(Number(pageSize))) {
+      filtered = filtered.slice(0, Number(pageSize));
+    }
+
+    return c.json(filtered);
+  })
+
+  /**
    * GET /hr/staff
    * Returns all active staff records (latest version for each employee).
    */
@@ -94,6 +152,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
         securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
+        securityDepositOpeningBalance: staffSalaries.securityDepositOpeningBalance,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -409,6 +468,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         securityDepositTotal: String(finalSecTotal),
         securityDeposit: String(finalSecMonthly),
         securityDepositStartMonth: finalSecStartMonth,
+        securityDepositOpeningBalance: currentSalary?.securityDepositOpeningBalance ?? "0",
         otherDeductions: String(finalOther),
         bankName: finalBankName,
         accountNumber: finalAccountNumber,
@@ -655,6 +715,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
         securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
+        securityDepositOpeningBalance: staffSalaries.securityDepositOpeningBalance,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -731,6 +792,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
         securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
+        securityDepositOpeningBalance: staffSalaries.securityDepositOpeningBalance,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,
@@ -818,6 +880,7 @@ export const staffRoutes = new Hono<AuthEnv>()
         securityDepositTotal: staffSalaries.securityDepositTotal,
         securityDeposit: staffSalaries.securityDeposit,
         securityDepositStartMonth: staffSalaries.securityDepositStartMonth,
+        securityDepositOpeningBalance: staffSalaries.securityDepositOpeningBalance,
         otherDeductions: staffSalaries.otherDeductions,
         bankName: staffSalaries.bankName,
         accountNumber: staffSalaries.accountNumber,

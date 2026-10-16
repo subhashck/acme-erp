@@ -189,14 +189,16 @@ export const requireAdmin = async (c: Context<AuthEnv>, next: any) => {
 
 export const getCurrentStaff = async (c: Context<AuthEnv>) => {
   const session = c.get("session");
-  if (!session?.user) {
+  const userId = session?.user?.id;
+  const userEmail = session?.user?.email;
+  if (!userId && !userEmail) {
     return null;
   }
   const staffRecord = await db
     .select()
     .from(staff)
     .where(
-      sql`(${staff.userId} = ${session.user.id} OR ${staff.email} = ${session.user.email}) AND ${staff.active} = true`
+      sql`(${staff.userId} = ${userId ?? null} OR ${staff.email} = ${userEmail ?? null}) AND ${staff.active} = true`
     )
     .limit(1)
     .then((res: any) => res[0]);
@@ -633,7 +635,7 @@ export const staffInput = z.object({
   tds: z.coerce.number().min(0).optional().default(0),
   securityDepositTotal: z.coerce.number().min(0).optional().default(0),
   securityDeposit: z.coerce.number().min(0).optional().default(0),
-  securityDepositStartMonth: z.string().optional().nullable(),
+  securityDepositStartMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional().nullable(),
   otherDeductions: z.coerce.number().min(0).default(0),
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),

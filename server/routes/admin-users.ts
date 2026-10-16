@@ -5,6 +5,10 @@ import { db } from "../db/client.ts";
 import { user, staff, session, account } from "../db/schema.ts";
 import { eq, and } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
+import {
+  getHospitalSettingsFromDb,
+  updateHospitalSettingsInDb,
+} from "../services/hospital-settings.ts";
 
 const adminOrHr = (role: string | undefined | null) =>
   role === "admin" || role === "hr";
@@ -295,5 +299,34 @@ export const adminUserRoutes = new Hono<AuthEnv>()
       .execute();
 
     return c.json({ success: true });
+  })
+
+  /**
+   * GET /admin/hospital-settings
+   * Returns institutional settings including staff competency module flag.
+   */
+  .get("/admin/hospital-settings", async (c) => {
+    const session_ctx = c.get("session");
+    if (!session_ctx) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    const settings = await getHospitalSettingsFromDb();
+    return c.json(settings);
+  })
+
+  /**
+   * PATCH /admin/hospital-settings
+   * Updates institutional settings including enableStaffCompetencyModule. Admin only.
+   */
+  .patch("/admin/hospital-settings", async (c) => {
+    const session_ctx = c.get("session");
+    if (!session_ctx || session_ctx.user.role !== "admin") {
+      return c.json({ error: "Unauthorized. Admin role required." }, 403);
+    }
+
+    const body = await c.req.json();
+    const updated = await updateHospitalSettingsInDb(body);
+    return c.json(updated);
   });
+
 

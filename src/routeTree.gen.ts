@@ -16,11 +16,13 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedCollegeRouteImport } from './routes/_authenticated/college'
+import { Route as AuthenticatedAssessmentsRouteImport } from './routes/_authenticated/assessments'
 import { Route as AuthenticatedMagazineIndexRouteImport } from './routes/_authenticated/magazine/index'
 import { Route as AuthenticatedLabIndexRouteImport } from './routes/_authenticated/lab/index'
 import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as AuthenticatedCapitalIndexRouteImport } from './routes/_authenticated/capital/index'
+import { Route as AuthenticatedAssessmentsIndexRouteImport } from './routes/_authenticated/assessments/index'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
 import { Route as AuthenticatedPurchasesUnitTypesRouteImport } from './routes/_authenticated/purchases/unit-types'
@@ -46,8 +48,11 @@ import { Route as AuthenticatedInventoryLedgerRouteImport } from './routes/_auth
 import { Route as AuthenticatedHrViewStaffRouteImport } from './routes/_authenticated/hr/view-staff'
 import { Route as AuthenticatedHrViewPayslipRouteImport } from './routes/_authenticated/hr/view-payslip'
 import { Route as AuthenticatedHrStaffListRouteImport } from './routes/_authenticated/hr/staff-list'
+import { Route as AuthenticatedHrSkillAssessmentsRouteImport } from './routes/_authenticated/hr/skill-assessments'
 import { Route as AuthenticatedHrRosterRouteImport } from './routes/_authenticated/hr/roster'
 import { Route as AuthenticatedHrReviewLeaveRouteImport } from './routes/_authenticated/hr/review-leave'
+import { Route as AuthenticatedHrQuestionBankRouteImport } from './routes/_authenticated/hr/question-bank'
+import { Route as AuthenticatedHrPayrollDeductionsRouteImport } from './routes/_authenticated/hr/payroll-deductions'
 import { Route as AuthenticatedHrPayrollRouteImport } from './routes/_authenticated/hr/payroll'
 import { Route as AuthenticatedHrOffDayRequestsRouteImport } from './routes/_authenticated/hr/off-day-requests'
 import { Route as AuthenticatedHrLeavesRouteImport } from './routes/_authenticated/hr/leaves'
@@ -75,6 +80,10 @@ import { Route as AuthenticatedCapitalFacilityRouteImport } from './routes/_auth
 import { Route as AuthenticatedCapitalFacilitiesRouteImport } from './routes/_authenticated/capital/facilities'
 import { Route as AuthenticatedCapitalDailyCollectionsRouteImport } from './routes/_authenticated/capital/daily-collections'
 import { Route as AuthenticatedCapitalCashFlowRouteImport } from './routes/_authenticated/capital/cash-flow'
+import { Route as AuthenticatedAssessmentsSkillAssessmentsRouteImport } from './routes/_authenticated/assessments/skill-assessments'
+import { Route as AuthenticatedAssessmentsSettingsRouteImport } from './routes/_authenticated/assessments/settings'
+import { Route as AuthenticatedAssessmentsQuestionBankRouteImport } from './routes/_authenticated/assessments/question-bank'
+import { Route as AuthenticatedAssessmentsOnlineCbtRouteImport } from './routes/_authenticated/assessments/online-cbt'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
 import { Route as AuthenticatedAdminPatientsRouteImport } from './routes/_authenticated/admin/patients'
@@ -112,6 +121,7 @@ import { Route as AuthenticatedCollegeReportsDueStudentWiseRouteImport } from '.
 import { Route as AuthenticatedCollegeReportsDueMonthlyWiseRouteImport } from './routes/_authenticated/college/reports/due-monthly-wise'
 import { Route as AuthenticatedCollegeReportsDailyIncomeExpensesRouteImport } from './routes/_authenticated/college/reports/daily-income-expenses'
 import { Route as AuthenticatedCapitalFacilityIdRouteImport } from './routes/_authenticated/capital/facility.$id'
+import { Route as AuthenticatedAssessmentsCertificatesAttemptIdRouteImport } from './routes/_authenticated/assessments/certificates.$attemptId'
 import { Route as AuthenticatedAccountsReportsNewRouteImport } from './routes/_authenticated/accounts/reports/new'
 import { Route as AuthenticatedAccountsReportsIdRouteImport } from './routes/_authenticated/accounts/reports/$id'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIdEditRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id_.edit'
@@ -154,6 +164,12 @@ const AuthenticatedCollegeRoute = AuthenticatedCollegeRouteImport.update({
   path: '/college',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAssessmentsRoute =
+  AuthenticatedAssessmentsRouteImport.update({
+    id: '/assessments',
+    path: '/assessments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMagazineIndexRoute =
   AuthenticatedMagazineIndexRouteImport.update({
     id: '/magazine/',
@@ -182,6 +198,12 @@ const AuthenticatedCapitalIndexRoute =
     id: '/capital/',
     path: '/capital/',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAssessmentsIndexRoute =
+  AuthenticatedAssessmentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
   } as any)
 const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
   id: '/shared/report/$token',
@@ -331,6 +353,12 @@ const AuthenticatedHrStaffListRoute =
     path: '/hr/staff-list',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedHrSkillAssessmentsRoute =
+  AuthenticatedHrSkillAssessmentsRouteImport.update({
+    id: '/hr/skill-assessments',
+    path: '/hr/skill-assessments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedHrRosterRoute = AuthenticatedHrRosterRouteImport.update({
   id: '/hr/roster',
   path: '/hr/roster',
@@ -340,6 +368,18 @@ const AuthenticatedHrReviewLeaveRoute =
   AuthenticatedHrReviewLeaveRouteImport.update({
     id: '/hr/review-leave',
     path: '/hr/review-leave',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedHrQuestionBankRoute =
+  AuthenticatedHrQuestionBankRouteImport.update({
+    id: '/hr/question-bank',
+    path: '/hr/question-bank',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedHrPayrollDeductionsRoute =
+  AuthenticatedHrPayrollDeductionsRouteImport.update({
+    id: '/hr/payroll-deductions',
+    path: '/hr/payroll-deductions',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedHrPayrollRoute = AuthenticatedHrPayrollRouteImport.update({
@@ -500,6 +540,30 @@ const AuthenticatedCapitalCashFlowRoute =
     id: '/capital/cash-flow',
     path: '/capital/cash-flow',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAssessmentsSkillAssessmentsRoute =
+  AuthenticatedAssessmentsSkillAssessmentsRouteImport.update({
+    id: '/skill-assessments',
+    path: '/skill-assessments',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
+  } as any)
+const AuthenticatedAssessmentsSettingsRoute =
+  AuthenticatedAssessmentsSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
+  } as any)
+const AuthenticatedAssessmentsQuestionBankRoute =
+  AuthenticatedAssessmentsQuestionBankRouteImport.update({
+    id: '/question-bank',
+    path: '/question-bank',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
+  } as any)
+const AuthenticatedAssessmentsOnlineCbtRoute =
+  AuthenticatedAssessmentsOnlineCbtRouteImport.update({
+    id: '/online-cbt',
+    path: '/online-cbt',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
   } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
@@ -722,6 +786,12 @@ const AuthenticatedCapitalFacilityIdRoute =
     path: '/$id',
     getParentRoute: () => AuthenticatedCapitalFacilityRoute,
   } as any)
+const AuthenticatedAssessmentsCertificatesAttemptIdRoute =
+  AuthenticatedAssessmentsCertificatesAttemptIdRouteImport.update({
+    id: '/certificates/$attemptId',
+    path: '/certificates/$attemptId',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
+  } as any)
 const AuthenticatedAccountsReportsNewRoute =
   AuthenticatedAccountsReportsNewRouteImport.update({
     id: '/accounts/reports/new',
@@ -763,6 +833,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/assessments': typeof AuthenticatedAssessmentsRouteWithChildren
   '/college': typeof AuthenticatedCollegeRouteWithChildren
   '/communication': typeof AuthenticatedCommunicationRoute
   '/settings': typeof AuthenticatedSettingsRoute
@@ -776,6 +847,10 @@ export interface FileRoutesByFullPath {
   '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/assessments/online-cbt': typeof AuthenticatedAssessmentsOnlineCbtRoute
+  '/assessments/question-bank': typeof AuthenticatedAssessmentsQuestionBankRoute
+  '/assessments/settings': typeof AuthenticatedAssessmentsSettingsRoute
+  '/assessments/skill-assessments': typeof AuthenticatedAssessmentsSkillAssessmentsRoute
   '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
   '/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
   '/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
@@ -803,8 +878,11 @@ export interface FileRoutesByFullPath {
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
   '/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/hr/payroll': typeof AuthenticatedHrPayrollRoute
+  '/hr/payroll-deductions': typeof AuthenticatedHrPayrollDeductionsRoute
+  '/hr/question-bank': typeof AuthenticatedHrQuestionBankRoute
   '/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/hr/roster': typeof AuthenticatedHrRosterRoute
+  '/hr/skill-assessments': typeof AuthenticatedHrSkillAssessmentsRoute
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
@@ -830,6 +908,7 @@ export interface FileRoutesByFullPath {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/assessments/': typeof AuthenticatedAssessmentsIndexRoute
   '/capital/': typeof AuthenticatedCapitalIndexRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
   '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
@@ -837,6 +916,7 @@ export interface FileRoutesByFullPath {
   '/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
   '/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
   '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
   '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
@@ -885,6 +965,10 @@ export interface FileRoutesByTo {
   '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/assessments/online-cbt': typeof AuthenticatedAssessmentsOnlineCbtRoute
+  '/assessments/question-bank': typeof AuthenticatedAssessmentsQuestionBankRoute
+  '/assessments/settings': typeof AuthenticatedAssessmentsSettingsRoute
+  '/assessments/skill-assessments': typeof AuthenticatedAssessmentsSkillAssessmentsRoute
   '/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
   '/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
   '/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
@@ -912,8 +996,11 @@ export interface FileRoutesByTo {
   '/hr/leaves': typeof AuthenticatedHrLeavesRoute
   '/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/hr/payroll': typeof AuthenticatedHrPayrollRoute
+  '/hr/payroll-deductions': typeof AuthenticatedHrPayrollDeductionsRoute
+  '/hr/question-bank': typeof AuthenticatedHrQuestionBankRoute
   '/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/hr/roster': typeof AuthenticatedHrRosterRoute
+  '/hr/skill-assessments': typeof AuthenticatedHrSkillAssessmentsRoute
   '/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
@@ -938,6 +1025,7 @@ export interface FileRoutesByTo {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/assessments': typeof AuthenticatedAssessmentsIndexRoute
   '/capital': typeof AuthenticatedCapitalIndexRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
   '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
@@ -945,6 +1033,7 @@ export interface FileRoutesByTo {
   '/magazine': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
   '/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
   '/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
   '/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
@@ -982,6 +1071,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/change-password': typeof ChangePasswordRoute
   '/login': typeof LoginRoute
+  '/_authenticated/assessments': typeof AuthenticatedAssessmentsRouteWithChildren
   '/_authenticated/college': typeof AuthenticatedCollegeRouteWithChildren
   '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
@@ -996,6 +1086,10 @@ export interface FileRoutesById {
   '/_authenticated/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/assessments/online-cbt': typeof AuthenticatedAssessmentsOnlineCbtRoute
+  '/_authenticated/assessments/question-bank': typeof AuthenticatedAssessmentsQuestionBankRoute
+  '/_authenticated/assessments/settings': typeof AuthenticatedAssessmentsSettingsRoute
+  '/_authenticated/assessments/skill-assessments': typeof AuthenticatedAssessmentsSkillAssessmentsRoute
   '/_authenticated/capital/cash-flow': typeof AuthenticatedCapitalCashFlowRoute
   '/_authenticated/capital/daily-collections': typeof AuthenticatedCapitalDailyCollectionsRoute
   '/_authenticated/capital/facilities': typeof AuthenticatedCapitalFacilitiesRoute
@@ -1023,8 +1117,11 @@ export interface FileRoutesById {
   '/_authenticated/hr/leaves': typeof AuthenticatedHrLeavesRoute
   '/_authenticated/hr/off-day-requests': typeof AuthenticatedHrOffDayRequestsRoute
   '/_authenticated/hr/payroll': typeof AuthenticatedHrPayrollRoute
+  '/_authenticated/hr/payroll-deductions': typeof AuthenticatedHrPayrollDeductionsRoute
+  '/_authenticated/hr/question-bank': typeof AuthenticatedHrQuestionBankRoute
   '/_authenticated/hr/review-leave': typeof AuthenticatedHrReviewLeaveRoute
   '/_authenticated/hr/roster': typeof AuthenticatedHrRosterRoute
+  '/_authenticated/hr/skill-assessments': typeof AuthenticatedHrSkillAssessmentsRoute
   '/_authenticated/hr/staff-list': typeof AuthenticatedHrStaffListRoute
   '/_authenticated/hr/view-payslip': typeof AuthenticatedHrViewPayslipRoute
   '/_authenticated/hr/view-staff': typeof AuthenticatedHrViewStaffRoute
@@ -1050,6 +1147,7 @@ export interface FileRoutesById {
   '/_authenticated/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/_authenticated/assessments/': typeof AuthenticatedAssessmentsIndexRoute
   '/_authenticated/capital/': typeof AuthenticatedCapitalIndexRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
   '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
@@ -1057,6 +1155,7 @@ export interface FileRoutesById {
   '/_authenticated/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
+  '/_authenticated/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
   '/_authenticated/capital/facility/$id': typeof AuthenticatedCapitalFacilityIdRoute
   '/_authenticated/college/reports/daily-income-expenses': typeof AuthenticatedCollegeReportsDailyIncomeExpensesRoute
   '/_authenticated/college/reports/due-monthly-wise': typeof AuthenticatedCollegeReportsDueMonthlyWiseRoute
@@ -1095,6 +1194,7 @@ export interface FileRouteTypes {
     | '/'
     | '/change-password'
     | '/login'
+    | '/assessments'
     | '/college'
     | '/communication'
     | '/settings'
@@ -1108,6 +1208,10 @@ export interface FileRouteTypes {
     | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
+    | '/assessments/online-cbt'
+    | '/assessments/question-bank'
+    | '/assessments/settings'
+    | '/assessments/skill-assessments'
     | '/capital/cash-flow'
     | '/capital/daily-collections'
     | '/capital/facilities'
@@ -1135,8 +1239,11 @@ export interface FileRouteTypes {
     | '/hr/leaves'
     | '/hr/off-day-requests'
     | '/hr/payroll'
+    | '/hr/payroll-deductions'
+    | '/hr/question-bank'
     | '/hr/review-leave'
     | '/hr/roster'
+    | '/hr/skill-assessments'
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
@@ -1162,6 +1269,7 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/assessments/'
     | '/capital/'
     | '/college/'
     | '/front-office/'
@@ -1169,6 +1277,7 @@ export interface FileRouteTypes {
     | '/magazine/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/assessments/certificates/$attemptId'
     | '/capital/facility/$id'
     | '/college/reports/daily-income-expenses'
     | '/college/reports/due-monthly-wise'
@@ -1217,6 +1326,10 @@ export interface FileRouteTypes {
     | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
+    | '/assessments/online-cbt'
+    | '/assessments/question-bank'
+    | '/assessments/settings'
+    | '/assessments/skill-assessments'
     | '/capital/cash-flow'
     | '/capital/daily-collections'
     | '/capital/facilities'
@@ -1244,8 +1357,11 @@ export interface FileRouteTypes {
     | '/hr/leaves'
     | '/hr/off-day-requests'
     | '/hr/payroll'
+    | '/hr/payroll-deductions'
+    | '/hr/question-bank'
     | '/hr/review-leave'
     | '/hr/roster'
+    | '/hr/skill-assessments'
     | '/hr/staff-list'
     | '/hr/view-payslip'
     | '/hr/view-staff'
@@ -1270,6 +1386,7 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/assessments'
     | '/capital'
     | '/college'
     | '/front-office'
@@ -1277,6 +1394,7 @@ export interface FileRouteTypes {
     | '/magazine'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
+    | '/assessments/certificates/$attemptId'
     | '/capital/facility/$id'
     | '/college/reports/daily-income-expenses'
     | '/college/reports/due-monthly-wise'
@@ -1313,6 +1431,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/change-password'
     | '/login'
+    | '/_authenticated/assessments'
     | '/_authenticated/college'
     | '/_authenticated/communication'
     | '/_authenticated/settings'
@@ -1327,6 +1446,10 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/patients'
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
+    | '/_authenticated/assessments/online-cbt'
+    | '/_authenticated/assessments/question-bank'
+    | '/_authenticated/assessments/settings'
+    | '/_authenticated/assessments/skill-assessments'
     | '/_authenticated/capital/cash-flow'
     | '/_authenticated/capital/daily-collections'
     | '/_authenticated/capital/facilities'
@@ -1354,8 +1477,11 @@ export interface FileRouteTypes {
     | '/_authenticated/hr/leaves'
     | '/_authenticated/hr/off-day-requests'
     | '/_authenticated/hr/payroll'
+    | '/_authenticated/hr/payroll-deductions'
+    | '/_authenticated/hr/question-bank'
     | '/_authenticated/hr/review-leave'
     | '/_authenticated/hr/roster'
+    | '/_authenticated/hr/skill-assessments'
     | '/_authenticated/hr/staff-list'
     | '/_authenticated/hr/view-payslip'
     | '/_authenticated/hr/view-staff'
@@ -1381,6 +1507,7 @@ export interface FileRouteTypes {
     | '/_authenticated/purchases/unit-types'
     | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
+    | '/_authenticated/assessments/'
     | '/_authenticated/capital/'
     | '/_authenticated/college/'
     | '/_authenticated/front-office/'
@@ -1388,6 +1515,7 @@ export interface FileRouteTypes {
     | '/_authenticated/magazine/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
+    | '/_authenticated/assessments/certificates/$attemptId'
     | '/_authenticated/capital/facility/$id'
     | '/_authenticated/college/reports/daily-income-expenses'
     | '/_authenticated/college/reports/due-monthly-wise'
@@ -1479,6 +1607,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCollegeRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/assessments': {
+      id: '/_authenticated/assessments'
+      path: '/assessments'
+      fullPath: '/assessments'
+      preLoaderRoute: typeof AuthenticatedAssessmentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/magazine/': {
       id: '/_authenticated/magazine/'
       path: '/magazine'
@@ -1513,6 +1648,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/capital/'
       preLoaderRoute: typeof AuthenticatedCapitalIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/assessments/': {
+      id: '/_authenticated/assessments/'
+      path: '/'
+      fullPath: '/assessments/'
+      preLoaderRoute: typeof AuthenticatedAssessmentsIndexRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
     }
     '/shared/report/$token': {
       id: '/shared/report/$token'
@@ -1689,6 +1831,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedHrStaffListRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/hr/skill-assessments': {
+      id: '/_authenticated/hr/skill-assessments'
+      path: '/hr/skill-assessments'
+      fullPath: '/hr/skill-assessments'
+      preLoaderRoute: typeof AuthenticatedHrSkillAssessmentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/hr/roster': {
       id: '/_authenticated/hr/roster'
       path: '/hr/roster'
@@ -1701,6 +1850,20 @@ declare module '@tanstack/react-router' {
       path: '/hr/review-leave'
       fullPath: '/hr/review-leave'
       preLoaderRoute: typeof AuthenticatedHrReviewLeaveRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/hr/question-bank': {
+      id: '/_authenticated/hr/question-bank'
+      path: '/hr/question-bank'
+      fullPath: '/hr/question-bank'
+      preLoaderRoute: typeof AuthenticatedHrQuestionBankRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/hr/payroll-deductions': {
+      id: '/_authenticated/hr/payroll-deductions'
+      path: '/hr/payroll-deductions'
+      fullPath: '/hr/payroll-deductions'
+      preLoaderRoute: typeof AuthenticatedHrPayrollDeductionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/hr/payroll': {
@@ -1891,6 +2054,34 @@ declare module '@tanstack/react-router' {
       fullPath: '/capital/cash-flow'
       preLoaderRoute: typeof AuthenticatedCapitalCashFlowRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/assessments/skill-assessments': {
+      id: '/_authenticated/assessments/skill-assessments'
+      path: '/skill-assessments'
+      fullPath: '/assessments/skill-assessments'
+      preLoaderRoute: typeof AuthenticatedAssessmentsSkillAssessmentsRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
+    }
+    '/_authenticated/assessments/settings': {
+      id: '/_authenticated/assessments/settings'
+      path: '/settings'
+      fullPath: '/assessments/settings'
+      preLoaderRoute: typeof AuthenticatedAssessmentsSettingsRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
+    }
+    '/_authenticated/assessments/question-bank': {
+      id: '/_authenticated/assessments/question-bank'
+      path: '/question-bank'
+      fullPath: '/assessments/question-bank'
+      preLoaderRoute: typeof AuthenticatedAssessmentsQuestionBankRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
+    }
+    '/_authenticated/assessments/online-cbt': {
+      id: '/_authenticated/assessments/online-cbt'
+      path: '/online-cbt'
+      fullPath: '/assessments/online-cbt'
+      preLoaderRoute: typeof AuthenticatedAssessmentsOnlineCbtRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
     }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
@@ -2151,6 +2342,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCapitalFacilityIdRouteImport
       parentRoute: typeof AuthenticatedCapitalFacilityRoute
     }
+    '/_authenticated/assessments/certificates/$attemptId': {
+      id: '/_authenticated/assessments/certificates/$attemptId'
+      path: '/certificates/$attemptId'
+      fullPath: '/assessments/certificates/$attemptId'
+      preLoaderRoute: typeof AuthenticatedAssessmentsCertificatesAttemptIdRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
+    }
     '/_authenticated/accounts/reports/new': {
       id: '/_authenticated/accounts/reports/new'
       path: '/accounts/reports/new'
@@ -2195,6 +2393,35 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AuthenticatedAssessmentsRouteChildren {
+  AuthenticatedAssessmentsOnlineCbtRoute: typeof AuthenticatedAssessmentsOnlineCbtRoute
+  AuthenticatedAssessmentsQuestionBankRoute: typeof AuthenticatedAssessmentsQuestionBankRoute
+  AuthenticatedAssessmentsSettingsRoute: typeof AuthenticatedAssessmentsSettingsRoute
+  AuthenticatedAssessmentsSkillAssessmentsRoute: typeof AuthenticatedAssessmentsSkillAssessmentsRoute
+  AuthenticatedAssessmentsIndexRoute: typeof AuthenticatedAssessmentsIndexRoute
+  AuthenticatedAssessmentsCertificatesAttemptIdRoute: typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
+}
+
+const AuthenticatedAssessmentsRouteChildren: AuthenticatedAssessmentsRouteChildren =
+  {
+    AuthenticatedAssessmentsOnlineCbtRoute:
+      AuthenticatedAssessmentsOnlineCbtRoute,
+    AuthenticatedAssessmentsQuestionBankRoute:
+      AuthenticatedAssessmentsQuestionBankRoute,
+    AuthenticatedAssessmentsSettingsRoute:
+      AuthenticatedAssessmentsSettingsRoute,
+    AuthenticatedAssessmentsSkillAssessmentsRoute:
+      AuthenticatedAssessmentsSkillAssessmentsRoute,
+    AuthenticatedAssessmentsIndexRoute: AuthenticatedAssessmentsIndexRoute,
+    AuthenticatedAssessmentsCertificatesAttemptIdRoute:
+      AuthenticatedAssessmentsCertificatesAttemptIdRoute,
+  }
+
+const AuthenticatedAssessmentsRouteWithChildren =
+  AuthenticatedAssessmentsRoute._addFileChildren(
+    AuthenticatedAssessmentsRouteChildren,
+  )
 
 interface AuthenticatedCollegeRouteChildren {
   AuthenticatedCollegeAcademicSchedulesRoute: typeof AuthenticatedCollegeAcademicSchedulesRoute
@@ -2289,6 +2516,7 @@ const AuthenticatedPurchasesPurchaseOrdersRouteWithChildren =
   )
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedAssessmentsRoute: typeof AuthenticatedAssessmentsRouteWithChildren
   AuthenticatedCollegeRoute: typeof AuthenticatedCollegeRouteWithChildren
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
@@ -2318,8 +2546,11 @@ interface AuthenticatedRouteChildren {
   AuthenticatedHrLeavesRoute: typeof AuthenticatedHrLeavesRoute
   AuthenticatedHrOffDayRequestsRoute: typeof AuthenticatedHrOffDayRequestsRoute
   AuthenticatedHrPayrollRoute: typeof AuthenticatedHrPayrollRoute
+  AuthenticatedHrPayrollDeductionsRoute: typeof AuthenticatedHrPayrollDeductionsRoute
+  AuthenticatedHrQuestionBankRoute: typeof AuthenticatedHrQuestionBankRoute
   AuthenticatedHrReviewLeaveRoute: typeof AuthenticatedHrReviewLeaveRoute
   AuthenticatedHrRosterRoute: typeof AuthenticatedHrRosterRoute
+  AuthenticatedHrSkillAssessmentsRoute: typeof AuthenticatedHrSkillAssessmentsRoute
   AuthenticatedHrStaffListRoute: typeof AuthenticatedHrStaffListRoute
   AuthenticatedHrViewPayslipRoute: typeof AuthenticatedHrViewPayslipRoute
   AuthenticatedHrViewStaffRoute: typeof AuthenticatedHrViewStaffRoute
@@ -2373,6 +2604,7 @@ interface AuthenticatedRouteChildren {
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAssessmentsRoute: AuthenticatedAssessmentsRouteWithChildren,
   AuthenticatedCollegeRoute: AuthenticatedCollegeRouteWithChildren,
   AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
@@ -2412,8 +2644,11 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedHrLeavesRoute: AuthenticatedHrLeavesRoute,
   AuthenticatedHrOffDayRequestsRoute: AuthenticatedHrOffDayRequestsRoute,
   AuthenticatedHrPayrollRoute: AuthenticatedHrPayrollRoute,
+  AuthenticatedHrPayrollDeductionsRoute: AuthenticatedHrPayrollDeductionsRoute,
+  AuthenticatedHrQuestionBankRoute: AuthenticatedHrQuestionBankRoute,
   AuthenticatedHrReviewLeaveRoute: AuthenticatedHrReviewLeaveRoute,
   AuthenticatedHrRosterRoute: AuthenticatedHrRosterRoute,
+  AuthenticatedHrSkillAssessmentsRoute: AuthenticatedHrSkillAssessmentsRoute,
   AuthenticatedHrStaffListRoute: AuthenticatedHrStaffListRoute,
   AuthenticatedHrViewPayslipRoute: AuthenticatedHrViewPayslipRoute,
   AuthenticatedHrViewStaffRoute: AuthenticatedHrViewStaffRoute,

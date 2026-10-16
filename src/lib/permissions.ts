@@ -22,6 +22,7 @@ export interface UserPermissions {
   isPathologist: boolean;
   canViewAccounts: boolean;
   canViewHr: boolean;
+  canViewAssessments: boolean;
   canViewCollege: boolean;
   canViewFrontOffice: boolean;
   canViewInventory: boolean;
@@ -119,6 +120,7 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     isPathologist,
     canViewAccounts,
     canViewHr,
+    canViewAssessments: isAdmin || isHr || Boolean(currentStaff?.staffId),
     canViewCollege,
     canViewFrontOffice,
     canViewInventory,

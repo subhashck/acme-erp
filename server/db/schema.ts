@@ -120,6 +120,7 @@ export const hospitalSettings = sqliteTable("hospital_settings", {
   editorialDivision: text("editorial_division").default("ACME Healthcare Communications & Editorial Division"),
   copyrightText: text("copyright_text").default("ACME Monthly Electronic Magazine. All rights reserved."),
   showPublishedMagazines: boolean("show_published_magazines").notNull().default(false),
+  enableStaffCompetencyModule: boolean("enable_staff_competency_module").notNull().default(true),
   ...timestamps
 });
 
@@ -210,6 +211,7 @@ export const staffSalaries = sqliteTable("staff_salaries", {
   securityDepositTotal: numeric("security_deposit_total", { precision: 12, scale: 2 }).notNull().default("0"),
   securityDeposit: numeric("security_deposit", { precision: 12, scale: 2 }).notNull().default("0"),
   securityDepositStartMonth: text("security_deposit_start_month"),
+  securityDepositOpeningBalance: numeric("security_deposit_opening_balance", { precision: 12, scale: 2 }).notNull().default("0"),
   otherDeductions: numeric("other_deductions", { precision: 12, scale: 2 }).notNull().default("0"),
   lateAttendance: numeric("late_attendance", { precision: 12, scale: 2 }).notNull().default("0"),
   bankName: text("bank_name"),
@@ -425,6 +427,15 @@ export const securityDepositRefunds = sqliteTable("security_deposit_refunds", {
   notes: text("notes"),
   processedBy: text("processed_by").references(() => user.id, { onDelete: "set null" }),
   ...timestamps
+});
+
+export const securityDepositRuleChanges = sqliteTable("security_deposit_rule_changes", {
+  id: serial("id").primaryKey(),
+  staffId: integer("staff_id").notNull(),
+  previousRules: jsonb("previous_rules").notNull(),
+  newRules: jsonb("new_rules").notNull(),
+  processedBy: text("processed_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const attendance = sqliteTable("attendance", {

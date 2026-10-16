@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["tests/unit/**/*.test.ts"],
+    include: ["tests/unit/**/*.test.{ts,tsx}"],
     reporters: ["verbose"],
     passWithNoTests: true,
     testTimeout: 30_000,

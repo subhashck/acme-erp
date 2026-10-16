@@ -20,6 +20,8 @@ import { cn } from "@/utils/cn";
 import { PayrollWorkflowApprovals } from "../../../components/hr/PayrollWorkflowApprovals";
 
 export const Route = createFileRoute("/_authenticated/hr/payroll")({
+  validateSearch: (search: Record<string, unknown>): { tab?: "security-deposit" } =>
+    search.tab === "security-deposit" ? { tab: "security-deposit" } : {},
   component: PayrollPage,
 });
 
@@ -66,6 +68,8 @@ interface SecurityDepositStaffItem {
   name: string;
   role: string;
   departmentName: string | null;
+  openingBalance: number;
+  pendingDeduction: number;
   targetAmount: number;
   monthlyDeduction: number;
   securityDepositStartMonth?: string | null;
@@ -83,6 +87,7 @@ interface SecurityDepositStaffItem {
 }
 
 function PayrollPage() {
+  const { tab } = Route.useSearch();
   const navigate = useNavigate();
   const { currentStaff, isAdmin, isHr, isManagementApprover } = useUserPermissions();
   const isAdminOrHr = isAdmin || isHr;
@@ -97,7 +102,7 @@ function PayrollPage() {
   const isAccounts = currentStaff?.departmentName === "Accounts";
 
   const { currencySymbol } = useSystemSettings();
-  const [activeTab, setActiveTab] = React.useState<"payslips" | "salaries" | "workflow" | "security-deposit">("payslips");
+  const [activeTab, setActiveTab] = React.useState<"payslips" | "salaries" | "workflow" | "security-deposit">(tab || "payslips");
   const getPreviousMonth = () => {
     const d = new Date();
     d.setDate(1);
@@ -131,8 +136,8 @@ function PayrollPage() {
   const [deductTds, setDeductTds] = React.useState(false);
   const [tdsPercent, setTdsPercent] = React.useState(10);
   const [tds, setTds] = React.useState(0);
-  const [securityDepositTotal, setSecurityDepositTotal] = React.useState(0);
-  const [securityDeposit, setSecurityDeposit] = React.useState(0);
+  const [securityDepositTotal, setSecurityDepositTotal] = React.useState<number | string>(0);
+  const [securityDeposit, setSecurityDeposit] = React.useState<number | string>(0);
   const [securityDepositStartMonth, setSecurityDepositStartMonth] = React.useState("");
   const [other, setOther] = React.useState(0);
   const [lateAttendance, setLateAttendance] = React.useState(0);
@@ -142,10 +147,11 @@ function PayrollPage() {
 
   const [secDepTargetStaff, setSecDepTargetStaff] = React.useState<SecurityDepositStaffItem | null>(null);
   const [secDepRefundStaff, setSecDepRefundStaff] = React.useState<SecurityDepositStaffItem | null>(null);
-  const [secTargetInput, setSecTargetInput] = React.useState(0);
-  const [secMonthlyInput, setSecMonthlyInput] = React.useState(0);
+  const [secTargetInput, setSecTargetInput] = React.useState<number | string>(0);
+  const [secMonthlyInput, setSecMonthlyInput] = React.useState<number | string>(0);
+  const [secOpeningInput, setSecOpeningInput] = React.useState<number | string>(0);
   const [secStartMonthInput, setSecStartMonthInput] = React.useState("");
-  const [refundAmount, setRefundAmount] = React.useState(0);
+  const [refundAmount, setRefundAmount] = React.useState<number | string>(0);
   const [refundDate, setRefundDate] = React.useState(() => new Date().toISOString().split("T")[0]);
   const [refundNotes, setRefundNotes] = React.useState("");
   const [submittingSecModal, setSubmittingSecModal] = React.useState(false);
@@ -201,7 +207,7 @@ function PayrollPage() {
     summary: { totalTarget: number; totalCollected: number; totalRefunded: number; totalNetHeld: number };
     list: SecurityDepositStaffItem[];
   }>(["security-deposits"], () =>
-    (client.hr.payroll as any)["security-deposits"].$get()
+    client.hr["security-deposits"].$get()
   );
 
   const departmentsQuery = useRpcQuery<{ id: number; name: string }[]>(["departments"], () =>
@@ -278,6 +284,7 @@ function PayrollPage() {
           msg += ` Skipped ${data.skippedEmployees.length} employee(s) already approved/paid: ${data.skippedEmployees.join(", ")}`;
         }
         setGenerationResult({ success: true, message: msg });
+        queryClient.invalidateQueries({ queryKey: ["security-deposits"] });
         queryClient.invalidateQueries({ queryKey: ["payslips"] });
       } else {
         setGenerationResult({ success: false, message: data.error || "Failed to generate payroll." });
@@ -354,6 +361,7 @@ function PayrollPage() {
           securityDepositTotal: Number(secTargetInput),
           securityDeposit: Number(secMonthlyInput),
           securityDepositStartMonth: secStartMonthInput || null,
+          securityDepositOpeningBalance: Number(secOpeningInput),
         }),
       });
       if (res.ok) {
@@ -1009,7 +1017,7 @@ function PayrollPage() {
               <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b">
                 <div>
                   <CardTitle className="text-base">Staff Security Deposits</CardTitle>
-                  <CardDescription>Manage attrition security deposit targets, monthly deduction rules, and exit refunds.</CardDescription>
+                  <CardDescription>Collected funds include the opening balance and paid payroll deductions. Unpaid deductions remain pending.</CardDescription>
                 </div>
                 <div className="w-full sm:w-64">
                   <input
@@ -1030,7 +1038,7 @@ function PayrollPage() {
                         <th className="p-3">Department</th>
                         <th className="p-3 text-right">Target Amount</th>
                         <th className="p-3 text-right">Monthly Rate</th>
-                        <th className="p-3 text-right">Deducted</th>
+                        <th className="p-3 text-right">Collected / Pending</th>
                         <th className="p-3 text-right">Refunded</th>
                         <th className="p-3 text-right">Net Held</th>
                         <th className="p-3 text-center">Status</th>
@@ -1044,6 +1052,8 @@ function PayrollPage() {
                             Loading security deposits data...
                           </td>
                         </tr>
+                      ) : securityDepositsQuery.isError ? (
+                        <tr><td colSpan={9} className="p-8 text-center text-destructive">Unable to load security deposits. Please refresh and try again.</td></tr>
                       ) : filteredSecList.length === 0 ? (
                         <tr>
                           <td colSpan={9} className="p-8 text-center text-muted-foreground">
@@ -1063,12 +1073,17 @@ function PayrollPage() {
                               <td className="p-3 text-right font-semibold">{currencySymbol}{item.targetAmount.toLocaleString("en-IN")}</td>
                               <td className="p-3 text-right">
                                 <div className="text-muted-foreground">{currencySymbol}{item.monthlyDeduction.toLocaleString("en-IN")}/mo</div>
+                                {item.monthlyDeduction > 0 && item.targetAmount === 0 && (
+                                  <div className="text-[10px] text-amber-600">No target set; deductions off</div>
+                                )}
                                 {item.securityDepositStartMonth && (
                                   <div className="text-[10px] text-primary font-medium">Start: {item.securityDepositStartMonth}</div>
                                 )}
                               </td>
                               <td className="p-3 text-right">
                                 <span className="font-semibold text-emerald-600">{currencySymbol}{item.totalDeducted.toLocaleString("en-IN")}</span>
+                                <div className="text-[10px] text-muted-foreground">Opening: {currencySymbol}{item.openingBalance.toLocaleString("en-IN")}</div>
+                                <div className="text-[10px] text-amber-600">Pending: {currencySymbol}{item.pendingDeduction.toLocaleString("en-IN")}</div>
                                 {item.targetAmount > 0 && (
                                   <div className="w-full bg-muted h-1 rounded-full mt-1 overflow-hidden">
                                     <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${pct}%` }} />
@@ -1100,6 +1115,7 @@ function PayrollPage() {
                                         setSecTargetInput(item.targetAmount);
                                         setSecMonthlyInput(item.monthlyDeduction);
                                         setSecStartMonthInput(item.securityDepositStartMonth ?? "");
+                                        setSecOpeningInput(item.openingBalance);
                                       }}
                                     >
                                       <Edit2 size={12} /> Set Target
@@ -1208,21 +1224,21 @@ function PayrollPage() {
 
       {/* Edit Salary Structure Modal */}
       {editingSalaryStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200" onClick={() => setEditingSalaryStaff(null)}>
-          <div className="bg-background rounded-xl border border-border shadow-xl max-w-2xl w-full overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-            <div className="p-6 border-b flex items-center justify-between">
-              <div className="flex items-center gap-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200" onClick={() => setEditingSalaryStaff(null)}>
+          <div className="bg-background rounded-xl border border-border shadow-xl max-w-4xl w-full max-h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="shrink-0 p-4 sm:px-6 border-b flex items-center justify-between gap-3">
+              <div className="min-w-0 flex items-center gap-2">
                 <Receipt className="text-primary h-5 w-5" />
                 <div>
-                  <h3 className="font-semibold text-lg text-foreground">Edit Salary Structure</h3>
-                  <p className="text-xs text-muted-foreground">{editingSalaryStaff.name} &middot; {editingSalaryStaff.employeeCode}</p>
+                  <h3 className="font-semibold text-base sm:text-lg text-foreground">Edit Salary Structure</h3>
+                  <p className="text-xs text-muted-foreground break-words">{editingSalaryStaff.name} &middot; {editingSalaryStaff.employeeCode}</p>
                 </div>
               </div>
-              <button onClick={() => setEditingSalaryStaff(null)} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted cursor-pointer">
+              <button onClick={() => setEditingSalaryStaff(null)} aria-label="Close salary structure" className="shrink-0 text-muted-foreground hover:text-foreground p-2 rounded-lg hover:bg-muted cursor-pointer">
                 <X size={18} />
               </button>
             </div>
-            <div className="p-6 max-h-[80vh] overflow-y-auto space-y-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5">
               {/* Auto Calculate Helper */}
               <div className="bg-muted/45 p-4 rounded-xl border border-dashed grid gap-4 md:grid-cols-3 md:items-end">
                 <div className="md:col-span-1">
@@ -1284,10 +1300,10 @@ function PayrollPage() {
                 </div>
               )}
               
-              <form onSubmit={handleSaveSalary} className="space-y-6">
-                <div className="grid gap-6 md:grid-cols-2">
+              <form id="salary-structure-form" onSubmit={handleSaveSalary} className="space-y-5">
+                <div className="grid gap-5 md:grid-cols-2 md:gap-6">
                   {/* Earnings */}
-                  <div className="space-y-4">
+                  <div className="min-w-0 space-y-4">
                     <h4 className="font-semibold text-sm text-emerald-600 dark:text-emerald-400 border-b pb-1">Earnings (Allowances)</h4>
                     <Field label="Basic Salary" type="number" value={basic} onChange={(e) => setBasic(Number(e.target.value))} />
                     <Field label="House Rent Allowance (HRA)" type="number" value={hra} onChange={(e) => setHra(Number(e.target.value))} />
@@ -1297,7 +1313,7 @@ function PayrollPage() {
                   </div>
 
                   {/* Deductions */}
-                  <div className="space-y-4">
+                  <div className="min-w-0 space-y-4">
                     <h4 className="font-semibold text-sm text-rose-600 dark:text-rose-400 border-b pb-1">Deductions (Monthly)</h4>
                     <Field label="EPF (Provident Fund)" type="number" value={epf} onChange={(e) => setEpf(Number(e.target.value))} />
                     <Field label="ESI (State Insurance)" type="number" value={esi} onChange={(e) => setEsi(Number(e.target.value))} />
@@ -1346,49 +1362,52 @@ function PayrollPage() {
                       )}
                     </div>
 
-                    {/* Security Deposit Setup */}
-                    <div className="border border-border/80 p-3 rounded-lg bg-muted/20 space-y-2">
-                      <p className="text-xs font-semibold text-foreground">Security Deposit Setup</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Field
-                          label="Target Total (₹)"
-                          type="number"
-                          value={securityDepositTotal}
-                          onChange={(e) => setSecurityDepositTotal(Number(e.target.value))}
-                          placeholder="e.g. 10000"
-                        />
-                        <Field
-                          label="Monthly Deduction (₹)"
-                          type="number"
-                          value={securityDeposit}
-                          onChange={(e) => setSecurityDeposit(Number(e.target.value))}
-                          placeholder="e.g. 2000"
-                        />
-                        <Field
-                          label="Start Month"
-                          type="month"
-                          value={securityDepositStartMonth}
-                          onChange={(e) => setSecurityDepositStartMonth(e.target.value)}
-                        />
-                      </div>
-                    </div>
-
                     <Field label="Other Deductions" type="number" value={other} onChange={(e) => setOther(Number(e.target.value))} />
                     <Field label="Late Attendance" type="number" value={lateAttendance} onChange={(e) => setLateAttendance(Number(e.target.value))} />
                   </div>
                 </div>
 
+                {/* Security Deposit Setup */}
+                <div className="border border-border/80 p-3 sm:p-4 rounded-lg bg-muted/20 space-y-3">
+                  <p className="text-xs font-semibold text-foreground">Security Deposit Setup</p>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 items-end">
+                    <Field
+                      label="Target Total (₹)"
+                      type="number"
+                      value={securityDepositTotal}
+                      onChange={(e) => setSecurityDepositTotal(e.target.value)}
+                      placeholder="e.g. 10000"
+                    />
+                    <Field
+                      label="Monthly Deduction (₹)"
+                      type="number"
+                      value={securityDeposit}
+                      onChange={(e) => setSecurityDeposit(e.target.value)}
+                      placeholder="e.g. 2000"
+                    />
+                    <Field label="First Deduction Month" className="min-w-0 sm:col-span-2 lg:col-span-1">
+                      <MonthPicker
+                        value={securityDepositStartMonth}
+                        onChange={setSecurityDepositStartMonth}
+                        clearable
+                        className="h-10 w-full min-w-0"
+                      />
+                    </Field>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Start month is the first deduction month. Earlier collections must be recorded explicitly using Set Target in Security Deposit Dashboard.</p>
+                </div>
+
                 {/* Calculation Summary */}
                 <div className="border-t pt-4 bg-muted/20 p-4 rounded-lg">
                   <h4 className="font-semibold text-sm mb-3">Salary Summary</h4>
-                  <div className="grid gap-3 grid-cols-3 text-center">
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-3 text-center">
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Gross Salary</p>
                       <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
                         {currencySymbol}{(Number(basic) + Number(hra) + Number(conveyance) + Number(skillAllowance) + Number(special)).toLocaleString("en-IN")}
                       </p>
                     </div>
-                    <div className="border-x">
+                    <div className="border-y py-3 sm:border-y-0 sm:border-x sm:py-0 sm:px-3">
                       <p className="text-xs text-muted-foreground uppercase font-semibold">Total Deductions</p>
                       <p className="text-base font-bold text-rose-600 dark:text-rose-400 mt-0.5">
                         {currencySymbol}{(Number(epf) + Number(esi) + Number(pt) + (deductTds ? Number(tds) : 0) + Number(securityDeposit) + Number(other) + Number(lateAttendance)).toLocaleString("en-IN")}
@@ -1403,11 +1422,11 @@ function PayrollPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-4 border-t">
-                  <Button type="button" variant="outline" onClick={() => setEditingSalaryStaff(null)}>Cancel</Button>
-                  <Button type="submit">Save Salary Structure</Button>
-                </div>
               </form>
+            </div>
+            <div className="shrink-0 flex flex-col-reverse gap-2 border-t bg-background p-4 sm:flex-row sm:justify-end sm:px-6">
+              <Button type="button" variant="outline" onClick={() => setEditingSalaryStaff(null)}>Cancel</Button>
+              <Button type="submit" form="salary-structure-form">Save Salary Structure</Button>
             </div>
           </div>
         </div>
@@ -1416,7 +1435,7 @@ function PayrollPage() {
       {/* Set Security Deposit Target Modal */}
       {secDepTargetStaff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-background rounded-xl border border-border shadow-xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-background rounded-xl border border-border shadow-xl max-w-md w-full max-h-[90dvh] overflow-y-auto p-6 space-y-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b pb-3">
               <div>
                 <h3 className="font-semibold text-lg text-foreground">Set Security Deposit Rules</h3>
@@ -1431,28 +1450,42 @@ function PayrollPage() {
               <Field
                 label="Target Total Security Deposit (₹)"
                 type="number"
+                min="0"
+                step="0.01"
                 value={secTargetInput}
-                onChange={(e) => setSecTargetInput(Number(e.target.value))}
+                onChange={(e) => setSecTargetInput(e.target.value)}
                 placeholder="e.g. 10000"
                 required
               />
               <Field
                 label="Monthly Deduction Amount (₹)"
                 type="number"
+                min="0"
+                step="0.01"
                 value={secMonthlyInput}
-                onChange={(e) => setSecMonthlyInput(Number(e.target.value))}
+                onChange={(e) => setSecMonthlyInput(e.target.value)}
                 placeholder="e.g. 2000"
                 required
               />
+              <Field label="First Deduction Month">
+                <MonthPicker
+                  value={secStartMonthInput}
+                  onChange={setSecStartMonthInput}
+                  clearable
+                  className="w-full"
+                />
+              </Field>
               <Field
-                label="Starting Month (YYYY-MM)"
-                type="month"
-                value={secStartMonthInput}
-                onChange={(e) => setSecStartMonthInput(e.target.value)}
+                label="Opening Balance Already Collected (₹)"
+                type="number" min="0" step="0.01"
+                value={secOpeningInput}
+                onChange={(e) => setSecOpeningInput(e.target.value)}
+                required
               />
               <p className="text-xs text-muted-foreground bg-muted/40 p-3 rounded-lg">
-                Monthly deductions will automatically stop once the accumulated collected deposit reaches the target total of {currencySymbol}{secTargetInput.toLocaleString("en-IN")}.
+                Enter earlier collections missing from paid payslips as the opening balance. Collected and pending deductions together are capped at {currencySymbol}{Number(secTargetInput).toLocaleString("en-IN")} when generating payroll.
               </p>
+              <p className="text-xs text-muted-foreground">Existing payslips are unchanged. Regenerate eligible drafts to apply new rules.</p>
               <div className="flex justify-end gap-2 pt-2 border-t">
                 <Button type="button" variant="outline" onClick={() => setSecDepTargetStaff(null)}>Cancel</Button>
                 <Button type="submit" disabled={submittingSecModal}>
@@ -1498,7 +1531,7 @@ function PayrollPage() {
                 label="Refund Amount (₹)"
                 type="number"
                 value={refundAmount}
-                onChange={(e) => setRefundAmount(Number(e.target.value))}
+                onChange={(e) => setRefundAmount(e.target.value)}
                 placeholder="Enter refund amount"
                 required
               />
@@ -1521,12 +1554,13 @@ function PayrollPage() {
                   onChange={(e) => setRefundNotes(e.target.value)}
                   placeholder="e.g. Employee proper exit refund approved by HR Director"
                   className="w-full text-xs p-2.5 border rounded-lg bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary h-20"
+                  required
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t">
                 <Button type="button" variant="outline" onClick={() => setSecDepRefundStaff(null)}>Cancel</Button>
-                <Button type="submit" disabled={submittingSecModal || refundAmount <= 0 || refundAmount > secDepRefundStaff.netHeld}>
+                <Button type="submit" disabled={submittingSecModal || Number(refundAmount) <= 0 || Number(refundAmount) > secDepRefundStaff.netHeld || !refundNotes.trim()}>
                   {submittingSecModal ? "Processing..." : "Confirm & Process Refund"}
                 </Button>
               </div>
