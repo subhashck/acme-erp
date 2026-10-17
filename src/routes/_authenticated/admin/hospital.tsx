@@ -6,6 +6,9 @@ import { Field } from "@/components/Field";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Building, Save, CheckCircle2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import {
   useHospitalSettings,
   saveHospitalSettings,
@@ -23,6 +26,42 @@ export const Route = createFileRoute("/_authenticated/admin/hospital")({
   },
   component: HospitalProfilePage
 });
+
+function MagazinePromotionSettings() {
+  const queryClient = useQueryClient();
+  const settings = useQuery<{ showPublishedMagazines: boolean }>({
+    queryKey: ["erp-magazine-promotion"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/hospital-settings");
+      if (!response.ok) throw new Error("Could not load publication settings");
+      return response.json();
+    },
+  });
+  const mutation = useMutation({
+    mutationFn: async (showPublishedMagazines: boolean) => {
+      const response = await fetch("/api/admin/hospital-settings", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showPublishedMagazines }),
+      });
+      if (!response.ok) throw new Error("Could not save publication settings");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["erp-magazine-promotion"] });
+      queryClient.invalidateQueries({ queryKey: ["public-magazine-issues"] });
+      toast.success("Magazine promotion updated");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+  return <Card className="mt-5"><CardContent className="flex items-center justify-between gap-4 pt-6">
+    <div><p className="font-semibold">Display published magazines</p>
+      <p className="text-sm text-muted-foreground">Show publications from the Magazine service on the ERP login page and dashboard.</p>
+      {settings.isError && <p className="text-sm text-destructive">Could not load publication settings.</p>}
+    </div>
+    <Switch aria-label="Display published magazines" checked={settings.data?.showPublishedMagazines ?? false}
+      disabled={!settings.data || mutation.isPending} onCheckedChange={value => mutation.mutate(value)} />
+  </CardContent></Card>;
+}
 
 function HospitalProfilePage() {
   const hospitalSettings = useHospitalSettings();
@@ -159,6 +198,7 @@ function HospitalProfilePage() {
             </form>
           </CardContent>
         </Card>
+        <MagazinePromotionSettings />
       </div>
     </ModuleLayout>
   );

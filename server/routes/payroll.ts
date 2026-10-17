@@ -1379,6 +1379,7 @@ export const payrollRoutes = new Hono<AuthEnv>()
     const summary = {
       totalTarget: list.reduce((acc, curr) => acc + curr.targetAmount, 0),
       totalCollected: list.reduce((acc, curr) => acc + curr.totalDeducted, 0),
+      totalOutstanding: list.reduce((acc, curr) => acc + Math.max(0, curr.targetAmount - curr.totalDeducted), 0),
       totalRefunded: list.reduce((acc, curr) => acc + curr.totalRefunded, 0),
       totalNetHeld: list.reduce((acc, curr) => acc + curr.netHeld, 0),
     };

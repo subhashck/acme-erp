@@ -204,9 +204,16 @@ function Departments() {
   const totalRecords = deptQuery.data?.total ?? 0;
   const totalPages = deptQuery.data?.totalPages ?? 1;
 
-  // Filter staff options for department head/sub-head assignment
+  // Department heads may belong to any department or have no department assignment.
+  const staffOptions = (staffQuery.data ?? []).map((s) => ({
+    id: s.staffId,
+    name: s.name,
+    code: s.employeeCode,
+  }));
+
+  // Sub-head selection retains the existing department membership rule.
   const editingDept = editingId ? departmentsData.find((d) => d.id === editingId) : null;
-  const staffOptions = (staffQuery.data ?? [])
+  const subheadStaffOptions = (staffQuery.data ?? [])
     .filter((s) => !editingDept || s.departmentName === editingDept.name)
     .map((s) => ({
       id: s.staffId,
@@ -603,7 +610,7 @@ function Departments() {
                               value={field.value ?? null}
                               onChange={field.onChange}
                               options={staffOptions}
-                              placeholder="Search staff by name or employee code..."
+                              placeholder="Search staff from any department..."
                             />
                           )}
                         />
@@ -616,7 +623,7 @@ function Departments() {
                               label="Department Sub-Head"
                               value={field.value ?? null}
                               onChange={field.onChange}
-                              options={staffOptions}
+                              options={subheadStaffOptions}
                               placeholder="Search staff by name or employee code..."
                             />
                           )}

@@ -72,11 +72,77 @@ services:
       - MINIO_ACCESS_KEY=minioadmin
       - MINIO_SECRET_KEY=miniopassword
       - MINIO_BUCKET=acme-erp
+      - MAGAZINE_ENABLED=${MAGAZINE_ENABLED:-false}
+      - MAGAZINE_BRIDGE_SECRET=${MAGAZINE_BRIDGE_SECRET:-}
+      - MAGAZINE_INTERNAL_URL=http://magazine:8790
+      - MAGAZINE_PUBLIC_URL=${MAGAZINE_PUBLIC_URL:-}
     depends_on:
       db:
         condition: service_healthy
       minio:
         condition: service_healthy
+
+  magazine-db-init:
+    profiles: [magazine]
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: ${ERP_POSTGRES_PASSWORD:-postgrespassword}
+      PGDATABASE: postgres
+      MAGAZINE_DB_PASSWORD: ${MAGAZINE_DB_PASSWORD:-}
+    volumes:
+      - ./services/magazine/deploy/provision-db.sh:/provision-db.sh:ro
+    entrypoint: ["sh", "/provision-db.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  magazine-storage-init:
+    profiles: [magazine]
+    image: minio/mc:latest
+    restart: "no"
+    environment:
+      MINIO_ADMIN_USER: ${MINIO_ADMIN_USER:-minioadmin}
+      MINIO_ADMIN_PASSWORD: ${MINIO_ADMIN_PASSWORD:-miniopassword}
+      MAGAZINE_MINIO_SECRET_KEY: ${MAGAZINE_MINIO_SECRET_KEY:-}
+    volumes:
+      - ./services/magazine/deploy/provision-storage.sh:/provision-storage.sh:ro
+    entrypoint: ["sh", "/provision-storage.sh"]
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  magazine:
+    profiles: [magazine]
+    build: ./services/magazine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8790:8790"
+    environment:
+      NODE_ENV: production
+      PORT: 8790
+      DATABASE_URL: postgresql://acme_magazine:${MAGAZINE_DB_PASSWORD:-}@db:5432/acme_magazine
+      PUBLIC_ORIGIN: ${MAGAZINE_PUBLIC_URL:-}
+      ERP_INTERNAL_URL: http://web:8787
+      MAGAZINE_BRIDGE_SECRET: ${MAGAZINE_BRIDGE_SECRET:-}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_BUCKET: acme-magazine
+      MINIO_ACCESS_KEY: acme-magazine
+      MINIO_SECRET_KEY: ${MAGAZINE_MINIO_SECRET_KEY:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8790/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      magazine-db-init:
+        condition: service_completed_successfully
+      magazine-storage-init:
+        condition: service_completed_successfully
 
 volumes:
   postgres_data:

@@ -1,0 +1,17 @@
+# Add inside the ERP HTTPS server block. Do not strip the request path.
+# Keep the existing / and /api locations pointing at ERP.
+location ^~ /magazine-api/ {
+    proxy_pass http://127.0.0.1:8790;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 16m;
+}
+location = /magazine {
+    proxy_pass http://127.0.0.1:8790;
+    proxy_set_header Host $host;
+}
+location ^~ /magazine/ {
+    proxy_pass http://127.0.0.1:8790;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Receipt, RefreshCw, Eye, AlertCircle, FileDown, Plus, X, Edit2, DollarSign, ShieldCheck, ArrowRightLeft, Banknote, FileText, Coins, Landmark } from "lucide-react";
+import { Receipt, RefreshCw, Eye, AlertCircle, FileDown, Plus, X, Edit2, DollarSign, ShieldCheck, ArrowRightLeft, Banknote, FileText, Coins, Landmark, ArrowUpDown, ArrowUp, ArrowDown, Search, CheckCircle2 } from "lucide-react";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { useSystemSettings, usePayrollSettings, useSalaryTemplates } from "../../../lib/settings";
 import { DataTable } from "../../../components/DataTable";
@@ -86,6 +86,40 @@ interface SecurityDepositStaffItem {
   }>;
 }
 
+type SecSortKey =
+  | "employee"
+  | "department"
+  | "targetAmount"
+  | "monthlyDeduction"
+  | "totalDeducted"
+  | "totalRefunded"
+  | "netHeld"
+  | "status";
+
+export function formatMonthMonYy(monthStr: string | null | undefined): string {
+  if (!monthStr) return "";
+  const trimmed = monthStr.trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})/);
+  if (isoMatch) {
+    const fullYear = isoMatch[1];
+    const monthNum = parseInt(isoMatch[2], 10);
+    const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+    if (monthNum >= 1 && monthNum <= 12) {
+      return `${fullYear}-${months[monthNum - 1]}`;
+    }
+  }
+  const nameMatch = trimmed.match(/^([A-Za-z]+)[\s-]+(\d{2,4})$/);
+  if (nameMatch) {
+    const mon = nameMatch[1].slice(0, 3).toUpperCase();
+    let yr = nameMatch[2];
+    if (yr.length === 2) {
+      yr = `20${yr}`;
+    }
+    return `${yr}-${mon}`;
+  }
+  return monthStr;
+}
+
 function PayrollPage() {
   const { tab } = Route.useSearch();
   const navigate = useNavigate();
@@ -117,6 +151,8 @@ function PayrollPage() {
   const [generationResult, setGenerationResult] = React.useState<{ success: boolean; message: string } | null>(null);
   const [showSuperseded, setShowSuperseded] = React.useState(false);
   const [filterMonth, setFilterMonth] = React.useState(getPreviousMonth);
+  const [filterStatus, setFilterStatus] = React.useState<string>("all");
+  const [filterPaymentMode, setFilterPaymentMode] = React.useState<string>("all");
   const [showForm, setShowForm] = React.useState(false);
 
   const [selectedDeptId, setSelectedDeptId] = React.useState<string>("");
@@ -156,6 +192,33 @@ function PayrollPage() {
   const [refundNotes, setRefundNotes] = React.useState("");
   const [submittingSecModal, setSubmittingSecModal] = React.useState(false);
   const [secSearchQuery, setSecSearchQuery] = React.useState("");
+  const [secSortKey, setSecSortKey] = React.useState<SecSortKey | null>(null);
+  const [secSortDirection, setSecSortDirection] = React.useState<"asc" | "desc">("asc");
+
+  const handleSecSort = (key: SecSortKey) => {
+    if (secSortKey === key) {
+      if (secSortDirection === "asc") {
+        setSecSortDirection("desc");
+      } else if (secSortDirection === "desc") {
+        setSecSortKey(null);
+        setSecSortDirection("asc");
+      }
+    } else {
+      setSecSortKey(key);
+      setSecSortDirection("asc");
+    }
+  };
+
+  const renderSortIcon = (key: SecSortKey) => {
+    if (secSortKey !== key) {
+      return <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-foreground transition-colors shrink-0" />;
+    }
+    return secSortDirection === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5 text-primary shrink-0" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5 text-primary shrink-0" />
+    );
+  };
 
   const handleAutoCalculate = () => {
     const basicPct = payrollSettings.basicPct ?? 50;
@@ -204,7 +267,7 @@ function PayrollPage() {
   );
 
   const securityDepositsQuery = useRpcQuery<{
-    summary: { totalTarget: number; totalCollected: number; totalRefunded: number; totalNetHeld: number };
+    summary: { totalTarget: number; totalCollected: number; totalOutstanding?: number; totalRefunded: number; totalNetHeld: number };
     list: SecurityDepositStaffItem[];
   }>(["security-deposits"], () =>
     client.hr["security-deposits"].$get()
@@ -409,14 +472,74 @@ function PayrollPage() {
     }
   };
 
+  const availableStatuses = React.useMemo(() => {
+    const defaultStatuses = [
+      "Draft",
+      "Active",
+      "Approved by HR",
+      "Approved by Management",
+      "Approved by COO",
+      "Paid",
+      "Cancelled",
+      "Superseded",
+    ];
+    const data = payslipsQuery.data ?? [];
+    const set = new Set(defaultStatuses);
+    data.forEach((p) => {
+      if (p.status) set.add(p.status);
+    });
+    return Array.from(set);
+  }, [payslipsQuery.data]);
+
+  const availablePaymentModes = React.useMemo(() => {
+    const defaultModes = ["Bank Transfer", "Cheque", "Cash"];
+    const data = payslipsQuery.data ?? [];
+    const set = new Set(defaultModes);
+    data.forEach((p) => {
+      if (p.paymentMode) set.add(p.paymentMode);
+    });
+    return Array.from(set);
+  }, [payslipsQuery.data]);
+
   const filteredPayslips = React.useMemo(() => {
     const data = payslipsQuery.data ?? [];
     return data.filter((p) => {
-      if (!showSuperseded && p.status === "Superseded") return false;
+      if (!showSuperseded && p.status === "Superseded" && filterStatus !== "Superseded") return false;
       if (filterMonth && p.month !== filterMonth) return false;
+      if (filterStatus !== "all" && p.status !== filterStatus) return false;
+      if (filterPaymentMode !== "all") {
+        const mode = p.paymentMode || "Bank Transfer";
+        if (mode !== filterPaymentMode) return false;
+      }
       return true;
     });
-  }, [payslipsQuery.data, showSuperseded, filterMonth]);
+  }, [payslipsQuery.data, showSuperseded, filterMonth, filterStatus, filterPaymentMode]);
+
+  const payslipSummary = React.useMemo(() => {
+    let totalGross = 0;
+    let totalDeductions = 0;
+    let totalNet = 0;
+    let paidCount = 0;
+    let pendingCount = 0;
+
+    for (const row of filteredPayslips) {
+      const g = Number(row.basicSalary) + Number(row.hra) + Number(row.conveyance) + Number(row.skillAllowance ?? 0) + Number(row.special) + Number(row.earnedLeaveEncashment ?? 0) + Number(row.extraDayAllowance ?? 0);
+      const d = Number(row.epf) + Number(row.esi) + Number(row.professionalTax) + Number(row.tds ?? 0) + Number(row.securityDeposit ?? 0) + Number(row.otherDeductions) + Number(row.lateAttendance) + Number(row.leaveDeduction);
+      const n = Number(row.netSalary);
+
+      totalGross += g;
+      totalDeductions += d;
+      totalNet += n;
+
+      if (row.status === "Paid") {
+        paidCount++;
+      } else if (row.status !== "Cancelled" && row.status !== "Superseded") {
+        pendingCount++;
+      }
+    }
+
+    return { totalGross, totalDeductions, totalNet, totalCount: filteredPayslips.length, paidCount, pendingCount };
+  }, [filteredPayslips]);
 
   const handleExport = () => {
     if (!filterMonth) {
@@ -436,7 +559,7 @@ function PayrollPage() {
       id: "month",
       label: "Month",
       render: (row: PayslipRow) => (
-        <span className="font-semibold text-foreground">{row.month}</span>
+        <span className="font-semibold text-foreground">{formatMonthMonYy(row.month)}</span>
       ),
       sortKey: "month" as keyof PayslipRow,
     },
@@ -460,24 +583,30 @@ function PayrollPage() {
     {
       id: "gross",
       label: "Gross",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: PayslipRow) => {
         const g = Number(row.basicSalary) + Number(row.hra) + Number(row.conveyance) + Number(row.skillAllowance ?? 0) + Number(row.special) + Number(row.earnedLeaveEncashment ?? 0) + Number(row.extraDayAllowance ?? 0);
-        return <span>{currencySymbol}{g.toLocaleString("en-IN")}</span>;
+        return <span className="tabular-nums font-medium">{currencySymbol}{g.toLocaleString("en-IN")}</span>;
       },
     },
     {
       id: "deductions",
       label: "Deductions",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: PayslipRow) => {
         const d = Number(row.epf) + Number(row.esi) + Number(row.professionalTax) + Number(row.tds ?? 0) + Number(row.securityDeposit ?? 0) + Number(row.otherDeductions) + Number(row.lateAttendance) + Number(row.leaveDeduction);
-        return <span className="text-rose-600 dark:text-rose-400">{currencySymbol}{d.toLocaleString("en-IN")}</span>;
+        return <span className="tabular-nums text-rose-600 dark:text-rose-400 font-medium">{currencySymbol}{d.toLocaleString("en-IN")}</span>;
       },
     },
     {
       id: "netSalary",
       label: "Net Salary",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: PayslipRow) => (
-        <span className="font-bold text-emerald-600 dark:text-emerald-400">
+        <span className="tabular-nums font-bold text-emerald-600 dark:text-emerald-400">
           {currencySymbol}{Number(row.netSalary).toLocaleString("en-IN")}
         </span>
       ),
@@ -560,6 +689,8 @@ function PayrollPage() {
     {
       id: "grossSalary",
       label: "Gross Salary",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: StaffRow) => {
         const b = Number(row.basicSalary ?? 0);
         const h = Number(row.hra ?? 0);
@@ -574,12 +705,14 @@ function PayrollPage() {
             </span>
           );
         }
-        return <span className="font-semibold text-foreground">{currencySymbol}{gross.toLocaleString("en-IN")}</span>;
+        return <span className="tabular-nums font-semibold text-foreground">{currencySymbol}{gross.toLocaleString("en-IN")}</span>;
       }
     },
     {
       id: "deductionsSummary",
       label: "Deductions",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: StaffRow) => {
         const ep = Number(row.epf ?? 0);
         const es = Number(row.esi ?? 0);
@@ -588,12 +721,14 @@ function PayrollPage() {
         const secDep = Number(row.securityDeposit ?? 0);
         const od = Number(row.otherDeductions ?? 0);
         const total = ep + es + p + tdsVal + secDep + od;
-        return <span className="text-xs text-rose-600 font-medium">{currencySymbol}{total.toLocaleString("en-IN")}</span>;
+        return <span className="tabular-nums text-xs text-rose-600 font-medium">{currencySymbol}{total.toLocaleString("en-IN")}</span>;
       }
     },
     {
       id: "netSalary",
       label: "Net Take-Home",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: StaffRow) => {
         const b = Number(row.basicSalary ?? 0);
         const h = Number(row.hra ?? 0);
@@ -612,12 +747,14 @@ function PayrollPage() {
           return <span className="text-muted-foreground text-xs">—</span>;
         }
         const net = Math.max(0, gross - (ep + es + p + tdsVal + secDep + od + la));
-        return <span className="font-semibold text-emerald-600">{currencySymbol}{net.toLocaleString("en-IN")}</span>;
+        return <span className="tabular-nums font-semibold text-emerald-600">{currencySymbol}{net.toLocaleString("en-IN")}</span>;
       }
     },
     {
       id: "actions",
       label: "Actions",
+      className: "text-right",
+      headerClassName: "text-right",
       render: (row: StaffRow) => {
         if (!isAdminOrHr) return null;
         const b = Number(row.basicSalary ?? 0);
@@ -637,76 +774,185 @@ function PayrollPage() {
   ];
 
   const secData = securityDepositsQuery.data;
-  const secSummary = secData?.summary ?? { totalTarget: 0, totalCollected: 0, totalRefunded: 0, totalNetHeld: 0 };
+  const secSummary = React.useMemo(() => {
+    const s = secData?.summary ?? { totalTarget: 0, totalCollected: 0, totalRefunded: 0, totalNetHeld: 0 };
+    const list = secData?.list ?? [];
+    const totalOutstanding =
+      s.totalOutstanding ??
+      list.reduce((acc, curr) => acc + Math.max(0, curr.targetAmount - curr.totalDeducted), 0);
+    return { ...s, totalOutstanding };
+  }, [secData]);
   const filteredSecList = React.useMemo(() => {
     const list = secData?.list ?? [];
-    if (!secSearchQuery.trim()) return list;
-    const q = secSearchQuery.toLowerCase();
-    return list.filter(
-      (item) =>
-        item.name.toLowerCase().includes(q) ||
-        item.employeeCode.toLowerCase().includes(q) ||
-        (item.departmentName && item.departmentName.toLowerCase().includes(q))
-    );
-  }, [secData?.list, secSearchQuery]);
+    let result = list;
+    if (secSearchQuery.trim()) {
+      const q = secSearchQuery.toLowerCase();
+      result = result.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          item.employeeCode.toLowerCase().includes(q) ||
+          (item.departmentName && item.departmentName.toLowerCase().includes(q))
+      );
+    }
+    if (!secSortKey) return result;
+
+    return [...result].sort((a, b) => {
+      let aVal: string | number = 0;
+      let bVal: string | number = 0;
+
+      switch (secSortKey) {
+        case "employee":
+          aVal = a.name.toLowerCase();
+          bVal = b.name.toLowerCase();
+          break;
+        case "department":
+          aVal = (a.departmentName || "").toLowerCase();
+          bVal = (b.departmentName || "").toLowerCase();
+          break;
+        case "targetAmount":
+          aVal = a.targetAmount;
+          bVal = b.targetAmount;
+          break;
+        case "monthlyDeduction":
+          aVal = a.monthlyDeduction;
+          bVal = b.monthlyDeduction;
+          break;
+        case "totalDeducted":
+          aVal = a.totalDeducted;
+          bVal = b.totalDeducted;
+          break;
+        case "totalRefunded":
+          aVal = a.totalRefunded;
+          bVal = b.totalRefunded;
+          break;
+        case "netHeld":
+          aVal = a.netHeld;
+          bVal = b.netHeld;
+          break;
+        case "status":
+          aVal = a.status.toLowerCase();
+          bVal = b.status.toLowerCase();
+          break;
+      }
+
+      if (aVal < bVal) return secSortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return secSortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [secData?.list, secSearchQuery, secSortKey, secSortDirection]);
 
   return (
     <ModuleLayout
       title="Payroll & Payslips"
       description="Generate monthly payroll, access generated payslips, and manage employee salary structures & security deposits."
       action={
-        isAdminOrHr && activeTab === "payslips" ? (
-          <Button onClick={() => { setGenerationResult(null); setShowForm(true); }} className="gap-2">
-            <Plus size={16} /> Generate Payroll
-          </Button>
+        activeTab === "payslips" ? (
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleExport}
+              disabled={exporting || !filterMonth || filteredPayslips.length === 0}
+              variant="outline"
+              size="default"
+              className="gap-2 text-xs h-9 rounded-xl font-medium shadow-2xs hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300 dark:hover:border-emerald-800 transition-colors cursor-pointer"
+              title={!filterMonth ? "Select a month to enable Excel export" : `Export payroll for ${formatMonthMonYy(filterMonth)}`}
+            >
+              <FileDown size={14} className={exporting ? "animate-bounce" : ""} />
+              {exporting ? "Exporting..." : filterMonth ? `Export Excel (${formatMonthMonYy(filterMonth)})` : "Export Excel"}
+            </Button>
+
+            {isAdminOrHr && (
+              <Button onClick={() => { setGenerationResult(null); setShowForm(true); }} className="gap-2 h-9 rounded-xl shadow-2xs cursor-pointer">
+                <Plus size={16} /> Generate Payroll
+              </Button>
+            )}
+          </div>
         ) : undefined
       }
     >
       <div className="space-y-6">
         {/* Navigation Tabs */}
-        <div className="flex border-b border-border mb-6 overflow-x-auto">
+        <div className="flex items-center gap-1.5 p-1.5 bg-muted/50 dark:bg-muted/30 backdrop-blur-xs rounded-2xl border border-border/70 overflow-x-auto overflow-y-hidden shadow-2xs">
           <button
             onClick={() => setActiveTab("payslips")}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer whitespace-nowrap ${
+            className={cn(
+              "flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer whitespace-nowrap",
               activeTab === "payslips"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+                ? "bg-background text-foreground shadow-xs font-semibold ring-1 ring-border/50"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+            )}
           >
-            Payslip Register
+            <Receipt className={cn("size-4", activeTab === "payslips" ? "text-primary" : "text-muted-foreground")} />
+            <span>Payslip Register</span>
+            {filteredPayslips.length > 0 && (
+              <span className={cn(
+                "ml-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tabular-nums inline-flex items-center gap-1",
+                activeTab === "payslips" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              )}>
+                <span>{filteredPayslips.length}</span>
+                <span className="opacity-40">&middot;</span>
+                <span>{currencySymbol}{payslipSummary.totalNet.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+              </span>
+            )}
           </button>
+
           <button
             onClick={() => setActiveTab("workflow")}
-            className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer whitespace-nowrap ${
+            className={cn(
+              "flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer whitespace-nowrap",
               activeTab === "workflow"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
+                ? "bg-background text-foreground shadow-xs font-semibold ring-1 ring-border/50"
+                : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+            )}
           >
-            Workflow Approvals
+            <ShieldCheck className={cn("size-4", activeTab === "workflow" ? "text-primary" : "text-muted-foreground")} />
+            <span>Workflow Approvals</span>
           </button>
+
           {canViewAll && (
             <button
               onClick={() => setActiveTab("salaries")}
-              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer whitespace-nowrap ${
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer whitespace-nowrap",
                 activeTab === "salaries"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
+                  ? "bg-background text-foreground shadow-xs font-semibold ring-1 ring-border/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+              )}
             >
-              Salary Structures
+              <Landmark className={cn("size-4", activeTab === "salaries" ? "text-primary" : "text-muted-foreground")} />
+              <span>Salary Structures</span>
+              {staffQuery.data && staffQuery.data.length > 0 && (
+                <span className={cn(
+                  "ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold tabular-nums",
+                  activeTab === "salaries" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                )}>
+                  {staffQuery.data.length}
+                </span>
+              )}
             </button>
           )}
+
           {canViewAll && (
             <button
               onClick={() => setActiveTab("security-deposit")}
-              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-all -mb-px cursor-pointer whitespace-nowrap ${
+              className={cn(
+                "flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-medium rounded-xl transition-all cursor-pointer whitespace-nowrap",
                 activeTab === "security-deposit"
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
+                  ? "bg-background text-foreground shadow-xs font-semibold ring-1 ring-border/50"
+                  : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+              )}
             >
-              Security Deposit Dashboard
+              <Coins className={cn("size-4", activeTab === "security-deposit" ? "text-primary" : "text-muted-foreground")} />
+              <span>Security Deposit Dashboard</span>
+              {filteredSecList.length > 0 && (
+                <span className={cn(
+                  "ml-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tabular-nums inline-flex items-center gap-1",
+                  activeTab === "security-deposit" ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                )}>
+                  <span>{filteredSecList.length}</span>
+                  <span className="opacity-40">&middot;</span>
+                  <span>{currencySymbol}{secSummary.totalNetHeld.toLocaleString("en-IN", { maximumFractionDigits: 0 })}</span>
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -718,69 +964,176 @@ function PayrollPage() {
 
         {/* Payslip Register Tab */}
         {activeTab === "payslips" && (
-          <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 gap-4 border-b px-0 md:px-6">
-              <div>
-                <CardTitle className="text-base">Payslip Register</CardTitle>
-                <CardDescription>View, print, and search generated payslips.</CardDescription>
-              </div>
+          <div className="space-y-6">
+            {/* Metric Summary Cards for Payslip Register */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <Banknote className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Net Payout</p>
+                    <p className="text-lg sm:text-xl font-bold text-foreground mt-0.5 tabular-nums truncate">
+                      {currencySymbol}{payslipSummary.totalNet.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                      {payslipSummary.totalCount} staff in selection
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-muted-foreground">Filter Month:</span>
-                  <MonthPicker
-                    value={filterMonth}
-                    onChange={(val) => setFilterMonth(val)}
-                  />
-                  {filterMonth && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() => setFilterMonth("")}
-                      title="Clear month filter"
-                    >
-                      <X size={14} />
-                    </Button>
-                  )}
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl text-blue-600 dark:text-blue-400 shrink-0">
+                    <DollarSign className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Gross Earnings</p>
+                    <p className="text-lg sm:text-xl font-bold text-foreground mt-0.5 tabular-nums truncate">
+                      {currencySymbol}{payslipSummary.totalGross.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                      Total earned allowances
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl text-rose-600 dark:text-rose-400 shrink-0">
+                    <Receipt className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Deductions</p>
+                    <p className="text-lg sm:text-xl font-bold text-rose-600 dark:text-rose-400 mt-0.5 tabular-nums truncate">
+                      {currencySymbol}{payslipSummary.totalDeductions.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                      EPF, ESI, TDS, Deposit & PT
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl text-indigo-600 dark:text-indigo-400 shrink-0">
+                    <CheckCircle2 className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Disbursement Status</p>
+                    <p className="text-lg sm:text-xl font-bold text-foreground mt-0.5 tabular-nums truncate">
+                      {payslipSummary.paidCount} Paid
+                    </p>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium mt-0.5">
+                      {payslipSummary.pendingCount} Pending / In-Review
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Table Card */}
+            <Card className="border shadow-xs bg-card/90 backdrop-blur-sm overflow-hidden rounded-2xl">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center lg:justify-between pb-4 gap-4 border-b bg-muted/20 px-4 sm:px-6">
+                <div>
+                  <CardTitle className="text-base font-bold tracking-tight">Payslip Register</CardTitle>
+                  <CardDescription className="text-xs">
+                    Review and audit processed employee compensation for <span className="font-semibold text-foreground">{filterMonth ? formatMonthMonYy(filterMonth) : "All Months"}</span>.
+                  </CardDescription>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="show-superseded"
-                    checked={showSuperseded}
-                    onChange={(e) => setShowSuperseded(e.target.checked)}
-                    className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4 cursor-pointer"
-                  />
-                  <label htmlFor="show-superseded" className="text-xs text-muted-foreground cursor-pointer select-none">
-                    Show superseded
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center gap-1.5 bg-background border border-border/80 rounded-xl px-2.5 py-1 shadow-2xs">
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Month:</span>
+                    <MonthPicker
+                      value={filterMonth}
+                      onChange={(val) => setFilterMonth(val)}
+                    />
+                    {filterMonth && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => setFilterMonth("")}
+                        title="Clear month filter"
+                      >
+                        <X size={13} />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 bg-background border border-border/80 rounded-xl px-2.5 py-1 shadow-2xs">
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Status:</span>
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="h-7 text-xs bg-transparent text-foreground focus:outline-none cursor-pointer pr-1"
+                    >
+                      <option value="all">All Statuses</option>
+                      {availableStatuses.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    {filterStatus !== "all" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => setFilterStatus("all")}
+                        title="Reset status filter"
+                      >
+                        <X size={12} />
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 bg-background border border-border/80 rounded-xl px-2.5 py-1 shadow-2xs">
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Mode:</span>
+                    <select
+                      value={filterPaymentMode}
+                      onChange={(e) => setFilterPaymentMode(e.target.value)}
+                      className="h-7 text-xs bg-transparent text-foreground focus:outline-none cursor-pointer pr-1"
+                    >
+                      <option value="all">All Modes</option>
+                      {availablePaymentModes.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                    {filterPaymentMode !== "all" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
+                        onClick={() => setFilterPaymentMode("all")}
+                        title="Reset payment mode filter"
+                      >
+                        <X size={12} />
+                      </Button>
+                    )}
+                  </div>
+
+                  <label className="flex items-center gap-2 bg-background border border-border/80 rounded-xl px-2.5 py-1.5 shadow-2xs cursor-pointer select-none hover:bg-muted/30 transition-colors">
+                    <input
+                      type="checkbox"
+                      id="show-superseded"
+                      checked={showSuperseded}
+                      onChange={(e) => setShowSuperseded(e.target.checked)}
+                      className="rounded border-gray-300 text-primary focus:ring-primary h-3.5 w-3.5 cursor-pointer"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Superseded
+                    </span>
                   </label>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handleExport}
-                    disabled={exporting || !filterMonth || filteredPayslips.length === 0}
-                    variant="outline"
-                    size="default"
-                    className="gap-2 text-xs h-9 cursor-pointer"
-                    title={!filterMonth ? "Select a month to enable Excel export" : `Export payroll for ${filterMonth}`}
-                  >
-                    <FileDown size={14} />
-                    {exporting ? "Exporting..." : filterMonth ? `Export Excel (${filterMonth})` : "Export Excel (Select Month)"}
-                  </Button>
-                  {!filterMonth && (
-                    <span className="text-[11px] text-amber-600 dark:text-amber-400 font-medium">
-                      * Select a month to export
-                    </span>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
+              </CardHeader>
             <CardContent className="p-0">
               <DataTable
                 rows={filteredPayslips}
+                showSerialNumber
                 columns={payslipColumns as any}
                 enablePagination
                 enableSorting
@@ -803,7 +1156,7 @@ function PayrollPage() {
                         }`}>
                           {row.status}
                         </span>
-                        <span className="text-xs text-muted-foreground font-mono">{row.month}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{formatMonthMonYy(row.month)}</span>
                       </div>
 
                       {/* Employee info: Avatar, Name & Code */}
@@ -853,19 +1206,21 @@ function PayrollPage() {
               />
             </CardContent>
           </Card>
+          </div>
         )}
 
         {/* Salary Structures Tab */}
         {activeTab === "salaries" && canViewAll && (
-          <Card className="border-0 shadow-none md:border md:shadow-sm bg-transparent md:bg-white/70 dark:md:bg-slate-900/40 backdrop-blur">
-            <CardHeader className="border-b pb-4 px-0 md:px-6">
-              <CardTitle className="text-base">Employee Salary Structures</CardTitle>
-              <CardDescription>Configure monthly earnings allowances and statutory deductions for staff.</CardDescription>
+          <Card className="border shadow-xs bg-card/90 backdrop-blur-sm overflow-hidden rounded-2xl">
+            <CardHeader className="border-b pb-4 bg-muted/20 px-4 sm:px-6">
+              <CardTitle className="text-base font-bold tracking-tight">Employee Salary Structures</CardTitle>
+              <CardDescription className="text-xs">Configure monthly earnings allowances and statutory deductions for staff.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <DataTable
                 rows={staffQuery.data ?? []}
                 columns={staffSalaryColumns as any}
+                showSerialNumber
                 enablePagination
                 enableSorting
                 enableFiltering
@@ -962,70 +1317,83 @@ function PayrollPage() {
         {activeTab === "security-deposit" && canViewAll && (
           <div className="space-y-6">
             {/* Metric Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="bg-card">
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl text-blue-600 dark:text-blue-400">
-                    <ShieldCheck size={24} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/40 rounded-xl text-blue-600 dark:text-blue-400 shrink-0">
+                    <ShieldCheck className="size-5" />
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Target Total Deposit</p>
-                    <p className="text-xl font-bold text-foreground mt-0.5">{currencySymbol}{secSummary.totalTarget.toLocaleString("en-IN")}</p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card">
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl text-emerald-600 dark:text-emerald-400">
-                    <Banknote size={24} />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Collected to Date</p>
-                    <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{currencySymbol}{secSummary.totalCollected.toLocaleString("en-IN")}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Target Total Deposit</p>
+                    <p className="text-lg sm:text-xl font-bold text-foreground mt-0.5 tabular-nums truncate">{currencySymbol}{secSummary.totalTarget.toLocaleString("en-IN")}</p>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="bg-card">
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl text-amber-600 dark:text-amber-400">
-                    <ArrowRightLeft size={24} />
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl text-emerald-600 dark:text-emerald-400 shrink-0">
+                    <Banknote className="size-5" />
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Total Refunded</p>
-                    <p className="text-xl font-bold text-amber-600 dark:text-amber-400 mt-0.5">{currencySymbol}{secSummary.totalRefunded.toLocaleString("en-IN")}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Collected to Date</p>
+                    <p className="text-lg sm:text-xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5 tabular-nums truncate">{currencySymbol}{secSummary.totalCollected.toLocaleString("en-IN")}</p>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="bg-card">
-                <CardContent className="p-5 flex items-center gap-4">
-                  <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl text-indigo-600 dark:text-indigo-400">
-                    <DollarSign size={24} />
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl text-rose-600 dark:text-rose-400 shrink-0">
+                    <AlertCircle className="size-5" />
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase">Net Deposit Held</p>
-                    <p className="text-xl font-bold text-primary mt-0.5">{currencySymbol}{secSummary.totalNetHeld.toLocaleString("en-IN")}</p>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Outstanding Total</p>
+                    <p className="text-lg sm:text-xl font-bold text-rose-600 dark:text-rose-400 mt-0.5 tabular-nums truncate">{currencySymbol}{secSummary.totalOutstanding.toLocaleString("en-IN")}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl text-amber-600 dark:text-amber-400 shrink-0">
+                    <ArrowRightLeft className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Refunded</p>
+                    <p className="text-lg sm:text-xl font-bold text-amber-600 dark:text-amber-400 mt-0.5 tabular-nums truncate">{currencySymbol}{secSummary.totalRefunded.toLocaleString("en-IN")}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-card/70 backdrop-blur-xs border-border/70 shadow-2xs hover:shadow-xs transition-all rounded-2xl">
+                <CardContent className="p-4 sm:p-5 flex items-center gap-4">
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl text-indigo-600 dark:text-indigo-400 shrink-0">
+                    <DollarSign className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Net Deposit Held</p>
+                    <p className="text-lg sm:text-xl font-bold text-primary mt-0.5 tabular-nums truncate">{currencySymbol}{secSummary.totalNetHeld.toLocaleString("en-IN")}</p>
                   </div>
                 </CardContent>
               </Card>
             </div>
 
             {/* Staff Security Deposit Table Card */}
-            <Card>
-              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b">
+            <Card className="border shadow-xs bg-card/90 backdrop-blur-sm overflow-hidden rounded-2xl">
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b bg-muted/20 px-4 sm:px-6 gap-3">
                 <div>
-                  <CardTitle className="text-base">Staff Security Deposits</CardTitle>
-                  <CardDescription>Collected funds include the opening balance and paid payroll deductions. Unpaid deductions remain pending.</CardDescription>
+                  <CardTitle className="text-base font-bold tracking-tight">Staff Security Deposits</CardTitle>
+                  <CardDescription className="text-xs">Collected funds include the opening balance and paid payroll deductions. Unpaid deductions remain pending.</CardDescription>
                 </div>
-                <div className="w-full sm:w-64">
+                <div className="w-full sm:w-64 relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                   <input
                     type="text"
                     placeholder="Search employee or dept..."
                     value={secSearchQuery}
                     onChange={(e) => setSecSearchQuery(e.target.value)}
-                    className="w-full text-xs px-3 py-2 border rounded-lg bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="w-full text-xs pl-8 pr-3 py-2 border rounded-xl bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary shadow-2xs"
                   />
                 </div>
               </CardHeader>
@@ -1034,37 +1402,119 @@ function PayrollPage() {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-muted/50 text-muted-foreground border-b uppercase font-semibold">
                       <tr>
-                        <th className="p-3">Employee</th>
-                        <th className="p-3">Department</th>
-                        <th className="p-3 text-right">Target Amount</th>
-                        <th className="p-3 text-right">Monthly Rate</th>
-                        <th className="p-3 text-right">Collected / Pending</th>
-                        <th className="p-3 text-right">Refunded</th>
-                        <th className="p-3 text-right">Net Held</th>
-                        <th className="p-3 text-center">Status</th>
+                        <th scope="col" className="p-3 whitespace-nowrap">Sl. No.</th>
+                        <th
+                          scope="col"
+                          className="p-3 cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("employee")}
+                          aria-sort={secSortKey === "employee" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span>Employee</span>
+                            {renderSortIcon("employee")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("department")}
+                          aria-sort={secSortKey === "department" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span>Department</span>
+                            {renderSortIcon("department")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 text-right cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("targetAmount")}
+                          aria-sort={secSortKey === "targetAmount" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>Target Amount</span>
+                            {renderSortIcon("targetAmount")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 text-right cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("monthlyDeduction")}
+                          aria-sort={secSortKey === "monthlyDeduction" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>Monthly Rate</span>
+                            {renderSortIcon("monthlyDeduction")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 text-right cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("totalDeducted")}
+                          aria-sort={secSortKey === "totalDeducted" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>Collected / Pending</span>
+                            {renderSortIcon("totalDeducted")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 text-right cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("totalRefunded")}
+                          aria-sort={secSortKey === "totalRefunded" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>Refunded</span>
+                            {renderSortIcon("totalRefunded")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 text-right cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("netHeld")}
+                          aria-sort={secSortKey === "netHeld" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>Net Held</span>
+                            {renderSortIcon("netHeld")}
+                          </div>
+                        </th>
+                        <th
+                          scope="col"
+                          className="p-3 text-center whitespace-nowrap cursor-pointer select-none hover:bg-muted/70 transition-colors group"
+                          onClick={() => handleSecSort("status")}
+                          aria-sort={secSortKey === "status" ? (secSortDirection === "asc" ? "ascending" : "descending") : "none"}
+                        >
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span>Status</span>
+                            {renderSortIcon("status")}
+                          </div>
+                        </th>
                         <th className="p-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
                       {securityDepositsQuery.isLoading ? (
                         <tr>
-                          <td colSpan={9} className="p-8 text-center text-muted-foreground animate-pulse">
+                          <td colSpan={10} className="p-8 text-center text-muted-foreground animate-pulse">
                             Loading security deposits data...
                           </td>
                         </tr>
                       ) : securityDepositsQuery.isError ? (
-                        <tr><td colSpan={9} className="p-8 text-center text-destructive">Unable to load security deposits. Please refresh and try again.</td></tr>
+                        <tr><td colSpan={10} className="p-8 text-center text-destructive">Unable to load security deposits. Please refresh and try again.</td></tr>
                       ) : filteredSecList.length === 0 ? (
                         <tr>
-                          <td colSpan={9} className="p-8 text-center text-muted-foreground">
+                          <td colSpan={10} className="p-8 text-center text-muted-foreground">
                             No security deposit records found.
                           </td>
                         </tr>
                       ) : (
-                        filteredSecList.map((item) => {
+                        filteredSecList.map((item, index) => {
                           const pct = item.targetAmount > 0 ? Math.min(100, Math.round((item.totalDeducted / item.targetAmount) * 100)) : 0;
                           return (
                             <tr key={item.staffId} className="hover:bg-muted/30 transition-colors">
+                              <td className="p-3 tabular-nums text-muted-foreground">{index + 1}</td>
                               <td className="p-3 font-medium">
                                 <div className="text-foreground font-semibold">{item.name}</div>
                                 <div className="text-muted-foreground text-[11px]">{item.employeeCode} &middot; {item.role}</div>
@@ -1092,13 +1542,13 @@ function PayrollPage() {
                               </td>
                               <td className="p-3 text-right text-amber-600 font-medium">{currencySymbol}{item.totalRefunded.toLocaleString("en-IN")}</td>
                               <td className="p-3 text-right font-bold text-foreground">{currencySymbol}{item.netHeld.toLocaleString("en-IN")}</td>
-                              <td className="p-3 text-center">
-                                <span className={cn("px-2 py-0.5 rounded text-[10px] font-semibold border", {
-                                  "bg-gray-100 text-gray-700 border-gray-300": item.status === "Not Started",
-                                  "bg-blue-50 text-blue-700 border-blue-300": item.status === "In Progress",
-                                  "bg-emerald-50 text-emerald-700 border-emerald-300": item.status === "Fully Collected",
-                                  "bg-amber-50 text-amber-700 border-amber-300": item.status === "Partially Refunded",
-                                  "bg-purple-50 text-purple-700 border-purple-300": item.status === "Fully Refunded",
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <span className={cn("inline-block whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-semibold border", {
+                                  "text-gray-700 border-gray-300 dark:text-gray-300 dark:border-gray-700": item.status === "Not Started",
+                                  "text-blue-700 border-blue-300 dark:text-blue-400 dark:border-blue-800": item.status === "In Progress",
+                                  "text-emerald-700 border-emerald-300 dark:text-emerald-400 dark:border-emerald-800": item.status === "Fully Collected",
+                                  "text-amber-700 border-amber-300 dark:text-amber-400 dark:border-amber-800": item.status === "Partially Refunded",
+                                  "text-purple-700 border-purple-300 dark:text-purple-400 dark:border-purple-800": item.status === "Fully Refunded",
                                 })}>
                                   {item.status}
                                 </span>
@@ -1145,6 +1595,42 @@ function PayrollPage() {
                         })
                       )}
                     </tbody>
+                    {filteredSecList.length > 0 && (
+                      <tfoot className="border-t-2 border-border/80 bg-muted/60 dark:bg-muted/40 font-semibold text-foreground">
+                        <tr>
+                          <td className="p-3"></td>
+                          <td className="p-3">
+                            <span className="font-bold">Total</span>
+                            <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">
+                              ({filteredSecList.length} staff)
+                            </span>
+                          </td>
+                          <td className="p-3"></td>
+                          <td className="p-3 text-right tabular-nums whitespace-nowrap font-bold text-foreground">
+                            {currencySymbol}
+                            {filteredSecList.reduce((sum, i) => sum + i.targetAmount, 0).toLocaleString("en-IN")}
+                          </td>
+                          <td className="p-3 text-right tabular-nums whitespace-nowrap font-bold text-foreground">
+                            {currencySymbol}
+                            {filteredSecList.reduce((sum, i) => sum + i.monthlyDeduction, 0).toLocaleString("en-IN")}
+                          </td>
+                          <td className="p-3 text-right tabular-nums whitespace-nowrap font-bold text-emerald-600 dark:text-emerald-400">
+                            {currencySymbol}
+                            {filteredSecList.reduce((sum, i) => sum + i.totalDeducted, 0).toLocaleString("en-IN")}
+                          </td>
+                          <td className="p-3 text-right tabular-nums whitespace-nowrap font-bold text-amber-600 dark:text-amber-400">
+                            {currencySymbol}
+                            {filteredSecList.reduce((sum, i) => sum + i.totalRefunded, 0).toLocaleString("en-IN")}
+                          </td>
+                          <td className="p-3 text-right tabular-nums whitespace-nowrap font-bold text-primary">
+                            {currencySymbol}
+                            {filteredSecList.reduce((sum, i) => sum + i.netHeld, 0).toLocaleString("en-IN")}
+                          </td>
+                          <td className="p-3"></td>
+                          <td className="p-3"></td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </CardContent>

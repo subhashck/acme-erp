@@ -23,6 +23,7 @@ export type ColumnDef<T> =
       sortKey?: keyof T & string;
       className?: string;
       headerClassName?: string;
+      sortable?: boolean;
     };
 
 
@@ -37,6 +38,9 @@ export interface DataTableProps<T> {
   defaultPageSize?: number;
   isLoading?: boolean;
   renderMobileCard?: (row: T) => React.ReactNode;
+  sorting?: { key: string; direction: "asc" | "desc" };
+  onSortChange?: (key: string, direction: "asc" | "desc") => void;
+  showSerialNumber?: boolean;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -50,12 +54,17 @@ export function DataTable<T extends Record<string, unknown>>({
   defaultPageSize = 10,
   isLoading = false,
   renderMobileCard,
+  sorting,
+  onSortChange,
+  showSerialNumber = false,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [sortKey, setSortKey] = React.useState<string | null>(null);
   const [sortDirection, setSortDirection] = React.useState<"asc" | "desc" | null>(null);
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(defaultPageSize);
+  const activeSortKey = onSortChange ? sorting?.key : sortKey;
+  const activeSortDirection = onSortChange ? sorting?.direction : sortDirection;
 
   const getRowKey = (row: any, index: number) => {
     if (row && typeof row === "object") {
@@ -75,6 +84,10 @@ export function DataTable<T extends Record<string, unknown>>({
   // Handle header click for sorting
   const handleSort = (key: string) => {
     if (!enableSorting) return;
+    if (onSortChange) {
+      onSortChange(key, activeSortKey === key && activeSortDirection === "asc" ? "desc" : "asc");
+      return;
+    }
     if (sortKey === key) {
       if (sortDirection === "asc") {
         setSortDirection("desc");
@@ -115,6 +128,7 @@ export function DataTable<T extends Record<string, unknown>>({
 
   // 2. Sorting
   const sortedRows = React.useMemo(() => {
+    if (onSortChange) return filteredRows;
     if (!enableSorting || !sortKey || !sortDirection) return filteredRows;
 
     return [...filteredRows].sort((a, b) => {
@@ -137,7 +151,7 @@ export function DataTable<T extends Record<string, unknown>>({
         ? aStr.localeCompare(bStr)
         : bStr.localeCompare(aStr);
     });
-  }, [filteredRows, enableSorting, sortKey, sortDirection]);
+  }, [filteredRows, enableSorting, sortKey, sortDirection, onSortChange]);
 
   // 3. Pagination
   const paginatedRows = React.useMemo(() => {
@@ -202,25 +216,39 @@ export function DataTable<T extends Record<string, unknown>>({
         <table className="w-full min-w-[720px] text-sm">
           <thead>
             <tr className="border-b bg-muted/45 text-left text-xs uppercase text-muted-foreground">
+              {showSerialNumber && <th scope="col" className="w-16 whitespace-nowrap px-4 py-3 font-semibold">Sl. No.</th>}
               {columns.map((col) => {
                 const label = Array.isArray(col) ? col[1] : col.label;
                 const colKey = Array.isArray(col) ? col[0] : (col.sortKey || col.id);
-                const isSortable = enableSorting && colKey && colKey !== "actions";
+                const isSortable = enableSorting && colKey && colKey !== "actions" && colKey !== "action" && (Array.isArray(col) || col.sortable !== false);
 
                 return (
                   <th
                     key={label}
-                    onClick={() => isSortable && handleSort(colKey)}
+                    scope="col"
+                    aria-sort={isSortable ? (activeSortKey === colKey ? (activeSortDirection === "asc" ? "ascending" : "descending") : "none") : undefined}
                     className={`px-4 py-3 font-semibold ${
                       isSortable ? "cursor-pointer select-none hover:bg-muted/70 transition-colors" : ""
                     } ${!Array.isArray(col) && col.headerClassName ? col.headerClassName : ""}`}
                   >
-                    <div className="flex items-center gap-1.5">
+                    <div className={`flex items-center gap-1.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      !Array.isArray(col) && col.headerClassName?.includes("text-right") ? "justify-end" : ""
+                    } ${
+                      !Array.isArray(col) && col.headerClassName?.includes("text-center") ? "justify-center" : ""
+                    }`}
+                      role={isSortable ? "button" : undefined}
+                      tabIndex={isSortable ? 0 : undefined}
+                      onClick={() => isSortable && handleSort(colKey)}
+                      onKeyDown={event => {
+                        if (isSortable && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); handleSort(colKey); }
+                      }}
+                      aria-label={isSortable ? `Sort by ${label} ${activeSortKey === colKey && activeSortDirection === "asc" ? "descending" : "ascending"}` : undefined}
+                    >
                       <span>{label}</span>
                       {isSortable && (
                         <span className="text-muted-foreground/60">
-                          {sortKey === colKey ? (
-                            sortDirection === "asc" ? (
+                          {activeSortKey === colKey ? (
+                            activeSortDirection === "asc" ? (
                               <ArrowUp className="h-3.5 w-3.5 text-primary" />
                             ) : (
                               <ArrowDown className="h-3.5 w-3.5 text-primary" />
@@ -239,7 +267,7 @@ export function DataTable<T extends Record<string, unknown>>({
           <tbody>
             {isLoading ? (
               <tr>
-                <td className="px-4 py-12 text-center" colSpan={columns.length}>
+                <td className="px-4 py-12 text-center" colSpan={columns.length + (showSerialNumber ? 1 : 0)}>
                   <div className="flex flex-col items-center justify-center gap-2">
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
                     <span className="text-sm text-muted-foreground font-medium animate-pulse">Loading data...</span>
@@ -250,6 +278,7 @@ export function DataTable<T extends Record<string, unknown>>({
               <>
                 {paginatedRows.map((row, index) => (
                   <tr key={getRowKey(row, index)} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                    {showSerialNumber && <td className="px-4 py-3 text-xs tabular-nums text-muted-foreground">{(enablePagination ? (currentPage - 1) * pageSize : 0) + index + 1}</td>}
                     {columns.map((col) => {
                       if (!Array.isArray(col)) {
                         return (
@@ -278,7 +307,7 @@ export function DataTable<T extends Record<string, unknown>>({
                 ))}
                 {!paginatedRows.length && (
                   <tr>
-                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={columns.length}>
+                    <td className="px-4 py-8 text-center text-muted-foreground" colSpan={columns.length + (showSerialNumber ? 1 : 0)}>
                       No records yet
                     </td>
                   </tr>
@@ -304,7 +333,10 @@ export function DataTable<T extends Record<string, unknown>>({
             <div className="grid grid-cols-1 gap-4 px-4 pb-4">
               {paginatedRows.map((row, index) => (
                 <React.Fragment key={getRowKey(row, index)}>
-                  {renderMobileCard(row)}
+                  {showSerialNumber ? <div className="space-y-1.5">
+                    <span className="inline-flex rounded-md bg-muted px-2 py-1 text-[11px] font-medium tabular-nums text-muted-foreground">Sl. No. {(enablePagination ? (currentPage - 1) * pageSize : 0) + index + 1}</span>
+                    {renderMobileCard(row)}
+                  </div> : renderMobileCard(row)}
                 </React.Fragment>
               ))}
             </div>

@@ -36,6 +36,9 @@ import {
   MessageCircle,
   Copy,
   Send,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
@@ -459,7 +462,7 @@ export function ApplicantFormPanels({
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-start">
             {/* Academic Batch SELECT from master */}
             <div>
               <Label className="text-xs font-medium text-foreground block mb-1">Academic Batch</Label>
@@ -485,9 +488,6 @@ export function ApplicantFormPanels({
                             if (matched.courseId) {
                               form.setValue("courseId", Number(matched.courseId));
                               form.clearErrors("courseId");
-                            }
-                            if (matched.academicYear) {
-                              form.setValue("academicYear", matched.academicYear);
                             }
                           }
                         }
@@ -540,23 +540,26 @@ export function ApplicantFormPanels({
               />
             </div>
 
-            {/* Academic Session (Derived from current year, editable) */}
+            {/* One-year academic session, independent of the full batch duration. */}
             <Controller
               control={form.control}
               name="academicYear"
               render={({ field, fieldState }) => (
-                <Field
-                  label="Academic Session *"
-                  placeholder="e.g. 2026-2027"
-                  {...field}
-                  value={field.value || ""}
-                  className="uppercase"
-                  onChange={(e: any) => {
-                    const val = typeof e === "string" ? e : e?.target?.value ?? "";
-                    field.onChange(val.toUpperCase());
-                  }}
-                  error={fieldState.error?.message}
-                />
+                <div>
+                  <Field
+                    label="Academic Session *"
+                    placeholder="e.g. 2026-2027"
+                    {...field}
+                    value={field.value || ""}
+                    className="uppercase"
+                    onChange={(e: any) => {
+                      const val = typeof e === "string" ? e : e?.target?.value ?? "";
+                      field.onChange(val.toUpperCase());
+                    }}
+                    error={fieldState.error?.message}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">One academic year (e.g. 2026–2027), separate from the batch duration.</p>
+                </div>
               )}
             />
 
@@ -1740,11 +1743,13 @@ function AdmissionsPage() {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [courseFilter, setCourseFilter] = React.useState<number>(0);
+  const [batchFilter, setBatchFilter] = React.useState<number>(0);
   const [quotaFilter, setQuotaFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = React.useState<string>("");
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
+  const [sorting, setSorting] = React.useState<{ column: string; direction: "asc" | "desc" } | null>(null);
 
   const [intakeDialogOpen, setIntakeDialogOpen] = React.useState(false);
   const [convertModalOpen, setConvertModalOpen] = React.useState(false);
@@ -1812,15 +1817,20 @@ function AdmissionsPage() {
     data: Applicant[];
     pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number };
   }>({
-    queryKey: ["nursing", "applicants", statusFilter, courseFilter, quotaFilter, debouncedSearch, currentPage, pageSize],
+    queryKey: ["nursing", "applicants", statusFilter, courseFilter, batchFilter, quotaFilter, debouncedSearch, currentPage, pageSize, sorting],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.append("status", statusFilter);
       if (courseFilter > 0) params.append("courseId", String(courseFilter));
+      if (batchFilter > 0) params.append("batchId", String(batchFilter));
       if (quotaFilter !== "all") params.append("quotaCategory", quotaFilter);
       if (debouncedSearch) params.append("search", debouncedSearch);
       params.append("page", String(currentPage));
       params.append("pageSize", String(pageSize));
+      if (sorting) {
+        params.append("sortBy", sorting.column);
+        params.append("sortDirection", sorting.direction);
+      }
       const res = await fetch(`/api/nursing/applicants?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch applicants");
       const json = await res.json();
@@ -1837,8 +1847,10 @@ function AdmissionsPage() {
   const applicants = applicantsResponse?.data || [];
   const pagination = applicantsResponse?.pagination;
 
-  const currentYear = new Date().getFullYear();
-  const defaultAcademicYear = `${currentYear}-${currentYear + 1}`;
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const sessionStartYear = today.getMonth() >= 5 ? currentYear : currentYear - 1;
+  const defaultAcademicYear = `${sessionStartYear}-${sessionStartYear + 1}`;
 
   const defaultApplicantFormValues: ApplicantFormData = {
     batchId: 0,
@@ -2564,13 +2576,13 @@ function AdmissionsPage() {
             </Button>
           </DialogTrigger>
           <DialogContent
-            className="w-full max-w-[95vw] sm:max-w-3xl lg:max-w-4xl max-h-[92vh] overflow-y-auto p-4 sm:p-6"
+            className="admissions-intake-dialog flex w-[calc(100vw-1rem)] max-w-none sm:w-[calc(100vw-3rem)] sm:max-w-5xl xl:max-w-6xl max-h-[calc(100dvh-1rem)] sm:max-h-[92dvh] flex-col gap-0 overflow-hidden p-0"
             onInteractOutside={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => e.preventDefault()}
           >
-            <DialogHeader className="flex flex-row items-center justify-between border-b pb-3 space-y-0 gap-2">
+            <DialogHeader className="shrink-0 border-b px-4 py-4 pr-14 sm:px-6 sm:pr-16 space-y-1">
               <div>
-                <DialogTitle className="text-lg font-bold text-foreground">New Applicant Registration</DialogTitle>
+                <DialogTitle className="text-base sm:text-lg leading-snug font-bold text-foreground">New Applicant Registration</DialogTitle>
                 <DialogDescription className="text-xs text-muted-foreground">
                   Complete candidate admission intake details across all sections below.
                 </DialogDescription>
@@ -2587,19 +2599,21 @@ function AdmissionsPage() {
               </Button> */}
             </DialogHeader>
 
-            <form onSubmit={intakeForm.handleSubmit(onIntakeSubmit)} className="space-y-4 py-2">
+            <form onSubmit={intakeForm.handleSubmit(onIntakeSubmit)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="admissions-intake-fields min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4 sm:px-6">
               <ApplicantFormPanels
                 form={intakeForm}
                 courses={courses}
                 batches={batches}
                 referrers={referrers}
               />
+              </div>
 
-              <DialogFooter className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur-xs py-2">
-                <Button type="button" variant="outline" onClick={() => setIntakeDialogOpen(false)}>
+              <DialogFooter className="shrink-0 flex flex-row justify-end gap-2 border-t bg-background px-3 py-3 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <Button type="button" className="min-h-11" variant="outline" onClick={() => setIntakeDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" className="bg-teal-600 hover:bg-teal-700 text-white" disabled={createApplicantMutation.isPending}>
+                <Button type="submit" className="min-h-11 min-w-0 flex-1 sm:flex-none whitespace-normal bg-teal-600 hover:bg-teal-700 text-white" disabled={createApplicantMutation.isPending}>
                   {createApplicantMutation.isPending ? "Registering Application..." : "Submit Application"}
                 </Button>
               </DialogFooter>
@@ -2611,7 +2625,7 @@ function AdmissionsPage() {
       {/* Search & Status Filters */}
       <Card>
         <CardContent className="p-4 space-y-3">
-          <div className="flex flex-col md:flex-row gap-3">
+          <div className="flex flex-col gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
@@ -2623,12 +2637,13 @@ function AdmissionsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 [&>select]:min-w-0">
               <select
                 className="border rounded-md px-3 py-2 text-sm bg-background text-foreground"
                 value={courseFilter}
                 onChange={(e) => {
                   setCourseFilter(Number(e.target.value));
+                  setBatchFilter(0);
                   setCurrentPage(1);
                 }}
               >
@@ -2636,6 +2651,23 @@ function AdmissionsPage() {
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                aria-label="Filter by batch"
+                className="border rounded-md px-3 py-2 text-sm bg-background text-foreground"
+                value={batchFilter}
+                onChange={(e) => {
+                  setBatchFilter(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+              >
+                <option value={0}>All Batches</option>
+                {batches.filter((batch) => !courseFilter || Number(batch.courseId) === courseFilter).map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {[batch.courseName, batch.name || batch.academicYear, batch.section && `Section ${batch.section}`].filter(Boolean).join(" · ")}
                   </option>
                 ))}
               </select>
@@ -2671,7 +2703,7 @@ function AdmissionsPage() {
             </div>
           </div>
 
-          {(Boolean(searchQuery) || statusFilter !== "all" || courseFilter > 0 || quotaFilter !== "all") && (
+          {(Boolean(searchQuery) || statusFilter !== "all" || courseFilter > 0 || batchFilter > 0 || quotaFilter !== "all") && (
             <div className="flex items-center justify-between pt-2 border-t text-xs text-muted-foreground">
               <span>Filters active</span>
               <Button
@@ -2683,6 +2715,7 @@ function AdmissionsPage() {
                   setDebouncedSearch("");
                   setStatusFilter("all");
                   setCourseFilter(0);
+                  setBatchFilter(0);
                   setQuotaFilter("all");
                   setCurrentPage(1);
                 }}
@@ -2715,18 +2748,42 @@ function AdmissionsPage() {
                 <table className="w-full text-sm text-left border-collapse">
                   <thead>
                     <tr className="border-b bg-muted/50 text-xs font-semibold text-muted-foreground">
-                      <th className="p-3">Application No</th>
-                      <th className="p-3">Applicant Name</th>
-                      <th className="p-3">Course</th>
-                      <th className="p-3">Merit Score</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3">Seat Advance</th>
+                      <th className="p-3 whitespace-nowrap" scope="col">S.No.</th>
+                      {[
+                        ["applicationNo", "Application No"],
+                        ["name", "Applicant Name"],
+                        ["courseName", "Course"],
+                        ["entranceMeritScore", "Merit Score"],
+                        ["status", "Status"],
+                        ["seatBookingAmount", "Seat Advance"],
+                      ].map(([column, label]) => {
+                        const active = sorting?.column === column;
+                        const SortIcon = active ? (sorting.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                        return (
+                          <th key={column} className="p-3" scope="col" aria-sort={active ? (sorting.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button
+                              type="button"
+                              className="inline-flex min-h-9 items-center gap-1.5 text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                              onClick={() => {
+                                setSorting({ column, direction: active && sorting.direction === "asc" ? "desc" : "asc" });
+                                setCurrentPage(1);
+                              }}
+                              aria-label={`Sort ${label} ${active && sorting.direction === "asc" ? "descending" : "ascending"}`}
+                            >
+                              {label}<SortIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            </button>
+                          </th>
+                        );
+                      })}
                       <th className="p-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {applicants.map((app) => (
+                    {applicants.map((app, index) => (
                       <tr key={app.id} className="hover:bg-muted/30">
+                        <td className="p-3 tabular-nums text-muted-foreground">
+                          {((pagination?.page ?? currentPage) - 1) * (pagination?.pageSize ?? pageSize) + index + 1}
+                        </td>
                         <td className="p-3 font-semibold font-mono text-teal-600 dark:text-teal-400">
                           <button
                             type="button"

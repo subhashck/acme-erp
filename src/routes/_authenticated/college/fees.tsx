@@ -38,6 +38,9 @@ import {
   FileText,
   Share2,
   Trash2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Autocomplete } from "@/ui/autocomplete";
@@ -987,9 +990,11 @@ function FeeManagementPage() {
   };
   const [currentPage, setCurrentPage] = React.useState<number>(1);
   const [pageSize, setPageSize] = React.useState<number>(10);
+  const [sorting, setSorting] = React.useState<{ column: string; direction: "asc" | "desc" } | null>(null);
   const [searchQuery, setSearchQuery] = React.useState<string>("");
   const [debouncedSearch, setDebouncedSearch] = React.useState<string>("");
   const [paymentModeFilter, setPaymentModeFilter] = React.useState<string>("all");
+  const [batchFilter, setBatchFilter] = React.useState<number>(0);
   const [startDateFilter, setStartDateFilter] = React.useState<string>("");
   const [endDateFilter, setEndDateFilter] = React.useState<string>("");
   const [fromPopoverOpen, setFromPopoverOpen] = React.useState<boolean>(false);
@@ -1008,6 +1013,15 @@ function FeeManagementPage() {
     queryFn: async () => {
       const res = await fetch("/api/nursing/courses");
       if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const { data: batches = [] } = useQuery<any[]>({
+    queryKey: ["nursing", "batches"],
+    queryFn: async () => {
+      const res = await fetch("/api/nursing/batches");
+      if (!res.ok) throw new Error("Failed to fetch batches");
       return res.json();
     },
   });
@@ -1065,10 +1079,12 @@ function FeeManagementPage() {
     queryKey: [
       "nursing",
       "fee-transactions",
+      sorting,
       currentPage,
       pageSize,
       debouncedSearch,
       paymentModeFilter,
+      batchFilter,
       startDateFilter,
       endDateFilter,
     ],
@@ -1076,8 +1092,13 @@ function FeeManagementPage() {
       const params = new URLSearchParams();
       params.append("page", String(currentPage));
       params.append("pageSize", String(pageSize));
+      if (sorting) {
+        params.append("sortBy", sorting.column);
+        params.append("sortDirection", sorting.direction);
+      }
       if (debouncedSearch) params.append("search", debouncedSearch);
       if (paymentModeFilter && paymentModeFilter !== "all") params.append("paymentMode", paymentModeFilter);
+      if (batchFilter > 0) params.append("batchId", String(batchFilter));
       if (startDateFilter) params.append("startDate", startDateFilter);
       if (endDateFilter) params.append("endDate", endDateFilter);
 
@@ -1110,7 +1131,7 @@ function FeeManagementPage() {
 
   const hasActiveFilters =
     debouncedSearch.length > 0 ||
-    paymentModeFilter !== "all" ||
+    paymentModeFilter !== "all" || batchFilter > 0 ||
     startDateFilter.length > 0 ||
     endDateFilter.length > 0;
 
@@ -1118,6 +1139,7 @@ function FeeManagementPage() {
     setSearchQuery("");
     setDebouncedSearch("");
     setPaymentModeFilter("all");
+    setBatchFilter(0);
     setStartDateFilter("");
     setEndDateFilter("");
     setCurrentPage(1);
@@ -1155,6 +1177,12 @@ function FeeManagementPage() {
     : feeStructures;
 
   const currentCalYear = new Date().getFullYear();
+  const calendarStartMonth = new Date(currentCalYear - 5, 0, 1);
+  const calendarEndMonth = new Date(currentCalYear + 5, 11, 1);
+  const calendarDisabledDays = {
+    before: calendarStartMonth,
+    after: new Date(currentCalYear + 5, 11, 31),
+  };
   const fallbackAcademicYearOptions = [
     `${currentCalYear - 2}-${currentCalYear - 1}`,
     `${currentCalYear - 1}-${currentCalYear}`,
@@ -1912,12 +1940,12 @@ function FeeManagementPage() {
 
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="college-fees-page min-w-0 p-3 sm:p-6 space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Receipt className="h-6 w-6 text-teal-600" />
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-start gap-2">
+            <Receipt className="h-6 w-6 shrink-0 text-teal-600" />
             Fee Collection & Payment Ledger
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -1927,20 +1955,8 @@ function FeeManagementPage() {
 
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" asChild size="sm">
-            <Link to="/college/fee-structures" className="flex items-center gap-1.5 text-xs text-teal-600 border-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950">
-              <Layers size={14} /> Fee Structures Master
-            </Link>
-          </Button>
-
-          <Button variant="outline" asChild size="sm">
             <Link to="/college/fee-dues" className="flex items-center gap-1.5 text-xs">
               <DollarSign size={14} /> Fee Due Tracking
-            </Link>
-          </Button>
-
-          <Button variant="outline" asChild size="sm">
-            <Link to="/college/academic-schedules" className="flex items-center gap-1.5 text-xs">
-              <Calendar size={14} /> Academic Schedules
             </Link>
           </Button>
 
@@ -1959,7 +1975,7 @@ function FeeManagementPage() {
               </Button>
             </DialogTrigger>
             <DialogContent
-              className="sm:max-w-190"
+              className="college-fee-form-dialog w-[calc(100vw-1rem)] max-w-none sm:max-w-4xl max-h-[calc(100dvh-1rem)] gap-3 overflow-hidden p-3 sm:p-6"
               onInteractOutside={(e) => e.preventDefault()}
               onEscapeKeyDown={(e) => e.preventDefault()}
             >
@@ -2129,7 +2145,7 @@ function FeeManagementPage() {
                   setPendingPayload(payload);
                   setConfirmModalOpen(true);
                 })}
-                className="space-y-4 py-2 max-h-[80vh] overflow-y-auto pr-1"
+                className="college-fee-form min-h-0 space-y-4 py-2 max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain pr-1"
               >
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -2930,8 +2946,9 @@ function FeeManagementPage() {
                                   }
                                 }}
                                 captionLayout="dropdown"
-                                startMonth={new Date(2020, 0)}
-                                endMonth={new Date(2035, 11)}
+                                startMonth={calendarStartMonth}
+                                endMonth={calendarEndMonth}
+                                disabled={calendarDisabledDays}
                               />
                             </PopoverContent>
                           </Popover>
@@ -3096,7 +3113,7 @@ function FeeManagementPage() {
 
       {/* Transactions Ledger */}
       <Card>
-        <CardHeader className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+        <CardHeader className="flex flex-col gap-4">
           <div>
             <CardTitle className="text-base font-semibold">Fee Transaction Ledger</CardTitle>
             <CardDescription>Log of student payment transactions, invoices, target billing periods, and printable receipts</CardDescription>
@@ -3123,6 +3140,23 @@ function FeeManagementPage() {
                 </button>
               )}
             </div>
+
+            <select
+              aria-label="Filter by batch"
+              className="min-w-0 max-w-full w-full sm:w-auto sm:max-w-80 border rounded-md px-2.5 py-1.5 text-xs bg-background focus:outline-none focus:ring-1 focus:ring-teal-500"
+              value={batchFilter}
+              onChange={(e) => {
+                setBatchFilter(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+            >
+              <option value={0}>All Batches</option>
+              {batches.map((batch) => (
+                <option key={batch.id} value={batch.id}>
+                  {[batch.courseName, batch.name || batch.academicYear, batch.section && `Section ${batch.section}`].filter(Boolean).join(" · ")}
+                </option>
+              ))}
+            </select>
 
             {/* Payment Mode Filter */}
             <select
@@ -3193,8 +3227,9 @@ function FeeManagementPage() {
                     setFromPopoverOpen(false);
                   }}
                   captionLayout="dropdown"
-                  startMonth={new Date(2020, 0)}
-                  endMonth={new Date(2035, 11)}
+                  startMonth={calendarStartMonth}
+                  endMonth={calendarEndMonth}
+                  disabled={calendarDisabledDays}
                 />
               </PopoverContent>
             </Popover>
@@ -3250,8 +3285,9 @@ function FeeManagementPage() {
                     setToPopoverOpen(false);
                   }}
                   captionLayout="dropdown"
-                  startMonth={new Date(2020, 0)}
-                  endMonth={new Date(2035, 11)}
+                  startMonth={calendarStartMonth}
+                  endMonth={calendarEndMonth}
+                  disabled={calendarDisabledDays}
                 />
               </PopoverContent>
             </Popover>
@@ -3271,7 +3307,7 @@ function FeeManagementPage() {
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 px-3 sm:px-5">
           {isLoadingTx ? (
             <div className="py-8 text-center text-sm text-muted-foreground">Loading transactions...</div>
           ) : feeTransactions.length === 0 ? (
@@ -3290,23 +3326,39 @@ function FeeManagementPage() {
           ) : (
             <div className="space-y-4">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border-collapse">
+                <table className="w-full min-w-300 text-sm text-left border-collapse [&_td]:align-top">
                   <thead>
                     <tr className="border-b bg-muted/50 text-xs font-semibold text-muted-foreground">
-                      {/* <th className="p-3">Receipt No</th> */}
-                      <th className="p-3">Student Name</th>
-                      <th className="p-3">Enrollment No</th>
-                      <th className="p-3">Target Period / AY</th>
-                      <th className="p-3">Fee Component(s) Paid</th>
-                      <th className="p-3">Discounts / Concessions</th>
-                      <th className="p-3 text-right">Amount Paid</th>
-                      <th className="p-3">Mode</th>
-                      <th className="p-3">Payment Date</th>
+                      <th className="p-3 whitespace-nowrap" scope="col">S.No.</th>
+                      {[
+                        ["studentName", "Student Name"],
+                        ["enrollmentNo", "Enrollment No"],
+                        ["period", "Target Period / AY"],
+                        ["feeType", "Fee Component(s) Paid"],
+                        ["amount", "Amount Paid"],
+                        ["paymentMode", "Mode"],
+                        ["paymentDate", "Payment Date"],
+                      ].map(([column, label]) => {
+                        const active = sorting?.column === column;
+                        const SortIcon = active ? (sorting.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                        return (
+                          <th key={column} scope="col" className={cn("p-3", column === "amount" && "text-right")} aria-sort={active ? (sorting.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" className="inline-flex min-h-11 items-center gap-1 text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:text-foreground"
+                              aria-label={`Sort ${label} ${active && sorting.direction === "asc" ? "descending" : "ascending"}`}
+                              onClick={() => {
+                                setSorting({ column, direction: active && sorting.direction === "asc" ? "desc" : "asc" });
+                                setCurrentPage(1);
+                              }}>
+                              {label}<SortIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            </button>
+                          </th>
+                        );
+                      })}
                       <th className="p-3 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y text-xs">
-                    {feeTransactions.map((tx) => {
+                    {feeTransactions.map((tx, index) => {
                       const parsedDetails = parseRemarks(tx.remarks);
                       const isSeatAdvance = parsedDetails?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking");
                       const discAmt = Number(parsedDetails?.discountAmount || 0);
@@ -3317,6 +3369,7 @@ function FeeManagementPage() {
 
                       return (
                         <tr key={tx.id} className="hover:bg-muted/30">
+                          <td className="p-3 tabular-nums text-muted-foreground">{((pagination?.page ?? currentPage) - 1) * (pagination?.pageSize ?? pageSize) + index + 1}</td>
                           {/* <td className="p-3 font-mono font-bold text-teal-600">{tx.receiptNumber}</td> */}
                           <td className="p-3 font-medium text-foreground">{tx.studentName}</td>
                           <td className="p-3 font-mono">{tx.enrollmentNo}</td>
@@ -3340,9 +3393,7 @@ function FeeManagementPage() {
                             ) : (
                               tx.feeType || "Course Fee"
                             )}
-                          </td>
-                          <td className="p-3">
-                            <div className="space-y-1">
+                            <div className="mt-1 space-y-1 font-normal">
                               {discAmt > 0 && (
                                 <span className="block text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 text-[11px]">
                                   -₹{discAmt.toLocaleString()} ({discReason || "Concession"})
@@ -3352,9 +3403,6 @@ function FeeManagementPage() {
                                 <span className="block text-cyan-700 dark:text-cyan-300 font-semibold bg-cyan-50 dark:bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-800 text-[11px]">
                                   Advance Adj: -₹{advanceAdj.toLocaleString()} {advanceReceiptRef ? `(${advanceReceiptRef})` : ""}
                                 </span>
-                              )}
-                              {discAmt <= 0 && advanceAdj <= 0 && (
-                                <span className="text-muted-foreground">None</span>
                               )}
                             </div>
                           </td>
@@ -3373,15 +3421,6 @@ function FeeManagementPage() {
                                 }}
                               >
                                 <Printer size={13} className="mr-1" /> View
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                title="Send Receipt via WhatsApp"
-                                onClick={() => handleOpenWhatsAppModal(tx)}
-                              >
-                                <MessageCircle size={13} className="mr-1" /> WhatsApp
                               </Button>
                               {isAdmin && (
                                 <Button

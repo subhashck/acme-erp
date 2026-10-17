@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BanknoteArrowDown, CalendarIcon, Edit, Eye, Search, ShieldCheck, Trash2, Users } from "lucide-react";
+import { BanknoteArrowDown, CalendarIcon, Edit, Eye, Search, ShieldCheck, Trash2, Users, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -56,6 +56,9 @@ interface ExpenseResponse {
 }
 
 function DateFilter({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const currentYear = new Date().getFullYear();
+  const startMonth = new Date(currentYear - 5, 0, 1);
+  const endMonth = new Date(currentYear + 5, 11, 1);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -68,6 +71,10 @@ function DateFilter({ label, value, onChange }: { label: string; value: string; 
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
           mode="single"
+          captionLayout="dropdown"
+          startMonth={startMonth}
+          endMonth={endMonth}
+          disabled={{ before: startMonth, after: new Date(currentYear + 5, 11, 31) }}
           selected={value ? parseISO(value) : undefined}
           onSelect={(date) => date && onChange(format(date, "yyyy-MM-dd"))}
         />
@@ -87,6 +94,7 @@ function CollegeExpenseVouchersPage() {
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
+  const [sorting, setSorting] = React.useState<{ column: string; direction: "asc" | "desc" } | null>(null);
   const [editing, setEditing] = React.useState<ExpenseVoucher | null>(null);
   const [deleting, setDeleting] = React.useState<ExpenseVoucher | null>(null);
   const [viewing, setViewing] = React.useState<ExpenseVoucher | null>(null);
@@ -103,7 +111,7 @@ function CollegeExpenseVouchersPage() {
   }, [search]);
 
   const { data, isLoading, isFetching } = useQuery<ExpenseResponse>({
-    queryKey: ["nursing", "college-expenses", startDate, endDate, debouncedSearch, page, pageSize],
+    queryKey: ["nursing", "college-expenses", startDate, endDate, debouncedSearch, page, pageSize, sorting],
     queryFn: async () => {
       const params = new URLSearchParams({
         startDate,
@@ -112,6 +120,10 @@ function CollegeExpenseVouchersPage() {
         pageSize: String(pageSize),
       });
       if (debouncedSearch) params.set("search", debouncedSearch);
+      if (sorting) {
+        params.set("sortBy", sorting.column);
+        params.set("sortDirection", sorting.direction);
+      }
       const response = await fetch(`/api/nursing/college-expenses?${params}`);
       if (!response.ok) throw new Error("Failed to load college expense vouchers");
       return response.json();
@@ -220,22 +232,41 @@ function CollegeExpenseVouchersPage() {
             <table className="w-full text-left text-xs">
               <thead className="border-b bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Voucher #</th>
-                  <th className="p-3">Payee / Details</th>
-                  <th className="p-3">Notes</th>
-                  <th className="p-3 text-right">Amount</th>
-                  <th className="p-3 text-center">Voucher Status</th>
+                  <th className="p-3 whitespace-nowrap" scope="col">S.No.</th>
+                  {[
+                    ["reportDate", "Date"],
+                    ["voucherNo", "Voucher #"],
+                    ["payee", "Payee / Details"],
+                    ["narration", "Notes"],
+                    ["amount", "Amount"],
+                    ["status", "Voucher Status"],
+                  ].map(([column, label]) => {
+                    const active = sorting?.column === column;
+                    const SortIcon = active ? (sorting.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                    return (
+                      <th key={column} scope="col" className={`p-3 ${column === "amount" ? "text-right" : column === "status" ? "text-center" : ""}`} aria-sort={active ? (sorting.direction === "asc" ? "ascending" : "descending") : "none"}>
+                        <button type="button" className="inline-flex min-h-11 items-center gap-1 rounded text-left hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Sort ${label} ${active && sorting.direction === "asc" ? "descending" : "ascending"}`}
+                          onClick={() => {
+                            setSorting({ column, direction: active && sorting.direction === "asc" ? "desc" : "asc" });
+                            setPage(1);
+                          }}>
+                          {label}<SortIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        </button>
+                      </th>
+                    );
+                  })}
                   <th className="p-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {isLoading ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Loading expense vouchers...</td></tr>
+                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Loading expense vouchers...</td></tr>
                 ) : rows.length === 0 ? (
-                  <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">No college expense vouchers found.</td></tr>
-                ) : rows.map((voucher) => (
+                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">No college expense vouchers found.</td></tr>
+                ) : rows.map((voucher, index) => (
                   <tr key={voucher.id} className="hover:bg-muted/30">
+                    <td className="p-3 tabular-nums text-muted-foreground">{((data?.pagination.page ?? page) - 1) * (data?.pagination.pageSize ?? pageSize) + index + 1}</td>
                     <td className="p-3 font-mono text-muted-foreground">{voucher.reportDate}</td>
                     <td className="p-3">
                       <button type="button" onClick={() => setViewing(voucher)} className="font-mono font-bold text-rose-700 hover:underline dark:text-rose-300">

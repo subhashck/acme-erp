@@ -29,6 +29,7 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { EditStudentModal, StudentProfileData, ExamDetail } from "@/components/EditStudentModal";
 import { cn } from "@/utils/cn";
+import { ReportSortHeader, type ReportSort } from "@/components/college/ReportSortHeader";
 
 export const Route = createFileRoute("/_authenticated/college/students")({
   component: StudentDirectoryPage,
@@ -84,6 +85,8 @@ interface Student {
   seatBookingStatus?: string | null;
 }
 
+type StudentSortColumn = "enrollmentNo" | "name" | "aadharNo" | "courseName" | "batch" | "parents" | "status";
+
 function StudentDirectoryPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
@@ -94,6 +97,11 @@ function StudentDirectoryPage() {
   const [quotaFilter, setQuotaFilter] = React.useState("");
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(10);
+  const [sorting, setSorting] = React.useState<ReportSort<StudentSortColumn>>(null);
+  const sortStudents = (column: StudentSortColumn) => {
+    setSorting(previous => ({ column, direction: previous?.column === column && previous.direction === "asc" ? "desc" : "asc" }));
+    setCurrentPage(1);
+  };
 
   const [editModalOpen, setEditModalOpen] = React.useState(false);
   const [selectedStudent, setSelectedStudent] = React.useState<Student | null>(null);
@@ -130,7 +138,7 @@ function StudentDirectoryPage() {
     data: Student[];
     pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number };
   }>({
-    queryKey: ["nursing", "students", debouncedSearch, statusFilter, batchFilter, courseFilter, genderFilter, currentPage, pageSize],
+    queryKey: ["nursing", "students", debouncedSearch, statusFilter, batchFilter, courseFilter, genderFilter, quotaFilter, currentPage, pageSize, sorting],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (debouncedSearch) params.append("search", debouncedSearch);
@@ -138,6 +146,11 @@ function StudentDirectoryPage() {
       if (batchFilter) params.append("batchId", batchFilter);
       if (courseFilter) params.append("courseId", courseFilter);
       if (genderFilter) params.append("gender", genderFilter);
+      if (quotaFilter) params.append("quotaCategory", quotaFilter);
+      if (sorting) {
+        params.set("sortBy", sorting.column);
+        params.set("sortDirection", sorting.direction);
+      }
       params.append("page", String(currentPage));
       params.append("pageSize", String(pageSize));
       const res = await fetch(`/api/nursing/students?${params.toString()}`);
@@ -153,10 +166,7 @@ function StudentDirectoryPage() {
     },
   });
 
-  let students = responseData?.data || [];
-  if (quotaFilter) {
-    students = students.filter((s) => (s.quotaCategory || "general") === quotaFilter);
-  }
+  const students = responseData?.data || [];
   const pagination = responseData?.pagination;
 
   const hasActiveFilters = Boolean(searchQuery || statusFilter || batchFilter || courseFilter || genderFilter || quotaFilter);
@@ -339,23 +349,24 @@ function StudentDirectoryPage() {
           ) : (
             <div className="space-y-4">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border-collapse">
+                <table className="w-full text-xs text-left border-collapse [&_th>button]:px-2 md:[&_th>button]:min-h-8">
                   <thead>
                     <tr className="border-b bg-muted/50 text-xs font-semibold text-muted-foreground">
-                      <th className="p-3">Enrollment No</th>
-                      <th className="p-3">Student Name & Contact</th>
-                      <th className="p-3">Aadhar & Quota</th>
-                      <th className="p-3">Course Program</th>
-                      <th className="p-3">Batch & Section</th>
-                      <th className="p-3">Parents / Guardian</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3 text-right">Actions</th>
+                      <th scope="col" className="px-2 py-2 whitespace-nowrap">Sl. No.</th>
+                      <ReportSortHeader column="enrollmentNo" label="Enrollment No" sorting={sorting} onSort={sortStudents} />
+                      <ReportSortHeader column="name" label="Student Name & Contact" sorting={sorting} onSort={sortStudents} />
+                      <ReportSortHeader column="aadharNo" label="Aadhar & Quota" sorting={sorting} onSort={sortStudents} />
+                      <ReportSortHeader column="batch" label="Batch & Section" sorting={sorting} onSort={sortStudents} />
+                      <ReportSortHeader column="parents" label="Parents / Guardian" sorting={sorting} onSort={sortStudents} />
+                      <ReportSortHeader column="status" label="Status" sorting={sorting} onSort={sortStudents} />
+                      <th className="px-2 py-2 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {students.map((student) => (
+                    {students.map((student, index) => (
                       <tr key={student.id} className="hover:bg-muted/30">
-                        <td className="p-3 font-semibold font-mono text-teal-600 dark:text-teal-400">
+                        <td className="px-2 py-2 tabular-nums text-muted-foreground">{((pagination?.page ?? currentPage) - 1) * (pagination?.pageSize ?? pageSize) + index + 1}</td>
+                        <td className="px-2 py-2 font-semibold font-mono text-teal-600 dark:text-teal-400">
                           <Link to="/college/student/$id" params={{ id: String(student.id) }} className="hover:underline">
                             {student.enrollmentNo}
                           </Link>
@@ -365,7 +376,7 @@ function StudentDirectoryPage() {
                             </div>
                           )}
                         </td>
-                        <td className="p-3">
+                        <td className="px-2 py-2">
                           <Link to="/college/student/$id" params={{ id: String(student.id) }} className="font-medium hover:underline text-foreground">
                             {student.name}
                           </Link>
@@ -374,7 +385,7 @@ function StudentDirectoryPage() {
                             {student.email && <span>• {student.email}</span>}
                           </div>
                         </td>
-                        <td className="p-3">
+                        <td className="px-2 py-2">
                           <div className="font-mono text-xs text-foreground">
                             {student.aadharNo ? student.aadharNo.replace(/(\d{4})(\d{4})(\d{4})/, "$1 $2 $3") : "N/A"}
                           </div>
@@ -382,8 +393,7 @@ function StudentDirectoryPage() {
                             {student.quotaCategory || "General"}
                           </span>
                         </td>
-                        <td className="p-3 font-medium text-foreground">{student.courseName}</td>
-                        <td className="p-3 text-muted-foreground">
+                        <td className="px-2 py-2 text-muted-foreground">
                           {student.academicYear} ({student.section})
                           {student.admissionDate && (
                             <div className="text-[11px] text-muted-foreground">
@@ -391,45 +401,47 @@ function StudentDirectoryPage() {
                             </div>
                           )}
                         </td>
-                        <td className="p-3 text-xs text-foreground">
+                        <td className="px-2 py-2 text-xs text-foreground">
                           <div>F: {student.fatherName || "N/A"}</div>
                           <div>M: {student.motherName || "N/A"}</div>
                         </td>
-                        <td className="p-3">
-                          <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        <td className="px-2 py-2">
+                          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                             {student.status}
                           </span>
                         </td>
-                        <td className="p-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                        <td className="px-2 py-2 text-right">
+                          <div className="flex items-center justify-end gap-0.5">
                             <Button
-                              size="sm"
+                              size="icon"
                               variant="ghost"
-                              className="h-7 px-2 text-xs flex items-center gap-1 text-teal-600 hover:text-teal-700"
+                              className="size-11 md:size-8 text-teal-600 hover:text-teal-700"
                               onClick={() => openQuickView(student)}
                               title="Quick View Admission Details"
+                              aria-label={`View ${student.name}`}
                             >
-                              <Eye size={13} /> View
+                              <Eye size={15} />
                             </Button>
 
                             <Button
-                              size="sm"
+                              size="icon"
                               variant="ghost"
-                              className="h-7 px-2 text-xs flex items-center gap-1 text-teal-600 hover:text-teal-700"
+                              className="size-11 md:size-8 text-teal-600 hover:text-teal-700"
                               onClick={() => {
                                 setSelectedStudent(student);
                                 setEditModalOpen(true);
                               }}
                               title="Edit All Profile Details"
+                              aria-label={`Edit ${student.name}`}
                             >
-                              <Pencil size={13} /> Edit
+                              <Pencil size={15} />
                             </Button>
 
-                            <Link to="/college/student/$id" params={{ id: String(student.id) }}>
-                              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs flex items-center gap-1 text-muted-foreground hover:text-foreground" title="Open 360 Full Profile">
-                                Full Profile <ExternalLink size={12} />
-                              </Button>
-                            </Link>
+                            <Button asChild size="icon" variant="ghost" className="size-11 md:size-8 text-muted-foreground hover:text-foreground" title="Open 360 Full Profile" aria-label={`Open full profile for ${student.name}`}>
+                              <Link to="/college/student/$id" params={{ id: String(student.id) }}>
+                                <ExternalLink size={15} />
+                              </Link>
+                            </Button>
                           </div>
                         </td>
                       </tr>

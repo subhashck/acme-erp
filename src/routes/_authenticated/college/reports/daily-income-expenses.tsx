@@ -45,12 +45,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format, parseISO } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { formatCollegePaymentMode } from "@/lib/college-payment";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { ReportSortHeader, sortReportRows, type ReportSort } from "@/components/college/ReportSortHeader";
 
 export const Route = createFileRoute("/_authenticated/college/reports/daily-income-expenses")({
   component: DailyIncomeExpensesReportPage,
@@ -101,6 +102,30 @@ interface ReportData {
   expenseRows: ExpenseRow[];
 }
 
+type IncomeSortColumn = "paymentDate" | "receiptNumber" | "studentName" | "feeType" | "paymentMode" | "amount";
+type ExpenseSortColumn = "paymentDate" | "voucherNo" | "payee" | "paymentMode" | "referenceNumber" | "amount";
+const incomeSortValues: Record<IncomeSortColumn, (row: IncomeRow) => string | number> = {
+  paymentDate: row => row.paymentDate || "",
+  receiptNumber: row => row.receiptNumber || row.invoiceNo || "",
+  studentName: row => `${row.studentName || ""} ${row.enrollmentNo || ""}`,
+  feeType: row => row.feeType || "Course Fee",
+  paymentMode: row => formatCollegePaymentMode(row.paymentMode),
+  amount: row => Number(row.amount) || 0,
+};
+const expenseSortValues: Record<ExpenseSortColumn, (row: ExpenseRow) => string | number> = {
+  paymentDate: row => row.paymentDate || "",
+  voucherNo: row => row.voucherNo || "",
+  payee: row => `${row.payee || ""} ${row.category || ""}`,
+  paymentMode: row => formatCollegePaymentMode(row.paymentMode),
+  referenceNumber: row => row.referenceNumber || row.notes || "",
+  amount: row => Number(row.amount) || 0,
+};
+
+function formatReportDate(value: string) {
+  const date = parseISO(value || "");
+  return isValid(date) ? format(date, "dd-MMM-yy") : "—";
+}
+
 function VoucherField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="min-w-0">
@@ -120,6 +145,14 @@ export default function DailyIncomeExpensesReportPage() {
   const [paymentMode, setPaymentMode] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  const [incomeSort, setIncomeSort] = React.useState<ReportSort<IncomeSortColumn>>(null);
+  const [expenseSort, setExpenseSort] = React.useState<ReportSort<ExpenseSortColumn>>(null);
+  const sortIncome = (column: IncomeSortColumn) => setIncomeSort(previous => ({
+    column, direction: previous?.column === column && previous.direction === "asc" ? "desc" : "asc"
+  }));
+  const sortExpenses = (column: ExpenseSortColumn) => setExpenseSort(previous => ({
+    column, direction: previous?.column === column && previous.direction === "asc" ? "desc" : "asc"
+  }));
 
   // WhatsApp Share Modal
   const [whatsAppModalOpen, setWhatsAppModalOpen] = React.useState(false);
@@ -185,8 +218,8 @@ export default function DailyIncomeExpensesReportPage() {
     expenseCount: 0,
   };
 
-  const incomeRows = data?.incomeRows || [];
-  const expenseRows = data?.expenseRows || [];
+  const incomeRows = React.useMemo(() => sortReportRows(data?.incomeRows || [], incomeSort, incomeSortValues), [data?.incomeRows, incomeSort]);
+  const expenseRows = React.useMemo(() => sortReportRows(data?.expenseRows || [], expenseSort, expenseSortValues), [data?.expenseRows, expenseSort]);
 
   // Generate PDF Document
   const generatePDFDoc = () => {
@@ -197,10 +230,10 @@ export default function DailyIncomeExpensesReportPage() {
 
     doc.setFontSize(12);
     doc.setFont("helvetica", "normal");
-    doc.text(`Daily Income & Expenses Report (${startDate} to ${endDate})`, 14, 24);
+    doc.text(`Daily Income & Expenses Report (${formatReportDate(startDate)} to ${formatReportDate(endDate)})`, 14, 24);
 
     doc.setFontSize(9);
-    doc.text(`Generated Date: ${new Date().toLocaleString()}`, 14, 30);
+    doc.text(`Generated Date: ${format(new Date(), "dd-MMM-yy HH:mm")}`, 14, 30);
 
     // Summary Box
     doc.setFillColor(245, 247, 250);
@@ -219,9 +252,10 @@ export default function DailyIncomeExpensesReportPage() {
 
     autoTable(doc, {
       startY: 66,
-      head: [["Date", "Receipt #", "Student / Payee", "Fee Type", "Mode", "Amount (Rs.)"]],
-      body: incomeRows.map((r) => [
-        r.paymentDate,
+      head: [["Sl. No.", "Date", "Receipt #", "Student / Payee", "Fee Type", "Mode", "Amount (Rs.)"]],
+      body: incomeRows.map((r, index) => [
+        index + 1,
+        formatReportDate(r.paymentDate),
         r.receiptNumber || r.invoiceNo,
         `${r.studentName} (${r.enrollmentNo})`,
         r.feeType || "Course Fee",
@@ -240,9 +274,10 @@ export default function DailyIncomeExpensesReportPage() {
 
     autoTable(doc, {
       startY: finalY + 16,
-      head: [["Date", "Voucher #", "Category / Payee", "Mode", "Ref #", "Amount (Rs.)"]],
-      body: expenseRows.map((r) => [
-        r.paymentDate,
+      head: [["Sl. No.", "Date", "Voucher #", "Category / Payee", "Mode", "Ref #", "Amount (Rs.)"]],
+      body: expenseRows.map((r, index) => [
+        index + 1,
+        formatReportDate(r.paymentDate),
         r.voucherNo,
         `${r.category} - ${r.payee}`,
         formatCollegePaymentMode(r.paymentMode),
@@ -301,7 +336,7 @@ export default function DailyIncomeExpensesReportPage() {
       const pdfBlob = doc.output("blob");
       const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
 
-      const msgText = `*ACME COLLEGE OF NURSING*\n*Daily Income & Expenses Summary*\nPeriod: ${startDate} to ${endDate}\nTotal Income: ₹${summary.totalIncome.toLocaleString()}\nTotal Expenses: ₹${summary.totalExpenses.toLocaleString()}\nNet Surplus: ₹${summary.netCashflow.toLocaleString()}\n\nDetailed PDF Report Attached.`;
+      const msgText = `*ACME COLLEGE OF NURSING*\n*Daily Income & Expenses Summary*\nPeriod: ${formatReportDate(startDate)} to ${formatReportDate(endDate)}\nTotal Income: ₹${summary.totalIncome.toLocaleString()}\nTotal Expenses: ₹${summary.totalExpenses.toLocaleString()}\nNet Surplus: ₹${summary.netCashflow.toLocaleString()}\n\nDetailed PDF Report Attached.`;
 
       if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
         await navigator.share({
@@ -512,7 +547,7 @@ export default function DailyIncomeExpensesReportPage() {
                     )}
                   >
                     <CalendarIcon className="mr-2 h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    {startDate ? format(parseISO(startDate), "dd MMM yyyy") : <span>Pick start date</span>}
+                    {startDate ? formatReportDate(startDate) : <span>Pick start date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -542,7 +577,7 @@ export default function DailyIncomeExpensesReportPage() {
                     )}
                   >
                     <CalendarIcon className="mr-2 h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                    {endDate ? format(parseISO(endDate), "dd MMM yyyy") : <span>Pick end date</span>}
+                    {endDate ? formatReportDate(endDate) : <span>Pick end date</span>}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -617,32 +652,34 @@ export default function DailyIncomeExpensesReportPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground border-b font-semibold">
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Receipt #</th>
-                  <th className="p-3">Student / Payee</th>
-                  <th className="p-3">Fee Type</th>
-                  <th className="p-3 text-center">Payment Mode</th>
-                  <th className="p-3 text-right">Amount</th>
+                  <th scope="col" className="p-3 whitespace-nowrap">Sl. No.</th>
+                  <ReportSortHeader column="paymentDate" label="Date" sorting={incomeSort} onSort={sortIncome} />
+                  <ReportSortHeader column="receiptNumber" label="Receipt #" sorting={incomeSort} onSort={sortIncome} />
+                  <ReportSortHeader column="studentName" label="Student / Payee" sorting={incomeSort} onSort={sortIncome} />
+                  <ReportSortHeader column="feeType" label="Fee Type" sorting={incomeSort} onSort={sortIncome} />
+                  <ReportSortHeader column="paymentMode" label="Payment Mode" sorting={incomeSort} onSort={sortIncome} align="center" />
+                  <ReportSortHeader column="amount" label="Amount" sorting={incomeSort} onSort={sortIncome} align="right" />
                   <th className="p-3 text-center">Voucher</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
                       Loading income transactions...
                     </td>
                   </tr>
                 ) : incomeRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
                       No income receipts recorded for the selected period.
                     </td>
                   </tr>
                 ) : (
-                  incomeRows.map((r) => (
+                  incomeRows.map((r, index) => (
                     <tr key={r.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="p-3 font-mono text-muted-foreground">{r.paymentDate}</td>
+                      <td className="p-3 tabular-nums text-muted-foreground">{index + 1}</td>
+                      <td className="p-3 whitespace-nowrap font-mono text-muted-foreground">{formatReportDate(r.paymentDate)}</td>
                       <td className="p-3">
                         <button
                           type="button"
@@ -718,32 +755,34 @@ export default function DailyIncomeExpensesReportPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground border-b font-semibold">
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Voucher #</th>
-                  <th className="p-3">Category / Payee</th>
-                  <th className="p-3 text-center">Payment Mode</th>
-                  <th className="p-3">Reference / Notes</th>
-                  <th className="p-3 text-right">Amount</th>
+                  <th scope="col" className="p-3 whitespace-nowrap">Sl. No.</th>
+                  <ReportSortHeader column="paymentDate" label="Date" sorting={expenseSort} onSort={sortExpenses} />
+                  <ReportSortHeader column="voucherNo" label="Voucher #" sorting={expenseSort} onSort={sortExpenses} />
+                  <ReportSortHeader column="payee" label="Category / Payee" sorting={expenseSort} onSort={sortExpenses} />
+                  <ReportSortHeader column="paymentMode" label="Payment Mode" sorting={expenseSort} onSort={sortExpenses} align="center" />
+                  <ReportSortHeader column="referenceNumber" label="Reference / Notes" sorting={expenseSort} onSort={sortExpenses} />
+                  <ReportSortHeader column="amount" label="Amount" sorting={expenseSort} onSort={sortExpenses} align="right" />
                   <th className="p-3 text-center">Voucher</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
                       Loading expense payouts...
                     </td>
                   </tr>
                 ) : expenseRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={8} className="p-6 text-center text-muted-foreground">
                       No expense payouts recorded for the selected period.
                     </td>
                   </tr>
                 ) : (
-                  expenseRows.map((r) => (
+                  expenseRows.map((r, index) => (
                     <tr key={r.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="p-3 font-mono text-muted-foreground">{r.paymentDate}</td>
+                      <td className="p-3 tabular-nums text-muted-foreground">{index + 1}</td>
+                      <td className="p-3 whitespace-nowrap font-mono text-muted-foreground">{formatReportDate(r.paymentDate)}</td>
                       <td className="p-3">
                         <button
                           type="button"
@@ -824,7 +863,7 @@ export default function DailyIncomeExpensesReportPage() {
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 rounded-lg border p-4">
-                <VoucherField label="Date" value={selectedVoucher.row.paymentDate} />
+                <VoucherField label="Date" value={formatReportDate(selectedVoucher.row.paymentDate)} />
                 <VoucherField label="Payment mode" value={formatCollegePaymentMode(selectedVoucher.row.paymentMode)} />
                 <VoucherField label="Student / Payee" value={selectedVoucher.row.studentName} />
                 <VoucherField label="Enrollment / Application No." value={selectedVoucher.row.enrollmentNo} />
@@ -846,7 +885,7 @@ export default function DailyIncomeExpensesReportPage() {
                 </p>
               </div>
               <div className="grid grid-cols-2 gap-3 rounded-lg border p-4">
-                <VoucherField label="Date" value={selectedVoucher.row.paymentDate} />
+                <VoucherField label="Date" value={formatReportDate(selectedVoucher.row.paymentDate)} />
                 <VoucherField label="Payment mode" value={formatCollegePaymentMode(selectedVoucher.row.paymentMode)} />
                 <VoucherField label="Payee" value={selectedVoucher.row.payee} />
                 <VoucherField label="Category" value={selectedVoucher.row.category} />

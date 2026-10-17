@@ -259,8 +259,10 @@ export const leavesRoutes = new Hono<AuthEnv>()
     const leaveType = c.req.query("leaveType");
     const startDate = c.req.query("startDate");
     const endDate = c.req.query("endDate");
-    const sortBy = c.req.query("sortBy") ?? "createdAt";
-    const sortOrder = c.req.query("sortOrder") ?? "desc";
+    const allowedSortColumns = new Set(["createdAt", "startDate", "endDate", "requestNo", "staffName", "departmentName", "leaveType", "status"]);
+    const requestedSort = c.req.query("sortBy") ?? "createdAt";
+    const sortBy = allowedSortColumns.has(requestedSort) ? requestedSort : "createdAt";
+    const sortOrder = c.req.query("sortOrder") === "asc" ? "asc" : "desc";
 
     // Join dept leader info so we can apply role-based visibility in-memory
     const rows = await db
@@ -379,6 +381,7 @@ export const leavesRoutes = new Hono<AuthEnv>()
       );
     }
 
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
     filteredRows.sort((a, b) => {
       const valA = a[sortBy as keyof typeof a];
       const valB = b[sortBy as keyof typeof b];
@@ -386,14 +389,11 @@ export const leavesRoutes = new Hono<AuthEnv>()
       if (sortBy === "createdAt" || sortBy === "startDate" || sortBy === "endDate") {
         const timeA = valA ? new Date(valA as string).getTime() : 0;
         const timeB = valB ? new Date(valB as string).getTime() : 0;
-        return sortOrder === "asc" ? timeA - timeB : timeB - timeA;
+        return (sortOrder === "asc" ? timeA - timeB : timeB - timeA) || b.id - a.id;
       }
 
-      const strA = String(valA ?? "").toLowerCase();
-      const strB = String(valB ?? "").toLowerCase();
-      if (strA < strB) return sortOrder === "asc" ? -1 : 1;
-      if (strA > strB) return sortOrder === "asc" ? 1 : -1;
-      return 0;
+      const compared = collator.compare(String(valA ?? ""), String(valB ?? ""));
+      return (sortOrder === "asc" ? compared : -compared) || b.id - a.id;
     });
 
     const total = filteredRows.length;
@@ -457,6 +457,11 @@ export const leavesRoutes = new Hono<AuthEnv>()
         forwardedToStaffName: forwardedTarget.name,
         approverIds: leaveRequests.approverIds,
         supportingDocument: leaveRequests.supportingDocument,
+        reviewedByStaffId: leaveRequests.reviewedByStaffId,
+        reviewedByName: leaveRequests.reviewedByName,
+        supervisorReviewerNote: leaveRequests.supervisorReviewerNote,
+        supervisorReviewedByName: leaveRequests.supervisorReviewedByName,
+        supervisorReviewedAt: leaveRequests.supervisorReviewedAt,
       })
       .from(leaveRequests)
       .innerJoin(staff, eq(leaveRequests.staffId, staff.staffId))
@@ -681,13 +686,28 @@ export const leavesRoutes = new Hono<AuthEnv>()
     if (!canAct) return c.json({ error: "You are not authorized to approve this leave request" }, 403);
 
     let nextStatus = "Approved";
-    if (!isAdmin && !isHrUser) {
+    const isSupervisorApproval = !isAdmin && !isHrUser;
+    if (isSupervisorApproval) {
       nextStatus = "Pending Payroll Approval";
+    }
+
+    const updateFields: any = {
+      status: nextStatus,
+      reviewedAt: new Date(),
+      reviewedByStaffId: currentStaff?.staffId ?? null,
+      reviewedByName: currentStaff?.name || session?.user?.name || "Authorized Reviewer",
+      reviewerNote: input.reviewerNote,
+    };
+
+    if (isSupervisorApproval) {
+      updateFields.supervisorReviewerNote = input.reviewerNote;
+      updateFields.supervisorReviewedByName = currentStaff?.name || session?.user?.name || "Authorized Reviewer";
+      updateFields.supervisorReviewedAt = new Date();
     }
 
     await db
       .update(leaveRequests)
-      .set({ status: nextStatus, reviewedAt: new Date(), reviewerNote: input.reviewerNote })
+      .set(updateFields)
       .where(eq(leaveRequests.id, id))
       .execute();
 
@@ -858,7 +878,13 @@ export const leavesRoutes = new Hono<AuthEnv>()
 
     await db
       .update(leaveRequests)
-      .set({ status: "Rejected", reviewedAt: new Date(), reviewerNote: input.reviewerNote })
+      .set({
+        status: "Rejected",
+        reviewedAt: new Date(),
+        reviewedByStaffId: currentStaff?.staffId ?? null,
+        reviewedByName: currentStaff?.name || session?.user?.name || "Authorized Reviewer",
+        reviewerNote: input.reviewerNote,
+      })
       .where(eq(leaveRequests.id, id))
       .execute();
 

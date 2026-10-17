@@ -17,9 +17,6 @@ export interface UserPermissions {
   isPurchaseAndStore: boolean;
   isDispensary: boolean;
   isManagementApprover: boolean;
-  isMagazineEditor: boolean;
-  isLab: boolean;
-  isPathologist: boolean;
   canViewAccounts: boolean;
   canViewHr: boolean;
   canViewAssessments: boolean;
@@ -28,8 +25,6 @@ export interface UserPermissions {
   canViewInventory: boolean;
   canViewPurchases: boolean;
   canManageStores: boolean;
-  canManageMagazine: boolean;
-  canViewLab: boolean;
   isLoading: boolean;
 }
 
@@ -39,7 +34,6 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
   const hookSession = authClient.useSession();
   const session = providedSession || hookSession;
   const user = session?.user || session?.data?.user;
-  const userId = user?.id;
 
   const staffQuery = useRpcQuery<any>(
     ["current-staff"],
@@ -64,14 +58,6 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     );
   }, [currentStaff?.staffId, managementApproversQuery.data]);
 
-  const magazineAccessQuery = useRpcQuery<{ isEditor: boolean; isAdmin: boolean }>(
-    ["magazine-my-access", userId],
-    () => fetch("/api/magazine/my-access"),
-    { staleTime: 10 * 60 * 1000, enabled: !!userId }
-  );
-
-  const isMagazineEditor = magazineAccessQuery.data?.isEditor ?? false;
-
   const userRole = (user?.role || "").trim().toLowerCase();
   const staffDept = (currentStaff?.departmentName || "").trim().toUpperCase();
 
@@ -94,16 +80,6 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
   const canViewInventory = isAdmin || isPurchaseAndStore || isDispensary;
   const canViewPurchases = isAdmin || isAccounts || isPurchaseAndStore;
   const canManageStores = isAdmin || isManagementApprover;
-  const canManageMagazine = isAdmin || userRole === "magazine_editor" || isHr || isMagazineEditor;
-
-  const isLabStaff =
-    cleanStaffDept === "LABORATORY" ||
-    cleanStaffDept.startsWith("LABORATORY") ||
-    cleanStaffDept === "LAB" ||
-    cleanStaffDept.startsWith("LAB");
-  const isLab = userRole === "lab" || isLabStaff;
-  const isPathologist = userRole === "pathologist";
-  const canViewLab = isAdmin || isLab || isPathologist;
 
   return {
     currentStaff,
@@ -115,9 +91,6 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     isPurchaseAndStore,
     isDispensary,
     isManagementApprover,
-    isMagazineEditor,
-    isLab,
-    isPathologist,
     canViewAccounts,
     canViewHr,
     canViewAssessments: isAdmin || isHr || Boolean(currentStaff?.staffId),
@@ -126,9 +99,7 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     canViewInventory,
     canViewPurchases,
     canManageStores,
-    canManageMagazine,
-    canViewLab,
-    isLoading: staffQuery.isLoading || managementApproversQuery.isLoading || magazineAccessQuery.isLoading,
+    isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
   };
 }
 

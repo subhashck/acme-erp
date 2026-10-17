@@ -17,8 +17,6 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedCollegeRouteImport } from './routes/_authenticated/college'
 import { Route as AuthenticatedAssessmentsRouteImport } from './routes/_authenticated/assessments'
-import { Route as AuthenticatedMagazineIndexRouteImport } from './routes/_authenticated/magazine/index'
-import { Route as AuthenticatedLabIndexRouteImport } from './routes/_authenticated/lab/index'
 import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as AuthenticatedCapitalIndexRouteImport } from './routes/_authenticated/capital/index'
@@ -38,9 +36,6 @@ import { Route as AuthenticatedMastersManagementApproversRouteImport } from './r
 import { Route as AuthenticatedMastersLeaveTypesRouteImport } from './routes/_authenticated/masters/leave-types'
 import { Route as AuthenticatedMastersDepartmentsRouteImport } from './routes/_authenticated/masters/departments'
 import { Route as AuthenticatedMastersBanksRouteImport } from './routes/_authenticated/masters/banks'
-import { Route as AuthenticatedMagazineSettingsRouteImport } from './routes/_authenticated/magazine/settings'
-import { Route as AuthenticatedMagazineEditorsRouteImport } from './routes/_authenticated/magazine/editors'
-import { Route as AuthenticatedMagazineIdRouteImport } from './routes/_authenticated/magazine/$id'
 import { Route as AuthenticatedInventoryStoresRouteImport } from './routes/_authenticated/inventory/stores'
 import { Route as AuthenticatedInventoryStockRouteImport } from './routes/_authenticated/inventory/stock'
 import { Route as AuthenticatedInventoryPosRouteImport } from './routes/_authenticated/inventory/pos'
@@ -60,7 +55,6 @@ import { Route as AuthenticatedHrAttendanceRouteImport } from './routes/_authent
 import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authenticated/hr/add-staff'
 import { Route as AuthenticatedFrontOfficeRazorpayReconciliationRouteImport } from './routes/_authenticated/front-office/razorpay-reconciliation'
 import { Route as AuthenticatedFrontOfficePatientsRouteImport } from './routes/_authenticated/front-office/patients'
-import { Route as AuthenticatedFrontOfficeOpdCollectionRouteImport } from './routes/_authenticated/front-office/opd-collection'
 import { Route as AuthenticatedFrontOfficeNewRouteImport } from './routes/_authenticated/front-office/new'
 import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
 import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
@@ -96,7 +90,6 @@ import { Route as AuthenticatedAccountsBankExpensesRouteImport } from './routes/
 import { Route as AuthenticatedAccountsBankAccountsRouteImport } from './routes/_authenticated/accounts/bank-accounts'
 import { Route as AuthenticatedPurchasesPurchaseOrdersIndexRouteImport } from './routes/_authenticated/purchases/purchase-orders/index'
 import { Route as AuthenticatedPurchasesGrnsIndexRouteImport } from './routes/_authenticated/purchases/grns/index'
-import { Route as AuthenticatedLabMastersIndexRouteImport } from './routes/_authenticated/lab/masters/index'
 import { Route as AuthenticatedInventoryTransfersIndexRouteImport } from './routes/_authenticated/inventory/transfers/index'
 import { Route as AuthenticatedInventoryRequisitionsIndexRouteImport } from './routes/_authenticated/inventory/requisitions/index'
 import { Route as AuthenticatedInventoryReportsIndexRouteImport } from './routes/_authenticated/inventory/reports/index'
@@ -111,9 +104,6 @@ import { Route as AuthenticatedPurchasesPurchaseOrdersNewRouteImport } from './r
 import { Route as AuthenticatedPurchasesPurchaseOrdersIdRouteImport } from './routes/_authenticated/purchases/purchase-orders/$id'
 import { Route as AuthenticatedPurchasesGrnsNewRouteImport } from './routes/_authenticated/purchases/grns/new'
 import { Route as AuthenticatedPurchasesGrnsGrnIdRouteImport } from './routes/_authenticated/purchases/grns/$grnId'
-import { Route as AuthenticatedLabReportsOrderIdRouteImport } from './routes/_authenticated/lab/reports/$orderId'
-import { Route as AuthenticatedLabOrdersNewRouteImport } from './routes/_authenticated/lab/orders/new'
-import { Route as AuthenticatedLabOrdersOrderIdRouteImport } from './routes/_authenticated/lab/orders/$orderId'
 import { Route as AuthenticatedInventoryPurchaseInvoicesNewRouteImport } from './routes/_authenticated/inventory/purchase-invoices/new'
 import { Route as AuthenticatedInventoryPurchaseInvoicesIdRouteImport } from './routes/_authenticated/inventory/purchase-invoices/$id'
 import { Route as AuthenticatedCollegeStudentIdRouteImport } from './routes/_authenticated/college/student/$id'
@@ -170,17 +160,6 @@ const AuthenticatedAssessmentsRoute =
     path: '/assessments',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedMagazineIndexRoute =
-  AuthenticatedMagazineIndexRouteImport.update({
-    id: '/magazine/',
-    path: '/magazine/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedLabIndexRoute = AuthenticatedLabIndexRouteImport.update({
-  id: '/lab/',
-  path: '/lab/',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedFrontOfficeIndexRoute =
   AuthenticatedFrontOfficeIndexRouteImport.update({
     id: '/front-office/',
@@ -294,23 +273,6 @@ const AuthenticatedMastersBanksRoute =
     path: '/masters/banks',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedMagazineSettingsRoute =
-  AuthenticatedMagazineSettingsRouteImport.update({
-    id: '/magazine/settings',
-    path: '/magazine/settings',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedMagazineEditorsRoute =
-  AuthenticatedMagazineEditorsRouteImport.update({
-    id: '/magazine/editors',
-    path: '/magazine/editors',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedMagazineIdRoute = AuthenticatedMagazineIdRouteImport.update({
-  id: '/magazine/$id',
-  path: '/magazine/$id',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
 const AuthenticatedInventoryStoresRoute =
   AuthenticatedInventoryStoresRouteImport.update({
     id: '/inventory/stores',
@@ -419,12 +381,6 @@ const AuthenticatedFrontOfficePatientsRoute =
   AuthenticatedFrontOfficePatientsRouteImport.update({
     id: '/front-office/patients',
     path: '/front-office/patients',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedFrontOfficeOpdCollectionRoute =
-  AuthenticatedFrontOfficeOpdCollectionRouteImport.update({
-    id: '/front-office/opd-collection',
-    path: '/front-office/opd-collection',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedFrontOfficeNewRoute =
@@ -636,12 +592,6 @@ const AuthenticatedPurchasesGrnsIndexRoute =
     path: '/purchases/grns/',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedLabMastersIndexRoute =
-  AuthenticatedLabMastersIndexRouteImport.update({
-    id: '/lab/masters/',
-    path: '/lab/masters/',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const AuthenticatedInventoryTransfersIndexRoute =
   AuthenticatedInventoryTransfersIndexRouteImport.update({
     id: '/inventory/transfers/',
@@ -724,24 +674,6 @@ const AuthenticatedPurchasesGrnsGrnIdRoute =
   AuthenticatedPurchasesGrnsGrnIdRouteImport.update({
     id: '/purchases/grns/$grnId',
     path: '/purchases/grns/$grnId',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedLabReportsOrderIdRoute =
-  AuthenticatedLabReportsOrderIdRouteImport.update({
-    id: '/lab/reports/$orderId',
-    path: '/lab/reports/$orderId',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedLabOrdersNewRoute =
-  AuthenticatedLabOrdersNewRouteImport.update({
-    id: '/lab/orders/new',
-    path: '/lab/orders/new',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
-const AuthenticatedLabOrdersOrderIdRoute =
-  AuthenticatedLabOrdersOrderIdRouteImport.update({
-    id: '/lab/orders/$orderId',
-    path: '/lab/orders/$orderId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedInventoryPurchaseInvoicesNewRoute =
@@ -870,7 +802,6 @@ export interface FileRoutesByFullPath {
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
-  '/front-office/opd-collection': typeof AuthenticatedFrontOfficeOpdCollectionRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
@@ -890,9 +821,6 @@ export interface FileRoutesByFullPath {
   '/inventory/pos': typeof AuthenticatedInventoryPosRoute
   '/inventory/stock': typeof AuthenticatedInventoryStockRoute
   '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
-  '/magazine/$id': typeof AuthenticatedMagazineIdRoute
-  '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
-  '/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -912,8 +840,6 @@ export interface FileRoutesByFullPath {
   '/capital/': typeof AuthenticatedCapitalIndexRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
   '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
-  '/lab/': typeof AuthenticatedLabIndexRoute
-  '/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
@@ -924,9 +850,6 @@ export interface FileRoutesByFullPath {
   '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
   '/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
   '/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
-  '/lab/orders/$orderId': typeof AuthenticatedLabOrdersOrderIdRoute
-  '/lab/orders/new': typeof AuthenticatedLabOrdersNewRoute
-  '/lab/reports/$orderId': typeof AuthenticatedLabReportsOrderIdRoute
   '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
@@ -941,7 +864,6 @@ export interface FileRoutesByFullPath {
   '/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
   '/inventory/requisitions/': typeof AuthenticatedInventoryRequisitionsIndexRoute
   '/inventory/transfers/': typeof AuthenticatedInventoryTransfersIndexRoute
-  '/lab/masters/': typeof AuthenticatedLabMastersIndexRoute
   '/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
   '/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
@@ -988,7 +910,6 @@ export interface FileRoutesByTo {
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
-  '/front-office/opd-collection': typeof AuthenticatedFrontOfficeOpdCollectionRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
@@ -1008,9 +929,6 @@ export interface FileRoutesByTo {
   '/inventory/pos': typeof AuthenticatedInventoryPosRoute
   '/inventory/stock': typeof AuthenticatedInventoryStockRoute
   '/inventory/stores': typeof AuthenticatedInventoryStoresRoute
-  '/magazine/$id': typeof AuthenticatedMagazineIdRoute
-  '/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
-  '/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -1029,8 +947,6 @@ export interface FileRoutesByTo {
   '/capital': typeof AuthenticatedCapitalIndexRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
   '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
-  '/lab': typeof AuthenticatedLabIndexRoute
-  '/magazine': typeof AuthenticatedMagazineIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
@@ -1041,9 +957,6 @@ export interface FileRoutesByTo {
   '/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
   '/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
   '/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
-  '/lab/orders/$orderId': typeof AuthenticatedLabOrdersOrderIdRoute
-  '/lab/orders/new': typeof AuthenticatedLabOrdersNewRoute
-  '/lab/reports/$orderId': typeof AuthenticatedLabReportsOrderIdRoute
   '/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
@@ -1058,7 +971,6 @@ export interface FileRoutesByTo {
   '/inventory/reports': typeof AuthenticatedInventoryReportsIndexRoute
   '/inventory/requisitions': typeof AuthenticatedInventoryRequisitionsIndexRoute
   '/inventory/transfers': typeof AuthenticatedInventoryTransfersIndexRoute
-  '/lab/masters': typeof AuthenticatedLabMastersIndexRoute
   '/purchases/grns': typeof AuthenticatedPurchasesGrnsIndexRoute
   '/purchases/purchase-orders': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
@@ -1109,7 +1021,6 @@ export interface FileRoutesById {
   '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/_authenticated/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
-  '/_authenticated/front-office/opd-collection': typeof AuthenticatedFrontOfficeOpdCollectionRoute
   '/_authenticated/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/_authenticated/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   '/_authenticated/hr/add-staff': typeof AuthenticatedHrAddStaffRoute
@@ -1129,9 +1040,6 @@ export interface FileRoutesById {
   '/_authenticated/inventory/pos': typeof AuthenticatedInventoryPosRoute
   '/_authenticated/inventory/stock': typeof AuthenticatedInventoryStockRoute
   '/_authenticated/inventory/stores': typeof AuthenticatedInventoryStoresRoute
-  '/_authenticated/magazine/$id': typeof AuthenticatedMagazineIdRoute
-  '/_authenticated/magazine/editors': typeof AuthenticatedMagazineEditorsRoute
-  '/_authenticated/magazine/settings': typeof AuthenticatedMagazineSettingsRoute
   '/_authenticated/masters/banks': typeof AuthenticatedMastersBanksRoute
   '/_authenticated/masters/departments': typeof AuthenticatedMastersDepartmentsRoute
   '/_authenticated/masters/leave-types': typeof AuthenticatedMastersLeaveTypesRoute
@@ -1151,8 +1059,6 @@ export interface FileRoutesById {
   '/_authenticated/capital/': typeof AuthenticatedCapitalIndexRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
   '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
-  '/_authenticated/lab/': typeof AuthenticatedLabIndexRoute
-  '/_authenticated/magazine/': typeof AuthenticatedMagazineIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/_authenticated/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
@@ -1163,9 +1069,6 @@ export interface FileRoutesById {
   '/_authenticated/college/student/$id': typeof AuthenticatedCollegeStudentIdRoute
   '/_authenticated/inventory/purchase-invoices/$id': typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
   '/_authenticated/inventory/purchase-invoices/new': typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
-  '/_authenticated/lab/orders/$orderId': typeof AuthenticatedLabOrdersOrderIdRoute
-  '/_authenticated/lab/orders/new': typeof AuthenticatedLabOrdersNewRoute
-  '/_authenticated/lab/reports/$orderId': typeof AuthenticatedLabReportsOrderIdRoute
   '/_authenticated/purchases/grns/$grnId': typeof AuthenticatedPurchasesGrnsGrnIdRoute
   '/_authenticated/purchases/grns/new': typeof AuthenticatedPurchasesGrnsNewRoute
   '/_authenticated/purchases/purchase-orders/$id': typeof AuthenticatedPurchasesPurchaseOrdersIdRoute
@@ -1180,7 +1083,6 @@ export interface FileRoutesById {
   '/_authenticated/inventory/reports/': typeof AuthenticatedInventoryReportsIndexRoute
   '/_authenticated/inventory/requisitions/': typeof AuthenticatedInventoryRequisitionsIndexRoute
   '/_authenticated/inventory/transfers/': typeof AuthenticatedInventoryTransfersIndexRoute
-  '/_authenticated/lab/masters/': typeof AuthenticatedLabMastersIndexRoute
   '/_authenticated/purchases/grns/': typeof AuthenticatedPurchasesGrnsIndexRoute
   '/_authenticated/purchases/purchase-orders/': typeof AuthenticatedPurchasesPurchaseOrdersIndexRoute
   '/_authenticated/accounts/reports/edit/$id': typeof AuthenticatedAccountsReportsEditIdRoute
@@ -1231,7 +1133,6 @@ export interface FileRouteTypes {
     | '/college/students'
     | '/college/subjects'
     | '/front-office/new'
-    | '/front-office/opd-collection'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
@@ -1251,9 +1152,6 @@ export interface FileRouteTypes {
     | '/inventory/pos'
     | '/inventory/stock'
     | '/inventory/stores'
-    | '/magazine/$id'
-    | '/magazine/editors'
-    | '/magazine/settings'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -1273,8 +1171,6 @@ export interface FileRouteTypes {
     | '/capital/'
     | '/college/'
     | '/front-office/'
-    | '/lab/'
-    | '/magazine/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/assessments/certificates/$attemptId'
@@ -1285,9 +1181,6 @@ export interface FileRouteTypes {
     | '/college/student/$id'
     | '/inventory/purchase-invoices/$id'
     | '/inventory/purchase-invoices/new'
-    | '/lab/orders/$orderId'
-    | '/lab/orders/new'
-    | '/lab/reports/$orderId'
     | '/purchases/grns/$grnId'
     | '/purchases/grns/new'
     | '/purchases/purchase-orders/$id'
@@ -1302,7 +1195,6 @@ export interface FileRouteTypes {
     | '/inventory/reports/'
     | '/inventory/requisitions/'
     | '/inventory/transfers/'
-    | '/lab/masters/'
     | '/purchases/grns/'
     | '/purchases/purchase-orders/'
     | '/accounts/reports/edit/$id'
@@ -1349,7 +1241,6 @@ export interface FileRouteTypes {
     | '/college/students'
     | '/college/subjects'
     | '/front-office/new'
-    | '/front-office/opd-collection'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
     | '/hr/add-staff'
@@ -1369,9 +1260,6 @@ export interface FileRouteTypes {
     | '/inventory/pos'
     | '/inventory/stock'
     | '/inventory/stores'
-    | '/magazine/$id'
-    | '/magazine/editors'
-    | '/magazine/settings'
     | '/masters/banks'
     | '/masters/departments'
     | '/masters/leave-types'
@@ -1390,8 +1278,6 @@ export interface FileRouteTypes {
     | '/capital'
     | '/college'
     | '/front-office'
-    | '/lab'
-    | '/magazine'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/assessments/certificates/$attemptId'
@@ -1402,9 +1288,6 @@ export interface FileRouteTypes {
     | '/college/student/$id'
     | '/inventory/purchase-invoices/$id'
     | '/inventory/purchase-invoices/new'
-    | '/lab/orders/$orderId'
-    | '/lab/orders/new'
-    | '/lab/reports/$orderId'
     | '/purchases/grns/$grnId'
     | '/purchases/grns/new'
     | '/purchases/purchase-orders/$id'
@@ -1419,7 +1302,6 @@ export interface FileRouteTypes {
     | '/inventory/reports'
     | '/inventory/requisitions'
     | '/inventory/transfers'
-    | '/lab/masters'
     | '/purchases/grns'
     | '/purchases/purchase-orders'
     | '/accounts/reports/edit/$id'
@@ -1469,7 +1351,6 @@ export interface FileRouteTypes {
     | '/_authenticated/college/students'
     | '/_authenticated/college/subjects'
     | '/_authenticated/front-office/new'
-    | '/_authenticated/front-office/opd-collection'
     | '/_authenticated/front-office/patients'
     | '/_authenticated/front-office/razorpay-reconciliation'
     | '/_authenticated/hr/add-staff'
@@ -1489,9 +1370,6 @@ export interface FileRouteTypes {
     | '/_authenticated/inventory/pos'
     | '/_authenticated/inventory/stock'
     | '/_authenticated/inventory/stores'
-    | '/_authenticated/magazine/$id'
-    | '/_authenticated/magazine/editors'
-    | '/_authenticated/magazine/settings'
     | '/_authenticated/masters/banks'
     | '/_authenticated/masters/departments'
     | '/_authenticated/masters/leave-types'
@@ -1511,8 +1389,6 @@ export interface FileRouteTypes {
     | '/_authenticated/capital/'
     | '/_authenticated/college/'
     | '/_authenticated/front-office/'
-    | '/_authenticated/lab/'
-    | '/_authenticated/magazine/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
     | '/_authenticated/assessments/certificates/$attemptId'
@@ -1523,9 +1399,6 @@ export interface FileRouteTypes {
     | '/_authenticated/college/student/$id'
     | '/_authenticated/inventory/purchase-invoices/$id'
     | '/_authenticated/inventory/purchase-invoices/new'
-    | '/_authenticated/lab/orders/$orderId'
-    | '/_authenticated/lab/orders/new'
-    | '/_authenticated/lab/reports/$orderId'
     | '/_authenticated/purchases/grns/$grnId'
     | '/_authenticated/purchases/grns/new'
     | '/_authenticated/purchases/purchase-orders/$id'
@@ -1540,7 +1413,6 @@ export interface FileRouteTypes {
     | '/_authenticated/inventory/reports/'
     | '/_authenticated/inventory/requisitions/'
     | '/_authenticated/inventory/transfers/'
-    | '/_authenticated/lab/masters/'
     | '/_authenticated/purchases/grns/'
     | '/_authenticated/purchases/purchase-orders/'
     | '/_authenticated/accounts/reports/edit/$id'
@@ -1612,20 +1484,6 @@ declare module '@tanstack/react-router' {
       path: '/assessments'
       fullPath: '/assessments'
       preLoaderRoute: typeof AuthenticatedAssessmentsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/magazine/': {
-      id: '/_authenticated/magazine/'
-      path: '/magazine'
-      fullPath: '/magazine/'
-      preLoaderRoute: typeof AuthenticatedMagazineIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/lab/': {
-      id: '/_authenticated/lab/'
-      path: '/lab'
-      fullPath: '/lab/'
-      preLoaderRoute: typeof AuthenticatedLabIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/front-office/': {
@@ -1761,27 +1619,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMastersBanksRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/magazine/settings': {
-      id: '/_authenticated/magazine/settings'
-      path: '/magazine/settings'
-      fullPath: '/magazine/settings'
-      preLoaderRoute: typeof AuthenticatedMagazineSettingsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/magazine/editors': {
-      id: '/_authenticated/magazine/editors'
-      path: '/magazine/editors'
-      fullPath: '/magazine/editors'
-      preLoaderRoute: typeof AuthenticatedMagazineEditorsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/magazine/$id': {
-      id: '/_authenticated/magazine/$id'
-      path: '/magazine/$id'
-      fullPath: '/magazine/$id'
-      preLoaderRoute: typeof AuthenticatedMagazineIdRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/inventory/stores': {
       id: '/_authenticated/inventory/stores'
       path: '/inventory/stores'
@@ -1913,13 +1750,6 @@ declare module '@tanstack/react-router' {
       path: '/front-office/patients'
       fullPath: '/front-office/patients'
       preLoaderRoute: typeof AuthenticatedFrontOfficePatientsRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/front-office/opd-collection': {
-      id: '/_authenticated/front-office/opd-collection'
-      path: '/front-office/opd-collection'
-      fullPath: '/front-office/opd-collection'
-      preLoaderRoute: typeof AuthenticatedFrontOfficeOpdCollectionRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/front-office/new': {
@@ -2167,13 +1997,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPurchasesGrnsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/lab/masters/': {
-      id: '/_authenticated/lab/masters/'
-      path: '/lab/masters'
-      fullPath: '/lab/masters/'
-      preLoaderRoute: typeof AuthenticatedLabMastersIndexRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/inventory/transfers/': {
       id: '/_authenticated/inventory/transfers/'
       path: '/inventory/transfers'
@@ -2270,27 +2093,6 @@ declare module '@tanstack/react-router' {
       path: '/purchases/grns/$grnId'
       fullPath: '/purchases/grns/$grnId'
       preLoaderRoute: typeof AuthenticatedPurchasesGrnsGrnIdRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/lab/reports/$orderId': {
-      id: '/_authenticated/lab/reports/$orderId'
-      path: '/lab/reports/$orderId'
-      fullPath: '/lab/reports/$orderId'
-      preLoaderRoute: typeof AuthenticatedLabReportsOrderIdRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/lab/orders/new': {
-      id: '/_authenticated/lab/orders/new'
-      path: '/lab/orders/new'
-      fullPath: '/lab/orders/new'
-      preLoaderRoute: typeof AuthenticatedLabOrdersNewRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
-    '/_authenticated/lab/orders/$orderId': {
-      id: '/_authenticated/lab/orders/$orderId'
-      path: '/lab/orders/$orderId'
-      fullPath: '/lab/orders/$orderId'
-      preLoaderRoute: typeof AuthenticatedLabOrdersOrderIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/inventory/purchase-invoices/new': {
@@ -2538,7 +2340,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCapitalRepaymentsRoute: typeof AuthenticatedCapitalRepaymentsRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
   AuthenticatedFrontOfficeNewRoute: typeof AuthenticatedFrontOfficeNewRoute
-  AuthenticatedFrontOfficeOpdCollectionRoute: typeof AuthenticatedFrontOfficeOpdCollectionRoute
   AuthenticatedFrontOfficePatientsRoute: typeof AuthenticatedFrontOfficePatientsRoute
   AuthenticatedFrontOfficeRazorpayReconciliationRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
   AuthenticatedHrAddStaffRoute: typeof AuthenticatedHrAddStaffRoute
@@ -2558,9 +2359,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInventoryPosRoute: typeof AuthenticatedInventoryPosRoute
   AuthenticatedInventoryStockRoute: typeof AuthenticatedInventoryStockRoute
   AuthenticatedInventoryStoresRoute: typeof AuthenticatedInventoryStoresRoute
-  AuthenticatedMagazineIdRoute: typeof AuthenticatedMagazineIdRoute
-  AuthenticatedMagazineEditorsRoute: typeof AuthenticatedMagazineEditorsRoute
-  AuthenticatedMagazineSettingsRoute: typeof AuthenticatedMagazineSettingsRoute
   AuthenticatedMastersBanksRoute: typeof AuthenticatedMastersBanksRoute
   AuthenticatedMastersDepartmentsRoute: typeof AuthenticatedMastersDepartmentsRoute
   AuthenticatedMastersLeaveTypesRoute: typeof AuthenticatedMastersLeaveTypesRoute
@@ -2577,15 +2375,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
   AuthenticatedCapitalIndexRoute: typeof AuthenticatedCapitalIndexRoute
   AuthenticatedFrontOfficeIndexRoute: typeof AuthenticatedFrontOfficeIndexRoute
-  AuthenticatedLabIndexRoute: typeof AuthenticatedLabIndexRoute
-  AuthenticatedMagazineIndexRoute: typeof AuthenticatedMagazineIndexRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
   AuthenticatedInventoryPurchaseInvoicesIdRoute: typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
   AuthenticatedInventoryPurchaseInvoicesNewRoute: typeof AuthenticatedInventoryPurchaseInvoicesNewRoute
-  AuthenticatedLabOrdersOrderIdRoute: typeof AuthenticatedLabOrdersOrderIdRoute
-  AuthenticatedLabOrdersNewRoute: typeof AuthenticatedLabOrdersNewRoute
-  AuthenticatedLabReportsOrderIdRoute: typeof AuthenticatedLabReportsOrderIdRoute
   AuthenticatedPurchasesGrnsGrnIdRoute: typeof AuthenticatedPurchasesGrnsGrnIdRoute
   AuthenticatedPurchasesGrnsNewRoute: typeof AuthenticatedPurchasesGrnsNewRoute
   AuthenticatedAccountsReportsIndexRoute: typeof AuthenticatedAccountsReportsIndexRoute
@@ -2597,7 +2390,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedInventoryReportsIndexRoute: typeof AuthenticatedInventoryReportsIndexRoute
   AuthenticatedInventoryRequisitionsIndexRoute: typeof AuthenticatedInventoryRequisitionsIndexRoute
   AuthenticatedInventoryTransfersIndexRoute: typeof AuthenticatedInventoryTransfersIndexRoute
-  AuthenticatedLabMastersIndexRoute: typeof AuthenticatedLabMastersIndexRoute
   AuthenticatedPurchasesGrnsIndexRoute: typeof AuthenticatedPurchasesGrnsIndexRoute
   AuthenticatedAccountsReportsEditIdRoute: typeof AuthenticatedAccountsReportsEditIdRoute
   AuthenticatedPurchasesGrnsGrnIdEditRoute: typeof AuthenticatedPurchasesGrnsGrnIdEditRoute
@@ -2634,8 +2426,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
   AuthenticatedFrontOfficeNewRoute: AuthenticatedFrontOfficeNewRoute,
-  AuthenticatedFrontOfficeOpdCollectionRoute:
-    AuthenticatedFrontOfficeOpdCollectionRoute,
   AuthenticatedFrontOfficePatientsRoute: AuthenticatedFrontOfficePatientsRoute,
   AuthenticatedFrontOfficeRazorpayReconciliationRoute:
     AuthenticatedFrontOfficeRazorpayReconciliationRoute,
@@ -2656,9 +2446,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedInventoryPosRoute: AuthenticatedInventoryPosRoute,
   AuthenticatedInventoryStockRoute: AuthenticatedInventoryStockRoute,
   AuthenticatedInventoryStoresRoute: AuthenticatedInventoryStoresRoute,
-  AuthenticatedMagazineIdRoute: AuthenticatedMagazineIdRoute,
-  AuthenticatedMagazineEditorsRoute: AuthenticatedMagazineEditorsRoute,
-  AuthenticatedMagazineSettingsRoute: AuthenticatedMagazineSettingsRoute,
   AuthenticatedMastersBanksRoute: AuthenticatedMastersBanksRoute,
   AuthenticatedMastersDepartmentsRoute: AuthenticatedMastersDepartmentsRoute,
   AuthenticatedMastersLeaveTypesRoute: AuthenticatedMastersLeaveTypesRoute,
@@ -2679,17 +2466,12 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
   AuthenticatedCapitalIndexRoute: AuthenticatedCapitalIndexRoute,
   AuthenticatedFrontOfficeIndexRoute: AuthenticatedFrontOfficeIndexRoute,
-  AuthenticatedLabIndexRoute: AuthenticatedLabIndexRoute,
-  AuthenticatedMagazineIndexRoute: AuthenticatedMagazineIndexRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
   AuthenticatedInventoryPurchaseInvoicesIdRoute:
     AuthenticatedInventoryPurchaseInvoicesIdRoute,
   AuthenticatedInventoryPurchaseInvoicesNewRoute:
     AuthenticatedInventoryPurchaseInvoicesNewRoute,
-  AuthenticatedLabOrdersOrderIdRoute: AuthenticatedLabOrdersOrderIdRoute,
-  AuthenticatedLabOrdersNewRoute: AuthenticatedLabOrdersNewRoute,
-  AuthenticatedLabReportsOrderIdRoute: AuthenticatedLabReportsOrderIdRoute,
   AuthenticatedPurchasesGrnsGrnIdRoute: AuthenticatedPurchasesGrnsGrnIdRoute,
   AuthenticatedPurchasesGrnsNewRoute: AuthenticatedPurchasesGrnsNewRoute,
   AuthenticatedAccountsReportsIndexRoute:
@@ -2710,7 +2492,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
     AuthenticatedInventoryRequisitionsIndexRoute,
   AuthenticatedInventoryTransfersIndexRoute:
     AuthenticatedInventoryTransfersIndexRoute,
-  AuthenticatedLabMastersIndexRoute: AuthenticatedLabMastersIndexRoute,
   AuthenticatedPurchasesGrnsIndexRoute: AuthenticatedPurchasesGrnsIndexRoute,
   AuthenticatedAccountsReportsEditIdRoute:
     AuthenticatedAccountsReportsEditIdRoute,

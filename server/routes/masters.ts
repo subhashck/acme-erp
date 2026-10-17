@@ -21,6 +21,7 @@ import {
   jsonBody,
   leaveTypeInput,
   requireAdmin,
+  requireAdminOrHr,
   roleTypeInput,
   shiftInput,
 } from "./shared.ts";
@@ -198,7 +199,7 @@ export const mastersRoutes = new Hono<AuthEnv>()
     const rows = await query.orderBy(departments.name).execute();
     return c.json(rows);
   })
-  .post("/masters/departments", requireAdmin, async (c) => {
+  .post("/masters/departments", requireAdminOrHr, async (c) => {
     const input = await jsonBody(c, departmentInput);
     const { headStaffId, subheadStaffId, ...deptData } = input;
 
@@ -230,7 +231,7 @@ export const mastersRoutes = new Hono<AuthEnv>()
 
     return c.json(row, 201);
   })
-  .put("/masters/departments/:id", requireAdmin, async (c) => {
+  .put("/masters/departments/:id", requireAdminOrHr, async (c) => {
     const { id } = idParam.parse(c.req.param());
     const input = await jsonBody(c, departmentInput);
     const { headStaffId, subheadStaffId, ...deptData } = input;

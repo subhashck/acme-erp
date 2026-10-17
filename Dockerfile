@@ -9,7 +9,7 @@ COPY package.json pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml* ./
 
 # Install dev & prod dependencies for build
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -28,11 +28,12 @@ COPY package.json pnpm-lock.yaml ./
 COPY pnpm-workspace.yaml* ./
 
 # Install all dependencies (tsx, typescript, drizzle-kit are devDependencies but needed for runtime/migration)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy build artifacts and server source
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
+COPY --from=builder /app/scripts/purge-erp-magazine.ts ./scripts/
 # Shared assessment helpers are imported by the API at runtime.
 COPY --from=builder /app/src/lib/exam-question-mix.ts /app/src/lib/cbt-certificate.ts ./src/lib/
 RUN pnpm exec tsx -e "Promise.all([import('./src/lib/exam-question-mix.ts'), import('./src/lib/cbt-certificate.ts')]).catch(error => { console.error(error); process.exit(1); })"

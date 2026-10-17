@@ -25,6 +25,9 @@ import {
   Tag,
   AlertCircle,
   Sparkles,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
@@ -163,6 +166,7 @@ function StudentFeeDueTrackingPage() {
   const [debouncedSearch, setDebouncedSearch] = React.useState<string>("");
   const [currentPage, setCurrentPage] = React.useState<number>(1);
   const [pageSize, setPageSize] = React.useState<number>(20);
+  const [sorting, setSorting] = React.useState<{ column: string; direction: "asc" | "desc" } | null>(null);
   const [expandedStudentIds, setExpandedStudentIds] = React.useState<Record<number, boolean>>({});
   const [expandedCompKeys, setExpandedCompKeys] = React.useState<Record<string, boolean>>({});
 
@@ -195,12 +199,16 @@ function StudentFeeDueTrackingPage() {
     pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number };
     metrics: { totalStudents: number; totalExpected: number; totalCollected: number; totalBalanceDue: number; overdueCount: number };
   }>({
-    queryKey: ["nursing", "fees", "due-dashboard", selectedBatchFilter, debouncedSearch, dueStatusFilter, currentPage, pageSize],
+    queryKey: ["nursing", "fees", "due-dashboard", selectedBatchFilter, debouncedSearch, dueStatusFilter, currentPage, pageSize, sorting],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedBatchFilter > 0) params.append("batchId", String(selectedBatchFilter));
       params.append("page", String(currentPage));
       params.append("pageSize", String(pageSize));
+      if (sorting) {
+        params.set("sortBy", sorting.column);
+        params.set("sortDirection", sorting.direction);
+      }
       if (debouncedSearch) params.append("search", debouncedSearch);
       if (dueStatusFilter !== "all") params.append("dueStatus", dueStatusFilter);
       const res = await fetch(`/api/nursing/fees/due-dashboard?${params.toString()}`);
@@ -227,12 +235,12 @@ function StudentFeeDueTrackingPage() {
   const overdueCount = metrics?.overdueCount || 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-w-0 p-3 sm:p-6 space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <DollarSign className="h-6 w-6 text-teal-600" />
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-start gap-2">
+            <DollarSign className="h-6 w-6 shrink-0 text-teal-600" />
             Student Fee Due & Payment Tracking
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -240,7 +248,7 @@ function StudentFeeDueTrackingPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0 [&>a]:min-h-11">
           <Button variant="outline" asChild size="sm">
             <Link to="/college/fee-structures" className="flex items-center gap-1.5 text-xs">
               <Layers size={14} /> Fee Structures
@@ -361,18 +369,18 @@ function StudentFeeDueTrackingPage() {
 
       {/* Main Student Dues Table Card */}
       <Card>
-        <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+        <CardHeader className="flex flex-col gap-3">
           <div>
             <CardTitle className="text-base font-semibold">Student-Level Fee & Due Schedule</CardTitle>
             <CardDescription>Click on any student row or expand details to inspect chronological term due dates and paid transactions</CardDescription>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 [&>select]:min-w-0 [&>select]:min-h-11">
+            <div className="relative min-w-0">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
               <input
                 type="text"
                 placeholder="Search student or enrollment no..."
-                className="pl-8 pr-3 py-1.5 border rounded-md text-xs bg-background w-48 sm:w-64"
+                className="min-h-11 w-full pl-8 pr-3 py-1.5 border rounded-md text-xs bg-background"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -401,7 +409,7 @@ function StudentFeeDueTrackingPage() {
             </select>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 px-3 sm:px-5">
           {isLoadingDashboard ? (
             <div className="py-8 text-center text-sm text-muted-foreground">Loading student fee dues...</div>
           ) : (dueDashboard?.studentDues || []).length === 0 ? (
@@ -409,22 +417,37 @@ function StudentFeeDueTrackingPage() {
           ) : (
             <div className="space-y-4">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border-collapse">
+                <table className="w-full min-w-280 text-sm text-left border-collapse [&_td]:align-top">
                   <thead>
                     <tr className="border-b bg-muted/50 text-xs font-semibold text-muted-foreground">
                       <th className="p-3 w-8"></th>
-                      <th className="p-3">Enrollment No</th>
-                      <th className="p-3">Student Name</th>
-                      <th className="p-3">Batch & Quota</th>
-                      <th className="p-3">Total Expected</th>
-                      <th className="p-3">Paid Amount</th>
-                      <th className="p-3">Balance Due</th>
-                      <th className="p-3">Next / Active Due Date</th>
-                      <th className="p-3">Status</th>
+                      <th className="p-3 whitespace-nowrap" scope="col">Sl.No.</th>
+                      {[
+                        ["enrollmentNo", "Enrollment No"], ["name", "Student Name"],
+                        ["batchName", "Batch & Quota"], ["totalFee", "Total Expected"],
+                        ["paidAmount", "Paid Amount"], ["balanceDue", "Balance Due"],
+                        ["feeDueDate", "Next / Active Due Date"], ["dueStatus", "Status"],
+                      ].map(([column, label]) => {
+                        const active = sorting?.column === column;
+                        const SortIcon = active ? (sorting.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                        const numeric = ["totalFee", "paidAmount", "balanceDue"].includes(column);
+                        return (
+                          <th key={column} scope="col" className={cn("p-3", numeric && "text-right")} aria-sort={active ? (sorting.direction === "asc" ? "ascending" : "descending") : "none"}>
+                            <button type="button" className="inline-flex min-h-11 items-center gap-1 text-left rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              aria-label={`Sort ${label} ${active && sorting.direction === "asc" ? "descending" : "ascending"}`}
+                              onClick={() => {
+                                setSorting({ column, direction: active && sorting.direction === "asc" ? "desc" : "asc" });
+                                setCurrentPage(1);
+                              }}>
+                              {label}<SortIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            </button>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {(dueDashboard?.studentDues || []).map((st) => {
+                    {(dueDashboard?.studentDues || []).map((st, index) => {
                     const isExpanded = !!expandedStudentIds[st.studentId];
                     return (
                       <React.Fragment key={st.studentId}>
@@ -447,6 +470,7 @@ function StudentFeeDueTrackingPage() {
                               {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                             </Button>
                           </td>
+                          <td className="p-3 tabular-nums text-muted-foreground">{((pagination?.page ?? currentPage) - 1) * (pagination?.pageSize ?? pageSize) + index + 1}</td>
                           <td className="p-3 font-semibold text-teal-600 dark:text-teal-400">
                             <Link
                               to="/college/student/$id"
@@ -466,11 +490,11 @@ function StudentFeeDueTrackingPage() {
                             <div>{st.batchName}</div>
                             <div className="text-muted-foreground capitalize">{st.quotaCategory} Quota</div>
                           </td>
-                          <td className="p-3 font-medium">₹{st.totalFee.toLocaleString()}</td>
-                          <td className="p-3 text-emerald-600 dark:text-emerald-400 font-medium">
+                          <td className="p-3 text-right tabular-nums font-medium">₹{st.totalFee.toLocaleString()}</td>
+                          <td className="p-3 text-right tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">
                             ₹{st.paidAmount.toLocaleString()}
                           </td>
-                          <td className="p-3 font-bold text-foreground">
+                          <td className="p-3 text-right tabular-nums font-bold text-foreground">
                             {st.balanceDue > 0 ? (
                               <span className="text-rose-600 dark:text-rose-400">₹{st.balanceDue.toLocaleString()}</span>
                             ) : (
@@ -502,7 +526,7 @@ function StudentFeeDueTrackingPage() {
                         {/* Inline Expanded Row */}
                         {isExpanded && (
                           <tr className="bg-muted/15 border-b">
-                            <td colSpan={9} className="p-4 pl-10 pr-6">
+                            <td colSpan={10} className="p-3 sm:p-4 sm:pl-10 sm:pr-6">
                               <div className="space-y-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3 bg-card p-3 rounded-lg border">
                                   <div className="flex items-center gap-4 text-xs">

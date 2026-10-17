@@ -8,13 +8,21 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PublishedMagazineSection } from "../components/PublishedMagazineSection";
 
+const isMagazineReturnPath = (path: string) => path === "/magazine/admin" || path.startsWith("/magazine/admin/");
+
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
     redirect: typeof search.redirect === "string" ? search.redirect : "/"
   }),
-  beforeLoad: async () => {
+  beforeLoad: async ({ search }) => {
     const session = await authClient.getSession();
-    if (session.data) throw redirect({ to: "/" });
+    if (session.data) {
+      if (isMagazineReturnPath(search.redirect)) {
+        window.location.replace(search.redirect);
+        return;
+      }
+      throw redirect({ to: "/" });
+    }
   },
   component: Login
 });
@@ -35,6 +43,10 @@ function Login() {
     setIsSubmitting(false);
     if (result.error) {
       setError(result.error.message ?? "Unable to sign in");
+      return;
+    }
+    if (isMagazineReturnPath(redirect)) {
+      window.location.assign(redirect);
       return;
     }
     await navigate({ to: redirect || "/" });

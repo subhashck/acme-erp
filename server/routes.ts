@@ -23,9 +23,8 @@ import { nursingRoutes } from "./routes/nursing.ts";
 import { inventoryRoutes } from "./routes/inventory.ts";
 import { transfersRoutes } from "./routes/transfers.ts";
 import { posRoutes } from "./routes/pos.ts";
-import { magazineRoutes } from "./routes/magazine.ts";
+import { magazineIntegrationRoutes } from "./routes/magazine-integration.ts";
 import { frontOfficeRoutes } from "./routes/front-office.ts";
-import { labRoutes } from "./routes/lab.ts";
 import { capitalRoutes } from "./routes/capital.ts";
 import { skillAssessmentRoutes } from "./routes/skill-assessment.ts";
 
@@ -53,9 +52,8 @@ export const api = new Hono<AuthEnv>()
   .route("/", inventoryRoutes)
   .route("/", transfersRoutes)
   .route("/", posRoutes)
-  .route("/", magazineRoutes)
+  .route("/", magazineIntegrationRoutes)
   .route("/", frontOfficeRoutes)
-  .route("/", labRoutes)
   .route("/", capitalRoutes)
   .route("/", skillAssessmentRoutes);
 

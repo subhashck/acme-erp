@@ -95,7 +95,12 @@ export type LeaveDetailRow = {
   reason: string;
   status: string;
   reviewerNote?: string | null;
+  supervisorReviewerNote?: string | null;
+  supervisorReviewedByName?: string | null;
+  supervisorReviewedAt?: string | null;
   reviewedAt?: string | null;
+  reviewedByStaffId?: number | null;
+  reviewedByName?: string | null;
   createdAt: string;
   staffId: number;
   employeeCode: string;

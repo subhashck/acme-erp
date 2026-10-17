@@ -14,8 +14,6 @@ export interface HospitalDbSettings {
   address?: string | null;
   emergencyPhone?: string | null;
   opdPhone?: string | null;
-  editorialDivision?: string | null;
-  copyrightText?: string | null;
   showPublishedMagazines: boolean;
   enableStaffCompetencyModule: boolean;
 }
@@ -29,8 +27,6 @@ const DEFAULT_SETTINGS: HospitalDbSettings = {
   website: "www.acmehospital.com",
   emergencyPhone: "+91 98765 43211",
   opdPhone: "+91 98765 43212",
-  editorialDivision: "ACME Healthcare Communications & Editorial Division",
-  copyrightText: "ACME Monthly Electronic Magazine. All rights reserved.",
   showPublishedMagazines: false,
   enableStaffCompetencyModule: true,
 };
@@ -52,8 +48,6 @@ export async function ensureHospitalSettingsTable(): Promise<void> {
         "address" TEXT DEFAULT '123 Healthcare Ave, Medical District, Healthcare Campus',
         "emergency_phone" TEXT DEFAULT '+91 98765 43211',
         "opd_phone" TEXT DEFAULT '+91 98765 43212',
-        "editorial_division" TEXT DEFAULT 'ACME Healthcare Communications & Editorial Division',
-        "copyright_text" TEXT DEFAULT 'ACME Monthly Electronic Magazine. All rights reserved.',
         "show_published_magazines" BOOLEAN NOT NULL DEFAULT FALSE,
         "enable_staff_competency_module" BOOLEAN NOT NULL DEFAULT TRUE,
         "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),

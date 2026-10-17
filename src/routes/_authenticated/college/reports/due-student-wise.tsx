@@ -36,8 +36,9 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import XLSX from "xlsx-js-style";
+import { buildStudentDuesWorkbook } from "@/lib/student-dues-export";
+import { ReportSortHeader, sortReportRows, type ReportSort } from "@/components/college/ReportSortHeader";
 
 export const Route = createFileRoute("/_authenticated/college/reports/due-student-wise")({
   component: DueReportStudentWisePage,
@@ -76,9 +77,33 @@ interface ReportData {
   };
 }
 
+interface BatchOption {
+  id: number;
+  courseId: number;
+  courseName: string | null;
+  academicYear: string;
+  section: string | null;
+}
+
+type StudentSortColumn = "enrollmentNo" | "name" | "courseName" | "quotaCategory" | "demandedFee" | "totalPaid" | "balanceDue" | "status";
+const studentSortValues: Record<StudentSortColumn, (row: StudentDueRow) => string | number> = {
+  enrollmentNo: row => row.enrollmentNo || "",
+  name: row => row.name || "",
+  courseName: row => `${row.courseName || ""} ${row.batchName || ""}`,
+  quotaCategory: row => row.quotaCategory || "",
+  demandedFee: row => Number(row.demandedFee) || 0,
+  totalPaid: row => Number(row.totalPaid) || 0,
+  balanceDue: row => Number(row.balanceDue) || 0,
+  status: row => ({ paid: "Fully Paid", partial: "Partial Dues", unpaid: "Unpaid" })[row.status],
+};
+
 export default function DueReportStudentWisePage() {
   const [courseFilter, setCourseFilter] = React.useState("all");
-  const [academicYearFilter, setAcademicYearFilter] = React.useState("all");
+  const [batchFilter, setBatchFilter] = React.useState("all");
+  const [sorting, setSorting] = React.useState<ReportSort<StudentSortColumn>>(null);
+  const sortStudents = (column: StudentSortColumn) => setSorting(previous => ({
+    column, direction: previous?.column === column && previous.direction === "asc" ? "desc" : "asc"
+  }));
   const [quotaFilter, setQuotaFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -104,12 +129,29 @@ export default function DueReportStudentWisePage() {
     },
   });
 
+  const { data: batches = [] } = useQuery<BatchOption[]>({
+    queryKey: ["nursing", "batches"],
+    queryFn: async () => {
+      const res = await fetch("/api/nursing/batches");
+      if (!res.ok) throw new Error("Failed to fetch batches");
+      return res.json();
+    },
+  });
+  const availableBatches = batches.filter(batch => courseFilter === "all" || batch.courseId === Number(courseFilter));
+  const changeCourse = (value: string) => {
+    setCourseFilter(value);
+    // A batch from another course must not silently keep the report empty.
+    if (value !== "all" && batchFilter !== "all" && !batches.some(batch => String(batch.id) === batchFilter && batch.courseId === Number(value))) {
+      setBatchFilter("all");
+    }
+  };
+
   const { data, isLoading, isFetching, refetch } = useQuery<ReportData>({
-    queryKey: ["nursing", "reports", "due-student-wise", courseFilter, academicYearFilter, quotaFilter, statusFilter, debouncedSearch],
+    queryKey: ["nursing", "reports", "due-student-wise", courseFilter, batchFilter, quotaFilter, statusFilter, debouncedSearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (courseFilter !== "all") params.set("courseId", courseFilter);
-      if (academicYearFilter !== "all") params.set("academicYear", academicYearFilter);
+      if (batchFilter !== "all") params.set("batchId", batchFilter);
       if (quotaFilter !== "all") params.set("quotaCategory", quotaFilter);
       if (statusFilter !== "all") params.set("dueStatus", statusFilter);
       if (debouncedSearch) params.set("search", debouncedSearch);
@@ -130,60 +172,25 @@ export default function DueReportStudentWisePage() {
     unpaidCount: 0,
   };
 
-  const students = data?.students || [];
+  const students = React.useMemo(() => sortReportRows(data?.students || [], sorting, studentSortValues), [data?.students, sorting]);
 
-  // Generate PDF Document
-  const generatePDFDoc = (targetStudents = students) => {
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("ACME COLLEGE OF NURSING", 14, 16);
+  const generateExcelWorkbook = (targetStudents = students) => buildStudentDuesWorkbook(targetStudents, {
+    Course: courseFilter === "all" ? "All Courses" : courses.find(course => String(course.id) === courseFilter)?.name || courseFilter,
+    Batch: batchFilter === "all" ? "All Batches" : (() => {
+      const batch = batches.find(item => String(item.id) === batchFilter);
+      return batch ? [batch.courseName, batch.academicYear, batch.section].filter(Boolean).join(" — ") : batchFilter;
+    })(),
+    Quota: quotaFilter === "all" ? "All Quotas" : quotaFilter,
+    Status: statusFilter === "all" ? "All Statuses" : statusFilter,
+    Search: debouncedSearch || "None",
+  });
 
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text("Student Wise Fee Dues Report", 14, 24);
-
-    doc.setFontSize(9);
-    doc.text(`Generated Date: ${new Date().toLocaleString()}`, 14, 30);
-
-    // Summary Box
-    doc.setFillColor(245, 247, 250);
-    doc.rect(14, 34, 182, 22, "F");
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Total Students: ${summary.totalStudents}`, 18, 42);
-    doc.text(`Demanded Fee: Rs. ${summary.totalDemanded.toLocaleString()}`, 18, 50);
-    doc.text(`Total Outstanding Dues: Rs. ${summary.totalOutstandingDues.toLocaleString()}`, 110, 42);
-    doc.text(`Total Collected: Rs. ${summary.totalCollected.toLocaleString()}`, 110, 50);
-
-    // Table
-    autoTable(doc, {
-      startY: 60,
-      head: [["Enrollment #", "Student Name", "Course & Batch", "Quota", "Demanded (Rs.)", "Paid (Rs.)", "Due (Rs.)", "Status"]],
-      body: targetStudents.map((s) => [
-        s.enrollmentNo,
-        s.name,
-        `${s.courseName} (${s.batchName})`,
-        s.quotaCategory.toUpperCase(),
-        s.demandedFee.toLocaleString(),
-        s.totalPaid.toLocaleString(),
-        s.balanceDue.toLocaleString(),
-        s.status.toUpperCase(),
-      ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [13, 148, 136] }, // Teal
-    });
-
-    return doc;
-  };
-
-  const handleDownloadPDF = () => {
+  const handleDownloadExcel = () => {
     try {
-      const doc = generatePDFDoc();
-      doc.save(`ACON-Student-Due-Report-${new Date().toISOString().split("T")[0]}.pdf`);
+      XLSX.writeFile(generateExcelWorkbook(), `ACON-Student-Due-Report-${new Date().toISOString().split("T")[0]}.xlsx`);
       toast.success("Student due report downloaded successfully!");
-    } catch (e: any) {
-      toast.error("Failed to generate PDF: " + e.message);
+    } catch (error: any) {
+      toast.error("Failed to generate Excel: " + error.message);
     }
   };
 
@@ -207,36 +214,36 @@ export default function DueReportStudentWisePage() {
     if (cleanPhone.length === 10) cleanPhone = `91${cleanPhone}`;
 
     try {
-      let doc: jsPDF;
+      let workbook: ReturnType<typeof generateExcelWorkbook>;
       let filename: string;
       let msgText: string;
 
       if (selectedStudent) {
-        doc = generatePDFDoc([selectedStudent]);
-        filename = `Due-Statement-${selectedStudent.enrollmentNo}.pdf`;
-        msgText = `*ACME COLLEGE OF NURSING*\n*Student Fee Due Statement*\nStudent: ${selectedStudent.name} (${selectedStudent.enrollmentNo})\nCourse: ${selectedStudent.courseName}\nTotal Fee Demanded: ₹${selectedStudent.demandedFee.toLocaleString()}\nTotal Fee Paid: ₹${selectedStudent.totalPaid.toLocaleString()}\n*Net Outstanding Balance Due: ₹${selectedStudent.balanceDue.toLocaleString()}*\n\nOfficial PDF Statement attached.`;
+        workbook = generateExcelWorkbook([selectedStudent]);
+        filename = `Due-Statement-${selectedStudent.enrollmentNo}.xlsx`;
+        msgText = `*ACME COLLEGE OF NURSING*\n*Student Fee Due Statement*\nStudent: ${selectedStudent.name} (${selectedStudent.enrollmentNo})\nCourse: ${selectedStudent.courseName}\nTotal Fee Demanded: ₹${selectedStudent.demandedFee.toLocaleString()}\nTotal Fee Paid: ₹${selectedStudent.totalPaid.toLocaleString()}\n*Net Outstanding Balance Due: ₹${selectedStudent.balanceDue.toLocaleString()}*\n\nOfficial Excel Statement attached.`;
       } else {
-        doc = generatePDFDoc();
-        filename = `ACON-Student-Due-Report.pdf`;
-        msgText = `*ACME COLLEGE OF NURSING*\n*Student Wise Due Report Summary*\nTotal Enrolled Students: ${summary.totalStudents}\nTotal Demanded Fee: ₹${summary.totalDemanded.toLocaleString()}\nTotal Collected: ₹${summary.totalCollected.toLocaleString()}\n*Total Outstanding Dues: ₹${summary.totalOutstandingDues.toLocaleString()}*\n\nDetailed PDF Report attached.`;
+        workbook = generateExcelWorkbook();
+        filename = `ACON-Student-Due-Report.xlsx`;
+        msgText = `*ACME COLLEGE OF NURSING*\n*Student Wise Due Report Summary*\nTotal Enrolled Students: ${summary.totalStudents}\nTotal Demanded Fee: ₹${summary.totalDemanded.toLocaleString()}\nTotal Collected: ₹${summary.totalCollected.toLocaleString()}\n*Total Outstanding Dues: ₹${summary.totalOutstandingDues.toLocaleString()}*\n\nDetailed Excel Report attached.`;
       }
 
-      const pdfBlob = doc.output("blob");
-      const pdfFile = new File([pdfBlob], filename, { type: "application/pdf" });
+      const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const excelFile = new File([excelBuffer], filename, { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 
-      if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+      if (typeof navigator !== "undefined" && navigator.canShare && navigator.canShare({ files: [excelFile] })) {
         await navigator.share({
-          files: [pdfFile],
+          files: [excelFile],
           title: filename,
           text: msgText,
         });
-        toast.success("Due report PDF shared via WhatsApp!");
+        toast.success("Due report Excel shared via WhatsApp!");
         setWhatsAppModalOpen(false);
         return;
       }
 
-      doc.save(filename);
-      toast.info("Report PDF downloaded! Opening WhatsApp chat...");
+      XLSX.writeFile(workbook, filename);
+      toast.info("Report Excel downloaded! Opening WhatsApp chat...");
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msgText)}`;
       window.open(url, "_blank");
       setWhatsAppModalOpen(false);
@@ -278,11 +285,11 @@ export default function DueReportStudentWisePage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleDownloadPDF}
+            onClick={handleDownloadExcel}
             className="gap-1.5 text-xs h-9 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950"
           >
             <Download size={14} />
-            Export PDF
+            Export Excel
           </Button>
 
           <Button
@@ -291,7 +298,7 @@ export default function DueReportStudentWisePage() {
             className="gap-1.5 text-xs h-9 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
           >
             <MessageCircle size={14} />
-            WhatsApp PDF
+            WhatsApp Excel
           </Button>
         </div>
       </div>
@@ -375,7 +382,7 @@ export default function DueReportStudentWisePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <div>
               <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Course</label>
-              <Select value={courseFilter} onValueChange={setCourseFilter}>
+              <Select value={courseFilter} onValueChange={changeCourse}>
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue placeholder="All Courses" />
                 </SelectTrigger>
@@ -389,15 +396,18 @@ export default function DueReportStudentWisePage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Academic Year</label>
-              <Select value={academicYearFilter} onValueChange={setAcademicYearFilter}>
+              <label className="text-[11px] font-semibold text-muted-foreground block mb-1">Batch</label>
+              <Select value={batchFilter} onValueChange={setBatchFilter}>
                 <SelectTrigger className="h-9 text-xs">
-                  <SelectValue placeholder="All Academic Years" />
+                  <SelectValue placeholder="All Batches" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all" className="text-xs">All Years</SelectItem>
-                  <SelectItem value="2025-2026" className="text-xs">2025-2026</SelectItem>
-                  <SelectItem value="2026-2027" className="text-xs">2026-2027</SelectItem>
+                  <SelectItem value="all" className="text-xs">All Batches</SelectItem>
+                  {availableBatches.map(batch => (
+                    <SelectItem key={batch.id} value={String(batch.id)} className="text-xs">
+                      {batch.courseName} — {batch.academicYear}{batch.section ? ` (${batch.section})` : ""}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -470,33 +480,35 @@ export default function DueReportStudentWisePage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground border-b font-semibold">
-                  <th className="p-3">Enrollment #</th>
-                  <th className="p-3">Student Name</th>
-                  <th className="p-3">Course & Batch</th>
-                  <th className="p-3 text-center">Quota</th>
-                  <th className="p-3 text-right">Demanded Fee</th>
-                  <th className="p-3 text-right">Fee Paid</th>
-                  <th className="p-3 text-right">Outstanding Due</th>
-                  <th className="p-3 text-center">Status</th>
+                  <th scope="col" className="p-3 whitespace-nowrap">Sl. No.</th>
+                  <ReportSortHeader column="enrollmentNo" label="Enrollment #" sorting={sorting} onSort={sortStudents} />
+                  <ReportSortHeader column="name" label="Student Name" sorting={sorting} onSort={sortStudents} />
+                  <ReportSortHeader column="courseName" label="Course & Batch" sorting={sorting} onSort={sortStudents} />
+                  <ReportSortHeader column="quotaCategory" label="Quota" sorting={sorting} onSort={sortStudents} align="center" />
+                  <ReportSortHeader column="demandedFee" label="Demanded Fee" sorting={sorting} onSort={sortStudents} align="right" />
+                  <ReportSortHeader column="totalPaid" label="Fee Paid" sorting={sorting} onSort={sortStudents} align="right" />
+                  <ReportSortHeader column="balanceDue" label="Outstanding Due" sorting={sorting} onSort={sortStudents} align="right" />
+                  <ReportSortHeader column="status" label="Status" sorting={sorting} onSort={sortStudents} align="center" />
                   <th className="p-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={10} className="p-6 text-center text-muted-foreground">
                       Loading student dues directory...
                     </td>
                   </tr>
                 ) : students.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-6 text-center text-muted-foreground">
+                    <td colSpan={10} className="p-6 text-center text-muted-foreground">
                       No student records found matching selected filters.
                     </td>
                   </tr>
                 ) : (
-                  students.map((st) => (
+                  students.map((st, index) => (
                     <tr key={st.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-3 tabular-nums text-muted-foreground">{index + 1}</td>
                       <td className="p-3 font-mono font-semibold text-foreground">{st.enrollmentNo}</td>
                       <td className="p-3 font-semibold text-foreground">
                         <div>
@@ -554,7 +566,7 @@ export default function DueReportStudentWisePage() {
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                            title="Send Due PDF Statement via WhatsApp"
+                            title="Send Due Excel Statement via WhatsApp"
                             onClick={() => handleOpenWhatsAppModal(st)}
                           >
                             <MessageCircle size={14} />
@@ -580,8 +592,8 @@ export default function DueReportStudentWisePage() {
             </DialogTitle>
             <DialogDescription className="text-xs">
               {selectedStudent
-                ? `Send fee due statement PDF for ${selectedStudent.name} (${selectedStudent.enrollmentNo}).`
-                : "Send complete student-wise due report PDF."}
+                ? `Send fee due statement Excel for ${selectedStudent.name} (${selectedStudent.enrollmentNo}).`
+                : "Send complete student-wise due report Excel."}
             </DialogDescription>
           </DialogHeader>
 
@@ -606,7 +618,7 @@ export default function DueReportStudentWisePage() {
             </Button>
             <Button size="sm" onClick={handleShareWhatsApp} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
               <Share2 size={14} />
-              Send PDF via WhatsApp
+              Send Excel via WhatsApp
             </Button>
           </DialogFooter>
         </DialogContent>

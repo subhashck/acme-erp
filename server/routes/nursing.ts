@@ -1,4 +1,4 @@
-import { and, or, desc, eq, ne, sql, like, gte, lte, count } from "drizzle-orm";
+import { and, or, asc, desc, eq, ne, sql, like, gte, lte, count } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -615,6 +615,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
   .get("/nursing/applicants", async (c) => {
     const status = c.req.query("status");
     const courseId = c.req.query("courseId");
+    const batchId = c.req.query("batchId");
     const quotaCategory = c.req.query("quotaCategory");
     const search = c.req.query("search")?.trim().toLowerCase();
     const academicYear = c.req.query("academicYear");
@@ -693,11 +694,28 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .leftJoin(nursingCourses, eq(nursingApplicants.courseId, nursingCourses.id))
       .leftJoin(nursingReferrers, eq(nursingApplicants.referrerId, nursingReferrers.id));
 
-    const rows = await query.orderBy(desc(nursingApplicants.id)).execute();
+    const sortColumns = {
+      applicationNo: nursingApplicants.applicationNo,
+      name: sql`lower(${nursingApplicants.name})`,
+      courseName: sql`lower(coalesce(${nursingCourses.name}, 'B.Sc Nursing'))`,
+      entranceMeritScore: nursingApplicants.entranceMeritScore,
+      status: nursingApplicants.status,
+      seatBookingAmount: sql`coalesce(${nursingApplicants.seatBookingAmount}, 0)`,
+    };
+    const sortBy = c.req.query("sortBy");
+    const sortColumn = sortBy && Object.prototype.hasOwnProperty.call(sortColumns, sortBy)
+      ? sortColumns[sortBy as keyof typeof sortColumns]
+      : undefined;
+    const sortOrder = c.req.query("sortDirection") === "desc" ? desc : asc;
+    const rows = await query.orderBy(
+      ...(sortColumn ? [sortOrder(sortColumn)] : []),
+      desc(nursingApplicants.id),
+    ).execute();
 
     let filtered = rows;
     if (status && status !== "all") filtered = filtered.filter(r => r.status === status);
     if (courseId && courseId !== "0" && courseId !== "all") filtered = filtered.filter(r => r.courseId === Number(courseId));
+    if (batchId && batchId !== "0" && batchId !== "all") filtered = filtered.filter(r => r.batchId === Number(batchId));
     if (quotaCategory && quotaCategory !== "all") filtered = filtered.filter(r => r.quotaCategory === quotaCategory);
     if (academicYear && academicYear !== "all") filtered = filtered.filter(r => r.academicYear === academicYear);
     if (search) {
@@ -742,7 +760,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
       z.object({
         batchId: z.coerce.number().int().positive().optional().nullable(),
         courseId: z.coerce.number().int().positive("Select a valid program course"),
-        academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 1}`; }),
+        academicYear: z.string().min(1).default(() => getAcademicYear()),
         name: z.string().min(1, "Applicant name is required"),
         email: z.string().optional().or(z.literal("")).nullable(),
         phone: z.string().transform((v) => (v ? v.replace(/\D/g, "") : "")).refine((v) => v.length === 10, "Student contact number must be exactly 10 digits"),
@@ -1511,6 +1529,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const courseId = c.req.query("courseId");
     const status = c.req.query("status");
     const gender = c.req.query("gender");
+    const quotaCategory = c.req.query("quotaCategory");
     const search = c.req.query("search")?.trim().toLowerCase();
     const academicYear = c.req.query("academicYear");
     const pageParam = c.req.query("page");
@@ -1591,6 +1610,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
     if (courseId && courseId !== "all" && courseId !== "0") filtered = filtered.filter(r => r.courseId === Number(courseId));
     if (status && status !== "all") filtered = filtered.filter(r => r.status === status);
     if (gender && gender !== "all") filtered = filtered.filter(r => (r.gender || "").toLowerCase() === gender.toLowerCase());
+    if (quotaCategory && quotaCategory !== "all") filtered = filtered.filter(r => (r.quotaCategory || "general").toLowerCase() === quotaCategory.toLowerCase());
     if (academicYear && academicYear !== "all") filtered = filtered.filter(r => r.academicYear === academicYear);
     if (search) {
       filtered = filtered.filter(r =>
@@ -1604,6 +1624,23 @@ export const nursingRoutes = new Hono<AuthEnv>()
         (r.motherName || "").toLowerCase().includes(search) ||
         (r.guardianName || "").toLowerCase().includes(search)
       );
+    }
+
+    const sortValues = {
+      enrollmentNo: (row: typeof rows[number]) => row.enrollmentNo || "",
+      name: (row: typeof rows[number]) => row.name || "",
+      aadharNo: (row: typeof rows[number]) => `${row.aadharNo || ""} ${row.quotaCategory || "general"}`,
+      courseName: (row: typeof rows[number]) => row.courseName || "",
+      batch: (row: typeof rows[number]) => `${row.academicYear || ""} ${row.section || ""}`,
+      parents: (row: typeof rows[number]) => `${row.fatherName || ""} ${row.motherName || ""} ${row.guardianName || ""}`,
+      status: (row: typeof rows[number]) => row.status || "",
+    };
+    const sortBy = c.req.query("sortBy");
+    if (sortBy && Object.prototype.hasOwnProperty.call(sortValues, sortBy)) {
+      const value = sortValues[sortBy as keyof typeof sortValues];
+      const direction = c.req.query("sortDirection") === "desc" ? -1 : 1;
+      const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+      filtered = [...filtered].sort((left, right) => direction * collator.compare(value(left), value(right)) || right.id - left.id);
     }
 
     if (pageParam !== undefined || pageSizeParam !== undefined) {
@@ -2305,6 +2342,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
 
   .get("/nursing/fees/transactions", async (c) => {
     const studentId = c.req.query("studentId");
+    const batchId = c.req.query("batchId");
     const paymentMode = c.req.query("paymentMode");
     const search = c.req.query("search")?.trim().toLowerCase() || "";
     const startDate = c.req.query("startDate");
@@ -2322,6 +2360,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
         applicantId: nursingFeeTransactions.applicantId,
         studentName: sql<string>`COALESCE(${nursingStudents.name}, ${nursingApplicants.name})`,
         enrollmentNo: sql<string>`COALESCE(${nursingStudents.enrollmentNo}, ${nursingApplicants.applicationNo})`,
+        batchId: sql<number>`COALESCE(${nursingStudents.batchId}, ${nursingApplicants.batchId})`,
         invoiceNo: nursingFeeTransactions.invoiceNo,
         receiptNumber: nursingFeeTransactions.receiptNumber,
         feeType: nursingFeeTransactions.feeType,
@@ -2346,6 +2385,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
     let filtered = rows;
     if (studentId && !isNaN(Number(studentId))) {
       filtered = filtered.filter(r => r.studentId === Number(studentId));
+    }
+    if (batchId && batchId !== "0" && batchId !== "all") {
+      filtered = filtered.filter(r => r.batchId === Number(batchId));
     }
     if (paymentMode && paymentMode !== "all") {
       filtered = filtered.filter(r => (r.paymentMode || "").toLowerCase() === paymentMode.toLowerCase());
@@ -2377,6 +2419,37 @@ export const nursingRoutes = new Hono<AuthEnv>()
           feeType.includes(search) ||
           remarksStr.includes(search)
         );
+      });
+    }
+
+    const sortBy = c.req.query("sortBy");
+    const direction = c.req.query("sortDirection") === "desc" ? -1 : 1;
+    const sortValues = {
+      studentName: (tx: typeof rows[number]) => tx.studentName || "",
+      enrollmentNo: (tx: typeof rows[number]) => tx.enrollmentNo || "",
+      period: (tx: typeof rows[number]) => {
+        const details = parseRemarks(tx.remarks);
+        if (details?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking")) return "Provisional Booking";
+        return details?.periodLabel || (details?.academicYear ? `AY ${details.academicYear}${details.billingPeriodValue ? ` • ${details.billingPeriodValue}` : ""}` : "");
+      },
+      feeType: (tx: typeof rows[number]) => parseRemarks(tx.remarks)?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking") ? "Seat Booking Advance" : tx.feeType || "Course Fee",
+      discounts: (tx: typeof rows[number]) => {
+        const details = parseRemarks(tx.remarks);
+        return toNum(details?.discountAmount) + toNum(details?.advanceAdjustedAmount);
+      },
+      amount: (tx: typeof rows[number]) => toNum(tx.amount),
+      paymentMode: (tx: typeof rows[number]) => tx.paymentMode || "",
+      paymentDate: (tx: typeof rows[number]) => tx.paymentDate || "",
+    };
+    if (sortBy && Object.prototype.hasOwnProperty.call(sortValues, sortBy)) {
+      const value = sortValues[sortBy as keyof typeof sortValues];
+      filtered = [...filtered].sort((a, b) => {
+        const left = value(a);
+        const right = value(b);
+        const comparison = typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+        return direction * comparison || b.id - a.id;
       });
     }
 
@@ -3321,6 +3394,33 @@ export const nursingRoutes = new Hono<AuthEnv>()
           notes.includes(search) ||
           itemMatches
         );
+      });
+    }
+
+    const sortValues = {
+      receiptNumber: (row: typeof rows[number]) => row.receiptNumber || "",
+      paymentDate: (row: typeof rows[number]) => row.paymentDate || "",
+      recipient: (row: typeof rows[number]) => parseRemarks(row.remarks)?.recipientName || row.studentName || "Direct Recipient",
+      category: (row: typeof rows[number]) => parseRemarks(row.remarks)?.category || row.feeType || "Miscellaneous",
+      narration: (row: typeof rows[number]) => {
+        const details = parseRemarks(row.remarks);
+        const items = Array.isArray(details?.items) ? details.items : [];
+        return [items.map((item: any) => `${item.description} (${item.quantity})`).join(", "), details?.narration || ""].filter(Boolean).join(" ");
+      },
+      paymentMode: (row: typeof rows[number]) => row.paymentMode || "",
+      amount: (row: typeof rows[number]) => toNum(row.amount),
+    };
+    const sortBy = c.req.query("sortBy");
+    const direction = c.req.query("sortDirection") === "desc" ? -1 : 1;
+    if (sortBy && Object.prototype.hasOwnProperty.call(sortValues, sortBy)) {
+      const value = sortValues[sortBy as keyof typeof sortValues];
+      filtered = [...filtered].sort((a, b) => {
+        const left = value(a);
+        const right = value(b);
+        const comparison = typeof left === "number" && typeof right === "number"
+          ? left - right
+          : String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" });
+        return direction * comparison || b.id - a.id;
       });
     }
 
@@ -5284,6 +5384,26 @@ export const nursingRoutes = new Hono<AuthEnv>()
       filteredDues = filteredDues.filter((s) => s.dueStatus === dueStatusParam);
     }
 
+    const sortBy = c.req.query("sortBy");
+    const sortColumns = ["enrollmentNo", "name", "batchName", "totalFee", "paidAmount", "balanceDue", "feeDueDate", "dueStatus"] as const;
+    if (sortBy && sortColumns.includes(sortBy as typeof sortColumns[number])) {
+      const column = sortBy as typeof sortColumns[number];
+      const direction = c.req.query("sortDirection") === "desc" ? -1 : 1;
+      filteredDues = [...filteredDues].sort((a, b) => {
+        if (column === "feeDueDate") {
+          if (!a.feeDueDate && b.feeDueDate) return 1;
+          if (a.feeDueDate && !b.feeDueDate) return -1;
+        }
+        const comparison = ["totalFee", "paidAmount", "balanceDue"].includes(column)
+          ? toNum(a[column]) - toNum(b[column])
+          : String(a[column] || "").localeCompare(String(b[column] || ""), undefined, { numeric: true, sensitivity: "base" });
+        const quotaComparison = column === "batchName" && comparison === 0
+          ? a.quotaCategory.localeCompare(b.quotaCategory)
+          : 0;
+        return direction * (comparison || quotaComparison) || a.studentId - b.studentId;
+      });
+    }
+
     const totalRecords = filteredDues.length;
     const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
     const safePage = Math.min(page, totalPages);
@@ -5550,6 +5670,18 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const totalRecords = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
     const safePage = Math.min(page, totalPages);
+    const sortBy = c.req.query("sortBy");
+    const sortColumns = ["reportDate", "voucherNo", "payee", "narration", "amount", "status"] as const;
+    if (sortBy && sortColumns.includes(sortBy as typeof sortColumns[number])) {
+      const column = sortBy as typeof sortColumns[number];
+      const direction = c.req.query("sortDirection") === "desc" ? -1 : 1;
+      filtered.sort((a, b) => {
+        const comparison = column === "amount"
+          ? toNum(a.amount) - toNum(b.amount)
+          : String(a[column] || "").localeCompare(String(b[column] || ""), undefined, { numeric: true, sensitivity: "base" });
+        return direction * comparison || b.reportDate.localeCompare(a.reportDate) || b.id - a.id;
+      });
+    }
     const data = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
 
     return c.json({

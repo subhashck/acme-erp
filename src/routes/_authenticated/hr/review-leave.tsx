@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
 import { z } from "zod";
-import { Check, X, ArrowRight, ArrowLeft, AlertCircle, AlertTriangle, Paperclip, FileText, Download, Maximize2 } from "lucide-react";
+import { Check, X, ArrowRight, ArrowLeft, AlertCircle, AlertTriangle, Paperclip, FileText, Download, Maximize2, Users, MessageSquare } from "lucide-react";
 import { Field } from "../../../components/Field";
 import { ModuleLayout } from "../../../components/ModuleLayout";
 import { queryClient, useRpcQuery } from "../../../lib/query";
@@ -90,20 +90,15 @@ function DocumentLightbox({
   );
 }
 
-function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; staffList: StaffRow[] }) {
-  const approversNames = React.useMemo(() => {
-    if (!leave.approverIds) return "Supervisors";
-    try {
-      const ids = JSON.parse(leave.approverIds);
-      if (!Array.isArray(ids) || ids.length === 0) return "Supervisors";
-      return ids
-        .map((id) => staffList.find((s) => s.staffId === id)?.name ?? `Staff #${id}`)
-        .join(", ");
-    } catch (e) {
-      return "Supervisors";
-    }
-  }, [leave.approverIds, staffList]);
-
+function LeaveWorkflowTimeline({
+  leave,
+  supervisorName,
+  hrName,
+}: {
+  leave: LeaveDetailRow;
+  supervisorName: string;
+  hrName: string;
+}) {
   const status = leave.status;
 
   let step1 = "completed";
@@ -165,7 +160,7 @@ function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; st
             {getStepIcon(step1, 1)}
             <div className="md:mt-1">
               <p className={getStepLabelClass(step1)}>1. Submitted</p>
-              <p className="text-xs text-muted-foreground mt-0.5">By requester</p>
+              <p className="text-xs text-muted-foreground mt-0.5">By {leave.staffName || "requester"}</p>
             </div>
           </div>
 
@@ -174,16 +169,24 @@ function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; st
             <div className="md:mt-1">
               <p className={getStepLabelClass(step2)}>2. Supervisor Review</p>
               {status === "Pending" && (
-                <p className="text-xs text-muted-foreground mt-0.5">Pending: {approversNames}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="font-semibold text-foreground">Reviewer:</span> {supervisorName}
+                </p>
               )}
               {status === "Forwarded" && (
-                <p className="text-xs text-indigo-500 font-medium mt-0.5">Forwarded to {leave.forwardedToStaffName || "Executive"}</p>
+                <p className="text-xs text-indigo-500 font-medium mt-0.5">
+                  Forwarded to {leave.forwardedToStaffName || "Executive"}
+                </p>
               )}
               {(status === "Pending Payroll Approval" || status === "Approved") && (
-                <p className="text-xs text-emerald-500 font-medium mt-0.5">Supervisor Cleared</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-0.5">
+                  Supervisor Cleared ({supervisorName})
+                </p>
               )}
               {status === "Rejected" && (
-                <p className="text-xs text-rose-500 font-medium mt-0.5">Supervisor Rejected</p>
+                <p className="text-xs text-rose-600 dark:text-rose-400 font-medium mt-0.5">
+                  Rejected by {leave.reviewedByName || supervisorName}
+                </p>
               )}
             </div>
           </div>
@@ -193,13 +196,26 @@ function LeaveWorkflowTimeline({ leave, staffList }: { leave: LeaveDetailRow; st
             <div className="md:mt-1">
               <p className={getStepLabelClass(step3)}>3. Payroll Approval</p>
               {status === "Pending Payroll Approval" && (
-                <p className="text-xs text-indigo-500 font-medium mt-0.5">Pending HR Clearance</p>
+                <div className="mt-0.5">
+                  <p className="text-xs text-indigo-500 font-bold">Pending HR Clearance</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <span className="font-semibold text-foreground">Reviewer:</span> {hrName}
+                  </p>
+                </div>
               )}
               {status === "Approved" && (
-                <p className="text-xs text-emerald-500 font-medium mt-0.5">Audit Cleared</p>
+                <div className="mt-0.5">
+                  <p className="text-xs text-emerald-500 font-medium">Audit Cleared</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Approved by <span className="font-semibold text-foreground">{leave.reviewedByName || hrName}</span>
+                  </p>
+                </div>
               )}
               {["Pending", "Forwarded"].includes(status) && (
-                <p className="text-xs text-muted-foreground mt-0.5">Awaiting supervisor</p>
+                <div className="mt-0.5">
+                  <p className="text-xs text-muted-foreground">Awaiting supervisor</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">HR Reviewer: {hrName}</p>
+                </div>
               )}
             </div>
           </div>
@@ -251,9 +267,55 @@ function ReviewLeave() {
   );
 
   const leave = leaveQuery.data;
+
+  const supervisorsQuery = useRpcQuery<any>(
+    ["staff-supervisors", leave?.staffId],
+    () => (client.hr.staff[":id"].supervisors as any).$get({ param: { id: String(leave?.staffId) } }),
+    { enabled: !!leave?.staffId }
+  );
+
   const currentStaff = staffQuery.data?.find(
     (s) => s.email === session.data?.user?.email || (s.userId && s.userId === session.data?.user?.id)
   );
+
+  const supervisorReviewer = React.useMemo(() => {
+    if (!leave) return { id: null, name: "Supervisor", role: "Supervisor" };
+    if (leave.forwardedToStaffName) {
+      return { id: leave.forwardedToStaffId, name: leave.forwardedToStaffName, role: "Forwarded Reviewer" };
+    }
+    if (leave.supervisorLevel1Name) {
+      return { id: leave.supervisorLevel1Id, name: leave.supervisorLevel1Name, role: "Direct Supervisor" };
+    }
+    if (leave.headStaffId) {
+      const s = staffQuery.data?.find((st) => st.staffId === leave.headStaffId);
+      const d = deptsQuery.data?.find((dept: any) => dept.name === leave.departmentName);
+      return { id: leave.headStaffId, name: s?.name || d?.headName || d?.head || "Department Head", role: "Department Head (HOD)" };
+    }
+    if (leave.supervisorLevel2Name) {
+      return { id: leave.supervisorLevel2Id, name: leave.supervisorLevel2Name, role: "Director / Management" };
+    }
+    return { id: null, name: "Department Supervisor", role: "Supervisor" };
+  }, [leave, staffQuery.data, deptsQuery.data]);
+
+  const hrReviewer = React.useMemo(() => {
+    if (!leave) return { id: null, name: "HR Executive", role: "HR Clearance" };
+    if (leave.reviewedByName) {
+      return {
+        id: leave.reviewedByStaffId,
+        name: leave.reviewedByName,
+        role: leave.status === "Approved" ? "HR Approver" : leave.status === "Rejected" ? "Reviewer" : "HR Clearance",
+      };
+    }
+    const hrStaff = staffQuery.data?.find((s) => s.staffId === 1) || staffQuery.data?.find((s) => (s.role || "").toLowerCase().includes("hr") && s.active !== false);
+    return { id: hrStaff?.staffId || 1, name: hrStaff?.name || "Ningthoujam Ronita Devi", role: hrStaff?.role || "HR Executive" };
+  }, [leave, staffQuery.data]);
+
+  const supervisorNote = leave
+    ? (leave.supervisorReviewerNote || (leave.status === "Pending Payroll Approval" ? leave.reviewerNote : null))
+    : null;
+  const supervisorReviewedAt = leave?.supervisorReviewedAt || (leave?.status === "Pending Payroll Approval" ? leave?.reviewedAt : null);
+  const supervisorReviewerName = leave?.supervisorReviewedByName || supervisorReviewer.name;
+  const hrDecisionNote = (leave?.status === "Approved" || leave?.status === "Rejected") ? leave.reviewerNote : null;
 
   const forwardableStaff = React.useMemo(() => {
     if (!staffQuery.data || !leave) return [];
@@ -422,7 +484,11 @@ function ReviewLeave() {
       description={`Review request details for ${leave.staffName} (${leave.requestNo})`}
     >
       <div className="max-w-3xl mx-auto flex flex-col gap-4">
-        <LeaveWorkflowTimeline leave={leave} staffList={staffQuery.data || []} />
+        <LeaveWorkflowTimeline
+          leave={leave}
+          supervisorName={supervisorReviewer.name}
+          hrName={hrReviewer.name}
+        />
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Leave Details</CardTitle>
@@ -438,6 +504,103 @@ function ReviewLeave() {
               <Field label="Start Date" type="date" value={formatDateForInput(leave.startDate)} disabled />
               <Field label="End Date" type="date" value={formatDateForInput(leave.endDate)} disabled />
               <Field label="Reason" className="md:col-span-2" value={leave.reason} disabled />
+
+              {/* Reviewers: Supervisor Reviewer and HR Reviewer Only */}
+              <div className="md:col-span-2 flex flex-col gap-2">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Users size={14} className="text-primary" />
+                  <span>Assigned Reviewers</span>
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Supervisor Reviewer */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-2.5 shadow-2xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs shrink-0 border border-amber-500/20">
+                          SR
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider">Supervisor Reviewer</p>
+                          <p className="text-sm font-bold text-foreground truncate mt-0.5">{supervisorReviewerName}</p>
+                          <p className="text-[11px] text-muted-foreground font-mono truncate">{supervisorReviewer.role}</p>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {leave.status === "Pending" ? (
+                          <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-900/40">
+                            Pending Review
+                          </span>
+                        ) : leave.status === "Forwarded" ? (
+                          <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 border border-sky-200 dark:border-sky-900/40">
+                            Forwarded
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40">
+                            ✓ Cleared
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {supervisorNote && (
+                      <div className="mt-1 pt-2 border-t border-slate-200/80 dark:border-slate-800/80">
+                        <p className="text-[10.5px] font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1 mb-1 uppercase tracking-wider">
+                          <MessageSquare size={12} /> Direct Supervisor's Note
+                        </p>
+                        <p className="text-xs text-foreground italic bg-amber-50/60 dark:bg-amber-950/20 p-2 rounded-lg border border-amber-200/60 dark:border-amber-900/40">
+                          "{supervisorNote}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* HR Reviewer */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold text-xs shrink-0 border border-indigo-500/20">
+                        HR
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10.5px] font-semibold text-muted-foreground uppercase tracking-wider">HR Reviewer</p>
+                        <p className="text-sm font-bold text-foreground truncate mt-0.5">{hrReviewer.name}</p>
+                        <p className="text-[11px] text-muted-foreground font-mono truncate">{hrReviewer.role}</p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      {leave.status === "Approved" ? (
+                        <div>
+                          <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/40">
+                            ✓ Approved
+                          </span>
+                          {leave.reviewedAt && (
+                            <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                              {new Date(leave.reviewedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      ) : leave.status === "Rejected" ? (
+                        <div>
+                          <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40">
+                            ✗ Rejected
+                          </span>
+                          {leave.reviewedAt && (
+                            <p className="text-[10px] text-muted-foreground font-mono mt-1">
+                              {new Date(leave.reviewedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      ) : leave.status === "Pending Payroll Approval" ? (
+                        <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-900/40">
+                          Pending Clearance
+                        </span>
+                      ) : (
+                        <span className="px-2 py-1 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                          Awaiting Supervisor
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
               {leave.supportingDocument && (() => {
                   const docUrl = `/api/hr/leaves/${leave.id}/document`;
                   const ext = leave.supportingDocument.split('.').pop()?.toLowerCase() ?? "";
@@ -600,26 +763,78 @@ function ReviewLeave() {
           </Card>
         )}
 
-        {leave.reviewerNote && (
-          <Card className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-            <CardHeader>
-              <CardTitle className="text-sm font-bold text-slate-700 dark:text-slate-300">Previous Reviewer Note</CardTitle>
+        {/* Direct Supervisor's Review Note */}
+        {supervisorNote && (
+          <Card className="bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/50 shadow-2xs">
+            <CardHeader className="pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                  <MessageSquare size={15} className="text-amber-600 dark:text-amber-400" />
+                  Direct Supervisor's Review Note
+                </CardTitle>
+                {supervisorReviewedAt && (
+                  <span className="text-xs text-amber-800/80 dark:text-amber-400/80 font-mono">
+                    Reviewed: {new Date(supervisorReviewedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Reviewed by: <span className="font-semibold text-foreground">{supervisorReviewerName}</span>
+                {leave.forwardedToStaffName && (
+                  <span className="text-indigo-600 dark:text-indigo-400 ml-1">
+                    &middot; Forwarded to: {leave.forwardedToStaffName}
+                  </span>
+                )}
+              </p>
             </CardHeader>
-            <CardContent className="text-sm text-slate-600 dark:text-slate-300 italic">
-              "{leave.reviewerNote}"
-              {leave.reviewedAt && (
-                <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-                  Reviewed at: {new Date(leave.reviewedAt).toLocaleString()}
-                </div>
-              )}
+            <CardContent className="text-sm text-foreground italic pt-1">
+              "{supervisorNote}"
+            </CardContent>
+          </Card>
+        )}
+
+        {/* HR Decision Note (if approved/rejected by HR and distinct from supervisor note) */}
+        {hrDecisionNote && hrDecisionNote !== supervisorNote && (
+          <Card className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+            <CardHeader className="pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                  {leave.status === "Approved" ? "HR Approval Note" : "HR Decision Note"}
+                </CardTitle>
+                {leave.reviewedAt && (
+                  <span className="text-xs text-muted-foreground font-mono">
+                    Reviewed: {new Date(leave.reviewedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Reviewed by: <span className="font-semibold text-foreground">{leave.reviewedByName || hrReviewer.name}</span>
+              </p>
+            </CardHeader>
+            <CardContent className="text-sm text-slate-600 dark:text-slate-300 italic pt-1">
+              "{hrDecisionNote}"
             </CardContent>
           </Card>
         )}
 
         {canAction ? (
           <Card className="border-2 border-[hsl(174_88%_26%)/20%] bg-[hsl(174_88%_26%)/2%]">
-            <CardHeader>
-              <CardTitle className="text-md">Decision Panel</CardTitle>
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <CardTitle className="text-md">Decision Panel</CardTitle>
+                <div className="text-xs text-muted-foreground">
+                  Reviewing as:{" "}
+                  <span className="font-semibold text-foreground">
+                    {currentStaff?.name || session.data?.user?.name || "Authorized Reviewer"}
+                  </span>
+                  {currentStaff?.role && (
+                    <span className="text-muted-foreground font-mono ml-1">({currentStaff.role})</span>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Pending Reviewer: <span className="font-semibold text-foreground">{leave.status === "Pending Payroll Approval" ? hrReviewer.name : supervisorReviewer.name}</span>
+              </p>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div>

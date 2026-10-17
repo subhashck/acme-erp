@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Field } from "@/components/Field";
 import { toast } from "sonner";
 import { cn } from "@/utils/cn";
@@ -55,10 +55,13 @@ interface BatchSummary {
 function AcademicSchedulesPage() {
   const queryClient = useQueryClient();
   const [editingSchedule, setEditingSchedule] = React.useState<any | null>(null);
+  const [scheduleToDelete, setScheduleToDelete] = React.useState<any | null>(null);
   const [scheduleModalOpen, setScheduleModalOpen] = React.useState(false);
   const [selectedBatchFilter, setSelectedBatchFilter] = React.useState<number>(0);
 
   const today = React.useMemo(() => startOfDay(new Date()), []);
+  const calendarStartMonth = React.useMemo(() => new Date(today.getFullYear() - 5, 0, 1), [today]);
+  const calendarEndMonth = React.useMemo(() => new Date(today.getFullYear() + 5, 11, 1), [today]);
 
   const { data: batches = [] } = useQuery<any[]>({
     queryKey: ["nursing", "batches"],
@@ -278,6 +281,7 @@ function AcademicSchedulesPage() {
     },
     onSuccess: () => {
       toast.success("Academic schedule deleted");
+      setScheduleToDelete(null);
       queryClient.invalidateQueries({ queryKey: ["nursing", "academic-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["nursing", "fees", "due-dashboard"] });
     },
@@ -340,11 +344,11 @@ function AcademicSchedulesPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="academic-schedules-page min-w-0 p-3 sm:p-6 space-y-6">
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <CalendarDays className="h-6 w-6 text-teal-600" />
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-start gap-2">
+            <CalendarDays className="h-6 w-6 shrink-0 text-teal-600" />
             Academic Schedules & Term Management
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -352,7 +356,7 @@ function AcademicSchedulesPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full xl:w-auto shrink-0 flex-wrap items-center gap-2 [&>a]:min-h-11">
           <Button variant="outline" asChild size="sm">
             <Link to="/college/fee-structures" className="flex items-center gap-1.5 text-xs">
               <Layers size={14} /> Fee Structures
@@ -373,20 +377,21 @@ function AcademicSchedulesPage() {
             }}
           >
             <DialogTrigger asChild>
-              <Button onClick={handleNewSchedule} className="bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-2">
+              <Button onClick={handleNewSchedule} className="w-full sm:w-auto min-h-11 bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-2">
                 <Plus size={16} /> Configure Term Schedule
               </Button>
             </DialogTrigger>
           <DialogContent
-            className="sm:max-w-md"
+            className="academic-schedule-dialog flex w-[calc(100vw-1rem)] max-w-none sm:max-w-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] flex-col gap-0 overflow-hidden p-0"
             onInteractOutside={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => e.preventDefault()}
           >
-            <DialogHeader>
-              <DialogTitle>{editingSchedule ? "Edit Academic Term Schedule" : "Academic Year & Semester Schedule"}</DialogTitle>
+            <DialogHeader className="shrink-0 border-b px-4 py-4 pr-14 sm:px-6 sm:pr-16">
+              <DialogTitle className="leading-snug">{editingSchedule ? "Edit Academic Term Schedule" : "Academic Year & Semester Schedule"}</DialogTitle>
             </DialogHeader>
 
-            <form onSubmit={scheduleForm.handleSubmit(onScheduleSubmit)} className="space-y-4 py-2">
+            <form onSubmit={scheduleForm.handleSubmit(onScheduleSubmit)} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="academic-schedule-fields min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
               <div>
                 <label className="text-sm font-medium text-foreground block mb-1">Target Academic Batch *</label>
                 <Controller
@@ -512,6 +517,9 @@ function AcademicSchedulesPage() {
                                 }
                               }}
                               captionLayout="dropdown"
+                              startMonth={calendarStartMonth}
+                              endMonth={calendarEndMonth}
+                              disabled={{ before: calendarStartMonth, after: new Date(today.getFullYear() + 5, 11, 31) }}
                             />
                           </PopoverContent>
                         </Popover>
@@ -559,6 +567,9 @@ function AcademicSchedulesPage() {
                                 }
                               }}
                               captionLayout="dropdown"
+                              startMonth={calendarStartMonth}
+                              endMonth={calendarEndMonth}
+                              disabled={{ before: calendarStartMonth, after: new Date(today.getFullYear() + 5, 11, 31) }}
                             />
                           </PopoverContent>
                         </Popover>
@@ -592,13 +603,14 @@ function AcademicSchedulesPage() {
                 />
               </div>
 
-              <DialogFooter className="pt-2 border-t">
-                <Button type="button" variant="outline" onClick={() => setScheduleModalOpen(false)}>
+              </div>
+              <DialogFooter className="shrink-0 flex-row border-t bg-background px-4 py-3 sm:px-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <Button type="button" className="min-h-11" variant="outline" onClick={() => setScheduleModalOpen(false)}>
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="bg-teal-600 hover:bg-teal-700 text-white"
+                  className="min-h-11 min-w-0 flex-1 sm:flex-none whitespace-normal bg-teal-600 hover:bg-teal-700 text-white"
                   disabled={createScheduleMutation.isPending || updateScheduleMutation.isPending}
                 >
                   {editingSchedule
@@ -618,9 +630,9 @@ function AcademicSchedulesPage() {
 
       {/* Batch-wise Summary Overview Cards */}
       <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
-            <BookOpen className="h-5 w-5 text-teal-600" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
+          <h2 className="text-lg font-bold tracking-tight text-foreground flex items-start gap-2">
+            <BookOpen className="h-5 w-5 shrink-0 text-teal-600" />
             Batch-wise Fee Due Summaries
           </h2>
           <span className="text-xs text-muted-foreground">
@@ -640,8 +652,8 @@ function AcademicSchedulesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {(dueDashboard?.batchSummaries || []).map((b) => (
               <Card key={b.batchId} className="relative overflow-hidden border">
-                <CardHeader className="p-4 pb-2 flex flex-row items-start justify-between">
-                  <div>
+                <CardHeader className="p-4 pb-2 flex flex-row flex-wrap gap-2 items-start justify-between">
+                  <div className="min-w-0 break-words">
                     <CardTitle className="text-sm font-bold text-foreground">{b.batchName}</CardTitle>
                     <CardDescription className="text-xs">
                       {b.courseName} • Section {b.section} ({b.totalStudents} Students)
@@ -699,19 +711,19 @@ function AcademicSchedulesPage() {
       </div>
 
       {/* Configured Term Schedules List */}
-      <Card>
+      <Card className="min-w-0">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Configured Academic Term Schedules</CardTitle>
           <CardDescription>Academic year & semester start/end dates and fee due offsets</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="min-w-0 px-3 sm:px-5">
           {isLoadingSchedules ? (
             <div className="py-6 text-center text-sm text-muted-foreground">Loading term schedules...</div>
           ) : schedules.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">No term schedules configured yet.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left border-collapse">
+            <div className="overflow-x-auto" role="region" aria-label="Academic term schedules" tabIndex={0}>
+              <table className="w-full min-w-220 text-sm text-left border-collapse">
                 <thead>
                   <tr className="border-b bg-muted/50 text-xs font-semibold text-muted-foreground">
                     <th className="p-3">Batch & Course</th>
@@ -741,8 +753,9 @@ function AcademicSchedulesPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/40"
+                            className="h-11 w-11 p-0 text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/40"
                             title="Edit Schedule"
+                            aria-label={`Edit ${sch.courseName} semester ${sch.semester} schedule`}
                             onClick={() => handleEditSchedule(sch)}
                           >
                             <Pencil size={14} />
@@ -750,10 +763,11 @@ function AcademicSchedulesPage() {
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-7 w-7 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            className="h-11 w-11 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                             title="Delete Schedule"
+                            aria-label={`Delete ${sch.courseName} semester ${sch.semester} schedule`}
                             disabled={deleteScheduleMutation.isPending}
-                            onClick={() => deleteScheduleMutation.mutate(sch.id)}
+                            onClick={() => setScheduleToDelete(sch)}
                           >
                             <Trash2 size={14} />
                           </Button>
@@ -767,6 +781,43 @@ function AcademicSchedulesPage() {
           )}
         </CardContent>
       </Card>
+      <Dialog
+        open={scheduleToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteScheduleMutation.isPending) setScheduleToDelete(null);
+        }}
+      >
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto" showCloseButton={!deleteScheduleMutation.isPending}>
+          <DialogHeader className="pr-8">
+            <DialogTitle className="leading-snug">Delete academic schedule?</DialogTitle>
+            <DialogDescription>
+              Delete the Semester {scheduleToDelete?.semester} schedule for {scheduleToDelete?.courseName} ({scheduleToDelete?.batchAcademicYear})? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11"
+              autoFocus
+              disabled={deleteScheduleMutation.isPending}
+              onClick={() => setScheduleToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="min-h-11 bg-rose-600 hover:bg-rose-700 text-white"
+              disabled={deleteScheduleMutation.isPending || !scheduleToDelete}
+              onClick={() => {
+                if (scheduleToDelete && !deleteScheduleMutation.isPending) deleteScheduleMutation.mutate(scheduleToDelete.id);
+              }}
+            >
+              {deleteScheduleMutation.isPending ? "Deleting..." : "Delete Schedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

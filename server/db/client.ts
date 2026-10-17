@@ -2,8 +2,6 @@ import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "./schema.ts";
 import * as inventorySchema from "./schema-inventory.ts";
-import * as magazineSchema from "./schema-magazine.ts";
-import * as labSchema from "./schema-lab.ts";
 import * as capitalSchema from "./schema-capital.ts";
 import * as skillAssessmentSchema from "./schema-skill-assessment.ts";
 
@@ -54,8 +52,6 @@ export const pool = new Pool({
 const fullSchema = {
   ...schema,
   ...inventorySchema,
-  ...magazineSchema,
-  ...labSchema,
   ...capitalSchema,
   ...skillAssessmentSchema,
 };

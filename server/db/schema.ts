@@ -117,8 +117,6 @@ export const hospitalSettings = sqliteTable("hospital_settings", {
   address: text("address").default("123 Healthcare Ave, Medical District, Healthcare Campus"),
   emergencyPhone: text("emergency_phone").default("+91 98765 43211"),
   opdPhone: text("opd_phone").default("+91 98765 43212"),
-  editorialDivision: text("editorial_division").default("ACME Healthcare Communications & Editorial Division"),
-  copyrightText: text("copyright_text").default("ACME Monthly Electronic Magazine. All rights reserved."),
   showPublishedMagazines: boolean("show_published_magazines").notNull().default(false),
   enableStaffCompetencyModule: boolean("enable_staff_competency_module").notNull().default(true),
   ...timestamps
@@ -376,7 +374,12 @@ export const leaveRequests = sqliteTable("leave_requests", {
   reason: text("reason").notNull(),
   status: text("status").notNull().default("Pending"),
   reviewedAt: timestamp("reviewed_at"),
+  reviewedByStaffId: integer("reviewed_by_staff_id"),
+  reviewedByName: text("reviewed_by_name"),
   reviewerNote: text("reviewer_note"),
+  supervisorReviewerNote: text("supervisor_reviewer_note"),
+  supervisorReviewedByName: text("supervisor_reviewed_by_name"),
+  supervisorReviewedAt: timestamp("supervisor_reviewed_at"),
   forwardedToStaffId: integer("forwarded_to_staff_id"), // stable staffId of the targeted supervisor
   approverIds: text("approver_ids").notNull().default("[]"),
   supportingDocument: text("supporting_document"),

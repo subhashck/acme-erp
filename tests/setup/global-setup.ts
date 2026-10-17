@@ -117,19 +117,7 @@ export async function setup() {
           timeout: 30_000,
           env: { ...process.env, DATABASE_URL: dbUrl },
         });
-        execSync("npx tsx server/db/setup-magazine-db.ts", {
-          cwd: rootDir,
-          stdio: "pipe",
-          timeout: 30_000,
-          env: { ...process.env, DATABASE_URL: dbUrl },
-        });
         execSync("npx tsx server/db/setup-front-office-db.ts", {
-          cwd: rootDir,
-          stdio: "pipe",
-          timeout: 30_000,
-          env: { ...process.env, DATABASE_URL: dbUrl },
-        });
-        execSync("npx tsx server/db/setup-lab-db.ts", {
           cwd: rootDir,
           stdio: "pipe",
           timeout: 30_000,

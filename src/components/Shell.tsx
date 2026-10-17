@@ -2,7 +2,6 @@ import { Link, Outlet, useRouter, useLocation, useRouteContext } from "@tanstack
 import { useStore } from "@tanstack/react-store";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
   LayoutDashboard,
   LogOut,
   Search,
@@ -26,7 +25,6 @@ import {
   CreditCard,
   Syringe,
   Bell,
-  ExternalLink,
   Check,
   CheckCircle,
   AlertTriangle,
@@ -43,13 +41,14 @@ import {
   FileBarChart,
   GraduationCap,
   BookOpen,
-  FlaskConical,
   Award,
   FileQuestion
 } from "lucide-react";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
 import { Button } from "../ui/button";
+import { PwaInstallButton } from "./PwaProvider";
+import { PageTransition } from "./PageTransition";
 // import { Input } from "../ui/input";
 import * as React from "react";
 import { cn } from "../utils/cn";
@@ -251,10 +250,9 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Masters", to: "/college/referrers" });
       items.push({ label: "Referral Partners Master", to: "/college/referrers" });
     } else if (sub === "students" || sub.startsWith("students/")) {
-      items.push({ label: "Masters", to: "/college/students" });
       items.push({ label: "Student Master List", to: "/college/students" });
     } else if (sub.startsWith("student/")) {
-      items.push({ label: "Masters", to: "/college/students" });
+      items.push({ label: "Student Master List", to: "/college/students" });
       items.push({ label: "Student Profile", to: "/college/students" });
     } else if (sub === "admissions") {
       items.push({ label: "Admissions Pipeline", to: "/college/admissions" });
@@ -309,42 +307,6 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
-  if (pathname === "/lab" || pathname === "/lab/") {
-    items.push({ label: "Laboratory", to: "/lab" });
-    return items;
-  }
-
-  if (pathname.startsWith("/lab/")) {
-    items.push({ label: "Laboratory", to: "/lab" });
-    const sub = pathname.replace("/lab/", "");
-    if (sub === "orders/new") {
-      items.push({ label: "New Order Entry", to: "/lab/orders/new" });
-    } else if (sub.startsWith("orders/")) {
-      items.push({ label: "Order Workspace", to: pathname });
-    } else if (sub.startsWith("reports/")) {
-      items.push({ label: "Diagnostic Report", to: pathname });
-    } else if (sub === "masters" || sub.startsWith("masters/")) {
-      items.push({ label: "Lab Masters Catalog", to: "/lab/masters" });
-    }
-    return items;
-  }
-
-  if (pathname === "/magazine" || pathname === "/magazine/") {
-    items.push({ label: "E-Magazine", to: "/magazine" });
-    return items;
-  }
-
-  if (pathname.startsWith("/magazine/")) {
-    items.push({ label: "E-Magazine", to: "/magazine" });
-    const sub = pathname.replace("/magazine/", "");
-    if (sub === "editors") {
-      items.push({ label: "Editorial Access", to: "/magazine/editors" });
-    } else {
-      items.push({ label: "Issue Details", to: `/magazine/${sub}` });
-    }
-    return items;
-  }
-
   if (pathname === "/front-office" || pathname.startsWith("/front-office/")) {
     items.push({ label: "Front Office", to: "/front-office" });
     if (pathname === "/front-office/new") {
@@ -353,8 +315,6 @@ const getBreadcrumbs = (pathname: string) => {
       items.push({ label: "Patient Directory", to: "/front-office/patients" });
     } else if (pathname === "/front-office/razorpay-reconciliation") {
       items.push({ label: "Razorpay Reconciliation", to: "/front-office/razorpay-reconciliation" });
-    } else if (pathname === "/front-office/opd-collection") {
-      items.push({ label: "OPD Collection Detail", to: "/front-office/opd-collection" });
     }
     return items;
   }
@@ -386,14 +346,54 @@ function ShellContent({ session }: { session: any }) {
   const [capitalOpen, setCapitalOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
   const [inventoryOpen, setInventoryOpen] = React.useState(false);
-  const [labOpen, setLabOpen] = React.useState(false);
   const [purchasesMastersOpen, setPurchasesMastersOpen] = React.useState(false);
   const [mastersOpen, setMastersOpen] = React.useState(false);
   const [adminOpen, setAdminOpen] = React.useState(false);
   const [isSidebarMinimized, setIsSidebarMinimized] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [isDesktop, setIsDesktop] = React.useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  const isSidebarCollapsed = isDesktop && isSidebarMinimized;
+  const mobileMenuButtonRef = React.useRef<HTMLButtonElement>(null);
+  const sidebarRef = React.useRef<HTMLElement>(null);
 
-  const { isAdmin, isHr, currentStaff, isManagementApprover, canViewAssessments, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canManageMagazine, canViewLab } = useUserPermissions();
+  React.useEffect(() => {
+    const media = window.matchMedia("(min-width: 1024px)");
+    const sync = () => {
+      setIsDesktop(media.matches);
+      if (media.matches) setIsMobileMenuOpen(false);
+    };
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMobileMenuOpen || isDesktop) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const frame = requestAnimationFrame(() => sidebarRef.current?.querySelector<HTMLButtonElement>("[data-mobile-close]")?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMobileMenuOpen(false);
+      if (event.key === "Tab") {
+        const controls = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled])") ?? [])
+          .filter(control => control.getClientRects().length && !control.closest("[inert]"));
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+      if (!window.matchMedia("(min-width: 1024px)").matches) mobileMenuButtonRef.current?.focus();
+    };
+  }, [isMobileMenuOpen, isDesktop]);
+
+  const { isAdmin, isHr, currentStaff, isManagementApprover, canViewAssessments, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases } = useUserPermissions();
+  const magazineConfig = useRpcQuery<{ publicUrl: string | null }>(['magazine-service-config'], () => fetch('/api/public/magazine/config'));
+  const magazineUrl = magazineConfig.data?.publicUrl;
   const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
 
   React.useEffect(() => {
@@ -404,8 +404,6 @@ function ShellContent({ session }: { session: any }) {
       location.pathname.startsWith("/college/courses") ||
       location.pathname.startsWith("/college/academic-schedules") ||
       location.pathname.startsWith("/college/subjects") ||
-      location.pathname.startsWith("/college/students") ||
-      location.pathname.startsWith("/college/student/") ||
       location.pathname.startsWith("/college/fee-structures")
     ) {
       setCollegeMastersOpen(true);
@@ -416,7 +414,6 @@ function ShellContent({ session }: { session: any }) {
     if (location.pathname.startsWith("/capital")) setCapitalOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
     if (location.pathname.startsWith("/inventory/")) setInventoryOpen(true);
-    if (location.pathname.startsWith("/lab")) setLabOpen(true);
     if (location.pathname.startsWith("/masters/")) setMastersOpen(true);
     if (location.pathname.startsWith("/admin/")) setAdminOpen(true);
   }, [location.pathname]);
@@ -465,21 +462,21 @@ function ShellContent({ session }: { session: any }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Mobile Sidebar Overlay Backdrop */}
-      {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden transition-opacity"
+          aria-hidden="true"
+          className={cn("erp-sidebar-backdrop fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden", isMobileMenuOpen && "is-open")}
           onClick={() => setIsMobileMenuOpen(false)}
         />
-      )}
 
       <aside
+        ref={sidebarRef}
+        id="app-sidebar"
+        aria-label="Main navigation"
+        inert={!isDesktop && !isMobileMenuOpen || undefined}
+        data-collapsed={isSidebarCollapsed}
         className={cn(
-          "fixed inset-y-0 left-0 border-r py-6 transition-all duration-300 z-50 flex flex-col",
-          // Desktop behavior
-          "hidden lg:flex bg-sidebar/95 backdrop-blur",
-          isSidebarMinimized ? "lg:w-16 lg:px-2" : "lg:w-72 lg:px-5",
-          // Mobile overlay behavior
-          isMobileMenuOpen ? "flex w-72 px-5 shadow-2xl bg-sidebar text-sidebar-foreground border-r border-sidebar-border" : "hidden"
+          "erp-sidebar fixed inset-y-0 left-0 border-r border-sidebar-border py-6 z-50 flex flex-col bg-sidebar/95 text-sidebar-foreground backdrop-blur",
+          isMobileMenuOpen && "is-open shadow-2xl lg:shadow-none"
         )}
       >
         {/* Minimize Button */}
@@ -487,25 +484,31 @@ function ShellContent({ session }: { session: any }) {
           onClick={() => setIsSidebarMinimized(!isSidebarMinimized)}
           className="absolute -right-3 top-8 z-40 hidden lg:flex size-6 items-center justify-center rounded-full border bg-lime-500/80 shadow-md hover:bg-blue-600 cursor-pointer transition-colors"
           title={isSidebarMinimized ? "Expand Sidebar" : "Minimize Sidebar"}
+          aria-label={isSidebarMinimized ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isSidebarMinimized}
+          aria-controls="app-sidebar"
         >
-          {isSidebarMinimized ? <ChevronRight size={24} /> : <ChevronLeft size={24} />}
+          <ChevronLeft size={24} className={cn("erp-sidebar-chevron", isSidebarMinimized && "is-collapsed")} />
         </button>
 
         {/* Logo Section */}
-        <div className={cn("mb-6 flex items-center justify-between gap-3 shrink-0", isSidebarMinimized && "justify-center")}>
-          <div className="flex items-center gap-3">
-            <div className="grid size-11 place-items-center rounded-lg bg-primary text-primary-foreground shrink-0">
-              <Activity size={24} />
-            </div>
-            {!isSidebarMinimized && (
-              <div>
-                <p className="text-sm text-muted-foreground">Acme ERP</p>
-                <h1 className="text-xl font-semibold truncate max-w-42" title={hospital.name}>
-                  {hospital.name}
-                </h1>
-              </div>
-            )}
-          </div>
+        <div className="erp-sidebar-brand mb-6 flex items-center justify-between gap-3 shrink-0">
+          <Link to="/" onClick={() => setIsMobileMenuOpen(false)} aria-label={`${hospital.name} dashboard`} className="erp-sidebar-logo block min-w-0 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <img
+              src="/icons/acme-sidebar.webp"
+              alt=""
+              width={768}
+              height={277}
+              className="erp-sidebar-logo-full"
+            />
+            <img
+              src="/icons/acme-sidebar-symbol.webp"
+              alt=""
+              width={113}
+              height={160}
+              className="erp-sidebar-logo-symbol"
+            />
+          </Link>
           {isMobileMenuOpen && (
             <Button
               variant="ghost"
@@ -513,6 +516,8 @@ function ShellContent({ session }: { session: any }) {
               className="lg:hidden shrink-0"
               onClick={() => setIsMobileMenuOpen(false)}
               title="Close Menu"
+              data-mobile-close
+              aria-label="Close navigation"
             >
               <X size={18} />
             </Button>
@@ -521,16 +526,14 @@ function ShellContent({ session }: { session: any }) {
 
         {/* Navigation */}
         <nav
-          onClick={() => setIsMobileMenuOpen(false)}
-          className={cn(
-            "flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-1.5 pr-1 pb-2",
-            isSidebarMinimized && "space-y-3 flex flex-col items-center pr-0"
-          )}
+          onClick={(event) => {
+            if ((event.target as Element).closest("a")) setIsMobileMenuOpen(false);
+          }}
+          className="erp-sidebar-nav flex-1 min-h-0"
         >
 
           {/* Expanded Sidebar Navigation */}
-          {!isSidebarMinimized ? (
-            <>
+            <div className="erp-sidebar-nav-expanded custom-scrollbar space-y-1.5 pr-1 pb-2" inert={isSidebarCollapsed || undefined} aria-hidden={isSidebarCollapsed}>
               {/* Dashboard */}
               <Link
                 to="/"
@@ -583,9 +586,6 @@ function ShellContent({ session }: { session: any }) {
                       <Link to="/front-office/patients" className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
                         <Users size={14} />Patient Directory
                       </Link>
-                      <Link to="/front-office/opd-collection" className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" activeProps={{ className: "bg-muted font-semibold text-foreground" }}>
-                        <ExternalLink size={14} />OPD Collection Detail
-                      </Link>
                     </div>
                   )}
                 </div>
@@ -623,6 +623,13 @@ function ShellContent({ session }: { session: any }) {
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
                         Admissions Pipeline
+                      </Link>
+                      <Link
+                        to={"/college/students" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Student Master List
                       </Link>
                       <Link
                         to={"/college/fees" as any}
@@ -739,13 +746,6 @@ function ShellContent({ session }: { session: any }) {
                               activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                             >
                               Subject Master
-                            </Link>
-                            <Link
-                              to={"/college/students" as any}
-                              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                              activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                            >
-                              Student Master List
                             </Link>
                             <Link
                               to={"/college/fee-structures" as any}
@@ -1227,51 +1227,6 @@ function ShellContent({ session }: { session: any }) {
                 </div>
               )}
 
-              {/* Collapsible Laboratory group */}
-              {canViewLab && (
-                <div className="flex flex-col">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setLabOpen(!labOpen);
-                    }}
-                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
-                  >
-                    <div className="flex items-center gap-3">
-                      <FlaskConical size={18} />
-                      <span>Laboratory</span>
-                    </div>
-                    {labOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                  </button>
-
-                  {labOpen && (
-                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                      <Link
-                        to={"/lab" as any}
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                      >
-                        Orders Worklist
-                      </Link>
-                      <Link
-                        to={"/lab/orders/new" as any}
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                      >
-                        New Order Entry
-                      </Link>
-                      <Link
-                        to={"/lab/masters" as any}
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                      >
-                        Test Catalog & Ranges
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Collapsible Masters group */}
               {(session.data?.user.role === "admin" || session.data?.user.role === "hr") && (
                 <div className="flex flex-col">
@@ -1414,15 +1369,13 @@ function ShellContent({ session }: { session: any }) {
               )}
 
               {/* E-Magazine */}
-              {canManageMagazine && (
-                <Link
-                  to="/magazine"
+              {magazineUrl && (
+                <a href={magazineUrl} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
                 >
                   <BookOpen size={18} />
                   <span>E-Magazine</span>
-                </Link>
+                </a>
               )}
 
               <Link
@@ -1433,10 +1386,9 @@ function ShellContent({ session }: { session: any }) {
                 <Settings size={18} />
                 Settings
               </Link>
-            </>
-          ) : (
-            /* Minimized Sidebar Navigation (Icons only) */
-            <>
+            </div>
+            {/* Minimized Sidebar Navigation (Icons only) */}
+            <div className="erp-sidebar-nav-collapsed custom-scrollbar flex flex-col items-center space-y-3 pb-2" inert={!isSidebarCollapsed || undefined} aria-hidden={!isSidebarCollapsed}>
               <Link
                 to="/"
                 className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -1681,21 +1633,6 @@ function ShellContent({ session }: { session: any }) {
                 </>
               )}
 
-              {canViewLab && (
-                <>
-                  <div className="w-8 h-px bg-border my-2" />
-
-                  <Link
-                    to="/lab"
-                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                    title="Laboratory Orders"
-                  >
-                    <FlaskConical size={20} />
-                  </Link>
-                </>
-              )}
-
               {session.data?.user.role === "admin" && (
                 <>
                   <div className="w-8 h-px bg-border my-2" />
@@ -1803,15 +1740,13 @@ function ShellContent({ session }: { session: any }) {
                 </>
               )}
 
-              {canManageMagazine && (
-                <Link
-                  to="/magazine"
+              {magazineUrl && (
+                <a href={magazineUrl} target="_blank" rel="noopener noreferrer"
                   className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
                   title="Electronic Magazine"
                 >
                   <BookOpen size={20} />
-                </Link>
+                </a>
               )}
 
               <Link
@@ -1822,15 +1757,14 @@ function ShellContent({ session }: { session: any }) {
               >
                 <Settings size={20} />
               </Link>
-            </>
-          )}
+            </div>
         </nav>
 
 
       </aside>
 
-      <main className={cn("transition-all duration-300", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")}>
-        <header className="sticky top-0 z-20 border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8">
+      <main className={cn("erp-sidebar-content", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")} inert={!isDesktop && isMobileMenuOpen || undefined}>
+        <header className="border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
               <Button
@@ -1839,14 +1773,18 @@ function ShellContent({ session }: { session: any }) {
                 className="lg:hidden shrink-0"
                 onClick={() => setIsMobileMenuOpen(true)}
                 title="Open Navigation"
+                ref={mobileMenuButtonRef}
+                aria-label="Open navigation"
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="app-sidebar"
               >
                 <Menu size={18} />
               </Button>
               <div className="flex items-center">
-                <nav className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground" aria-label="Breadcrumb">
+                <nav className="flex flex-wrap items-center gap-1 text-xs font-medium text-muted-foreground md:gap-1.5 md:text-sm" aria-label="Breadcrumb">
                   {getBreadcrumbs(location.pathname).map((item, idx, arr) => (
                     <React.Fragment key={item.label}>
-                      {idx > 0 && <span className="text-muted-foreground/45 select-none font-normal">/</span>}
+                      {idx > 0 && <ChevronRight className="size-3 shrink-0 text-muted-foreground/45 md:size-3.5" aria-hidden="true" />}
                       {idx === arr.length - 1 ? (
                         <span className="text-foreground font-semibold">{item.label}</span>
                       ) : (
@@ -1863,6 +1801,7 @@ function ShellContent({ session }: { session: any }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <PwaInstallButton />
               {/* <div className="relative w-full md:w-72">
                 <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
                 <Input value={search} onChange={(event) => uiStore.setState((state) => ({ ...state, search: event.target.value }))} className="pl-9" placeholder="Search records" />
@@ -2007,9 +1946,9 @@ function ShellContent({ session }: { session: any }) {
           </div>
         </header>
         <section className="px-4 py-6 md:px-8 dark:bg-slate-950">
-          <div key={router.state.matches[router.state.matches.length - 1]?.pathname || location.pathname} className="animate-page-transition">
+          <PageTransition>
             <Outlet />
-          </div>
+          </PageTransition>
         </section>
       </main>
     </div>

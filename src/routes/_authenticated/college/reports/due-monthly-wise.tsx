@@ -40,60 +40,14 @@ import {
 import { Input } from "@/ui/input";
 import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
+import XLSX from "xlsx-js-style";
+import { buildPeriodicDuesWorkbook, type PeriodicDuesReport as ReportData, type StudentDrillDown } from "@/lib/periodic-dues-export";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 export const Route = createFileRoute("/_authenticated/college/reports/due-monthly-wise")({
   component: DueReportPeriodicPage,
 });
-
-interface StudentDrillDown {
-  studentId: number;
-  enrollmentNo: string;
-  name: string;
-  phone?: string;
-  quotaCategory: string;
-  expectedTarget: number;
-  collectedAmount: number;
-  balanceDue: number;
-  status: "paid" | "partial" | "unpaid";
-}
-
-interface BatchDrillDown {
-  batchId: number;
-  batchName: string;
-  courseName: string;
-  studentCount: number;
-  expectedTarget: number;
-  collectedAmount: number;
-  pendingDues: number;
-  collectionEfficiency: number;
-  students: StudentDrillDown[];
-}
-
-interface PeriodBreakdown {
-  periodKey: string;
-  periodName: string;
-  expectedTarget: number;
-  collectedAmount: number;
-  pendingDues: number;
-  collectionEfficiency: number;
-  transactionsCount: number;
-  batches: BatchDrillDown[];
-}
-
-interface ReportData {
-  academicYear: string;
-  frequency: "monthly" | "quarterly" | "annually";
-  summary: {
-    totalEnrolledStudents: number;
-    totalDemanded: number;
-    totalCollected: number;
-    totalPendingDues: number;
-    overallEfficiency: number;
-  };
-  periods: PeriodBreakdown[];
-}
 
 export default function DueReportPeriodicPage() {
   const [academicYear, setAcademicYear] = React.useState("2026-2027");
@@ -163,6 +117,17 @@ export default function DueReportPeriodicPage() {
   };
 
   const periods = data?.periods || [];
+
+  const handleDownloadExcel = () => {
+    if (!data || isFetching) return;
+    try {
+      const courseLabel = courseFilter === "all" ? "All Courses" : courses.find(course => String(course.id) === courseFilter)?.name || courseFilter;
+      XLSX.writeFile(buildPeriodicDuesWorkbook(data, courseLabel), `ACON-Periodic-Dues-Full-Details-${data.frequency}-${data.academicYear}.xlsx`);
+      toast.success("Full periodic dues Excel report downloaded successfully!");
+    } catch (error: any) {
+      toast.error("Failed to generate Excel report: " + error.message);
+    }
+  };
 
   const togglePeriod = (pKey: string) => {
     setExpandedPeriods((prev) => ({ ...prev, [pKey]: !prev[pKey] }));
@@ -308,7 +273,7 @@ export default function DueReportPeriodicPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -317,6 +282,18 @@ export default function DueReportPeriodicPage() {
           >
             <RefreshCw size={14} className={cn(isFetching && "animate-spin")} />
             Refresh
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadExcel}
+            disabled={!data || isFetching}
+            title="Export all periods, batches and student details"
+            className="gap-1.5 text-xs h-9 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950"
+          >
+            <Download size={14} />
+            Export Excel (Full Details)
           </Button>
 
           <Button

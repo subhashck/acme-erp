@@ -14,6 +14,8 @@ export interface PublishedIssue {
   issueMonth: number;
   issueYear: number;
   publishedAt: string | null;
+  readerUrl: string;
+  galleryUrl: string;
 }
 
 const MONTH_NAMES = [
@@ -97,7 +99,7 @@ export function PublishedMagazineSection({
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <a
-                  href={`/magazine/view/${issue.slug}`}
+                  href={issue.readerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white transition-colors"
@@ -172,7 +174,7 @@ export function PublishedMagazineSection({
 
               <div className="flex items-center gap-2 pt-4 mt-2 border-t border-border/50">
                 <a
-                  href={`/magazine/view/${issue.slug}`}
+                  href={issue.readerUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white transition-colors text-center"
@@ -180,7 +182,7 @@ export function PublishedMagazineSection({
                   <BookOpen size={13} /> Read Issue <ExternalLink size={11} />
                 </a>
                 <a
-                  href={`/magazine/view/${issue.slug}/gallery`}
+                  href={issue.galleryUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium border border-border bg-background hover:bg-muted text-foreground transition-colors"

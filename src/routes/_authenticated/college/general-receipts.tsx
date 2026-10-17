@@ -32,6 +32,9 @@ import {
   MessageSquare,
   BadgeCheck,
   Download,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { Button } from "@/ui/button";
 import { Input } from "@/ui/input";
@@ -471,6 +474,7 @@ export default function GeneralReceiptsPage() {
   // Filter & Pagination States
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(15);
+  const [sorting, setSorting] = React.useState<{ column: string; direction: "asc" | "desc" } | null>(null);
   const [categoryFilter, setCategoryFilter] = React.useState("all");
   const [paymentModeFilter, setPaymentModeFilter] = React.useState("all");
   const [recipientTypeFilter, setRecipientTypeFilter] = React.useState("all");
@@ -538,6 +542,7 @@ export default function GeneralReceiptsPage() {
     queryKey: [
       "nursing",
       "general-receipts",
+      sorting,
       page,
       pageSize,
       categoryFilter,
@@ -551,6 +556,10 @@ export default function GeneralReceiptsPage() {
       const params = new URLSearchParams();
       params.set("page", String(page));
       params.set("pageSize", String(pageSize));
+      if (sorting) {
+        params.set("sortBy", sorting.column);
+        params.set("sortDirection", sorting.direction);
+      }
       if (categoryFilter && categoryFilter !== "all") params.set("category", categoryFilter);
       if (paymentModeFilter && paymentModeFilter !== "all") params.set("paymentMode", paymentModeFilter);
       if (recipientTypeFilter && recipientTypeFilter !== "all") params.set("recipientType", recipientTypeFilter);
@@ -1056,31 +1065,49 @@ export default function GeneralReceiptsPage() {
             <table className="w-full text-xs text-left border-collapse">
               <thead>
                 <tr className="bg-muted/50 text-muted-foreground border-b font-semibold">
-                  <th className="p-3">Receipt No</th>
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Recipient</th>
-                  <th className="p-3">Category</th>
-                  <th className="p-3">Narration & Particulars</th>
-                  <th className="p-3">Mode</th>
-                  <th className="p-3 text-right">Amount (₹)</th>
+                  <th className="p-3 whitespace-nowrap" scope="col">S.No.</th>
+                  {[
+                    ["receiptNumber", "Receipt No"],
+                    ["paymentDate", "Date"],
+                    ["recipient", "Payee"],
+                    ["category", "Category"],
+                    ["narration", "Narration & Particulars"],
+                    ["paymentMode", "Mode"],
+                    ["amount", "Amount (₹)"],
+                  ].map(([column, label]) => {
+                    const active = sorting?.column === column;
+                    const SortIcon = active ? (sorting.direction === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                    return (
+                      <th key={column} scope="col" className={cn("p-3", column === "amount" && "text-right")} aria-sort={active ? (sorting.direction === "asc" ? "ascending" : "descending") : "none"}>
+                        <button type="button" className="inline-flex min-h-11 items-center gap-1 text-left rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          aria-label={`Sort ${label} ${active && sorting.direction === "asc" ? "descending" : "ascending"}`}
+                          onClick={() => {
+                            setSorting({ column, direction: active && sorting.direction === "asc" ? "desc" : "asc" });
+                            setPage(1);
+                          }}>
+                          {label}<SortIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        </button>
+                      </th>
+                    );
+                  })}
                   <th className="p-3 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={9} className="p-8 text-center text-muted-foreground">
                       Loading general receipts...
                     </td>
                   </tr>
                 ) : receipts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={9} className="p-8 text-center text-muted-foreground">
                       No general receipts found matching your criteria.
                     </td>
                   </tr>
                 ) : (
-                  receipts.map((tx) => {
+                  receipts.map((tx, index) => {
                     const parsed = parseGeneralReceiptRemarks(tx.remarks);
                     const isStudent = parsed?.recipientType === "student" || !!tx.studentId;
                     const recipientName =
@@ -1096,6 +1123,7 @@ export default function GeneralReceiptsPage() {
 
                     return (
                       <tr key={tx.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="p-3 tabular-nums text-muted-foreground">{(pagination.page - 1) * pagination.pageSize + index + 1}</td>
                         {/* Receipt No */}
                         <td className="p-3 font-mono font-bold text-teal-700 dark:text-teal-300">
                           {tx.receiptNumber}

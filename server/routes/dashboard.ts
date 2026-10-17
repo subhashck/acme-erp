@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
@@ -14,7 +14,6 @@ import {
   staffOffDayRequests,
   staffWeeklyOffDays,
 } from "../db/schema.ts";
-import { labOrders } from "../db/schema-lab.ts";
 import { getCurrentStaff } from "./shared.ts";
 
 export const dashboardRoutes = new Hono<AuthEnv>().get(
@@ -50,7 +49,6 @@ export const dashboardRoutes = new Hono<AuthEnv>().get(
       weeklyOffRules,
       activeNursingSupers,
       clinicalDepts,
-      pendingLabOrders,
     ] = await Promise.all([
       db
         .select({ value: sql<number>`count(*)` })
@@ -139,13 +137,6 @@ export const dashboardRoutes = new Hono<AuthEnv>().get(
         .select({ id: departments.id })
         .from(departments)
         .where(and(eq(departments.active, true), eq(departments.isClinical, true))),
-      db
-        .select({ value: sql<number>`count(*)` })
-        .from(labOrders)
-        .where(inArray(labOrders.status, ["Ordered", "Collected", "InProgress"]))
-        .limit(1)
-        .then((res: any) => res[0])
-        .catch(() => ({ value: 0 })),
     ]);
 
     const offOrLeaveStaffIds = new Set<number>();
@@ -491,7 +482,6 @@ export const dashboardRoutes = new Hono<AuthEnv>().get(
         clinicalStaffCount,
         clinicalDeptCount,
         clinicalOnLeaveOrOffToday,
-        pendingLabOrders: pendingLabOrders?.value ?? 0,
       },
       workforceSchedule,
     });
