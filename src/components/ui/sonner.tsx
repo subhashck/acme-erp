@@ -1,11 +1,9 @@
 import * as React from "react"
 import { useTheme } from "next-themes"
-import * as SonnerPkg from "sonner"
+import { Toaster as Sonner } from "sonner"
 import { CircleCheck, Info, TriangleAlert, OctagonX, Loader2 } from "lucide-react"
 
-const Sonner = SonnerPkg.Toaster || (SonnerPkg as any).default?.Toaster || (SonnerPkg as any).default;
-
-type ToasterProps = typeof SonnerPkg.Toaster extends React.ComponentType<infer P> ? P : Record<string, any>;
+type ToasterProps = React.ComponentProps<typeof Sonner>;
 
 const Toaster = ({ ...props }: ToasterProps) => {
   let theme = "system";
@@ -16,10 +14,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
     }
   } catch {
     theme = "system";
-  }
-
-  if (!Sonner) {
-    return null;
   }
 
   return (

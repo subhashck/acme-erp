@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PublishedMagazineSection } from "../components/PublishedMagazineSection";
+import { PwaInstallHelp } from "../components/PwaProvider";
 
 const isMagazineReturnPath = (path: string) => path === "/magazine/admin" || path.startsWith("/magazine/admin/");
 
@@ -86,6 +87,7 @@ function Login() {
             </form>
           </CardContent>
         </Card>
+        <PwaInstallHelp />
 
         {/* Latest Published Magazine Issues */}
         <PublishedMagazineSection variant="login" limit={3} />

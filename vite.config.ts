@@ -44,13 +44,28 @@ export default defineConfig({
         ]
       },
       workbox: {
+        importScripts: ["/push-sw.js"],
         // Precache only the build output; authenticated API responses stay on the network.
         globPatterns: ["**/*.{js,css,html,woff,woff2}"],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        // The SPA entry bundle currently exceeds Workbox's default 2 MiB limit.
+        // Keep the complete app shell available for offline launch.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/magazine(?:-api)?(?:\/|$)/],
         cleanupOutdatedCaches: true,
         runtimeCaching: []
+      },
+      build: {
+        rolldownOptions: {
+          output: {
+            manualChunks(id) {
+              if (!id.includes("node_modules")) return;
+              if (id.includes("jspdf") || id.includes("html2canvas")) return "pdf-export";
+              if (id.includes("xlsx-js-style")) return "spreadsheet-export";
+              if (id.includes("recharts")) return "charts";
+            }
+          }
+        }
       }
     })
   ],

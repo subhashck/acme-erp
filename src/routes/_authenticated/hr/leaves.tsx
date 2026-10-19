@@ -345,7 +345,11 @@ function LeaveManagement() {
         queryClient.invalidateQueries({ queryKey: ["staff-leave-balance", String(values.staffId)] });
       }
     } catch (err) {
-      alert("Failed to submit leave request: " + (err instanceof Error ? err.message : String(err)));
+      const detail = err instanceof Error ? err.message : String(err);
+      const connectivity = !navigator.onLine || err instanceof TypeError
+        ? " The request was not confirmed as saved. Keep this form open, check your connection, and submit again."
+        : " Your request was not confirmed as saved. Review the leave list before retrying to avoid a duplicate.";
+      alert("Failed to submit leave request: " + detail + connectivity);
     }
   });
 

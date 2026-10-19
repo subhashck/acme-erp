@@ -403,9 +403,14 @@ input[type="number"] {
   animation: page-fade-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* Capture only route content; the sidebar, header and dialogs stay live. */
+/* A named transition element creates a stacking context and a containing block
+   for fixed descendants even while idle. Limit naming to the capture/animation
+   so inline drawers and dialogs remain viewport-fixed above the app sidebar. */
 :root { view-transition-name: none; }
-.erp-page-transition { view-transition-name: erp-page; }
+.erp-page-transition { view-transition-name: none; }
+:root:active-view-transition-type(page) .erp-page-transition {
+  view-transition-name: erp-page;
+}
 
 @keyframes erp-page-leave {
   to { opacity: 0; transform: translateY(-4px); }

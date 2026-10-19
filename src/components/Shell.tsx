@@ -1,3 +1,4 @@
+import { disablePush } from "../lib/push-notifications";
 import { Link, Outlet, useRouter, useLocation, useRouteContext } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { useQuery } from "@tanstack/react-query";
@@ -454,6 +455,8 @@ function ShellContent({ session }: { session: any }) {
   }, []);
 
   const signOut = async () => {
+    // Session deletion also invalidates the server registration if the device is offline.
+    try { await disablePush(); } catch { /* Sign-out must remain available. */ }
     await authClient.signOut();
     await router.invalidate();
     await router.navigate({ to: "/login", search: { redirect: "/" } });
@@ -1764,7 +1767,7 @@ function ShellContent({ session }: { session: any }) {
       </aside>
 
       <main className={cn("erp-sidebar-content", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")} inert={!isDesktop && isMobileMenuOpen || undefined}>
-        <header className="border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8">
+        <header className={cn("relative border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8", notificationsOpen && "z-[100000]")}>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
               <Button
@@ -1823,7 +1826,7 @@ function ShellContent({ session }: { session: any }) {
                 </Button>
 
                 {notificationsOpen && (
-                  <div className="absolute left-0 md:left-auto md:right-0 mt-2 z-50 w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
+                  <div className="absolute left-0 md:left-auto md:right-0 mt-2 z-[100001] w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <div className="font-semibold text-sm">Notifications</div>
                       <div className="flex items-center gap-3">

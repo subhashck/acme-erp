@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { integer, pgTable as sqliteTable, text, boolean, timestamp, serial, varchar, primaryKey, foreignKey, unique, uniqueIndex, index, numeric, pgEnum, date, jsonb } from "drizzle-orm/pg-core";
 
 const timestamps = {
@@ -662,6 +662,26 @@ export const notifications = sqliteTable("notifications", {
   read: boolean("read").notNull().default(false),
   ...timestamps
 });
+
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull().references(() => session.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => [index("push_subscriptions_user_idx").on(table.userId)]);
+
+export const pushDeliveries = sqliteTable("push_deliveries", {
+  id: serial("id").primaryKey(),
+  notificationId: integer("notification_id").notNull().references(() => notifications.id, { onDelete: "cascade" }),
+  subscriptionId: integer("subscription_id").notNull().references(() => pushSubscriptions.id, { onDelete: "cascade" }),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+}, table => [unique().on(table.notificationId, table.subscriptionId),
+  index("push_deliveries_due_idx").on(table.nextAttemptAt).where(sql`${table.finishedAt} IS NULL`)]);
 
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(user, { fields: [notifications.userId], references: [user.id] })

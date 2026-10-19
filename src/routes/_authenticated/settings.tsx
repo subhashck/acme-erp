@@ -1,3 +1,4 @@
+import { PushNotificationSettings } from "@/components/PushNotificationSettings";
 import * as React from "react";
 import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { authClient } from "@/services/auth";
@@ -166,6 +167,7 @@ function SettingsPage() {
           {/* TAB 1: Profile & Security */}
           {activeTab === "profile" && (
             <div className="space-y-6">
+              <PushNotificationSettings />
               {/* Account details info card */}
               <Card className="bg-card/50 backdrop-blur shadow-sm">
                 <CardHeader className="pb-4 border-b">

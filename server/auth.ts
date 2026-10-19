@@ -31,7 +31,7 @@ const envOrigins = process.env.TRUSTED_ORIGINS
       .filter(Boolean)
   : [];
 
-const trustedOrigins = Array.from(
+export const trustedOrigins = Array.from(
   new Set([cleanAuthUrl, ...extraOrigins, ...envOrigins].map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean))
 );
 

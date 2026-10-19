@@ -1,3 +1,4 @@
+import { pushRoutes } from "./routes/push.ts";
 import { Hono } from "hono";
 import type { AuthEnv } from "./auth.ts";
 import { attendanceRoutes } from "./routes/attendance.ts";
@@ -30,6 +31,7 @@ import { skillAssessmentRoutes } from "./routes/skill-assessment.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
+  .route("/", pushRoutes)
   .route("/", notificationRoutes)
   .route("/", immunizationRoutes)
   .route("/", mastersRoutes)

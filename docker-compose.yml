@@ -60,6 +60,9 @@ services:
     environment:
       - PORT=8787
       - NODE_ENV=production
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/acme_erp?sslmode=disable
       - BETTER_AUTH_SECRET=ee3e644fc63c3c50d5a15b3ff79057725f35f43698a91f194b34f7ccbff289cd
       - BETTER_AUTH_URL=http://localhost:8787

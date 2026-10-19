@@ -1,3 +1,4 @@
+import { startPushWorker } from "./services/push.ts";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -113,7 +114,7 @@ app.notFound(async (c) => {
 // Serve static assets (js, css, images) from the Vite build directory for non-API GET requests
 // Browsers must revalidate these files so installed apps discover new deployments.
 app.use("*", async (c, next) => {
-  if (["/sw.js", "/manifest.webmanifest", "/", "/index.html"].includes(c.req.path)) {
+  if (["/sw.js", "/push-sw.js", "/manifest.webmanifest", "/", "/index.html"].includes(c.req.path)) {
     c.header("Cache-Control", "no-cache");
   }
   await next();
@@ -134,6 +135,7 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 8787;
 if (process.env.NODE_ENV !== "test") {
   serve({ fetch: app.fetch, port, hostname: "0.0.0.0" }, (info) => {
     console.log(`Hono API listening on http://localhost:${info.port}`);
+    startPushWorker();
 
     // Clean up any stale 'running' sync log entries from a previous crashed server
     import("./services/docterz.ts")
