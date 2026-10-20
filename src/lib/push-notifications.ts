@@ -8,8 +8,13 @@ async function pushRequest(path: string, method = 'GET', body?: unknown) {
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!response.ok) throw new Error('Unable to update notifications. Please sign in and try again.');
-  return response.json();
+  const result = await response.json().catch(() => null) as { error?: string } | null;
+  if (!response.ok) {
+    if (response.status === 401) throw new Error('Your sign-in has expired. Sign in again, then retry.');
+    if (response.status >= 500) throw new Error(`Notification service is unavailable (HTTP ${response.status}). Try again later.`);
+    throw new Error(result?.error || `Unable to update notifications (HTTP ${response.status}).`);
+  }
+  return result;
 }
 
 async function registration() {

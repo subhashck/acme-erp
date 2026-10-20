@@ -24,7 +24,7 @@ Android Chrome supports background push after the user opts in through **Setting
 Deployment:
 
 1. Run `pnpm db:setup-push` to add only the push subscription and delivery tables. This command is also included in the existing `db:setup` workflow.
-2. Docker Compose generates an installation-specific VAPID pair on first start and stores it in the persistent `vapid_keys` volume. Container restarts and rebuilds reuse that pair. Set `VAPID_SUBJECT` to a contact `mailto:` URL or HTTPS URL. To supply a custom pair, set both `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in the deployment environment.
+2. Docker Compose generates an installation-specific VAPID pair on first start and stores it in the persistent `vapid_keys` volume. Container restarts and rebuilds reuse that pair. Preserve this volume across deployments; losing it invalidates existing browser subscriptions. Set `VAPID_SUBJECT` to a contact `mailto:` URL or HTTPS URL. To supply a custom pair, set both `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in the deployment environment. Set production `BETTER_AUTH_URL` to the public HTTPS base URL and include the exact site origin in `TRUSTED_ORIGINS`; Compose defaults to localhost for local development.
 3. Build and deploy ERP, restart the API, then accept the installed app's update. Keep `/push-sw.js` served as JavaScript with revalidation alongside `/sw.js`.
 4. Sign in on the device and enable notifications in Settings. Confirm the Android/browser notification permission is allowed. Opt-in is per device and login; re-enable after logout or session expiry.
 

@@ -1,4 +1,3 @@
-import { disablePush } from "../lib/push-notifications";
 import { Link, Outlet, useRouter, useLocation, useRouteContext } from "@tanstack/react-router";
 import { useStore } from "@tanstack/react-store";
 import { useQuery } from "@tanstack/react-query";
@@ -455,8 +454,8 @@ function ShellContent({ session }: { session: any }) {
   }, []);
 
   const signOut = async () => {
-    // Session deletion also invalidates the server registration if the device is offline.
-    try { await disablePush(); } catch { /* Sign-out must remain available. */ }
+    // Push registrations are bound to the session and are removed by the
+    // server when it expires. Do not make logout wait on the push endpoint.
     await authClient.signOut();
     await router.invalidate();
     await router.navigate({ to: "/login", search: { redirect: "/" } });

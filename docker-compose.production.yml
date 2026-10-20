@@ -1,0 +1,5 @@
+services:
+  web:
+    environment:
+      BETTER_AUTH_URL: https://my-acme.cloud
+      TRUSTED_ORIGINS: https://my-acme.cloud

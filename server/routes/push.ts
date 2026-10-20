@@ -11,7 +11,12 @@ import { pushSubscriptionSchema } from '../services/push-policy.ts';
 export const pushRoutes = new Hono<AuthEnv>()
   .use('/notifications/push/*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
-    if (c.req.method !== 'GET' && !trustedOrigins.includes(c.req.header('origin') ?? '')) {
+    const requestOrigin = c.req.header('origin') ?? '';
+    const forwardedProto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
+    const forwardedHost = c.req.header('x-forwarded-host')?.split(',')[0]?.trim();
+    const host = forwardedHost || c.req.header('host');
+    const proxyOrigin = forwardedProto && host ? `${forwardedProto}://${host}` : '';
+    if (c.req.method !== 'GET' && !trustedOrigins.includes(requestOrigin) && requestOrigin !== proxyOrigin) {
       return c.json({ error: 'Untrusted request origin' }, 403);
     }
     await next();
