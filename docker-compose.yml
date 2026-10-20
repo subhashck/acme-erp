@@ -60,13 +60,12 @@ services:
     environment:
       - PORT=8787
       - NODE_ENV=production
-      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-}
+      - VAPID_KEYS_FILE=/var/lib/acme-erp/vapid.env
+      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@acmehospital.health}
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/acme_erp?sslmode=disable
       - BETTER_AUTH_SECRET=ee3e644fc63c3c50d5a15b3ff79057725f35f43698a91f194b34f7ccbff289cd
       - BETTER_AUTH_URL=http://localhost:8787
-      - TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8787,https://my-acme.cloud
+      - TRUSTED_ORIGINS=http://localhost:8787
       - ADMIN_EMAIL=admin@acmehospital.health
       - ADMIN_PASSWORD=AdminAdmin@12345
       - MINIO_ENDPOINT=minio
@@ -84,6 +83,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    volumes:
+      - vapid_keys:/var/lib/acme-erp
 
   magazine-db-init:
     profiles: [magazine]
@@ -150,3 +151,4 @@ services:
 volumes:
   postgres_data:
   minio_data:
+  vapid_keys:

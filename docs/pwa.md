@@ -24,7 +24,7 @@ Android Chrome supports background push after the user opts in through **Setting
 Deployment:
 
 1. Run `pnpm db:setup-push` to add only the push subscription and delivery tables. This command is also included in the existing `db:setup` workflow.
-2. Generate a VAPID pair once with `pnpm exec web-push generate-vapid-keys --json`. Set `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (a contact `mailto:` URL or HTTPS URL) in the server environment. Keep the private key server-side and preserve the pair across deployments. Compose passes these variables to ERP. Local development keys have been generated in the ignored root `.env`; use separate production keys.
+2. Docker Compose generates an installation-specific VAPID pair on first start and stores it in the persistent `vapid_keys` volume. Container restarts and rebuilds reuse that pair. Set `VAPID_SUBJECT` to a contact `mailto:` URL or HTTPS URL. To supply a custom pair, set both `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY` in the deployment environment.
 3. Build and deploy ERP, restart the API, then accept the installed app's update. Keep `/push-sw.js` served as JavaScript with revalidation alongside `/sw.js`.
 4. Sign in on the device and enable notifications in Settings. Confirm the Android/browser notification permission is allowed. Opt-in is per device and login; re-enable after logout or session expiry.
 
@@ -35,6 +35,13 @@ Push text is generic and excludes staff names and notification details. Tapping 
 Supported provider endpoints are restricted to FCM (Android Chrome), Mozilla and Apple. Adding another browser provider requires extending the endpoint allowlist. Delivery depends on network, browser and Android battery/notification settings; the saved ERP inbox remains authoritative. No Firebase account is required for standards-based Web Push.
 
 Device acceptance check: enable/deny permission, trigger a leave or roster alert, verify foreground and closed-app/locked-screen delivery, tap through while signed in and after session expiry, disable, sign out, and try two devices. Automated tests cover delivery retries, expiry, link validation and worker behavior; real Android delivery still requires this device check.
+
+### Local Docker test
+
+1. Start the local stack with `docker compose up -d --build` and check `docker compose logs web` for successful key generation and startup. The pair is kept in the `vapid_keys` volume.
+2. Open `http://localhost:8787` in Chrome or Edge, sign in, then visit **Settings → Profile & Security → Device notifications** and enable notifications. Localhost is treated as a secure context by supported browsers.
+3. Trigger an existing notification for the signed-in user (for example, a leave or roster event) and confirm it appears. For background delivery, install the app and test with it closed; desktop browser behavior varies.
+4. To test a fresh deployment key pair, remove only the local VAPID volume with `docker compose down` followed by `docker volume rm <project>_vapid_keys`, then start Compose again. Do not remove the volume if you want existing browser subscriptions to keep working.
 
 Implementation references: [Web Push library](https://github.com/web-push-libs/web-push), [Vite PWA Workbox integration](https://vite-pwa-org.netlify.app/workbox/).
 

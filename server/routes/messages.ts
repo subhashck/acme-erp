@@ -5,6 +5,7 @@ import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
 import { messages, staff, staffDepartments, user } from "../db/schema.ts";
 import { chatEmitter, dispatchMessage } from "../utils/chat-notifier.ts";
+import { sendNotification } from "../utils/notifier.ts";
 
 export const messagesRoutes = new Hono<AuthEnv>()
   .get("/colleagues", async (c) => {
@@ -280,6 +281,40 @@ export const messagesRoutes = new Hono<AuthEnv>()
     };
 
     dispatchMessage(newMsg);
+
+    // Keep communication push content generic; the inbox link opens the
+    // conversation without exposing message text on a locked screen.
+    try {
+      let recipientIds: string[] = [];
+      if (newMsg.channelType === "direct" && newMsg.receiverId) {
+        recipientIds = [newMsg.receiverId];
+      } else if (newMsg.channelType === "organization") {
+        const recipients = await db.select({ id: user.id }).from(user)
+          .where(sql`${user.id} != ${userId}`);
+        recipientIds = recipients.map(recipient => recipient.id);
+      } else if (newMsg.channelType === "department" && newMsg.departmentId) {
+        const recipients = await db.execute(sql`
+          SELECT DISTINCT u.id
+          FROM staff_departments sd
+          JOIN staff st ON st.staff_id = sd.staff_id AND st.version = sd.staff_version
+          JOIN "user" u ON lower(u.email) = lower(st.email)
+          WHERE sd.department_id = ${newMsg.departmentId}
+            AND sd.status = 'Active'
+            AND u.id <> ${userId}
+        `);
+        recipientIds = (recipients.rows as Array<{ id: string }>).map(recipient => recipient.id);
+      }
+      await Promise.all(recipientIds.map(recipientId => sendNotification({
+        userId: recipientId,
+        title: newMsg.channelType === "direct" ? "New direct message" : "New communication message",
+        message: "You have a new message in Communication.",
+        type: "info",
+        link: "/communication",
+      })));
+    } catch (error) {
+      // Communication delivery must remain available if notification setup fails.
+      console.warn("Failed to notify communication recipients:", error);
+    }
 
     return c.json(newMsg);
   })

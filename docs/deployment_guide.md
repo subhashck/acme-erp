@@ -80,6 +80,7 @@ Because the database starts completely blank, you must seed it with the default 
 
 - **Local Access**: Open a browser on the target machine and go to:
   `http://localhost:8787`
+- Local Docker generates a persistent VAPID key pair automatically. To test push, sign in using a supported browser and enable **Settings → Profile & Security → Device notifications**. `localhost` is a secure context for browser service workers and push.
 - **Network Access**: To access the app from other devices on the same local network:
   1. Find the target machine's local IP address using `ipconfig` (e.g., `192.168.1.50`).
   2. Update the `BETTER_AUTH_URL` env variable in `docker-compose.yml` to:
