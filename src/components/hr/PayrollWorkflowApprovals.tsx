@@ -86,6 +86,8 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
 
   const [selectedStage, setSelectedStage] = React.useState<"all" | "hr" | "management" | "accounts" | "completed">("all");
   const [selectedDeptId, setSelectedDeptId] = React.useState<string>("");
+  const [selectedStatus, setSelectedStatus] = React.useState<string>("all");
+  const [selectedPaymentMode, setSelectedPaymentMode] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const [selectedIds, setSelectedIds] = React.useState<Set<number>>(new Set());
@@ -136,6 +138,15 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
     return all.filter((p) => p.month === selectedMonth && p.status !== "Superseded");
   }, [payslipsQuery.data, selectedMonth]);
 
+  const availableStatuses = React.useMemo(
+    () => Array.from(new Set(monthPayslips.map((p) => p.status))).sort((a, b) => a.localeCompare(b)),
+    [monthPayslips]
+  );
+  const availablePaymentModes = React.useMemo(
+    () => Array.from(new Set(monthPayslips.map((p) => p.paymentMode || "Bank Transfer"))).sort((a, b) => a.localeCompare(b)),
+    [monthPayslips]
+  );
+
   // Counts by stage
   const counts = React.useMemo(() => {
     let pendingHr = 0;
@@ -168,6 +179,9 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
   // Filtered payslips based on Stage & Department & Search
   const filteredPayslips = React.useMemo(() => {
     return monthPayslips.filter((p) => {
+      if (selectedStatus !== "all" && p.status !== selectedStatus) return false;
+      if (selectedPaymentMode !== "all" && (p.paymentMode || "Bank Transfer") !== selectedPaymentMode) return false;
+
       // Stage filter
       if (selectedStage === "hr" && !(p.status === "Draft" || p.status === "Active")) return false;
       if (selectedStage === "management" && p.status !== "Approved by HR") return false;
@@ -192,7 +206,7 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
 
       return true;
     });
-  }, [monthPayslips, selectedStage, selectedDeptId, searchQuery, departmentsQuery.data]);
+  }, [monthPayslips, selectedStatus, selectedPaymentMode, selectedStage, selectedDeptId, searchQuery, departmentsQuery.data]);
 
   // Filter changes must not leave hidden payslips selected for approval.
   const visibleSelectedIds = React.useMemo(() => {
@@ -415,6 +429,26 @@ export function PayrollWorkflowApprovals({ initialMonth }: PayrollWorkflowApprov
                   ["", "All Departments"],
                   ...(departmentsQuery.data ?? []).map((d) => [String(d.id), d.name] as [string, string]),
                 ]}
+              />
+            </div>
+
+            <div className="space-y-1 min-w-40">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Status</span>
+              <Select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                options={[["all", "All Statuses"], ...availableStatuses.map((status) => [status, status] as [string, string])]}
+                selectClassName="h-8 !text-[11px] px-2"
+              />
+            </div>
+
+            <div className="space-y-1 min-w-40">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Payment Mode</span>
+              <Select
+                value={selectedPaymentMode}
+                onChange={(e) => setSelectedPaymentMode(e.target.value)}
+                options={[["all", "All Modes"], ...availablePaymentModes.map((mode) => [mode, mode] as [string, string])]}
+                selectClassName="h-8 !text-[11px] px-2"
               />
             </div>
 
