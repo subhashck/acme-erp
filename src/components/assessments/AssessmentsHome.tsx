@@ -158,8 +158,18 @@ function StaffAssessmentsHome({ myPerms }: { myPerms: any }) {
       </div>}
     </section>
     <section className="mt-6 space-y-3">
-      <h2 className="text-lg font-semibold">My online exam history</h2>
-      <p className="text-sm text-muted-foreground">Your latest 50 CBT attempts, including exams taken separately from a skill assessment.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">My online exam history</h2>
+          <p className="text-sm text-muted-foreground">Your recent CBT attempts, including exams taken separately from a skill assessment.</p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="gap-1.5">
+          <Link to="/assessments/cbt-results">
+            <Award size={14} />
+            View all CBT results
+          </Link>
+        </Button>
+      </div>
       {attempts.isLoading ? <p role="status">Loading your online exams...</p>
         : attempts.isError ? <div role="alert"><p>{attempts.error.message}</p><Button variant="outline" onClick={() => attempts.refetch()}>Retry</Button></div>
         : !attempts.data?.length ? <p className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">You have not taken an online exam yet.</p>

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DollarSign,
   Search,
@@ -28,12 +28,14 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Plus,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/ui/card";
 import { Button } from "@/ui/button";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { formatCollegePaymentMode } from "@/lib/college-payment";
+import { CollegeReceiptDialog } from "@/components/college/CollegeReceiptDialog";
 
 export const Route = createFileRoute("/_authenticated/college/fee-dues")({
   component: StudentFeeDueTrackingPage,
@@ -160,6 +162,9 @@ interface StudentDue {
 }
 
 function StudentFeeDueTrackingPage() {
+  const queryClient = useQueryClient();
+  const [collectStudentId, setCollectStudentId] = React.useState<number | null>(null);
+  const [collectDialogOpen, setCollectDialogOpen] = React.useState<boolean>(false);
   const [selectedBatchFilter, setSelectedBatchFilter] = React.useState<number>(0);
   const [dueStatusFilter, setDueStatusFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -259,9 +264,19 @@ function StudentFeeDueTrackingPage() {
               <CalendarDays size={14} /> Academic Schedules
             </Link>
           </Button>
+          <Button
+            size="sm"
+            className="bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 text-xs"
+            onClick={() => {
+              setCollectStudentId(null);
+              setCollectDialogOpen(true);
+            }}
+          >
+            <Plus size={14} /> Collect Fee / Issue Receipt
+          </Button>
           <Button variant="outline" asChild size="sm">
             <Link to="/college/fees" className="flex items-center gap-1.5 text-xs text-teal-600 border-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950">
-              <ExternalLink size={14} /> Record Payment
+              <ExternalLink size={14} /> Fee Ledger
             </Link>
           </Button>
         </div>
@@ -563,10 +578,15 @@ function StudentFeeDueTrackingPage() {
                                       </Link>
                                     </Button>
                                     {Number(st.remainingBalance ?? st.balanceDue) > 0 && (
-                                      <Button size="sm" asChild className="h-7 text-xs bg-teal-600 text-white hover:bg-teal-700">
-                                        <Link to="/college/fees">
-                                          Collect Payment
-                                        </Link>
+                                      <Button
+                                        size="sm"
+                                        className="h-7 text-xs bg-teal-600 text-white hover:bg-teal-700"
+                                        onClick={() => {
+                                          setCollectStudentId(st.studentId);
+                                          setCollectDialogOpen(true);
+                                        }}
+                                      >
+                                        Collect Payment
                                       </Button>
                                     )}
                                   </div>
@@ -1005,6 +1025,15 @@ function StudentFeeDueTrackingPage() {
         )}
       </CardContent>
     </Card>
+
+    <CollegeReceiptDialog
+      open={collectDialogOpen}
+      onOpenChange={setCollectDialogOpen}
+      initialStudentId={collectStudentId}
+      onSuccess={() => {
+        queryClient.invalidateQueries({ queryKey: ["nursing"] });
+      }}
+    />
   </div>
   );
 }

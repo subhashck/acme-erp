@@ -13,7 +13,7 @@ import { Select } from "../../../ui/select";
 import { Field } from "../../../components/Field";
 import { exportPayrollToExcel } from "../../../lib/payroll-export";
 import type { StaffRow } from "../../../types";
-import { authClient } from "../../../services/auth";
+// import { authClient } from "../../../services/auth";
 import { useUserPermissions } from "../../../lib/permissions";
 import { Autocomplete } from "../../../ui/autocomplete";
 import { cn } from "@/utils/cn";

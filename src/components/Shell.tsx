@@ -3,6 +3,7 @@ import { useStore } from "@tanstack/react-store";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard,
+  Home,
   LogOut,
   Search,
   Settings,
@@ -60,7 +61,7 @@ import { chatStore, chatActions } from "../lib/chat-store";
 import { useUserPermissions, PermissionsProvider } from "../lib/permissions";
 
 const getBreadcrumbs = (pathname: string) => {
-  const items = [{ label: "Dashboard", to: "/" }];
+  const items = [{ label: "Home", to: "/" }];
 
   if (pathname === "/" || pathname === "") {
     return items;
@@ -78,6 +79,7 @@ const getBreadcrumbs = (pathname: string) => {
 
   if (pathname === "/assessments" || pathname.startsWith("/assessments/")) {
     items.push({ label: "Assessments", to: "/assessments" });
+    if (pathname.startsWith("/assessments/cbt-results")) items.push({ label: "CBT Results", to: "/assessments/cbt-results" });
     if (pathname.startsWith("/assessments/skill-assessments")) items.push({ label: "Skill Assessments", to: "/assessments/skill-assessments" });
     if (pathname.startsWith("/assessments/question-bank")) items.push({ label: "Question Bank", to: "/assessments/question-bank" });
     if (pathname.startsWith("/assessments/online-cbt")) items.push({ label: "Online CBT", to: "/assessments/online-cbt" });
@@ -280,6 +282,15 @@ const getBreadcrumbs = (pathname: string) => {
     return items;
   }
 
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
+    items.push({ label: "Dashboard", to: "/dashboard/inventory" });
+    const sub = pathname.replace("/dashboard/", "").replace("/dashboard", "");
+    if (sub === "inventory") {
+      items.push({ label: "Pharmacy Stock", to: "/dashboard/inventory" });
+    }
+    return items;
+  }
+
   if (pathname.startsWith("/inventory/")) {
     items.push({ label: "Inventory", to: "/inventory/stores" });
     const sub = pathname.replace("/inventory/", "");
@@ -336,6 +347,7 @@ function ShellContent({ session }: { session: any }) {
   const location = useLocation();
   // const search = useStore(uiStore, (state) => state.search);
   const hospital = useHospitalSettings();
+  const [dashboardOpen, setDashboardOpen] = React.useState(false);
   const [collegeOpen, setCollegeOpen] = React.useState(false);
   const [frontOfficeOpen, setFrontOfficeOpen] = React.useState(false);
   const [collegeMastersOpen, setCollegeMastersOpen] = React.useState(false);
@@ -397,6 +409,7 @@ function ShellContent({ session }: { session: any }) {
   const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
 
   React.useEffect(() => {
+    if (location.pathname.startsWith("/dashboard")) setDashboardOpen(true);
     if (location.pathname.startsWith("/college")) setCollegeOpen(true);
     if (location.pathname.startsWith("/front-office")) setFrontOfficeOpen(true);
     if (location.pathname.startsWith("/college/reports")) setCollegeReportsOpen(true);
@@ -536,15 +549,41 @@ function ShellContent({ session }: { session: any }) {
 
           {/* Expanded Sidebar Navigation */}
             <div className="erp-sidebar-nav-expanded custom-scrollbar space-y-1.5 pr-1 pb-2" inert={isSidebarCollapsed || undefined} aria-hidden={isSidebarCollapsed}>
-              {/* Dashboard */}
+              {/* Home */}
               <Link
                 to="/"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
               >
-                <LayoutDashboard size={18} />
-                Dashboard
+                <Home size={18} />
+                Home
               </Link>
+
+              {/* Collapsible Dashboard group */}
+              <div className="flex flex-col">
+                <button
+                  type="button"
+                  onClick={() => setDashboardOpen(!dashboardOpen)}
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <LayoutDashboard size={18} />
+                    <span>Dashboard</span>
+                  </div>
+                  {dashboardOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {dashboardOpen && (
+                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                    <Link
+                      to={"/dashboard/inventory" as any}
+                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                    >
+                      Pharmacy Stock
+                    </Link>
+                  </div>
+                )}
+              </div>
 
               {/* Communication */}
               <Link
@@ -781,6 +820,7 @@ function ShellContent({ session }: { session: any }) {
                 {assessmentsOpen && <div id="assessments-sidebar-links" className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                   <Link to="/assessments" activeOptions={{ exact: true }} className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Assessments Home</Link>
                   <Link to="/assessments/online-cbt" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Online CBT</Link>
+                  <Link to="/assessments/cbt-results" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>CBT Results</Link>
                   {(isAdmin || isHr) && <>
                     <Link to="/assessments/skill-assessments" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Skill Assessments</Link>
                     <Link to="/assessments/question-bank" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}><FileQuestion size={14} />Question Bank</Link>
@@ -1155,7 +1195,15 @@ function ShellContent({ session }: { session: any }) {
                         Live Stock Inquiry
                       </Link>
                       <Link
+                        to={"/dashboard/inventory" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Pharmacy Stock Dashboard
+                      </Link>
+                      <Link
                         to={"/inventory/ledger" as any}
+
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
@@ -1395,7 +1443,16 @@ function ShellContent({ session }: { session: any }) {
                 to="/"
                 className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Dashboard"
+                title="Home"
+              >
+                <Home size={20} />
+              </Link>
+
+              <Link
+                to={"/dashboard/inventory" as any}
+                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                title="Pharmacy Stock Dashboard"
               >
                 <LayoutDashboard size={20} />
               </Link>

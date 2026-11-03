@@ -8,6 +8,7 @@ import {
   numeric,
   date,
   unique,
+  index,
   pgSchema,
 } from "drizzle-orm/pg-core";
 import {
@@ -633,4 +634,111 @@ export const consumptionReturnItemsRelations = relations(consumptionReturnItems,
   batch: one(itemBatches, { fields: [consumptionReturnItems.batchId], references: [itemBatches.id] }),
   unit: one(unitTypes, { fields: [consumptionReturnItems.unitId], references: [unitTypes.id] }),
 }));
+
+// ---------------------------------------------------------------------------
+// 19. External Closing Stock Push Sync (acme-front Ingestion & Audit)
+// ---------------------------------------------------------------------------
+
+export const closingStockSyncSessions = inventorySchema.table("closing_stock_sync_sessions", {
+  id: serial("id").primaryKey(),
+  syncId: text("sync_id").notNull().unique(), // jobId from acme-front
+  source: text("source").notNull().default("acme-front"),
+  reportDate: date("report_date").notNull(),
+  storeIds: text("store_ids"),
+  storeNames: text("store_names"),
+  totalRecordsExpected: integer("total_records_expected").notNull().default(0),
+  totalRecordsReceived: integer("total_records_received").notNull().default(0),
+  totalChunksExpected: integer("total_chunks_expected").notNull().default(0),
+  totalChunksReceived: integer("total_chunks_received").notNull().default(0),
+  totalCost: numeric("total_cost", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  totalMrp: numeric("total_mrp", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  status: text("status").notNull().default("receiving"), // 'receiving', 'completed', 'reconciled', 'failed'
+  pushedBy: text("pushed_by").default("Operator"),
+  pushedAt: timestamp("pushed_at"),
+  completedAt: timestamp("completed_at"),
+  reconciledAt: timestamp("reconciled_at"),
+  ...timestamps,
+});
+
+export const closingStockChunks = inventorySchema.table("closing_stock_chunks", {
+  id: serial("id").primaryKey(),
+  syncSessionId: integer("sync_session_id").notNull().references(() => closingStockSyncSessions.id, { onDelete: "cascade" }),
+  syncId: text("sync_id").notNull(),
+  chunkIndex: integer("chunk_index").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  recordCount: integer("record_count").notNull(),
+  chunkCost: numeric("chunk_cost", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  chunkMrp: numeric("chunk_mrp", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  unqSyncChunk: unique().on(t.syncId, t.chunkIndex),
+}));
+
+export const closingStockSnapshotItems = inventorySchema.table("closing_stock_snapshot_items", {
+  id: serial("id").primaryKey(),
+  syncSessionId: integer("sync_session_id").notNull().references(() => closingStockSyncSessions.id, { onDelete: "cascade" }),
+  syncId: text("sync_id").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  reportDate: date("report_date").notNull(),
+  storeId: text("store_id").notNull(),
+  storeName: text("store_name").notNull(),
+  erpStoreId: integer("erp_store_id").references(() => stores.id),
+  itemName: text("item_name").notNull(),
+  saltName: text("salt_name"),
+  groupName: text("group_name"),
+  subgroupName: text("subgroup_name"),
+  companyName: text("company_name"),
+  packing: text("packing"),
+  batchNo: text("batch_no").notNull(),
+  expiryDate: text("expiry_date"),
+  monthsToExpiry: integer("months_to_expiry"),
+  quantity: numeric("quantity", { precision: 14, scale: 3, mode: "number" }).notNull(),
+  baseUnit: text("base_unit"),
+  preferredUnit: text("preferred_unit"),
+  conversionRatio: numeric("conversion_ratio", { precision: 10, scale: 4, mode: "number" }).default(1),
+  preferredQuantity: numeric("preferred_quantity", { precision: 14, scale: 3, mode: "number" }),
+  rate: numeric("rate", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  costAmount: numeric("cost_amount", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  mrp: numeric("mrp", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  totalMrp: numeric("total_mrp", { precision: 14, scale: 2, mode: "number" }).notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  unqItemKey: unique().on(t.syncId, t.idempotencyKey),
+  idxSession: index("idx_cs_snapshot_session").on(t.syncSessionId),
+  idxReportDate: index("idx_cs_snapshot_date").on(t.reportDate),
+  idxItemName: index("idx_cs_snapshot_item").on(t.itemName),
+  idxStoreDate: index("idx_cs_snapshot_store_date").on(t.storeId, t.reportDate),
+}));
+
+export const closingStockSyncSessionsRelations = relations(closingStockSyncSessions, ({ many }) => ({
+  chunks: many(closingStockChunks),
+  items: many(closingStockSnapshotItems),
+}));
+
+export const closingStockChunksRelations = relations(closingStockChunks, ({ one }) => ({
+  session: one(closingStockSyncSessions, { fields: [closingStockChunks.syncSessionId], references: [closingStockSyncSessions.id] }),
+}));
+
+export const closingStockSnapshotItemsRelations = relations(closingStockSnapshotItems, ({ one }) => ({
+  session: one(closingStockSyncSessions, { fields: [closingStockSnapshotItems.syncSessionId], references: [closingStockSyncSessions.id] }),
+  erpStore: one(stores, { fields: [closingStockSnapshotItems.erpStoreId], references: [stores.id] }),
+}));
+
+export const closingStockPushApiKeys = inventorySchema.table(
+  "closing_stock_push_api_keys",
+  {
+    id: serial("id").primaryKey(),
+    key: text("key").notNull().unique(),
+    generatedBy: text("generated_by").default("Operator"),
+    expiresAt: timestamp("expires_at").notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+    isRevoked: boolean("is_revoked").notNull().default(false),
+    ...timestamps,
+  },
+  (t) => ({
+    idxKeyExpiry: index("idx_cs_push_keys_expiry").on(t.key, t.expiresAt, t.isRevoked),
+  })
+);
+
+
 

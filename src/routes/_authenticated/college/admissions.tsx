@@ -337,7 +337,7 @@ const downloadSeatBookingPDF = (applicant: Applicant, tx?: any, userName?: strin
   doc.save(`Receipt-${receiptNo}.pdf`);
 };
 
-export const formatAdmissionReceiptWhatsAppMessage = (applicant: Applicant, tx?: any): string => {
+const formatAdmissionReceiptWhatsAppMessage = (applicant: Applicant, tx?: any): string => {
   const receiptNo = tx?.receiptNumber || applicant.seatBookingReceiptNo || "RCP-ADV";
   const paymentDate = tx?.paymentDate || applicant.seatBookingDate || format(new Date(), "yyyy-MM-dd");
   const paymentMode = formatCollegePaymentMode(tx?.paymentMode || applicant.seatBookingPaymentMode);
@@ -366,7 +366,7 @@ export const formatAdmissionReceiptWhatsAppMessage = (applicant: Applicant, tx?:
   return lines.join("\n");
 };
 
-export const openWhatsAppAdmissionReceipt = (phone: string, text: string) => {
+const openWhatsAppAdmissionReceipt = (phone: string, text: string) => {
   let clean = (phone || "").replace(/\D/g, "");
   if (!clean) {
     toast.error("Please enter a valid recipient phone number.");
@@ -380,7 +380,7 @@ export const openWhatsAppAdmissionReceipt = (phone: string, text: string) => {
   return true;
 };
 
-export const shareAdmissionReceiptPDFViaWhatsApp = async (
+const shareAdmissionReceiptPDFViaWhatsApp = async (
   applicant: Applicant,
   phone: string,
   tx?: any,

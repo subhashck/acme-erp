@@ -15,6 +15,7 @@ function AssessmentsModule() {
     <nav aria-label="Assessments" className="flex flex-wrap gap-2 border-b pb-3">
       <Link to="/assessments" activeOptions={{ exact: true }} className={linkClass} activeProps={{ className: "bg-muted text-primary" }}>Assessments home</Link>
       <Link to="/assessments/online-cbt" className={linkClass} activeProps={{ className: "bg-muted text-primary" }}>Online CBT</Link>
+      <Link to="/assessments/cbt-results" className={linkClass} activeProps={{ className: "bg-muted text-primary" }}>CBT results</Link>
       {reviewer && <Link to="/assessments/skill-assessments" className={linkClass} activeProps={{ className: "bg-muted text-primary" }}>Skill assessments</Link>}
       {manager && <Link to="/assessments/question-bank" className={linkClass} activeProps={{ className: "bg-muted text-primary" }}>Question bank</Link>}
       {manager && <Link to="/assessments/settings" className={linkClass} activeProps={{ className: "bg-muted text-primary" }}>Settings</Link>}

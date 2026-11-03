@@ -51,6 +51,8 @@ import { toast } from "@/lib/toast";
 import { toNum } from "@/utils/math";
 import { cn } from "@/lib/utils";
 import { formatCollegePaymentMode } from "@/lib/college-payment";
+import { buildCollegeReceiptPDFDoc } from "@/lib/college-receipt-pdf";
+import { MonthBox, MonthBoxList } from "@/components/college/MonthBox";
 import { useUserPermissions } from "@/lib/permissions";
 import {
   Select,
@@ -60,6 +62,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Calendar as CalendarPicker } from "@/components/ui/calendar";
+import { CollegeReceiptDialog } from "@/components/college/CollegeReceiptDialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ComponentFrequencyRow,
@@ -73,7 +76,7 @@ export const Route = createFileRoute("/_authenticated/college/fees")({
   component: FeeManagementPage,
 });
 
-export const getAcademicYear = (dateStr?: string): string => {
+const getAcademicYear = (dateStr?: string): string => {
   const d = dateStr ? new Date(dateStr) : new Date();
   const year = isNaN(d.getFullYear()) ? new Date().getFullYear() : d.getFullYear();
   const month = isNaN(d.getMonth()) ? new Date().getMonth() + 1 : d.getMonth() + 1;
@@ -357,7 +360,7 @@ const getPeriodIntervalLabel = (type: string | null | undefined): string => {
   }
 };
 
-export function parseRemarks(remarks: unknown): any {
+function parseRemarks(remarks: unknown): any {
   if (!remarks) return null;
   if (typeof remarks === "object") return remarks;
   if (typeof remarks === "string") {
@@ -536,267 +539,7 @@ const formatDiscountLabel = (rawReason?: string | null): string => {
 };
 
 const buildReceiptPDFDoc = (tx: FeeTransaction, userName?: string): jsPDF => {
-  const doc = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a5",
-  });
-
-  // A5 dimensions: 148mm width x 210mm height
-  doc.setFillColor(13, 148, 136); // Teal 600
-  doc.rect(0, 0, 148, 20, "F");
-
-  // Parse itemized breakdown & target period
-  const parsed = parseRemarks(tx.remarks);
-  const isAdvanceReceipt = parsed?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking");
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("ACME COLLEGE OF NURSING", 10, 9);
-
-  doc.setFontSize(7.5);
-  doc.setFont("helvetica", "normal");
-  const feeLabel = isAdvanceReceipt
-    ? "SEAT BOOKING ADVANCE PAYMENT RECEIPT"
-    : tx.feeType
-    ? `${String(tx.feeType).toUpperCase()} RECEIPT`
-    : "OFFICIAL FEE PAYMENT RECEIPT";
-  doc.text(feeLabel, 10, 15);
-
-  const receiptNo = tx.receiptNumber || "RCP-FEE";
-  const paymentDate = tx.paymentDate || format(new Date(), "yyyy-MM-dd");
-  const paymentMode = formatCollegePaymentMode(tx.paymentMode);
-  const amt = Number(toNum(tx.amount));
-
-  doc.setFontSize(7.5);
-  doc.text(`Receipt No: ${receiptNo}`, 138, 9, { align: "right" });
-  doc.text(`Payment Date: ${paymentDate}`, 138, 15, { align: "right" });
-
-  const acadYear = parsed?.academicYear || getAcademicYear(tx.paymentDate);
-  const periodType = parsed?.billingPeriodType;
-  const periodVal = parsed?.billingPeriodValue;
-
-  let periodDetailText = "";
-  if (periodVal) {
-    if (periodType === "month") {
-      periodDetailText = `Months: ${periodVal}`;
-    } else if (periodType === "semester") {
-      periodDetailText = `Semester: ${periodVal}`;
-    } else if (periodType === "quarter") {
-      periodDetailText = `Quarter: ${periodVal}`;
-    } else if (periodType === "academic_year") {
-      periodDetailText = "Full Academic Year";
-    } else {
-      periodDetailText = periodVal;
-    }
-  } else if (parsed?.periodLabel) {
-    periodDetailText = parsed.periodLabel;
-  } else {
-    periodDetailText = "Full Academic Year";
-  }
-
-  const fullPeriodDisplay = acadYear ? `AY ${acadYear} • ${periodDetailText}` : periodDetailText;
-
-  // Student & Payment Meta
-  doc.setTextColor(30, 41, 59);
-  doc.setFontSize(8);
-
-  let metaY = 26;
-  const labelX = 10;
-  const valueX = 42;
-  const lineSpacing = 4.5;
-
-  // Row 1: Student Name
-  doc.setFont("helvetica", "bold");
-  doc.text("Student Name:", labelX, metaY);
-  doc.setFont("helvetica", "normal");
-  doc.text(tx.studentName || "N/A", valueX, metaY);
-  metaY += lineSpacing;
-
-  // Row 2: Enrollment No
-  doc.setFont("helvetica", "bold");
-  doc.text(isAdvanceReceipt ? "Application No:" : "Enrollment No:", labelX, metaY);
-  doc.setFont("helvetica", "normal");
-  doc.text(tx.enrollmentNo || "N/A", valueX, metaY);
-  metaY += lineSpacing;
-
-  // Row 3: Target Period / AY (if not advance)
-  if (!isAdvanceReceipt) {
-    doc.setFont("helvetica", "bold");
-    doc.text("Target Period / AY:", labelX, metaY);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(13, 148, 136); // Teal highlight
-    const periodLines = doc.splitTextToSize(fullPeriodDisplay, 95);
-    doc.text(periodLines, valueX, metaY);
-    doc.setTextColor(30, 41, 59);
-    metaY += periodLines.length * 3.8 + 0.8;
-  }
-
-  // Row 4: Fee Category / Items
-  doc.setFont("helvetica", "bold");
-  doc.text("Fee Category:", labelX, metaY);
-  doc.setFont("helvetica", "normal");
-  const feeTypeLines = doc.splitTextToSize(tx.feeType || (isAdvanceReceipt ? "Seat Booking Advance" : "Course Fee"), 95);
-  doc.text(feeTypeLines, valueX, metaY);
-  metaY += feeTypeLines.length * 3.8 + 0.8;
-
-  // Row 5: Payment Mode
-  doc.setFont("helvetica", "bold");
-  doc.text("Payment Mode:", labelX, metaY);
-  doc.setFont("helvetica", "normal");
-  doc.text(paymentMode, valueX, metaY);
-  metaY += lineSpacing + 1.5;
-
-  const items: Array<{ name: string; frequency: string; amount: number; multiplier?: number }> =
-    Array.isArray(parsed) ? parsed : parsed?.items || [];
-  const gross = Number(parsed?.grossSubtotal || 0);
-  const disc = Number(parsed?.discountAmount || (tx as any)?.discountAmount || 0);
-  const rawReason = parsed?.discountReason || (tx as any)?.discountReason || "Special Concession";
-  const advanceAdjusted = Number(parsed?.advanceAdjustedAmount || 0);
-  const advanceReceiptNo = parsed?.advanceReceiptNumber;
-
-  const effectiveGross = gross > 0
-    ? gross
-    : (items.length > 0 ? items.reduce((s, it) => s + Number(it.amount || 0), 0) : (amt + disc + advanceAdjusted));
-
-  let startY = metaY;
-
-  if (items.length > 0) {
-    const tableData = items.map((it) => {
-      const scheduleLabel = it.multiplier && it.multiplier > 1
-        ? `${it.frequency} (×${it.multiplier})`
-        : it.frequency;
-      return [
-        it.name,
-        scheduleLabel,
-        `INR ${Number(it.amount || 0).toLocaleString()}`,
-      ];
-    });
-
-    autoTable(doc, {
-      startY: metaY,
-      margin: { left: 10, right: 10 },
-      head: [["Fee Component", "Selected Schedule / Period", "Amount"]],
-      body: tableData,
-      theme: "striped",
-      headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
-      styles: { fontSize: 7.5, cellPadding: 2 },
-      columnStyles: {
-        0: { cellWidth: 64 },
-        1: { cellWidth: 36, halign: "center" },
-        2: { cellWidth: 28, halign: "right" },
-      },
-    });
-
-    startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 4 : metaY + 28;
-  } else {
-    // Single row fallback table if items array is empty
-    autoTable(doc, {
-      startY: metaY,
-      margin: { left: 10, right: 10 },
-      head: [["Fee Component / Description", "Billing Schedule", "Amount"]],
-      body: [
-        [
-          tx.feeType || "College Fee",
-          periodDetailText || "Standard",
-          `INR ${amt.toLocaleString()}`,
-        ],
-      ],
-      theme: "striped",
-      headStyles: { fillColor: [13, 148, 136], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 7.5 },
-      styles: { fontSize: 7.5, cellPadding: 2 },
-      columnStyles: {
-        0: { cellWidth: 64 },
-        1: { cellWidth: 36, halign: "center" },
-        2: { cellWidth: 28, halign: "right" },
-      },
-    });
-
-    startY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : metaY + 20;
-  }
-
-  // Subtotals, Discounts & Advance Adjustment Section (Cleanly aligned with adequate label width and auto-wrapping)
-  if (effectiveGross > amt || disc > 0 || advanceAdjusted > 0) {
-    doc.setFontSize(7.5);
-    const summaryLabelX = 35; // Generous left start to allow long scholarship descriptions without colliding
-    const summaryValueX = 138; // Aligned with the right edge of table
-    const maxLabelWidth = 72; // Maximum width for label before auto-wrapping
-
-    if (effectiveGross > 0 && (disc > 0 || advanceAdjusted > 0)) {
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(71, 85, 105);
-      doc.text("Gross Component Subtotal:", summaryLabelX, startY);
-      doc.text(`INR ${effectiveGross.toLocaleString()}`, summaryValueX, startY, { align: "right" });
-      startY += 4.5;
-    }
-
-    if (disc > 0) {
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(16, 149, 106); // Emerald 600
-      const discLabel = formatDiscountLabel(rawReason);
-      const labelLines = doc.splitTextToSize(discLabel, maxLabelWidth);
-      doc.text(labelLines, summaryLabelX, startY);
-      doc.text(`- INR ${disc.toLocaleString()}`, summaryValueX, startY, { align: "right" });
-      startY += Math.max(labelLines.length * 3.8, 4.5);
-    }
-
-    if (advanceAdjusted > 0) {
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(14, 116, 144); // Cyan / Teal
-      const advLabel = advanceReceiptNo
-        ? `Seat Booking Advance Adjusted (${advanceReceiptNo}):`
-        : "Seat Booking Advance Adjusted:";
-      const labelLines = doc.splitTextToSize(advLabel, maxLabelWidth);
-      doc.text(labelLines, summaryLabelX, startY);
-      doc.text(`- INR ${advanceAdjusted.toLocaleString()}`, summaryValueX, startY, { align: "right" });
-      startY += Math.max(labelLines.length * 3.8, 4.5);
-    }
-
-    startY += 2.5;
-  } else {
-    startY += 1;
-  }
-
-  // Total Box
-  doc.setFillColor(240, 253, 250); // Teal 50
-  doc.setDrawColor(204, 251, 241); // Teal 100
-  doc.roundedRect(10, startY, 128, 12, 1.5, 1.5, "FD");
-
-  doc.setTextColor(13, 148, 136);
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "bold");
-  doc.text(
-    (advanceAdjusted > 0 || disc > 0) ? "NET AMOUNT RECEIVED NOW:" : "TOTAL AMOUNT RECEIVED:",
-    14,
-    startY + 7.5
-  );
-  doc.setFontSize(9.5);
-  doc.text(`INR ${amt.toLocaleString()}`, 134, startY + 7.5, { align: "right" });
-
-  // Optional Note
-  if (parsed?.notes) {
-    doc.setTextColor(100, 116, 139);
-    doc.setFontSize(6.5);
-    doc.setFont("helvetica", "italic");
-    doc.text(`* Remarks / Note: ${parsed.notes}`, 10, startY + 16.5);
-  }
-
-  // Footer: System generated notice and Prepared by
-  doc.setDrawColor(226, 232, 240); // Slate 200 divider
-  doc.line(10, 195, 138, 195);
-
-  doc.setTextColor(71, 85, 105); // Slate 600
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.text(`Prepared by: ${userName || "Cashier / Accounts Officer"}`, 10, 201);
-
-  doc.setTextColor(148, 163, 184); // Slate 400
-  doc.setFontSize(6.5);
-  doc.setFont("helvetica", "italic");
-  doc.text("This is a system generated receipt.", 138, 201, { align: "right" });
-
-  return doc;
+  return buildCollegeReceiptPDFDoc(tx as any, userName);
 };
 
 const generateReceiptPDF = (tx: FeeTransaction, userName?: string) => {
@@ -817,7 +560,7 @@ const printReceiptPDF = (tx: FeeTransaction, userName?: string) => {
   }
 };
 
-export const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: any): string => {
+const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: any): string => {
   const parsed = parseRemarks(tx.remarks);
   const isAdvanceReceipt = parsed?.isSeatBookingAdvance || tx.feeType?.toLowerCase().includes("seat booking");
   const receiptTitle = isAdvanceReceipt
@@ -848,6 +591,8 @@ export const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: an
   const gross = Number(parsed?.grossSubtotal || 0);
   const disc = Number(parsed?.discountAmount || 0);
   const reason = parsed?.discountReason || "Special Concession";
+  const surcharge = Number(parsed?.surchargeAmount || 0);
+  const surchargeReason = parsed?.surchargeReason || "Fee Surcharge / Late Fee";
   const advanceAdjusted = Number(parsed?.advanceAdjustedAmount || 0);
   const advanceReceiptNo = parsed?.advanceReceiptNumber;
 
@@ -870,20 +615,52 @@ export const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: an
   lines.push(`*FEE BREAKDOWN:*`);
 
   if (items.length > 0) {
-    items.forEach((it) => {
-      const sch = it.multiplier && it.multiplier > 1 ? ` (${it.frequency} ×${it.multiplier})` : ` (${it.frequency})`;
-      lines.push(`• ${it.name}${sch}: ₹${Number(it.amount || 0).toLocaleString()}`);
+    items.forEach((it: any) => {
+      const head = it.category || it.name || it.description || "Fee";
+      const months =
+        it.periodLabel ||
+        (Array.isArray(it.selectedMonths) && it.selectedMonths.length > 0 ? it.selectedMonths.join(", ") : it.frequency);
+      const qty = it.quantity || it.multiplier;
+      const periodStr = months ? ` [${months}${qty && qty > 1 ? ` · ${qty} mo` : ""}]` : "";
+
+      const disc = Number(it.discountAmount || 0);
+      const sur = Number(it.surchargeAmount || 0);
+      let adj = "";
+      if (disc > 0 && sur > 0) {
+        adj = ` (Base: ₹${Number(it.unitPrice).toLocaleString()}/mo, -₹${it.discountPerMonth}/mo conc, +₹${it.surchargePerMonth}/mo surc)`;
+      } else if (disc > 0) {
+        adj = ` (Base: ₹${Number(it.unitPrice).toLocaleString()}/mo, -₹${it.discountPerMonth}/mo conc)`;
+      } else if (sur > 0) {
+        adj = ` (Base: ₹${Number(it.unitPrice).toLocaleString()}/mo, +₹${it.surchargePerMonth}/mo surc)`;
+      }
+
+      lines.push(`• ${head}${periodStr}: ₹${Number(it.amount || 0).toLocaleString()}${adj}`);
     });
   } else {
     lines.push(`• ${tx.feeType || "College Fee"}: ₹${Number(toNum(tx.amount)).toLocaleString()}`);
   }
 
-  if (gross > 0 || disc > 0 || advanceAdjusted > 0) {
+  if (gross > 0 || disc > 0 || surcharge > 0 || advanceAdjusted > 0) {
     lines.push(`┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈`);
     if (gross > 0) lines.push(`*Gross Subtotal:* ₹${gross.toLocaleString()}`);
     if (disc > 0) {
       const discTitle = formatDiscountLabel(reason).replace(/:$/, "");
       lines.push(`*Less ${discTitle}:* -₹${disc.toLocaleString()}`);
+      const itemDiscs = items.filter((i: any) => Number(i.discountAmount || 0) > 0);
+      if (itemDiscs.length > 0) {
+        itemDiscs.forEach((i: any) => {
+          lines.push(`  - ${i.category || i.description}: -₹${Number(i.discountAmount).toLocaleString()} (-₹${i.discountPerMonth || Math.round(Number(i.discountAmount) / Math.max(1, i.quantity || 1))}/mo)`);
+        });
+      }
+    }
+    if (surcharge > 0) {
+      lines.push(`*Plus Surcharge (${surchargeReason}):* +₹${surcharge.toLocaleString()}`);
+      const itemSurs = items.filter((i: any) => Number(i.surchargeAmount || 0) > 0);
+      if (itemSurs.length > 0) {
+        itemSurs.forEach((i: any) => {
+          lines.push(`  + ${i.category || i.description}: +₹${Number(i.surchargeAmount).toLocaleString()} (+₹${i.surchargePerMonth || Math.round(Number(i.surchargeAmount) / Math.max(1, i.quantity || 1))}/mo)`);
+        });
+      }
     }
     if (advanceAdjusted > 0) {
       const advLabel = advanceReceiptNo ? `*Advance Adjusted (#${advanceReceiptNo}):*` : `*Advance Adjusted:*`;
@@ -905,7 +682,7 @@ export const formatFeeReceiptWhatsAppMessage = (tx: FeeTransaction, student?: an
   return lines.join("\n");
 };
 
-export const openWhatsAppReceipt = (phone: string, text: string) => {
+const openWhatsAppReceipt = (phone: string, text: string) => {
   let clean = (phone || "").replace(/\D/g, "");
   if (!clean) {
     toast.error("Please enter a valid recipient phone number.");
@@ -919,7 +696,7 @@ export const openWhatsAppReceipt = (phone: string, text: string) => {
   return true;
 };
 
-export const shareReceiptPDFViaWhatsApp = async (
+const shareReceiptPDFViaWhatsApp = async (
   tx: FeeTransaction,
   phone: string,
   userName?: string
@@ -1961,1109 +1738,21 @@ function FeeManagementPage() {
           </Button>
 
           {/* Record Fee Payment Modal Trigger */}
-          <Dialog open={collectModalOpen} onOpenChange={setCollectModalOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-2"
-                onClick={() => {
-                  collectForm.reset();
-                  setCollectItems([]);
-                  setSelectedPeriods([]);
-                }}
-              >
-                <Plus size={16} /> Record Fee Payment
-              </Button>
-            </DialogTrigger>
-            <DialogContent
-              className="college-fee-form-dialog w-[calc(100vw-1rem)] max-w-none sm:max-w-4xl max-h-[calc(100dvh-1rem)] gap-3 overflow-hidden p-3 sm:p-6"
-              onInteractOutside={(e) => e.preventDefault()}
-              onEscapeKeyDown={(e) => e.preventDefault()}
-            >
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-teal-600">
-                  <Receipt size={20} /> Student Fee Collection
-                </DialogTitle>
-              </DialogHeader>
+          <Button
+            className="bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-2"
+            onClick={() => setCollectModalOpen(true)}
+          >
+            <Plus size={16} /> Collect Fee / Issue Receipt
+          </Button>
 
-              <form
-                onSubmit={collectForm.handleSubmit((data) => {
-                  const targetStudent = students.find((s) => s.id === Number(data.studentId));
-                  if (!targetStudent) {
-                    toast.error("Please select a valid enrolled student.");
-                    return;
-                  }
-                  if (targetStudent.status !== "active") {
-                    toast.error(`Selected student is '${targetStudent.status}'. Fees can only be recorded for active students.`);
-                    return;
-                  }
-
-                  const selectedPaidItems = collectItems
-                    .filter((item) => item.selected)
-                    .map((item) => {
-                      const selRow =
-                        item.availableFrequencies.find((r) => r.key === item.selectedFrequencyKey) ||
-                        item.availableFrequencies[0];
-                      const mult = item.multiplier || 1;
-                      return {
-                        componentId: item.componentId,
-                        name: item.name,
-                        quantity: mult,
-                        multiplier: mult,
-                        unitAmount: item.unitAmount,
-                        frequencyKey: item.selectedFrequencyKey,
-                        frequency: mult > 1 ? `${selRow?.label || "Installment"} (×${mult})` : (selRow?.label || "Annual"),
-                        frequencyLabel: selRow?.label || "Annual",
-                        installmentCount: selRow?.count || 1,
-                        baseAmount: item.baseAmount,
-                        amount: item.amount,
-                      };
-                    });
-
-                  if (selectedPaidItems.length !== 1) {
-                    toast.error("Please select one fee component to collect.");
-                    return;
-                  }
-
-                  if (targetAcademicYearSchedules.length === 0) {
-                    toast.error(`No Academic Schedule master entries exist for this student's batch in AY ${data.targetAcademicYear}.`);
-                    return;
-                  }
-                  if (selectedPeriods.length === 0) {
-                    toast.error("Please select at least one billing period from the Academic Schedule master.");
-                    return;
-                  }
-
-                  const hasHostelOrMess = selectedPaidItems.some((i) => isHostelOrMessFee(i.name));
-                  const hasHostel = selectedPaidItems.some((i) => normalizedFeeName(i.name).includes("hostel"));
-                  const hasMess = selectedPaidItems.some((i) => normalizedFeeName(i.name).includes("mess"));
-                  const hasAcademic = selectedPaidItems.some((i) => isAcademicFee(i.name));
-                  if (hasHostel && hasMess) {
-                    const accommodationFrequencies = new Set(
-                      selectedPaidItems
-                        .filter((item) => isHostelOrMessFee(item.name))
-                        .map((item) => item.frequencyKey)
-                    );
-                    if (accommodationFrequencies.size !== 1) {
-                      toast.error("Hostel and Mess can share one receipt only when both use the same payment frequency and period.");
-                      return;
-                    }
-                  }
-                  if (hasHostelOrMess && hasAcademic) {
-                    toast.error("Hostel & Mess fees cannot be clubbed with Academic fees (Course, Admission, Uniform, etc.). Please collect them as separate transactions.");
-                    return;
-                  }
-
-                  // Verify none of the selected periods are already paid
-                  for (const period of selectedPeriods) {
-                    const paidInfo = getPaidInfoForPeriod(period);
-                    if (paidInfo) {
-                      toast.error(
-                        `Cannot record payment: '${period}' has already been paid in receipt ${paidInfo.receiptNumber} (${paidInfo.paymentDate}). Duplicate payments of the same period are not allowed.`
-                      );
-                      return;
-                    }
-                  }
-
-                  // Verify none of the selected items are already-paid one-time fees
-                  for (const item of selectedPaidItems) {
-                    const isOneTime = item.frequencyKey === "one_time" || item.name.toLowerCase().includes("security deposit");
-                    if (isOneTime && paidOneTimeMap.has(item.name.trim().toLowerCase())) {
-                      const info = paidOneTimeMap.get(item.name.trim().toLowerCase());
-                      toast.error(
-                        `Cannot record payment: '${item.name}' is a one-time fee that was already paid in Receipt #${info?.receiptNumber} (${info?.paymentDate}). One-time fees cannot be paid more than once.`
-                      );
-                      return;
-                    }
-                  }
-
-                  if (finalNetPayable < 0) {
-                    toast.error("Net payable amount cannot be negative.");
-                    return;
-                  }
-
-                  if (watchDiscountAmount > 0) {
-                    if (!data.discountReason || !data.discountReason.trim()) {
-                      toast.error("Please provide a valid reason for the discount / concession.");
-                      return;
-                    }
-                    if (watchDiscountAmount > grossCollectSubtotal) {
-                      toast.error("Discount amount cannot exceed the gross fee subtotal.");
-                      return;
-                    }
-                  }
-
-                  const feeSummaryTitle = selectedPaidItems.map((i) => i.name).join(", ");
-                  const periodLabel = `AY ${data.targetAcademicYear} • ${data.billingPeriodValue}`;
-                  const coveredMonths = expandPeriodsToMonths(
-                    data.targetAcademicYear,
-                    data.billingPeriodType,
-                    selectedPeriods,
-                    targetAcademicYearSchedules
-                  );
-                  const payload = {
-                    studentId: Number(data.studentId),
-                    studentName: targetStudent.name,
-                    enrollmentNo: targetStudent.enrollmentNo,
-                    courseName: targetStudent.courseName,
-                    feeStructureId: Number(data.feeStructureId) || null,
-                    academicYear: data.targetAcademicYear,
-                    billingPeriodType: data.billingPeriodType,
-                    billingPeriodValue: data.billingPeriodValue,
-                    coveredMonths,
-                    periodLabel,
-                    feeType: feeSummaryTitle,
-                    paymentFrequency: selectedPaidItems[0].frequencyKey,
-                    grossSubtotal: grossCollectSubtotal,
-                    discountAmount: watchDiscountAmount,
-                    discountReason: data.discountReason ? data.discountReason.trim() : null,
-                    advanceAdjustedAmount: effectiveAdvanceAdjusted,
-                    advanceReceiptNumber: studentAdvanceInfo?.receiptNumber || null,
-                    isAdvanceAdjustment: effectiveAdvanceAdjusted > 0,
-                    amount: finalNetPayable,
-                    paymentMode: data.paymentMode,
-                    paymentDate: data.paymentDate,
-                    items: selectedPaidItems,
-                    remarks: JSON.stringify({
-                      academicYear: data.targetAcademicYear,
-                      billingPeriodType: data.billingPeriodType,
-                      billingPeriodValue: data.billingPeriodValue,
-                      selectedPeriods,
-                      coveredMonths,
-                      periodLabel,
-                      grossSubtotal: grossCollectSubtotal,
-                      discountAmount: watchDiscountAmount,
-                      discountReason: data.discountReason ? data.discountReason.trim() : null,
-                      advanceAdjustedAmount: effectiveAdvanceAdjusted,
-                      advanceReceiptNumber: studentAdvanceInfo?.receiptNumber || null,
-                      isAdvanceAdjustment: effectiveAdvanceAdjusted > 0,
-                      netCollected: finalNetPayable,
-                      items: selectedPaidItems,
-                      notes: data.remarks || null,
-                    }),
-                  };
-
-                  setPendingPayload(payload);
-                  setConfirmModalOpen(true);
-                })}
-                className="college-fee-form min-h-0 space-y-4 py-2 max-h-[calc(100dvh-9rem)] overflow-y-auto overscroll-contain pr-1"
-              >
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">Select Enrolled Student (Active) *</label>
-                    <Controller
-                      control={collectForm.control}
-                      name="studentId"
-                      render={({ field, fieldState }) => (
-                        <Autocomplete
-                          value={field.value ? String(field.value) : ""}
-                          placeholder="Search active student by name, enrollment no, or course..."
-                          options={activeStudentOptions}
-                          error={fieldState.error?.message}
-                          onChange={(val) => {
-                            const sid = Number(val) || 0;
-                            field.onChange(sid);
-                            collectForm.setValue("feeStructureId", 0);
-                            setCollectItems([]);
-                            setSelectedPeriods([]);
-                          }}
-                        />
-                      )}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">Course Fee Structure Package</label>
-                    <Controller
-                      control={collectForm.control}
-                      name="feeStructureId"
-                      render={({ field }) => (
-                        <Select
-                          value={field.value ? String(field.value) : ""}
-                          onValueChange={(val) => handleSelectStructureForCollect(Number(val))}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="-- Select Structure --" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {filteredFeeStructuresForCollect.map((fs) => (
-                              <SelectItem key={fs.id} value={String(fs.id)}>
-                                {fs.courseName} - {fs.academicYear} ({fs.quotaCategory?.toUpperCase() || "GENERAL"})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
-                </div>
-
-                {collectItems.length > 0 && (
-                  <div className="space-y-1.5 rounded-xl border border-teal-200 bg-teal-50/40 p-3.5 dark:border-teal-900 dark:bg-teal-950/20">
-                    <label className="text-sm font-semibold text-teal-800 dark:text-teal-300">
-                      Fee component to collect *
-                    </label>
-                    <Select
-                      value={collectItems.find((item) => item.selected)?.componentId || ""}
-                      onValueChange={toggleCollectItemSelect}
-                    >
-                      <SelectTrigger className="w-full bg-background">
-                        <SelectValue placeholder="Select one fee component" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {collectItems.map((item) => (
-                          <SelectItem
-                            key={item.componentId}
-                            value={item.componentId}
-                            disabled={item.isOneTimePaid}
-                          >
-                            {item.name}{item.isOneTimePaid ? " — Already paid" : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[11px] text-muted-foreground">
-                      Each receipt can contain one fee component only.
-                    </p>
-                  </div>
-                )}
-
-                {/* Target Period & Academic Year Multi-Selection */}
-                {selectedFeeComponent && (
-                  <div className="border rounded-xl p-3.5 bg-teal-50/40 dark:bg-teal-950/20 border-teal-200 dark:border-teal-900 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-teal-200/60 pb-2 text-xs font-semibold text-teal-800 dark:text-teal-300 gap-1">
-                    <span className="flex items-center gap-1.5">
-                      <CalendarDays className="h-4 w-4 text-teal-600 shrink-0" /> Target Billing Period (Multi-Period Supported)
-                    </span>
-                    <span className="text-[11px] text-muted-foreground font-normal">
-                      Recording for: <strong className="text-foreground font-semibold">AY {watchTargetAcademicYear} • {formattedPeriodValue}</strong>
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Target Academic Year */}
-                    <div>
-                      <label className="text-xs font-medium mb-1 block text-foreground">Target Academic Year *</label>
-                      <Controller
-                        control={collectForm.control}
-                        name="targetAcademicYear"
-                        render={({ field }) => (
-                          <Select
-                            value={field.value || getAcademicYear()}
-                            onValueChange={(val) => {
-                              field.onChange(val);
-                              setSelectedPeriods([]);
-                            }}
-                          >
-                            <SelectTrigger className="w-full h-8 text-xs bg-background">
-                              <SelectValue placeholder="Academic Year" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {academicYearOptions.map((ay) => (
-                                <SelectItem key={ay} value={ay} className="text-xs">
-                                  AY {ay}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                    </div>
-
-                    {/* Period Interval Type */}
-                    <div>
-                      <div className="flex items-center justify-between gap-1 mb-1">
-                        <label className="text-xs font-medium block text-foreground flex items-center gap-1">
-                          Period Interval Type *
-                        </label>
-                        {selectedAccommodationItem && requiredAccommodationPeriodType ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.5 rounded font-semibold border border-purple-300 dark:border-purple-800">
-                            <Lock size={10} /> Read-Only ({getPeriodIntervalLabel(requiredAccommodationPeriodType)} - {selectedAccommodationItem.name})
-                          </span>
-                        ) : null}
-                      </div>
-                      <Controller
-                        control={collectForm.control}
-                        name="billingPeriodType"
-                        render={({ field }) => (
-                          <Select
-                            disabled={isPeriodIntervalLocked}
-                            value={field.value || "semester"}
-                            onValueChange={handlePeriodTypeChange}
-                          >
-                            <SelectTrigger className={cn(
-                              "w-full h-8 text-xs font-medium",
-                              isPeriodIntervalLocked
-                                ? "bg-purple-50/70 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 border-purple-300 dark:border-purple-800 cursor-not-allowed"
-                                : "bg-background"
-                            )}>
-                              <div className="flex items-center gap-1 truncate">
-                                {isPeriodIntervalLocked && <Lock size={11} className="shrink-0 text-purple-600 dark:text-purple-400" />}
-                                <SelectValue placeholder="Period Type" />
-                              </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="month" className="text-xs">Monthly (Select 1 or Multiple Months)</SelectItem>
-                              <SelectItem value="semester" className="text-xs">Semester-wise (Select 1 or Multiple Semesters)</SelectItem>
-                              <SelectItem value="quarter" className="text-xs">Quarterly (Select 1 or Multiple Quarters)</SelectItem>
-                              <SelectItem value="academic_year" className="text-xs">Annual (Full Academic Year)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                      {selectedAccommodationItem && requiredAccommodationPeriodType ? (
-                        <p className="text-[10px] text-purple-700 dark:text-purple-400 mt-1 flex items-center gap-1 font-medium">
-                          <Lock size={9} className="shrink-0" /> {selectedAccommodationItem.name} follows its {getPeriodIntervalLabel(requiredAccommodationPeriodType)} schedule from the Fee Structure Master.
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {/* Multi-Period Toggle Selector & Presets */}
-                  <div className="space-y-2 pt-1">
-                    {targetAcademicYearSchedules.length === 0 && (
-                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>No Academic Schedule master entry is configured for this batch and academic year. Add the schedule before recording payment.</span>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
-                      <span className="font-semibold text-foreground flex items-center gap-1">
-                        Select Target {watchBillingPeriodType === "month" ? "Months" : watchBillingPeriodType === "semester" ? "Semesters" : watchBillingPeriodType === "quarter" ? "Quarters" : "Period"}:
-                        <span className="text-[11px] font-normal text-teal-700 dark:text-teal-300 ml-1">
-                          ({selectedPeriods.length} selected)
-                        </span>
-                      </span>
-
-                      {/* Quick Presets */}
-                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                        {watchBillingPeriodType === "month" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={selectAllPeriods}
-                              className="text-teal-600 hover:underline font-medium px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950 border border-teal-200 dark:border-teal-800"
-                            >
-                              All {periodValueOptions.length} Months
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(0, 3))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Q1 ({periodValueOptions.slice(0, 3).map((period) => formatPeriodOption(period, "month")).join("–")})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(3, 6))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Q2 ({periodValueOptions.slice(3, 6).map((period) => formatPeriodOption(period, "month")).join("–")})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(6, 9))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Q3 ({periodValueOptions.slice(6, 9).map((period) => formatPeriodOption(period, "month")).join("–")})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(9, 12))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Q4 ({periodValueOptions.slice(9, 12).map((period) => formatPeriodOption(period, "month")).join("–")})
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(0, 6))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              H1 (6 Mos)
-                            </button>
-                          </>
-                        )}
-
-                        {watchBillingPeriodType === "semester" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={selectAllPeriods}
-                              className="text-teal-600 hover:underline font-medium px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950 border border-teal-200 dark:border-teal-800"
-                            >
-                              All Semesters
-                            </button>
-                            <button
-                              type="button"
-                              onClick={selectAllPeriods}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              Full Academic Year
-                            </button>
-                          </>
-                        )}
-
-                        {watchBillingPeriodType === "quarter" && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={selectAllPeriods}
-                              className="text-teal-600 hover:underline font-medium px-1.5 py-0.5 rounded bg-teal-50 dark:bg-teal-950 border border-teal-200 dark:border-teal-800"
-                            >
-                              All {periodValueOptions.length} Quarters
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(0, 2))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              H1 (Q1 & Q2)
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => selectPeriodPreset(periodValueOptions.slice(2, 4))}
-                              className="text-muted-foreground hover:text-foreground font-medium px-1.5 py-0.5 rounded border"
-                            >
-                              H2 (Q3 & Q4)
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* All Periods Paid Notice */}
-                    {selectedFeeComponent && periodValueOptions.length > 0 && periodValueOptions.every((opt) => !!getPaidInfoForPeriod(opt)) && (
-                      <div className="flex items-center gap-2 text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 p-2.5 rounded-lg border border-emerald-300 dark:border-emerald-800 font-medium">
-                        <CheckCircle size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>All {watchBillingPeriodType === "month" ? "12 months" : watchBillingPeriodType === "semester" ? "semesters" : watchBillingPeriodType === "quarter" ? "quarters" : "periods"} for Academic Year {watchTargetAcademicYear} are already paid for this student.</span>
-                      </div>
-                    )}
-
-                    {/* Pills Grid */}
-                    <div className={cn(
-                      "grid gap-1.5",
-                      watchBillingPeriodType === "quarter"
-                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
-                        : "grid-cols-2 sm:grid-cols-4 md:grid-cols-6"
-                    )}>
-                      {periodValueOptions.map((opt) => {
-                        const paidInfo = selectedFeeComponent ? getPaidInfoForPeriod(opt) : undefined;
-                        const isPaid = !!paidInfo;
-                        const isSelected = selectedPeriods.includes(opt);
-
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            onClick={() => togglePeriodSelection(opt)}
-                            title={
-                              isPaid
-                                ? `Already Paid (Receipt: ${paidInfo.receiptNumber}, Date: ${paidInfo.paymentDate})`
-                                : undefined
-                            }
-                            className={cn(
-                              "flex flex-col justify-between p-2 rounded-lg text-xs font-medium border transition-all text-left relative",
-                              isPaid
-                                ? "bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 border-emerald-300 dark:border-emerald-800 cursor-not-allowed opacity-90 shadow-2xs"
-                                : isSelected
-                                ? "bg-teal-600 text-white border-teal-600 shadow-xs"
-                                : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground border-input"
-                            )}
-                          >
-                            <div className="flex items-center justify-between w-full gap-1">
-                              <span className={cn("truncate font-semibold", isPaid && "text-emerald-950 dark:text-emerald-100")}>
-                                {formatPeriodOption(opt, watchBillingPeriodType)}
-                              </span>
-                              {isSelected && !isPaid && <Check className="h-3.5 w-3.5 shrink-0 ml-1" />}
-                              {isPaid && (
-                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-600 text-white shrink-0">
-                                  ✓ Paid
-                                </span>
-                              )}
-                            </div>
-                            {isPaid && (
-                              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-mono truncate mt-0.5">
-                                #{paidInfo.receiptNumber}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-                )}
-
-                {/* Itemized Checkbox Selector for Components with Multipliers */}
-                {selectedFeeComponent && (
-                  <div className="border rounded-xl p-3 bg-muted/20 space-y-3">
-                    {lockedStudentFrequencies.length > 0 && (
-                      <div className="flex items-center gap-1.5 text-[11px] bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 px-2.5 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 font-medium">
-                        <Lock size={12} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                        <span>Payment frequencies marked with 🔒 were set in a previous installment this academic year (AY {watchTargetAcademicYear}) and cannot be changed until the next academic year.</span>
-                      </div>
-                    )}
-
-                    {collectItems.some((i) => i.selected && isHostelOrMessFee(i.name)) && (
-                      <div className="flex items-center gap-2 text-[11px] bg-purple-50 dark:bg-purple-950/40 text-purple-900 dark:text-purple-200 px-2.5 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 font-medium">
-                        <Info size={13} className="shrink-0 text-purple-600 dark:text-purple-400" />
-                        <span>
-                          {isHostelFeeSelected && !isMessFeeSelected
-                            ? isHostelAnnual
-                              ? "Hostel Fee is selected with Annual 5% rebate. It cannot be clubbed with Academic fees."
-                              : "Hostel Fee is selected on Monthly schedule (can also be paid Annually with 5% rebate). It cannot be clubbed with Academic fees."
-                            : isMessFeeSelected && !isHostelFeeSelected
-                            ? "Mess Fee is selected as a standalone fee. It cannot be clubbed with Academic fees."
-                            : "Hostel & Mess fees are selected. They cannot be clubbed with Course, Admission, or other Academic college fees."}
-                        </span>
-                      </div>
-                    )}
-
-                    <div className="space-y-2">
-                      {collectItems.filter((item) => item.selected).map((item) => {
-                        const isHostel = isHostelOnlyFee(item.name);
-                        const isMess = isMessOnlyFee(item.name);
-                        const isCombined = item.name.toLowerCase().includes("hostel & mess");
-                        return (
-                          <div
-                            key={item.componentId}
-                            className={cn(
-                              "flex flex-col sm:flex-row sm:items-center justify-between p-2.5 rounded-lg border text-xs gap-2 transition-colors",
-                              item.isOneTimePaid
-                                ? "bg-slate-100/70 dark:bg-slate-900/40 border-slate-300 dark:border-slate-800 opacity-80"
-                                : item.selected
-                                ? (isHostel || isMess || isCombined)
-                                  ? "bg-purple-50/70 dark:bg-purple-950/40 border-purple-300 dark:border-purple-800 shadow-xs"
-                                  : "bg-card border-teal-300 dark:border-teal-800 shadow-xs"
-                                : "bg-muted/40 opacity-60"
-                            )}
-                          >
-                            <div className="flex items-center gap-2 flex-1">
-                              <CheckCircle size={16} className="shrink-0 text-teal-600" />
-                              <div className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
-                                <span className={cn(item.isOneTimePaid && "line-through opacity-75")}>
-                                  {item.name}
-                                </span>
-                                {item.isOneTimePaid && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 rounded font-semibold border border-emerald-300 dark:border-emerald-800 not-italic no-underline">
-                                    <Check size={11} className="text-emerald-600 dark:text-emerald-400" />
-                                    Already Paid (#{item.paidReceiptNumber})
-                                  </span>
-                                )}
-                                {isHostel && (
-                                  <span className="text-[10px] text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-950/80 px-1.5 py-0.2 rounded font-medium border border-purple-200 dark:border-purple-800">
-                                    Hostel Fee (Annual 5% Rebate / Monthly)
-                                  </span>
-                                )}
-                                {isMess && (
-                                  <span className="text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-100 dark:bg-indigo-950/80 px-1.5 py-0.2 rounded font-medium border border-indigo-200 dark:border-indigo-800">
-                                    Mess Fee
-                                  </span>
-                                )}
-                                {isCombined && (
-                                  <span className="text-[10px] text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-950/80 px-1.5 py-0.2 rounded font-medium border border-violet-200 dark:border-violet-800">
-                                    Hostel & Mess Fee
-                                  </span>
-                                )}
-                                {item.isFrequencyLocked && !item.isOneTimePaid && (
-                                  <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.2 rounded font-normal">
-                                    <Lock size={9} /> Locked ({item.lockedFrequencyLabel || item.selectedFrequencyKey})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                          <div className="flex flex-wrap items-center gap-2 justify-between sm:justify-end">
-                            {/* Schedule Select */}
-                            <Select
-                              disabled={!item.selected || item.isFrequencyLocked || item.isOneTimePaid}
-                              value={item.selectedFrequencyKey}
-                              onValueChange={(val) => changeCollectItemSchedule(item.componentId, val)}
-                            >
-                              <SelectTrigger className={cn("h-8 text-xs min-w-[130px]", (item.isFrequencyLocked || item.isOneTimePaid) && "bg-muted/80 text-muted-foreground border-slate-300 dark:border-slate-800")}>
-                                <div className="flex items-center gap-1">
-                                  {item.isFrequencyLocked && !item.isOneTimePaid && <Lock size={10} className="text-amber-600 dark:text-amber-400 shrink-0" />}
-                                  <SelectValue placeholder="Schedule" />
-                                </div>
-                              </SelectTrigger>
-                              <SelectContent>
-                                {item.availableFrequencies.map((r) => {
-                                  const inst = calcInstallmentAmount(item.baseAmount, r);
-                                  return (
-                                    <SelectItem key={r.id} value={r.key} className="text-xs">
-                                      {r.label} (₹{inst.toLocaleString()})
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-
-                            {/* Total Line Item Amount */}
-                            <div className="flex flex-col items-end min-w-[90px]">
-                              <span className={cn(
-                                "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono border",
-                                item.isOneTimePaid
-                                  ? "bg-slate-200/60 dark:bg-slate-800 text-slate-500 border-slate-300 dark:border-slate-700 line-through"
-                                  : item.selected
-                                  ? "bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border-teal-200 dark:border-teal-800"
-                                  : "bg-muted text-muted-foreground border-transparent"
-                              )}>
-                                ₹{item.amount.toLocaleString()}
-                              </span>
-                              {item.selected && item.multiplier > 1 && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  {item.multiplier} periods × ₹{item.unitAmount.toLocaleString()}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-                {/* Gross Subtotal & Scholarship Rebate / Concession Controls */}
-                <div className="border rounded-xl p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 space-y-3.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 dark:border-emerald-900/60 pb-2 text-xs font-semibold">
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-900 dark:text-emerald-300 flex items-center gap-1.5 font-bold">
-                        <Percent size={14} className="text-emerald-600 dark:text-emerald-400" />
-                        Course Fee Scholarship Rebate & Concession
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs">
-                      {selectedCourseFeeTotal > 0 && (
-                        <span className="text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 rounded font-medium border border-emerald-200 dark:border-emerald-800">
-                          Course Fee Selected: <strong>₹{selectedCourseFeeTotal.toLocaleString()}</strong>
-                        </span>
-                      )}
-                      <span className="text-muted-foreground">
-                        Gross Subtotal: <strong className="text-foreground">₹{grossCollectSubtotal.toLocaleString()}</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Mode Toggle Tabs */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className={cn(
-                        "text-xs px-3 py-1.5 rounded-lg font-medium transition-all border",
-                        discountMode === "scholarship_percent"
-                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                          : "bg-background text-muted-foreground hover:text-foreground border-input"
-                      )}
-                      onClick={() => setDiscountMode("scholarship_percent")}
-                    >
-                      🎓 Scholarship Rebate (%) on Course Fee
-                    </button>
-                    <button
-                      type="button"
-                      className={cn(
-                        "text-xs px-3 py-1.5 rounded-lg font-medium transition-all border",
-                        discountMode === "fixed_amount"
-                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                          : "bg-background text-muted-foreground hover:text-foreground border-input"
-                      )}
-                      onClick={() => {
-                        setDiscountMode("fixed_amount");
-                        setScholarshipPercent("");
-                      }}
-                    >
-                      ₹ Fixed Concession Amount
-                    </button>
-                  </div>
-
-                  {discountMode === "scholarship_percent" ? (
-                    <div className="space-y-3 bg-card p-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/50">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                            Scholarship Rebate Percentage (%) *
-                          </label>
-                          {typeof scholarshipPercent === "number" && scholarshipPercent > 0 && (
-                            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                              Calculated Rebate: -₹{watchDiscountAmount.toLocaleString()} ({scholarshipPercent}%)
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Quick Percentage Presets */}
-                        <div className="flex items-center gap-1.5 flex-wrap mb-2">
-                          <span className="text-[11px] text-muted-foreground font-medium mr-1">Quick Presets:</span>
-                          {[5, 10, 15, 20, 25, 50, 100].map((pct) => (
-                            <Button
-                              key={pct}
-                              type="button"
-                              size="sm"
-                              variant={scholarshipPercent === pct ? "default" : "outline"}
-                              className={cn(
-                                "h-6 text-[11px] px-2 font-semibold",
-                                scholarshipPercent === pct
-                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                                  : "hover:bg-emerald-50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
-                              )}
-                              onClick={() => {
-                                setScholarshipPercent(pct);
-                              }}
-                            >
-                              {pct}%
-                            </Button>
-                          ))}
-                          {scholarshipPercent !== "" && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 text-[11px] px-1.5 text-muted-foreground hover:text-foreground"
-                              onClick={() => {
-                                setScholarshipPercent("");
-                                collectForm.setValue("discountAmount", 0);
-                                collectForm.setValue("discountReason", "");
-                              }}
-                            >
-                              <X size={12} className="mr-0.5" /> Clear
-                            </Button>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <label className="text-[11px] text-muted-foreground font-medium">Custom Rebate Percentage (0 - 100%):</label>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.5"
-                                value={scholarshipPercent}
-                                placeholder="e.g. 10"
-                                onChange={(e) => {
-                                  const val = e.target.value === "" ? "" : Math.min(100, Math.max(0, Number(e.target.value)));
-                                  setScholarshipPercent(val);
-                                }}
-                                className="w-full border rounded-md px-3 py-1.5 bg-background text-sm font-semibold focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
-                              />
-                              <span className="p-1.5 bg-muted rounded-md border text-xs font-bold text-muted-foreground px-2.5">
-                                %
-                              </span>
-                            </div>
-                            {selectedCourseFeeTotal <= 0 && (
-                              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1">
-                                Note: Course Fee component is not selected above. Rebate will apply against total selected fee subtotal.
-                              </p>
-                            )}
-                          </div>
-
-                          <Controller
-                            control={collectForm.control}
-                            name="discountReason"
-                            render={({ field, fieldState }) => (
-                              <Field
-                                label="Scholarship / Rebate Reason / Type"
-                                placeholder="e.g. Merit Scholarship, Sports Quota, Sibling Concession"
-                                {...field}
-                                error={fieldState.error?.message}
-                              />
-                            )}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-4 bg-card p-3 rounded-lg border border-emerald-200/70 dark:border-emerald-900/50">
-                      <Controller
-                        control={collectForm.control}
-                        name="discountAmount"
-                        render={({ field, fieldState }) => (
-                          <Field
-                            label="Discount / Concession Amount (₹)"
-                            type="number"
-                            min="0"
-                            max={grossCollectSubtotal}
-                            placeholder="0"
-                            {...field}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                            error={fieldState.error?.message}
-                          />
-                        )}
-                      />
-
-                      <Controller
-                        control={collectForm.control}
-                        name="discountReason"
-                        render={({ field, fieldState }) => (
-                          <Field
-                            label={watchDiscountAmount > 0 ? "Reason for Discount *" : "Reason for Discount"}
-                            placeholder="e.g. Special Concession, Financial Assistance"
-                            {...field}
-                            error={fieldState.error?.message}
-                          />
-                        )}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                  {/* Seat Booking Advance Adjustment Card */}
-                  {studentAdvanceInfo?.hasAdvance && (
-                    <div className="border rounded-xl p-3.5 bg-cyan-50/60 dark:bg-cyan-950/30 border-cyan-300 dark:border-cyan-800 space-y-2.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-cyan-200 dark:border-cyan-800 pb-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            id="adjust-advance-cb"
-                            checked={adjustAdvance}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setAdjustAdvance(checked);
-                              if (checked) {
-                                setCustomAdvanceAdjusted(studentAdvanceInfo.advanceAmount);
-                              }
-                            }}
-                            className="h-4 w-4 rounded text-cyan-600 focus:ring-cyan-500 cursor-pointer"
-                          />
-                          <label htmlFor="adjust-advance-cb" className="font-bold text-cyan-950 dark:text-cyan-200 cursor-pointer flex items-center gap-1.5">
-                            <Tag size={13} className="text-cyan-600" />
-                            Adjust Seat Booking Advance Payment
-                          </label>
-                        </div>
-                        <span className="text-[11px] font-mono font-semibold bg-cyan-100 dark:bg-cyan-900/60 text-cyan-800 dark:text-cyan-300 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-700">
-                          Available: ₹{studentAdvanceInfo.advanceAmount.toLocaleString()}
-                          {studentAdvanceInfo.receiptNumber ? ` (${studentAdvanceInfo.receiptNumber})` : ""}
-                        </span>
-                      </div>
-
-                      {adjustAdvance && (
-                        <div className="space-y-2 pt-1">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                            <div>
-                              <label className="text-xs font-medium block text-foreground mb-1">
-                                Advance Amount to Deduct (₹) *
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={Math.min(studentAdvanceInfo.advanceAmount, remainingAfterDiscount)}
-                                value={customAdvanceAdjusted}
-                                onChange={(e) => setCustomAdvanceAdjusted(Number(e.target.value))}
-                                className="w-full border border-cyan-300 dark:border-cyan-700 rounded-md px-3 py-1.5 text-xs bg-background font-mono font-semibold"
-                              />
-                              <p className="text-[10px] text-muted-foreground mt-0.5">
-                                Max adjustable: ₹{Math.min(studentAdvanceInfo.advanceAmount, remainingAfterDiscount).toLocaleString()}
-                              </p>
-                            </div>
-
-                            <div className="bg-cyan-100/50 dark:bg-cyan-950/40 p-2.5 rounded-lg text-xs space-y-1 text-cyan-900 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
-                              <div className="font-semibold text-[11px]">Advance Record Reference:</div>
-                              <div className="text-[11px]">Receipt: <strong className="font-mono">{studentAdvanceInfo.receiptNumber || "N/A"}</strong></div>
-                              <div className="text-[11px]">Payment: {studentAdvanceInfo.paymentDate || "N/A"} • {formatCollegePaymentMode(studentAdvanceInfo.paymentMode)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Summary & Net Payable Breakdown */}
-                  <div className="pt-2 border-t border-emerald-200/60 space-y-1.5 text-xs">
-                    {effectiveAdvanceAdjusted > 0 && (
-                      <div className="flex justify-between items-center text-cyan-700 dark:text-cyan-400 font-semibold">
-                        <span>Less Seat Booking Advance Adjustment:</span>
-                        <span>-₹{effectiveAdvanceAdjusted.toLocaleString()}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center text-sm font-bold pt-1">
-                      <span className="text-emerald-800 dark:text-emerald-300 uppercase tracking-wide text-xs">Final Net Payable Amount</span>
-                      <span className="text-lg text-teal-700 dark:text-teal-300">₹{finalNetPayable.toLocaleString()}</span>
-                    </div>
-                  </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium mb-1 block">Payment Mode</label>
-                    <Controller
-                      control={collectForm.control}
-                      name="paymentMode"
-                      render={({ field }) => (
-                        <Select
-                          value={field.value || "cash"}
-                          onValueChange={field.onChange}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select Payment Mode" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="cash">Cash</SelectItem>
-                            <SelectItem value="bank_transfer">Bank Transfer / NEFT</SelectItem>
-                            <SelectItem value="upi">UPI / GPay / PhonePe</SelectItem>
-                            <SelectItem value="upi_bank_transfer_dr_je">UPI/Bank Transfer - Dr JE</SelectItem>
-                            <SelectItem value="card">Credit / Debit Card</SelectItem>
-                            <SelectItem value="cheque">Cheque</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    />
-                  </div>
-
-                  {/* Calendar Date Picker with Month & Year Selection */}
-                  <div>
-                    <label className="text-sm font-medium mb-1 block text-foreground">Payment Date *</label>
-                    <Controller
-                      control={collectForm.control}
-                      name="paymentDate"
-                      render={({ field }) => {
-                        const selectedDate = field.value ? new Date(field.value) : new Date();
-                        return (
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className={cn(
-                                  "w-full justify-start text-left font-normal h-9 border-input bg-background",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                <CalendarIcon className="mr-2 h-4 w-4 text-teal-600 shrink-0" />
-                                {field.value ? (
-                                  format(selectedDate, "PPP")
-                                ) : (
-                                  <span>Pick payment date</span>
-                                )}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0 z-99999" align="start">
-                              <CalendarPicker
-                                mode="single"
-                                selected={selectedDate}
-                                onSelect={(date) => {
-                                  if (date) {
-                                    const yyyy = date.getFullYear();
-                                    const mm = String(date.getMonth() + 1).padStart(2, "0");
-                                    const dd = String(date.getDate()).padStart(2, "0");
-                                    field.onChange(`${yyyy}-${mm}-${dd}`);
-                                  }
-                                }}
-                                captionLayout="dropdown"
-                                startMonth={calendarStartMonth}
-                                endMonth={calendarEndMonth}
-                                disabled={calendarDisabledDays}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                        );
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <Controller
-                  control={collectForm.control}
-                  name="remarks"
-                  render={({ field, fieldState }) => (
-                    <Field label="Remarks / Transaction Ref" placeholder="Optional notes" {...field} error={fieldState.error?.message} />
-                  )}
-                />
-
-                <DialogFooter className="pt-2">
-                  <Button type="button" variant="outline" onClick={() => setCollectModalOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-teal-600 hover:bg-teal-700 text-white"
-                    disabled={grossCollectSubtotal <= 0 || finalNetPayable < 0}
-                  >
-                    Proceed to Confirm (₹{finalNetPayable.toLocaleString()})
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          {/* Payment Confirmation Modal to prevent accidental double submissions */}
-          <Dialog open={confirmModalOpen} onOpenChange={setConfirmModalOpen}>
-            <DialogContent className="sm:max-w-[480px]">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-teal-700">
-                  <CheckCircle className="h-5 w-5 text-teal-600" /> Confirm Fee Payment
-                </DialogTitle>
-                <DialogDescription>
-                  Please verify the transaction breakdown and target billing period before recording.
-                </DialogDescription>
-              </DialogHeader>
-
-              {pendingPayload && (
-                <div className="space-y-3 text-xs py-2">
-                  <div className="bg-muted/40 p-3 rounded-lg space-y-1.5 border">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Student:</span>
-                      <span className="font-bold text-foreground">{pendingPayload.studentName} ({pendingPayload.enrollmentNo})</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Target Period:</span>
-                      <span className="font-bold text-teal-700 dark:text-teal-300">
-                        AY {pendingPayload.academicYear} • {pendingPayload.billingPeriodValue}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Components:</span>
-                      <span className="font-semibold text-foreground text-right">{pendingPayload.feeType}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Gross Amount:</span>
-                      <span>₹{Number(pendingPayload.grossSubtotal || 0).toLocaleString()}</span>
-                    </div>
-                    {Number(pendingPayload.discountAmount) > 0 && (
-                      <div className="flex justify-between text-emerald-600 font-semibold">
-                        <span>Discount ({pendingPayload.discountReason || "Concession"}):</span>
-                        <span>-₹{Number(pendingPayload.discountAmount).toLocaleString()}</span>
-                      </div>
-                    )}
-                    {Number(pendingPayload.advanceAdjustedAmount) > 0 && (
-                      <div className="flex justify-between text-cyan-700 dark:text-cyan-400 font-semibold">
-                        <span>Advance Adjusted ({pendingPayload.advanceReceiptNumber || "Seat Booking"}):</span>
-                        <span>-₹{Number(pendingPayload.advanceAdjustedAmount).toLocaleString()}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between border-t pt-1.5 font-bold text-sm">
-                      <span className="text-foreground">Total Net Payable:</span>
-                      <span className="text-teal-600 text-base">₹{Number(pendingPayload.amount).toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground pt-1">
-                      <span>Payment Mode: <strong>{formatCollegePaymentMode(pendingPayload.paymentMode)}</strong></span>
-                      <span>Date: <strong>{pendingPayload.paymentDate}</strong></span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <DialogFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setConfirmModalOpen(false)}
-                  disabled={collectFeeMutation.isPending}
-                >
-                  Back to Edit
-                </Button>
-                <Button
-                  type="button"
-                  className="bg-teal-600 hover:bg-teal-700 text-white"
-                  disabled={collectFeeMutation.isPending}
-                  onClick={() => {
-                    if (pendingPayload) {
-                      const { studentName, enrollmentNo, courseName, grossSubtotal, items, academicYear, billingPeriodType, billingPeriodValue, periodLabel, ...cleanPayload } = pendingPayload;
-                      collectFeeMutation.mutate(cleanPayload);
-                    }
-                  }}
-                >
-                  {collectFeeMutation.isPending ? "Processing..." : "Confirm & Record Payment"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <CollegeReceiptDialog
+            open={collectModalOpen}
+            onOpenChange={setCollectModalOpen}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["nursing", "fee-transactions"] });
+              queryClient.invalidateQueries({ queryKey: ["nursing"] });
+            }}
+          />
         </div>
       </div>
 
@@ -3376,6 +2065,15 @@ function FeeManagementPage() {
                           <td className="p-3">
                             {isSeatAdvance ? (
                               <span className="text-muted-foreground text-[11px]">Provisional Booking</span>
+                            ) : (parsedDetails?.selectedMonths && parsedDetails.selectedMonths.length > 0) ? (
+                              <div className="space-y-1">
+                                {parsedDetails?.academicYear && (
+                                  <span className="text-[10px] font-semibold text-teal-800 dark:text-teal-300 block font-mono">
+                                    AY {parsedDetails.academicYear}
+                                  </span>
+                                )}
+                                <MonthBoxList months={parsedDetails.selectedMonths} size="xs" />
+                              </div>
                             ) : periodLabel ? (
                               <span className="inline-flex items-center gap-1 font-semibold text-teal-800 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/80 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800 text-[11px]">
                                 <Calendar className="h-3 w-3 text-teal-600 shrink-0" />
@@ -3542,7 +2240,7 @@ function FeeManagementPage() {
           if (!open && !deleteReceiptMutation.isPending) setDeletingReceipt(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[calc(100vw-1.5rem)] sm:max-w-md rounded-xl">
           <DialogHeader>
             <DialogTitle>Delete fee receipt?</DialogTitle>
             <DialogDescription>
@@ -3571,11 +2269,11 @@ function FeeManagementPage() {
 
       <Dialog open={receiptModalOpen} onOpenChange={setReceiptModalOpen}>
         <DialogContent
-          className="sm:max-w-[650px] p-0 overflow-hidden"
+          className="w-[calc(100vw-1rem)] sm:max-w-[650px] max-h-[92dvh] p-0 flex flex-col overflow-hidden rounded-xl"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
-          <div className="p-6 space-y-4" id="printable-fee-receipt">
+          <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1" id="printable-fee-receipt">
             <div className="border-b pb-4 flex justify-between items-start">
               <div>
                 <h2 className="text-xl font-bold text-teal-700">ACME College of Nursing</h2>
@@ -3603,40 +2301,68 @@ function FeeManagementPage() {
                 const isSeatAdv = parsed?.isSeatBookingAdvance || receiptTx?.feeType?.toLowerCase().includes("seat booking");
                 if (isSeatAdv) return null;
                 const acadYear = parsed?.academicYear || (receiptTx?.paymentDate ? getAcademicYear(receiptTx.paymentDate) : "");
-                const periodType = parsed?.billingPeriodType;
-                const periodVal = parsed?.billingPeriodValue;
 
-                let periodDetailText = "";
-                if (periodVal) {
-                  if (periodType === "month") {
-                    periodDetailText = `Months: ${periodVal}`;
-                  } else if (periodType === "semester") {
-                    periodDetailText = `Semester: ${periodVal}`;
-                  } else if (periodType === "quarter") {
-                    periodDetailText = `Quarter: ${periodVal}`;
-                  } else if (periodType === "academic_year") {
-                    periodDetailText = "Full Academic Year";
-                  } else {
-                    periodDetailText = periodVal;
-                  }
-                } else if (parsed?.periodLabel) {
-                  periodDetailText = parsed.periodLabel;
-                }
+                // Collect breakdown items
+                const breakdownItems: Array<{
+                  category?: string;
+                  name?: string;
+                  description?: string;
+                  periodLabel?: string;
+                  selectedMonths?: string[];
+                }> = parsed?.items || parsed?.periodDetails?.itemsBreakdown || [];
 
-                const fullPeriodDisplay = acadYear ? `AY ${acadYear} • ${periodDetailText || "Annual"}` : periodDetailText;
-                if (!fullPeriodDisplay) return null;
+                const itemsWithPeriods = breakdownItems.filter(
+                  (it) => it.periodLabel || (Array.isArray(it.selectedMonths) && it.selectedMonths.length > 0)
+                );
+
                 return (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground block">Target Billing Period / AY</span>
-                    <span className="font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800 inline-block mt-0.5">
-                      {fullPeriodDisplay}
-                    </span>
+                  <div className="col-span-2 space-y-1.5 bg-muted/20 p-2.5 rounded-lg border border-border/70">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground block font-medium">Billing Session & Covered Periods</span>
+                      {acadYear && (
+                        <span className="text-[11px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-800">
+                          AY {acadYear}
+                        </span>
+                      )}
+                    </div>
+                    {itemsWithPeriods.length > 0 ? (
+                      <div className="space-y-1.5 pt-0.5">
+                        {itemsWithPeriods.map((it, idx) => {
+                          const months = (it.selectedMonths && it.selectedMonths.length > 0) ? it.selectedMonths : (it.periodLabel || "");
+                          const headName = it.category || it.name || "Fee";
+                          return (
+                            <div
+                              key={idx}
+                              className="flex flex-wrap items-center gap-2 text-xs bg-background p-2 rounded-lg border border-border/80"
+                            >
+                              <span className="font-semibold text-foreground min-w-28">{headName}:</span>
+                              <MonthBoxList months={months} size="sm" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      (parsed?.periodLabel || parsed?.billingPeriodValue) ? (
+                        <div className="flex items-center gap-2 text-xs bg-background p-2 rounded-lg border border-border/80">
+                          <MonthBoxList months={parsed.periodLabel || parsed.billingPeriodValue} size="sm" />
+                        </div>
+                      ) : null
+                    )}
                   </div>
                 );
               })()}
-              <div className="col-span-2">
-                <span className="text-muted-foreground block">Fee Items Paid</span>
-                <span className="font-semibold text-foreground">{receiptTx?.feeType}</span>
+              <div className="col-span-2 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-muted-foreground block">Fee Items Paid</span>
+                  <span className="font-semibold text-foreground">{receiptTx?.feeType}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-muted-foreground block">Payment Mode</span>
+                  <span className="font-medium text-foreground">
+                    {formatCollegePaymentMode(receiptTx?.paymentMode)}
+                    {parseRemarks(receiptTx?.remarks)?.referenceNo ? ` (Ref: ${parseRemarks(receiptTx?.remarks).referenceNo})` : ""}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -3644,13 +2370,28 @@ function FeeManagementPage() {
             {(() => {
               const parsed = parseRemarks(receiptTx?.remarks);
 
-              const items: Array<{ name: string; frequency: string; amount: number }> =
-                Array.isArray(parsed) ? parsed : parsed?.items || [];
+              const items: Array<{
+                name?: string;
+                category?: string;
+                description?: string;
+                periodLabel?: string;
+                selectedMonths?: string[];
+                frequency?: string;
+                quantity?: number;
+                unitPrice?: number;
+                amount: number;
+              }> = Array.isArray(parsed) ? parsed : parsed?.items || [];
               const gross = Number(parsed?.grossSubtotal || 0);
               const disc = Number(parsed?.discountAmount || 0);
               const reason = parsed?.discountReason;
+              const surcharge = Number(parsed?.surchargeAmount || 0);
+              const surchargeReason = parsed?.surchargeReason || "Fee Surcharge / Late Fee";
               const advAdjusted = Number(parsed?.advanceAdjustedAmount || 0);
               const advReceipt = parsed?.advanceReceiptNumber;
+
+              const hasAnyMonths = items.some(
+                (it) => it.periodLabel || (Array.isArray(it.selectedMonths) && it.selectedMonths.length > 0)
+              );
 
               return (
                 <div className="space-y-3 font-sans">
@@ -3660,20 +2401,77 @@ function FeeManagementPage() {
                         <thead>
                           <tr className="bg-muted/60 text-muted-foreground border-b font-semibold text-[11px]">
                             <th className="p-2">Fee Component</th>
-                            <th className="p-2 text-center">Selected Schedule</th>
+                            {hasAnyMonths && <th className="p-2">Covered Month(s)</th>}
+                            <th className="p-2 text-center">Qty</th>
+                            <th className="p-2 text-right">Rate/Mo</th>
                             <th className="p-2 text-right">Amount</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y text-xs">
-                          {items.map((it, idx) => (
-                            <tr key={idx}>
-                              <td className="p-2 font-medium text-foreground">{it.name}</td>
-                              <td className="p-2 text-center">{it.frequency}</td>
-                              <td className="p-2 text-right font-bold text-foreground">
-                                ₹{Number(it.amount || 0).toLocaleString()}
-                              </td>
-                            </tr>
-                          ))}
+                          {items.map((it, idx) => {
+                            const feeHead = it.category || it.name || it.description || "Fee Component";
+                            const period =
+                              it.periodLabel ||
+                              (Array.isArray(it.selectedMonths) && it.selectedMonths.length > 0
+                                ? it.selectedMonths.join(", ")
+                                : it.frequency || "-");
+                            const qty = Number(it.quantity || 1);
+                            const unitRate = Number(
+                              it.unitPrice || (qty > 1 ? Math.round(Number(it.amount || 0) / qty) : Number(it.amount || 0))
+                            );
+                            const baseRate = Number(it.unitPrice || 0);
+                            const discPerMo = Number(it.discountPerMonth || (Number(it.discountAmount || 0) > 0 ? Math.round(Number(it.discountAmount) / qty) : 0));
+                            const surPerMo = Number(it.surchargePerMonth || (Number(it.surchargeAmount || 0) > 0 ? Math.round(Number(it.surchargeAmount) / qty) : 0));
+                            const netRate = Number(it.netUnitPrice || (baseRate - discPerMo + surPerMo)) || baseRate;
+                            const baseTotal = Number(it.baseAmount || (qty * baseRate));
+                            const hasAdjustments = discPerMo > 0 || surPerMo > 0;
+
+                            return (
+                              <tr key={idx} className="hover:bg-muted/30">
+                                <td className="p-2">
+                                  <div className="font-semibold text-foreground">{feeHead}</div>
+                                  {it.description && it.description !== feeHead && (
+                                    <div className="text-[11px] text-muted-foreground">{it.description}</div>
+                                  )}
+                                </td>
+                                {hasAnyMonths && (
+                                  <td className="p-2">
+                                    {period !== "-" ? (
+                                      <MonthBoxList
+                                        months={
+                                          (Array.isArray(it.selectedMonths) && it.selectedMonths.length > 0)
+                                            ? it.selectedMonths
+                                            : (it.periodLabel || period)
+                                        }
+                                        size="xs"
+                                      />
+                                    ) : (
+                                      <span className="text-muted-foreground text-[11px]">-</span>
+                                    )}
+                                  </td>
+                                )}
+                                <td className="p-2 text-center font-mono">{qty}</td>
+                                <td className="p-2 text-right font-mono text-muted-foreground">
+                                  <div className="font-semibold text-foreground">₹{(hasAdjustments ? netRate : (baseRate || unitRate)).toLocaleString()}</div>
+                                  {hasAdjustments && (
+                                    <div className="text-[10px] space-y-0.5">
+                                      <div className="line-through text-muted-foreground">Base: ₹{baseRate.toLocaleString()}</div>
+                                      {discPerMo > 0 && <div className="text-amber-600 dark:text-amber-400">-₹{discPerMo}/mo</div>}
+                                      {surPerMo > 0 && <div className="text-rose-600 dark:text-rose-400">+₹{surPerMo}/mo</div>}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="p-2 text-right font-bold font-mono text-foreground">
+                                  <div>₹{Number(it.amount || 0).toLocaleString()}</div>
+                                  {hasAdjustments && baseTotal > Number(it.amount || 0) && (
+                                    <div className="text-[10px] text-muted-foreground font-normal line-through">
+                                      ₹{baseTotal.toLocaleString()}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -3689,9 +2487,32 @@ function FeeManagementPage() {
                     )}
 
                     {disc > 0 && (
-                      <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-semibold">
-                        <span>Less {formatDiscountLabel(reason).replace(/:$/, "")}:</span>
-                        <span>-₹{disc.toLocaleString()}</span>
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-semibold">
+                          <span>Less {formatDiscountLabel(reason).replace(/:$/, "")}:</span>
+                          <span>-₹{disc.toLocaleString()}</span>
+                        </div>
+                        {items.filter((i) => Number(i.discountAmount || 0) > 0).map((i, k) => (
+                          <div key={k} className="flex justify-between items-center text-[11px] text-emerald-600 dark:text-emerald-400 pl-3">
+                            <span>• {i.category || i.name || i.description} ({i.discountReason || "Concession"}):</span>
+                            <span className="font-mono">-₹{Number(i.discountAmount).toLocaleString()} (-₹{Number(i.discountPerMonth || Math.round(Number(i.discountAmount) / Math.max(1, i.quantity || 1))).toLocaleString()}/mo)</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {surcharge > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-rose-700 dark:text-rose-400 font-semibold">
+                          <span>Plus Surcharge / Late Fee ({surchargeReason}):</span>
+                          <span>+₹{surcharge.toLocaleString()}</span>
+                        </div>
+                        {items.filter((i) => Number(i.surchargeAmount || 0) > 0).map((i, k) => (
+                          <div key={k} className="flex justify-between items-center text-[11px] text-rose-600 dark:text-rose-400 pl-3">
+                            <span>• {i.category || i.name || i.description} ({i.surchargeReason || "Late Fee"}):</span>
+                            <span className="font-mono">+₹{Number(i.surchargeAmount).toLocaleString()} (+₹{Number(i.surchargePerMonth || Math.round(Number(i.surchargeAmount) / Math.max(1, i.quantity || 1))).toLocaleString()}/mo)</span>
+                          </div>
+                        ))}
                       </div>
                     )}
 
@@ -3778,7 +2599,7 @@ function FeeManagementPage() {
 
       {/* WhatsApp Share Modal */}
       <Dialog open={whatsAppModalOpen} onOpenChange={setWhatsAppModalOpen}>
-        <DialogContent className="max-w-lg p-0 overflow-hidden">
+        <DialogContent className="w-[calc(100vw-1rem)] sm:max-w-lg max-h-[92dvh] p-0 flex flex-col overflow-hidden rounded-xl">
           <DialogHeader className="p-4 bg-emerald-600 text-white">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 rounded-full bg-white/20 flex items-center justify-center">
@@ -3803,7 +2624,7 @@ function FeeManagementPage() {
             const guardianPhone = whatsAppStudent?.guardianPhone || "";
 
             return (
-              <div className="p-4 space-y-4 text-xs">
+              <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 text-xs overflow-y-auto flex-1">
                 {/* Recipient Phone Selection */}
                 <div className="space-y-2">
                   <label className="font-semibold text-foreground block text-xs">

@@ -56,6 +56,7 @@ import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authentic
 import { Route as AuthenticatedFrontOfficeRazorpayReconciliationRouteImport } from './routes/_authenticated/front-office/razorpay-reconciliation'
 import { Route as AuthenticatedFrontOfficePatientsRouteImport } from './routes/_authenticated/front-office/patients'
 import { Route as AuthenticatedFrontOfficeNewRouteImport } from './routes/_authenticated/front-office/new'
+import { Route as AuthenticatedDashboardInventoryRouteImport } from './routes/_authenticated/dashboard/inventory'
 import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
 import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
 import { Route as AuthenticatedCollegeReferrersRouteImport } from './routes/_authenticated/college/referrers'
@@ -78,6 +79,7 @@ import { Route as AuthenticatedAssessmentsSkillAssessmentsRouteImport } from './
 import { Route as AuthenticatedAssessmentsSettingsRouteImport } from './routes/_authenticated/assessments/settings'
 import { Route as AuthenticatedAssessmentsQuestionBankRouteImport } from './routes/_authenticated/assessments/question-bank'
 import { Route as AuthenticatedAssessmentsOnlineCbtRouteImport } from './routes/_authenticated/assessments/online-cbt'
+import { Route as AuthenticatedAssessmentsCbtResultsRouteImport } from './routes/_authenticated/assessments/cbt-results'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminPayrollRouteImport } from './routes/_authenticated/admin/payroll'
 import { Route as AuthenticatedAdminPatientsRouteImport } from './routes/_authenticated/admin/patients'
@@ -389,6 +391,12 @@ const AuthenticatedFrontOfficeNewRoute =
     path: '/front-office/new',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedDashboardInventoryRoute =
+  AuthenticatedDashboardInventoryRouteImport.update({
+    id: '/dashboard/inventory',
+    path: '/dashboard/inventory',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedCollegeSubjectsRoute =
   AuthenticatedCollegeSubjectsRouteImport.update({
     id: '/subjects',
@@ -519,6 +527,12 @@ const AuthenticatedAssessmentsOnlineCbtRoute =
   AuthenticatedAssessmentsOnlineCbtRouteImport.update({
     id: '/online-cbt',
     path: '/online-cbt',
+    getParentRoute: () => AuthenticatedAssessmentsRoute,
+  } as any)
+const AuthenticatedAssessmentsCbtResultsRoute =
+  AuthenticatedAssessmentsCbtResultsRouteImport.update({
+    id: '/cbt-results',
+    path: '/cbt-results',
     getParentRoute: () => AuthenticatedAssessmentsRoute,
   } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
@@ -779,6 +793,7 @@ export interface FileRoutesByFullPath {
   '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/assessments/cbt-results': typeof AuthenticatedAssessmentsCbtResultsRoute
   '/assessments/online-cbt': typeof AuthenticatedAssessmentsOnlineCbtRoute
   '/assessments/question-bank': typeof AuthenticatedAssessmentsQuestionBankRoute
   '/assessments/settings': typeof AuthenticatedAssessmentsSettingsRoute
@@ -801,6 +816,7 @@ export interface FileRoutesByFullPath {
   '/college/referrers': typeof AuthenticatedCollegeReferrersRoute
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/dashboard/inventory': typeof AuthenticatedDashboardInventoryRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -887,6 +903,7 @@ export interface FileRoutesByTo {
   '/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/assessments/cbt-results': typeof AuthenticatedAssessmentsCbtResultsRoute
   '/assessments/online-cbt': typeof AuthenticatedAssessmentsOnlineCbtRoute
   '/assessments/question-bank': typeof AuthenticatedAssessmentsQuestionBankRoute
   '/assessments/settings': typeof AuthenticatedAssessmentsSettingsRoute
@@ -909,6 +926,7 @@ export interface FileRoutesByTo {
   '/college/referrers': typeof AuthenticatedCollegeReferrersRoute
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/dashboard/inventory': typeof AuthenticatedDashboardInventoryRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -998,6 +1016,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/patients': typeof AuthenticatedAdminPatientsRoute
   '/_authenticated/admin/payroll': typeof AuthenticatedAdminPayrollRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/assessments/cbt-results': typeof AuthenticatedAssessmentsCbtResultsRoute
   '/_authenticated/assessments/online-cbt': typeof AuthenticatedAssessmentsOnlineCbtRoute
   '/_authenticated/assessments/question-bank': typeof AuthenticatedAssessmentsQuestionBankRoute
   '/_authenticated/assessments/settings': typeof AuthenticatedAssessmentsSettingsRoute
@@ -1020,6 +1039,7 @@ export interface FileRoutesById {
   '/_authenticated/college/referrers': typeof AuthenticatedCollegeReferrersRoute
   '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
+  '/_authenticated/dashboard/inventory': typeof AuthenticatedDashboardInventoryRoute
   '/_authenticated/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
   '/_authenticated/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/_authenticated/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -1110,6 +1130,7 @@ export interface FileRouteTypes {
     | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
+    | '/assessments/cbt-results'
     | '/assessments/online-cbt'
     | '/assessments/question-bank'
     | '/assessments/settings'
@@ -1132,6 +1153,7 @@ export interface FileRouteTypes {
     | '/college/referrers'
     | '/college/students'
     | '/college/subjects'
+    | '/dashboard/inventory'
     | '/front-office/new'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
@@ -1218,6 +1240,7 @@ export interface FileRouteTypes {
     | '/admin/patients'
     | '/admin/payroll'
     | '/admin/users'
+    | '/assessments/cbt-results'
     | '/assessments/online-cbt'
     | '/assessments/question-bank'
     | '/assessments/settings'
@@ -1240,6 +1263,7 @@ export interface FileRouteTypes {
     | '/college/referrers'
     | '/college/students'
     | '/college/subjects'
+    | '/dashboard/inventory'
     | '/front-office/new'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
@@ -1328,6 +1352,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/patients'
     | '/_authenticated/admin/payroll'
     | '/_authenticated/admin/users'
+    | '/_authenticated/assessments/cbt-results'
     | '/_authenticated/assessments/online-cbt'
     | '/_authenticated/assessments/question-bank'
     | '/_authenticated/assessments/settings'
@@ -1350,6 +1375,7 @@ export interface FileRouteTypes {
     | '/_authenticated/college/referrers'
     | '/_authenticated/college/students'
     | '/_authenticated/college/subjects'
+    | '/_authenticated/dashboard/inventory'
     | '/_authenticated/front-office/new'
     | '/_authenticated/front-office/patients'
     | '/_authenticated/front-office/razorpay-reconciliation'
@@ -1759,6 +1785,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFrontOfficeNewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/dashboard/inventory': {
+      id: '/_authenticated/dashboard/inventory'
+      path: '/dashboard/inventory'
+      fullPath: '/dashboard/inventory'
+      preLoaderRoute: typeof AuthenticatedDashboardInventoryRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/college/subjects': {
       id: '/_authenticated/college/subjects'
       path: '/subjects'
@@ -1911,6 +1944,13 @@ declare module '@tanstack/react-router' {
       path: '/online-cbt'
       fullPath: '/assessments/online-cbt'
       preLoaderRoute: typeof AuthenticatedAssessmentsOnlineCbtRouteImport
+      parentRoute: typeof AuthenticatedAssessmentsRoute
+    }
+    '/_authenticated/assessments/cbt-results': {
+      id: '/_authenticated/assessments/cbt-results'
+      path: '/cbt-results'
+      fullPath: '/assessments/cbt-results'
+      preLoaderRoute: typeof AuthenticatedAssessmentsCbtResultsRouteImport
       parentRoute: typeof AuthenticatedAssessmentsRoute
     }
     '/_authenticated/admin/users': {
@@ -2197,6 +2237,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedAssessmentsRouteChildren {
+  AuthenticatedAssessmentsCbtResultsRoute: typeof AuthenticatedAssessmentsCbtResultsRoute
   AuthenticatedAssessmentsOnlineCbtRoute: typeof AuthenticatedAssessmentsOnlineCbtRoute
   AuthenticatedAssessmentsQuestionBankRoute: typeof AuthenticatedAssessmentsQuestionBankRoute
   AuthenticatedAssessmentsSettingsRoute: typeof AuthenticatedAssessmentsSettingsRoute
@@ -2207,6 +2248,8 @@ interface AuthenticatedAssessmentsRouteChildren {
 
 const AuthenticatedAssessmentsRouteChildren: AuthenticatedAssessmentsRouteChildren =
   {
+    AuthenticatedAssessmentsCbtResultsRoute:
+      AuthenticatedAssessmentsCbtResultsRoute,
     AuthenticatedAssessmentsOnlineCbtRoute:
       AuthenticatedAssessmentsOnlineCbtRoute,
     AuthenticatedAssessmentsQuestionBankRoute:
@@ -2339,6 +2382,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedCapitalFacilityRoute: typeof AuthenticatedCapitalFacilityRouteWithChildren
   AuthenticatedCapitalRepaymentsRoute: typeof AuthenticatedCapitalRepaymentsRoute
   AuthenticatedClinicalImmunizationRoute: typeof AuthenticatedClinicalImmunizationRoute
+  AuthenticatedDashboardInventoryRoute: typeof AuthenticatedDashboardInventoryRoute
   AuthenticatedFrontOfficeNewRoute: typeof AuthenticatedFrontOfficeNewRoute
   AuthenticatedFrontOfficePatientsRoute: typeof AuthenticatedFrontOfficePatientsRoute
   AuthenticatedFrontOfficeRazorpayReconciliationRoute: typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -2425,6 +2469,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedCapitalRepaymentsRoute: AuthenticatedCapitalRepaymentsRoute,
   AuthenticatedClinicalImmunizationRoute:
     AuthenticatedClinicalImmunizationRoute,
+  AuthenticatedDashboardInventoryRoute: AuthenticatedDashboardInventoryRoute,
   AuthenticatedFrontOfficeNewRoute: AuthenticatedFrontOfficeNewRoute,
   AuthenticatedFrontOfficePatientsRoute: AuthenticatedFrontOfficePatientsRoute,
   AuthenticatedFrontOfficeRazorpayReconciliationRoute:

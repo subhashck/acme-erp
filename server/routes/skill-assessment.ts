@@ -1743,18 +1743,170 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
 
     const assessmentId = c.req.query("assessmentId") ? parseInt(c.req.query("assessmentId")!, 10) : null;
     const staffIdParam = c.req.query("staffId") ? parseInt(c.req.query("staffId")!, 10) : null;
+    const search = c.req.query("search")?.trim();
+    const statusParam = c.req.query("status")?.trim();
+    const outcomeParam = c.req.query("outcome")?.trim() || c.req.query("result")?.trim();
+    const departmentIdParam = c.req.query("departmentId") ? parseInt(c.req.query("departmentId")!, 10) : null;
+    const startDateParam = c.req.query("startDate")?.trim();
+    const endDateParam = c.req.query("endDate")?.trim();
+    const pageParam = c.req.query("page");
+    const pageSizeParam = c.req.query("pageSize");
 
-    let query = db
+    const conditions: any[] = [];
+
+    if (assessmentId) {
+      conditions.push(eq(examAttempts.assessmentId, assessmentId));
+    }
+
+    if (!isAdmin && !isHr && !isSuper) {
+      if (!currentStaff) return c.json({ error: "Staff profile required" }, 403);
+      // Check if current staff leads any department
+      const ledDepartments = await db.select({ id: departmentLeaders.departmentId }).from(departmentLeaders)
+        .where(or(eq(departmentLeaders.headStaffId, currentStaff.staffId), eq(departmentLeaders.subheadStaffId, currentStaff.staffId)));
+      const namedDepartments = await db.select({ id: departments.id }).from(departments).where(or(
+        currentStaff.name?.trim() ? sql`lower(trim(${departments.head})) = ${currentStaff.name.trim().toLowerCase()}` : sql`false`,
+        /incharge|head|lead|supervisor/i.test(currentStaff.role || "")
+          ? sql`${departments.id} in (select ${staffDepartments.departmentId} from ${staffDepartments}
+              where ${staffDepartments.staffId} = ${currentStaff.staffId} and ${staffDepartments.status} = 'Active')`
+          : sql`false`,
+      ));
+      const deptIds = [...new Set([...ledDepartments, ...namedDepartments].map((dept) => dept.id))];
+      if (deptIds.length > 0) {
+        conditions.push(or(eq(examAttempts.staffId, currentStaff.staffId), inArray(examAttempts.departmentId, deptIds)));
+      } else {
+        conditions.push(eq(examAttempts.staffId, currentStaff.staffId));
+      }
+    }
+
+    if (staffIdParam) conditions.push(eq(examAttempts.staffId, staffIdParam));
+
+    if (search) {
+      conditions.push(
+        or(
+          ilike(examAttempts.attemptNo, `%${search}%`),
+          ilike(staff.name, `%${search}%`),
+          ilike(staff.employeeCode, `%${search}%`),
+          ilike(examAttempts.departmentName, `%${search}%`)
+        )
+      );
+    }
+
+    if (statusParam && statusParam !== "all") {
+      conditions.push(eq(examAttempts.status, statusParam));
+    }
+
+    if (outcomeParam && outcomeParam !== "all") {
+      if (outcomeParam === "passed") {
+        conditions.push(
+          and(
+            inArray(examAttempts.status, ["completed", "timed_out"]),
+            sql`COALESCE(${examAttempts.score}, 0)::numeric >= COALESCE(${examAttempts.passPercentage}, 60)::numeric`
+          )
+        );
+      } else if (outcomeParam === "failed") {
+        conditions.push(
+          and(
+            inArray(examAttempts.status, ["completed", "timed_out"]),
+            sql`COALESCE(${examAttempts.score}, 0)::numeric < COALESCE(${examAttempts.passPercentage}, 60)::numeric`
+          )
+        );
+      }
+    }
+
+    if (departmentIdParam) {
+      conditions.push(eq(examAttempts.departmentId, departmentIdParam));
+    }
+
+    if (startDateParam) {
+      conditions.push(gte(examAttempts.startedAt, sql`${startDateParam}::timestamptz`));
+    }
+
+    if (endDateParam) {
+      conditions.push(lte(examAttempts.startedAt, sql`(${endDateParam}::date + interval '1 day')::timestamptz`));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    // Backward-compatibility: if page is not passed, return raw array directly
+    if (!pageParam) {
+      let query = db
+        .select({
+          id: examAttempts.id,
+          attemptNo: examAttempts.attemptNo,
+          assessmentId: examAttempts.assessmentId,
+          staffId: examAttempts.staffId,
+          staffName: staff.name,
+          employeeCode: staff.employeeCode,
+          designation: staff.role,
+          departmentId: examAttempts.departmentId,
+          departmentName: examAttempts.departmentName,
+          status: examAttempts.status,
+          totalQuestions: examAttempts.totalQuestions,
+          score: examAttempts.score,
+          passPercentage: examAttempts.passPercentage,
+          theoreticalRating: examAttempts.theoreticalRating,
+          correctCount: examAttempts.correctCount,
+          incorrectCount: examAttempts.incorrectCount,
+          unansweredCount: examAttempts.unansweredCount,
+          timeSpentSeconds: examAttempts.timeSpentSeconds,
+          startedAt: examAttempts.startedAt,
+          completedAt: examAttempts.completedAt,
+        })
+        .from(examAttempts)
+        .leftJoin(staff, and(eq(examAttempts.staffId, staff.staffId), eq(staff.active, true)))
+        .orderBy(desc(examAttempts.startedAt), desc(examAttempts.id))
+        .$dynamic();
+
+      if (whereClause) {
+        query = query.where(whereClause);
+      }
+
+      const attempts = await query.limit(50);
+      return c.json(attempts);
+    }
+
+    const page = Math.max(1, parseInt(pageParam, 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeParam || "20", 10) || 20));
+    const offset = (page - 1) * pageSize;
+
+    // Total count
+    const [countRow] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(examAttempts)
+      .leftJoin(staff, and(eq(examAttempts.staffId, staff.staffId), eq(staff.active, true)))
+      .where(whereClause);
+    const totalRecords = countRow?.count ?? 0;
+
+    // Aggregate summary across filtered dataset
+    const [summaryRow] = await db
+      .select({
+        totalAttempts: sql<number>`count(*)::int`,
+        completedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') then 1 end)::int`,
+        passedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') and COALESCE(${examAttempts.score}, 0)::numeric >= COALESCE(${examAttempts.passPercentage}, 60)::numeric then 1 end)::int`,
+        failedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') and COALESCE(${examAttempts.score}, 0)::numeric < COALESCE(${examAttempts.passPercentage}, 60)::numeric then 1 end)::int`,
+        inProgressCount: sql<number>`count(case when ${examAttempts.status} = 'in_progress' then 1 end)::int`,
+        avgScore: sql<string | null>`avg(case when ${examAttempts.status} in ('completed', 'timed_out') then ${examAttempts.score}::numeric end)`,
+        avgRating: sql<string | null>`avg(case when ${examAttempts.status} in ('completed', 'timed_out') then ${examAttempts.theoreticalRating}::numeric end)`,
+      })
+      .from(examAttempts)
+      .leftJoin(staff, and(eq(examAttempts.staffId, staff.staffId), eq(staff.active, true)))
+      .where(whereClause);
+
+    const attempts = await db
       .select({
         id: examAttempts.id,
         attemptNo: examAttempts.attemptNo,
         assessmentId: examAttempts.assessmentId,
         staffId: examAttempts.staffId,
         staffName: staff.name,
+        employeeCode: staff.employeeCode,
+        designation: staff.role,
+        departmentId: examAttempts.departmentId,
         departmentName: examAttempts.departmentName,
         status: examAttempts.status,
         totalQuestions: examAttempts.totalQuestions,
         score: examAttempts.score,
+        passPercentage: examAttempts.passPercentage,
         theoreticalRating: examAttempts.theoreticalRating,
         correctCount: examAttempts.correctCount,
         incorrectCount: examAttempts.incorrectCount,
@@ -1764,29 +1916,34 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         completedAt: examAttempts.completedAt,
       })
       .from(examAttempts)
-      // staff_id is versioned; historical profile rows must not multiply attempts.
       .leftJoin(staff, and(eq(examAttempts.staffId, staff.staffId), eq(staff.active, true)))
+      .where(whereClause)
       .orderBy(desc(examAttempts.startedAt), desc(examAttempts.id))
-      .$dynamic();
+      .limit(pageSize)
+      .offset(offset);
 
-    const conditions = [];
+    const completed = Number(summaryRow?.completedCount ?? 0);
+    const passed = Number(summaryRow?.passedCount ?? 0);
 
-    if (assessmentId) {
-      conditions.push(eq(examAttempts.assessmentId, assessmentId));
-    }
-
-    if (!isAdmin && !isHr && !isSuper) {
-      if (!currentStaff) return c.json({ error: "Staff profile required" }, 403);
-      conditions.push(eq(examAttempts.staffId, currentStaff.staffId));
-    }
-    if (staffIdParam) conditions.push(eq(examAttempts.staffId, staffIdParam));
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
-    }
-
-    const attempts = await query.limit(50);
-    return c.json(attempts);
+    return c.json({
+      data: attempts,
+      pagination: {
+        page,
+        pageSize,
+        totalRecords,
+        totalPages: Math.max(1, Math.ceil(totalRecords / pageSize)),
+      },
+      summary: {
+        totalAttempts: Number(summaryRow?.totalAttempts ?? 0),
+        completedCount: completed,
+        passedCount: passed,
+        failedCount: Number(summaryRow?.failedCount ?? 0),
+        inProgressCount: Number(summaryRow?.inProgressCount ?? 0),
+        averageScore: summaryRow?.avgScore ? Number(summaryRow.avgScore).toFixed(1) : "0.0",
+        averageRating: summaryRow?.avgRating ? Number(summaryRow.avgRating).toFixed(2) : "0.00",
+        passRate: completed > 0 ? ((passed / completed) * 100).toFixed(1) : "0.0",
+      },
+    });
   })
 
   // ---------------------------------------------------------------------------

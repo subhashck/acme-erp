@@ -94,10 +94,12 @@ This document serves as the persistent knowledge index and architecture guide fo
 - **Core Services**:
   - `server/services/stock-engine.ts`: Atomic stock movements (`recordStockMovement`), batch stock updates, ledger audit trail.
   - `server/services/sequence.ts`: Concurrency-safe sequential document numbering (`generateDocNumber`).
+  - `server/services/closing-stock-sync.ts`: External push service ingestion engine (acme-front integration), on-demand 1-hour push API key generation and timing-safe verification, idempotency deduplication, store+date key uniqueness with automatic purging of prior entries upon push, snapshot staging, store/batch resolution, live variance analysis, and atomic reconciliation posting.
 - **Frontend Routes** (`src/routes/_authenticated/inventory/`):
   - `stores.tsx`: Store locations master (Central, Retail Pharmacy, Wards, College, Lab) & staff assignments.
   - `stock.tsx`: Real-time batch-wise inventory stock view across stores.
   - `ledger.tsx`: Complete stock transaction audit ledger (`stockLedger`).
+
   - `pos.tsx`: Pharmacy Point-of-Sale billing with batch auto-select, barcoding, prescription link, discount & mixed payments.
   - `requisitions/`: Inter-store stock requests and approval workflow (`index.tsx`, `new.tsx`, `$id.tsx`).
   - `transfers/`: Stock issue, in-transit tracking, and store receipt confirmation (`index.tsx`, `new.tsx`, `$id.tsx`).
@@ -105,8 +107,8 @@ This document serves as the persistent knowledge index and architecture guide fo
   - `purchase-invoices/`: Direct vendor purchase invoice entry, GRN conversion, payment logging (`index.tsx`, `new.tsx`, `$id.tsx`).
   - `invoices/`: Sales invoice archive, customer returns, credit notes (`index.tsx`, `new.tsx`, `$id.tsx`).
   - `reports/`: Stock valuation, inventory expiry alerts, consumption reports.
-- **Backend Route Files**: `server/routes/inventory.ts`, `server/routes/transfers.ts`, `server/routes/pos.ts`.
-- **Key Tables** (`inventory.*`): `stores`, `storeStaffAssignments`, `itemBatches`, `storeBatchStock`, `stockLedger`, `documentSequences`, `stockRequisitions`, `stockRequisitionItems`, `stockTransfers`, `stockTransferItems`, `stockAdjustments`, `stockAdjustmentItems`, `salesInvoices`, `salesInvoiceItems`, `salesReturns`, `salesReturnItems`, `purchaseInvoices`, `purchaseInvoiceItems`, `purchaseInvoicePayments`.
+- **Backend Route Files**: `server/routes/inventory.ts`, `server/routes/transfers.ts`, `server/routes/pos.ts`, `server/routes/closing-stock-sync.ts`.
+- **Key Tables** (`inventory.*`): `stores`, `storeStaffAssignments`, `itemBatches`, `storeBatchStock`, `stockLedger`, `documentSequences`, `stockRequisitions`, `stockRequisitionItems`, `stockTransfers`, `stockTransferItems`, `stockAdjustments`, `stockAdjustmentItems`, `salesInvoices`, `salesInvoiceItems`, `salesReturns`, `salesReturnItems`, `purchaseInvoices`, `purchaseInvoiceItems`, `purchaseInvoicePayments`, `closingStockSyncSessions`, `closingStockChunks`, `closingStockSnapshotItems`.
 
 ---
 
@@ -163,10 +165,14 @@ The standalone LIS module has been removed from application source and navigatio
 ### I. Assessments
 - **Frontend Routes** (`src/routes/_authenticated/assessments/`, layout `src/routes/_authenticated/assessments.tsx`):
   - `index.tsx`: Staff home with personal assessment history, current self-assessment and recent CBT attempts. HR/Admin retain the existing management workspace at this home route.
+  - `online-cbt.tsx`: Online computer-based theoretical examination session and candidate scorecard.
+  - `cbt-results.tsx`: Full directory of online CBT examination results with live KPIs, multi-filter search, server-side pagination, detailed question scorecard review modal, and CSV export.
   - `skill-assessments.tsx`: Existing clinical skill assessment/review workspace for HR, Admin, department incharges and nursing supervisors.
   - `question-bank.tsx`: Question bank and exam configuration, restricted to HR/Admin.
-- **Shared UI**: `src/components/assessments/` (home, skill assessment workspace, question bank, CBT exam and exam settings).
-- **Backend and Persistence**: Existing `server/routes/skill-assessment.ts`, `/api/skill-assessment/*`, and `server/db/schema-skill-assessment.ts`; no data migration is needed for the route move.
+  - `settings.tsx`: Assessment module settings and controls.
+  - `certificates.$attemptId.tsx`: Printable NABH-compliant CBT result certificate with QR barcode.
+- **Shared UI**: `src/components/assessments/` (home, skill assessment workspace, question bank, CBT exam, CBT results directory, and exam settings).
+- **Backend and Persistence**: Existing `server/routes/skill-assessment.ts`, `/api/skill-assessment/*`, and `server/db/schema-skill-assessment.ts`.
 - **Navigation**: Independent Assessments sidebar group guarded by `canViewAssessments`; legacy `/hr/skill-assessments` and `/hr/question-bank` redirect to the module.
 
 ---

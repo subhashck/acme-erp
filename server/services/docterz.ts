@@ -964,15 +964,34 @@ export async function fetchDocterzPatients(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = (await res.json()) as any;
 
+  const nestedData = data?.data;
+  const envelopes = [data, nestedData, nestedData?.data];
+  let recordsKey: string | undefined;
+  let recordsLen: number | undefined;
+
+  for (const env of envelopes) {
+    if (!env || typeof env !== "object") continue;
+    for (const k of ["users", "children", "records", "items", "data"] as const) {
+      if (Array.isArray(env[k])) {
+        recordsKey = k;
+        recordsLen = env[k].length;
+        break;
+      }
+    }
+    if (recordsKey) break;
+  }
+  if (!recordsKey && Array.isArray(data)) {
+    recordsKey = "root";
+    recordsLen = data.length;
+  }
+
   devLog(`fetchDocterzPatients page=${page} — raw response shape:`, {
     isArray: Array.isArray(data),
     keys: data && typeof data === "object" && !Array.isArray(data) ? Object.keys(data) : [],
-    hasChildren: Array.isArray(data?.children),
-    hasData: Array.isArray(data?.data),
-    childrenLen: Array.isArray(data?.children) ? data.children.length : undefined,
-    dataLen: Array.isArray(data?.data) ? data.data.length : undefined,
-    topLevelLen: Array.isArray(data) ? data.length : undefined,
-    total: data?.total,
+    nestedKeys: nestedData && typeof nestedData === "object" && !Array.isArray(nestedData) ? Object.keys(nestedData) : undefined,
+    recordsKey,
+    recordsLen,
+    total: data?.total ?? nestedData?.total,
   });
 
   const parsed = parseDocterzPatientsResponse(data);

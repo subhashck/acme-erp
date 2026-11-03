@@ -109,6 +109,9 @@ export async function verifyToken(token: string): Promise<SignedPayload> {
 // ---------------------------------------------------------------------------
 
 export const publicRoutes = new Hono()
+  .get("/public/auth-config", (c) => c.json({
+    googleEnabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+  }))
   /**
    * GET /public/reports/shared/:token
    * Verifies the signed token and returns full report detail JSON.

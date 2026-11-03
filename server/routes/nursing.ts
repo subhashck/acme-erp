@@ -335,6 +335,76 @@ export async function generateNextReferrerPaymentVoucherNo(year: string): Promis
   return candidate;
 }
 
+function extractMonthlyTariffs(structure: {
+  tuitionFee?: string | number | null;
+  hostelFee?: string | number | null;
+  hostelMessMonthlyFee?: string | number | null;
+  totalAmount?: string | number | null;
+  componentsConfig?: string | null;
+  paymentFrequency?: string | null;
+  feeType?: string | null;
+}) {
+  let monthlyCourseFee = Number(structure.tuitionFee || 0);
+  let monthlyHostelFee = Number(structure.hostelFee || 0);
+  let monthlyMessFee = Number(structure.hostelMessMonthlyFee || 0);
+
+  // If any component is 0, parse componentsConfig as fallback
+  if (structure.componentsConfig && (monthlyCourseFee === 0 || monthlyHostelFee === 0 || monthlyMessFee === 0)) {
+    try {
+      const comps = JSON.parse(structure.componentsConfig);
+      if (Array.isArray(comps)) {
+        for (const c of comps) {
+          const name = String(c.name || "").trim().toLowerCase();
+          const amt = Number(c.amount || 0);
+          const freq = String(c.selectedFrequencyKey || "annually").toLowerCase();
+          const count = c.frequencyRows?.find((r: any) => r.key === freq)?.count || (freq === "monthly" ? 12 : 1);
+          const monthlyRate =
+            freq === "monthly" && count === 12 && amt > 12000
+              ? Math.round(amt / 12)
+              : freq === "monthly" && amt > 0
+                ? amt
+                : Math.round(amt / 12);
+
+          if (monthlyHostelFee === 0 && name.includes("hostel") && !name.includes("mess")) {
+            monthlyHostelFee = monthlyRate;
+          } else if (monthlyMessFee === 0 && name.includes("mess")) {
+            monthlyMessFee = monthlyRate;
+          } else if (monthlyCourseFee === 0 && (name.includes("course") || name.includes("tuition"))) {
+            monthlyCourseFee = monthlyRate;
+          }
+        }
+      }
+    } catch (e) {
+      // ignore JSON parse error
+    }
+  }
+
+  // If fee structure was configured as monthly paymentFrequency or Monthly Fee Structure,
+  // the columns are already monthly rates from the fee master (http://localhost:5173/college/fee-structures).
+  // Only convert from annual total if paymentFrequency was yearly or one_time and values exceed realistic monthly rates
+  const isMonthlyFrequency =
+    structure.paymentFrequency === "monthly" ||
+    (structure.feeType || "").toLowerCase().includes("monthly");
+
+  if (!isMonthlyFrequency) {
+    if (monthlyHostelFee > 10000) {
+      monthlyHostelFee = Math.round(monthlyHostelFee / 12);
+    }
+    if (monthlyMessFee > 20000) {
+      monthlyMessFee = Math.round(monthlyMessFee / 12);
+    }
+  }
+
+  const monthlyTotal = monthlyCourseFee + monthlyHostelFee + monthlyMessFee;
+
+  return {
+    monthlyCourseFee,
+    monthlyHostelFee,
+    monthlyMessFee,
+    monthlyTotal: monthlyTotal > 0 ? monthlyTotal : Number(structure.totalAmount || 0),
+  };
+}
+
 export const nursingRoutes = new Hono<AuthEnv>()
   .use("/nursing/*", requireCollegeAccess)
   // -------------------------------------------------------------------------
@@ -2028,7 +2098,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
   })
 
   // -------------------------------------------------------------------------
-  // Fee Structures & Transactions
+  // Fee Structures & Transactions (Simplified Monthly Fee Architecture)
   // -------------------------------------------------------------------------
   .get("/nursing/fees/structures", async (c) => {
     const rows = await db
@@ -2058,7 +2128,164 @@ export const nursingRoutes = new Hono<AuthEnv>()
       .leftJoin(nursingCourses, eq(nursingFeeStructures.courseId, nursingCourses.id))
       .orderBy(desc(nursingFeeStructures.id))
       .execute();
-    return c.json(rows);
+
+    const enriched = rows.map((r) => {
+      const extracted = extractMonthlyTariffs(r);
+      return {
+        ...r,
+        monthlyCourseFee: extracted.monthlyCourseFee,
+        monthlyHostelFee: extracted.monthlyHostelFee,
+        monthlyMessFee: extracted.monthlyMessFee,
+        monthlyTotal: extracted.monthlyTotal,
+      };
+    });
+
+    return c.json(enriched);
+  })
+
+  .get("/nursing/fees/structure-for-student/:studentId", async (c) => {
+    const studentId = Number(c.req.param("studentId"));
+    if (!studentId || isNaN(studentId)) return c.json({ error: "Invalid student ID" }, 400);
+
+    const [student] = await db
+      .select({
+        id: nursingStudents.id,
+        batchId: nursingStudents.batchId,
+        applicantId: nursingStudents.applicantId,
+        quotaCategory: nursingApplicants.quotaCategory,
+        applicantCourseId: nursingApplicants.courseId,
+        applicantAcademicYear: nursingApplicants.academicYear,
+      })
+      .from(nursingStudents)
+      .leftJoin(nursingApplicants, eq(nursingStudents.applicantId, nursingApplicants.id))
+      .where(eq(nursingStudents.id, studentId))
+      .execute();
+
+    if (!student) return c.json({ error: "Student not found" }, 404);
+
+    let courseId: number | null = student.applicantCourseId || null;
+    let academicYear: string | null = (c.req.query("academicYear") || student.applicantAcademicYear || "").trim() || null;
+    let courseName = "";
+
+    if (student.batchId) {
+      const [batch] = await db
+        .select({
+          courseId: nursingBatches.courseId,
+          academicYear: nursingBatches.academicYear,
+          courseName: nursingCourses.name,
+        })
+        .from(nursingBatches)
+        .leftJoin(nursingCourses, eq(nursingBatches.courseId, nursingCourses.id))
+        .where(eq(nursingBatches.id, student.batchId))
+        .execute();
+
+      if (batch) {
+        courseId = batch.courseId || courseId;
+        if (!c.req.query("academicYear")) {
+          academicYear = batch.academicYear || academicYear;
+        }
+        courseName = batch.courseName || "";
+      }
+    }
+
+    if (courseId && !courseName) {
+      const [course] = await db
+        .select({ name: nursingCourses.name })
+        .from(nursingCourses)
+        .where(eq(nursingCourses.id, courseId))
+        .execute();
+      if (course) courseName = course.name;
+    }
+
+    // Query fee structures defined in College Fee Master (http://localhost:5173/college/fee-structures)
+    let structures: any[] = [];
+    if (courseId) {
+      structures = await db
+        .select({
+          id: nursingFeeStructures.id,
+          courseId: nursingFeeStructures.courseId,
+          academicYear: nursingFeeStructures.academicYear,
+          quotaCategory: nursingFeeStructures.quotaCategory,
+          tuitionFee: nursingFeeStructures.tuitionFee,
+          hostelFee: nursingFeeStructures.hostelFee,
+          hostelMessMonthlyFee: nursingFeeStructures.hostelMessMonthlyFee,
+          paymentFrequency: nursingFeeStructures.paymentFrequency,
+          feeType: nursingFeeStructures.feeType,
+          componentsConfig: nursingFeeStructures.componentsConfig,
+          totalAmount: nursingFeeStructures.totalAmount,
+        })
+        .from(nursingFeeStructures)
+        .where(eq(nursingFeeStructures.courseId, courseId))
+        .orderBy(desc(nursingFeeStructures.id))
+        .execute();
+    } else {
+      structures = await db
+        .select({
+          id: nursingFeeStructures.id,
+          courseId: nursingFeeStructures.courseId,
+          academicYear: nursingFeeStructures.academicYear,
+          quotaCategory: nursingFeeStructures.quotaCategory,
+          tuitionFee: nursingFeeStructures.tuitionFee,
+          hostelFee: nursingFeeStructures.hostelFee,
+          hostelMessMonthlyFee: nursingFeeStructures.hostelMessMonthlyFee,
+          paymentFrequency: nursingFeeStructures.paymentFrequency,
+          feeType: nursingFeeStructures.feeType,
+          componentsConfig: nursingFeeStructures.componentsConfig,
+          totalAmount: nursingFeeStructures.totalAmount,
+        })
+        .from(nursingFeeStructures)
+        .orderBy(desc(nursingFeeStructures.id))
+        .execute();
+    }
+
+    const studentQuota = (student.quotaCategory || "general").toLowerCase();
+    const targetAy = (c.req.query("academicYear") || academicYear || "").trim();
+
+    // Match priority against the Fee Master structures:
+    // 1. Target AY + student quota
+    // 2. Target AY + "general" quota
+    // 3. Target AY (any quota)
+    // 4. Student quota (across any AY)
+    // 5. "general" quota (across any AY)
+    // 6. Most recent structure for this course/college
+    const match =
+      (targetAy ? structures.find((s) => s.academicYear === targetAy && (s.quotaCategory || "").toLowerCase() === studentQuota) : null) ||
+      (targetAy ? structures.find((s) => s.academicYear === targetAy && (s.quotaCategory || "").toLowerCase() === "general") : null) ||
+      (targetAy ? structures.find((s) => s.academicYear === targetAy) : null) ||
+      structures.find((s) => (s.quotaCategory || "").toLowerCase() === studentQuota) ||
+      structures.find((s) => (s.quotaCategory || "").toLowerCase() === "general") ||
+      structures[0];
+
+    let monthlyCourseFee = 0;
+    let monthlyHostelFee = 0;
+    let monthlyMessFee = 0;
+    let structureId: number | null = null;
+    let structAy: string | null = targetAy || academicYear;
+    let structQuota: string = studentQuota;
+
+    if (match) {
+      structureId = match.id;
+      structAy = match.academicYear;
+      structQuota = match.quotaCategory;
+      const extracted = extractMonthlyTariffs(match);
+      monthlyCourseFee = extracted.monthlyCourseFee;
+      monthlyHostelFee = extracted.monthlyHostelFee;
+      monthlyMessFee = extracted.monthlyMessFee;
+    }
+
+    const monthlyTotal = monthlyCourseFee + monthlyHostelFee + monthlyMessFee;
+
+    return c.json({
+      structureId,
+      courseId,
+      courseName,
+      academicYear: structAy,
+      quotaCategory: structQuota,
+      monthlyCourseFee,
+      monthlyHostelFee,
+      monthlyMessFee,
+      monthlyTotal,
+    });
   })
 
   .post("/nursing/fees/structures", async (c) => {
@@ -2067,10 +2294,13 @@ export const nursingRoutes = new Hono<AuthEnv>()
       z.object({
         courseId: z.number().int().positive(),
         quotaCategory: z.string().default("general"),
-        academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 4}`; }),
-        feeType: z.string().min(1).default("Composite Course Fee"),
-        paymentFrequency: z.string().default("yearly"),
-        oneTimeRebatePercent: z.number().min(0).max(100).default(10),
+        academicYear: z.string().min(1).default(() => { const y = new Date().getFullYear(); return `${y}-${y + 1}`; }),
+        feeType: z.string().min(1).default("Monthly Fee Structure"),
+        paymentFrequency: z.string().default("monthly"),
+        monthlyCourseFee: z.number().min(0).optional(),
+        monthlyHostelFee: z.number().min(0).optional(),
+        monthlyMessFee: z.number().min(0).optional(),
+        oneTimeRebatePercent: z.number().min(0).max(100).default(0),
         totalAnnualFees: z.number().min(0).optional(),
         tuitionFee: z.number().min(0).default(0),
         admissionFee: z.number().min(0).default(0),
@@ -2107,23 +2337,30 @@ export const nursingRoutes = new Hono<AuthEnv>()
       );
     }
 
+    const courseFeeMonthly = input.monthlyCourseFee ?? input.tuitionFee ?? 0;
+    const hostelFeeMonthly = input.monthlyHostelFee ?? input.hostelFee ?? 0;
+    const messFeeMonthly = input.monthlyMessFee ?? input.hostelMessMonthlyFee ?? 0;
+    const monthlySum = courseFeeMonthly + hostelFeeMonthly + messFeeMonthly;
+
     const calculatedAnnualTotal =
-      input.tuitionFee +
+      courseFeeMonthly +
       input.admissionFee +
       input.securityDeposit +
       input.uniformFee +
-      input.hostelFee +
-      (input.hostelMessMonthlyFee * 12) +
+      hostelFeeMonthly +
+      (messFeeMonthly * 12) +
       input.examFee +
       input.miscFee;
 
-    const totalAnnual = input.totalAmount != null
+    const totalVal = input.totalAmount != null
       ? Number(input.totalAmount)
-      : input.totalAnnualFees && input.totalAnnualFees > 0
-        ? input.totalAnnualFees
-        : calculatedAnnualTotal;
+      : monthlySum > 0
+        ? monthlySum
+        : input.totalAnnualFees && input.totalAnnualFees > 0
+          ? input.totalAnnualFees
+          : calculatedAnnualTotal;
 
-    const rebatePercent = input.oneTimeRebatePercent ?? 10;
+    const rebatePercent = input.oneTimeRebatePercent ?? 0;
 
     try {
       const [row] = await db
@@ -2133,25 +2370,31 @@ export const nursingRoutes = new Hono<AuthEnv>()
           quotaCategory: input.quotaCategory,
           academicYear: input.academicYear,
           feeType: input.feeType,
-          paymentFrequency: input.paymentFrequency,
+          paymentFrequency: input.paymentFrequency || "monthly",
           oneTimeRebatePercent: rebatePercent.toFixed(2),
-          tuitionFee: input.tuitionFee.toFixed(2),
+          tuitionFee: courseFeeMonthly.toFixed(2),
           admissionFee: input.admissionFee.toFixed(2),
           securityDeposit: input.securityDeposit.toFixed(2),
           uniformFee: input.uniformFee.toFixed(2),
-          hostelFee: input.hostelFee.toFixed(2),
-          hostelMessMonthlyFee: input.hostelMessMonthlyFee.toFixed(2),
+          hostelFee: hostelFeeMonthly.toFixed(2),
+          hostelMessMonthlyFee: messFeeMonthly.toFixed(2),
           examFee: input.examFee.toFixed(2),
           miscFee: input.miscFee.toFixed(2),
           rebatesConfig: input.rebatesConfig || null,
           surchargesConfig: input.surchargesConfig || null,
           componentsConfig: input.componentsConfig || null,
-          totalAmount: totalAnnual.toFixed(2),
+          totalAmount: totalVal.toFixed(2),
         })
         .returning()
         .execute();
 
-      return c.json(row, 201);
+      return c.json({
+        ...row,
+        monthlyCourseFee: courseFeeMonthly,
+        monthlyHostelFee: hostelFeeMonthly,
+        monthlyMessFee: messFeeMonthly,
+        monthlyTotal: monthlySum > 0 ? monthlySum : totalVal,
+      }, 201);
     } catch (err: any) {
       if (err.code === "23505" || err.message?.includes("unique") || err.message?.includes("duplicate")) {
         return c.json(
@@ -2175,6 +2418,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
         academicYear: z.string().optional(),
         feeType: z.string().optional(),
         paymentFrequency: z.string().optional(),
+        monthlyCourseFee: z.number().min(0).optional(),
+        monthlyHostelFee: z.number().min(0).optional(),
+        monthlyMessFee: z.number().min(0).optional(),
         oneTimeRebatePercent: z.number().min(0).max(100).optional(),
         totalAnnualFees: z.number().min(0).optional(),
         totalAmount: z.union([z.number(), z.string()]).optional(),
@@ -2230,54 +2476,71 @@ export const nursingRoutes = new Hono<AuthEnv>()
       }
     }
 
-    const tuition = input.tuitionFee ?? 0;
+    const courseFeeMonthly = input.monthlyCourseFee ?? input.tuitionFee;
+    const hostelFeeMonthly = input.monthlyHostelFee ?? input.hostelFee;
+    const messFeeMonthly = input.monthlyMessFee ?? input.hostelMessMonthlyFee;
+
     const admission = input.admissionFee ?? 0;
     const deposit = input.securityDeposit ?? 0;
     const uniform = input.uniformFee ?? 0;
-    const hostel = input.hostelFee ?? 0;
-    const hostelMessMonthly = input.hostelMessMonthlyFee ?? 0;
     const exam = input.examFee ?? 0;
     const misc = input.miscFee ?? 0;
 
-    const calculatedTotal =
-      tuition + admission + deposit + uniform + hostel + (hostelMessMonthly * 12) + exam + misc;
+    const updateData: any = {
+      ...(input.courseId ? { courseId: input.courseId } : {}),
+      ...(input.quotaCategory ? { quotaCategory: input.quotaCategory } : {}),
+      ...(input.academicYear ? { academicYear: input.academicYear } : {}),
+      ...(input.feeType ? { feeType: input.feeType } : {}),
+      ...(input.paymentFrequency ? { paymentFrequency: input.paymentFrequency } : {}),
+      ...(input.oneTimeRebatePercent !== undefined ? { oneTimeRebatePercent: input.oneTimeRebatePercent.toFixed(2) } : {}),
+      ...(courseFeeMonthly !== undefined ? { tuitionFee: courseFeeMonthly.toFixed(2) } : {}),
+      ...(input.admissionFee !== undefined ? { admissionFee: admission.toFixed(2) } : {}),
+      ...(input.securityDeposit !== undefined ? { securityDeposit: deposit.toFixed(2) } : {}),
+      ...(input.uniformFee !== undefined ? { uniformFee: uniform.toFixed(2) } : {}),
+      ...(hostelFeeMonthly !== undefined ? { hostelFee: hostelFeeMonthly.toFixed(2) } : {}),
+      ...(messFeeMonthly !== undefined ? { hostelMessMonthlyFee: messFeeMonthly.toFixed(2) } : {}),
+      ...(input.examFee !== undefined ? { examFee: exam.toFixed(2) } : {}),
+      ...(input.miscFee !== undefined ? { miscFee: misc.toFixed(2) } : {}),
+      ...(input.rebatesConfig !== undefined ? { rebatesConfig: input.rebatesConfig } : {}),
+      ...(input.surchargesConfig !== undefined ? { surchargesConfig: input.surchargesConfig } : {}),
+      ...(input.componentsConfig !== undefined ? { componentsConfig: input.componentsConfig } : {}),
+      updatedAt: new Date(),
+    };
 
-    const totalAnnual = input.totalAmount != null
-      ? Number(input.totalAmount)
-      : input.totalAnnualFees && input.totalAnnualFees > 0
-        ? input.totalAnnualFees
-        : calculatedTotal;
+    if (input.totalAmount != null) {
+      updateData.totalAmount = Number(input.totalAmount).toFixed(2);
+    } else if (courseFeeMonthly !== undefined || hostelFeeMonthly !== undefined || messFeeMonthly !== undefined) {
+      const cM = courseFeeMonthly ?? 0;
+      const hM = hostelFeeMonthly ?? 0;
+      const mM = messFeeMonthly ?? 0;
+      const sum = cM + hM + mM;
+      if (sum > 0) {
+        updateData.totalAmount = sum.toFixed(2);
+      }
+    }
 
     try {
       const [row] = await db
         .update(nursingFeeStructures)
-        .set({
-          ...(input.courseId ? { courseId: input.courseId } : {}),
-          ...(input.quotaCategory ? { quotaCategory: input.quotaCategory } : {}),
-          ...(input.academicYear ? { academicYear: input.academicYear } : {}),
-          ...(input.feeType ? { feeType: input.feeType } : {}),
-          ...(input.paymentFrequency ? { paymentFrequency: input.paymentFrequency } : {}),
-          ...(input.oneTimeRebatePercent !== undefined ? { oneTimeRebatePercent: input.oneTimeRebatePercent.toFixed(2) } : {}),
-          tuitionFee: tuition.toFixed(2),
-          admissionFee: admission.toFixed(2),
-          securityDeposit: deposit.toFixed(2),
-          uniformFee: uniform.toFixed(2),
-          hostelFee: hostel.toFixed(2),
-          hostelMessMonthlyFee: hostelMessMonthly.toFixed(2),
-          examFee: exam.toFixed(2),
-          miscFee: misc.toFixed(2),
-          ...(input.rebatesConfig !== undefined ? { rebatesConfig: input.rebatesConfig } : {}),
-          ...(input.surchargesConfig !== undefined ? { surchargesConfig: input.surchargesConfig } : {}),
-          ...(input.componentsConfig !== undefined ? { componentsConfig: input.componentsConfig } : {}),
-          totalAmount: totalAnnual.toFixed(2),
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(nursingFeeStructures.id, id))
         .returning()
         .execute();
 
       if (!row) return c.json({ error: "Fee structure not found" }, 404);
-      return c.json(row);
+
+      const mCourse = Number(row.tuitionFee || 0);
+      const mHostel = Number(row.hostelFee || 0);
+      const mMess = Number(row.hostelMessMonthlyFee || 0);
+      const mSum = mCourse + mHostel + mMess;
+
+      return c.json({
+        ...row,
+        monthlyCourseFee: mCourse,
+        monthlyHostelFee: mHostel,
+        monthlyMessFee: mMess,
+        monthlyTotal: mSum > 0 ? mSum : Number(row.totalAmount || 0),
+      });
     } catch (err: any) {
       if (err.code === "23505" || err.message?.includes("unique") || err.message?.includes("duplicate")) {
         return c.json(
@@ -2572,6 +2835,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
       const gross = Number(parsedRemarks.grossSubtotal || 0);
       const discount = Number(parsedRemarks.discountAmount || 0);
       const discountReason = (parsedRemarks.discountReason || "").trim();
+      const surcharge = Number(parsedRemarks.surchargeAmount || 0);
+      const surchargeReason = (parsedRemarks.surchargeReason || "").trim();
       advanceAdjustedAmount = Number(parsedRemarks.advanceAdjustedAmount || 0);
 
       if (discount > 0) {
@@ -2586,8 +2851,14 @@ export const nursingRoutes = new Hono<AuthEnv>()
         }
       }
 
+      if (surcharge > 0) {
+        if (!surchargeReason) {
+          return c.json({ error: "A valid reason is required whenever a fee surcharge is applied." }, 400);
+        }
+      }
+
       if (advanceAdjustedAmount > 0) {
-        const remainingPayableBeforeAdvance = Math.max(0, gross - discount);
+        const remainingPayableBeforeAdvance = Math.max(0, gross - discount + surcharge);
         if (gross > 0 && advanceAdjustedAmount > remainingPayableBeforeAdvance) {
           return c.json(
             { error: `Advance adjusted amount (₹${advanceAdjustedAmount.toLocaleString()}) cannot exceed remaining fee subtotal (₹${remainingPayableBeforeAdvance.toLocaleString()}).` },
@@ -2597,27 +2868,20 @@ export const nursingRoutes = new Hono<AuthEnv>()
       }
 
       if (gross > 0) {
-        const expectedNet = Math.max(0, gross - discount - advanceAdjustedAmount);
+        const expectedNet = Math.max(0, gross - discount + surcharge - advanceAdjustedAmount);
         if (Math.abs(expectedNet - input.amount) > 1) {
           return c.json(
-            { error: `Payment amount (₹${input.amount.toLocaleString()}) does not match gross subtotal (₹${gross.toLocaleString()}) minus discount (₹${discount.toLocaleString()}) minus advance adjustment (₹${advanceAdjustedAmount.toLocaleString()}). Expected ₹${expectedNet.toLocaleString()}.` },
+            { error: `Payment amount (₹${input.amount.toLocaleString()}) does not match gross subtotal (₹${gross.toLocaleString()}) minus discount (₹${discount.toLocaleString()}) plus surcharge (₹${surcharge.toLocaleString()}) minus advance adjustment (₹${advanceAdjustedAmount.toLocaleString()}). Expected ₹${expectedNet.toLocaleString()}.` },
             400
           );
         }
       }
 
-      // Validate component segregation using the current `items` payload, with
-      // `breakdown` retained only for legacy receipts.
+      // Allow both single-component and multi-item receipt submissions
       const submittedItems = Array.isArray(parsedRemarks.items)
         ? parsedRemarks.items
         : (Array.isArray(parsedRemarks.breakdown) ? parsedRemarks.breakdown : []);
-      if (submittedItems.length > 1) {
-        return c.json(
-          { error: "Each fee receipt can contain only one fee component. Record separate payments for additional components." },
-          400
-        );
-      }
-      // 3.6 Validate duplicate period payments for the same academic year
+      // 3.6 Optional period mapping if academic schedule exists
       const targetAy = parsedRemarks.academicYear;
       const targetPeriods: string[] = Array.isArray(parsedRemarks.selectedPeriods)
         ? parsedRemarks.selectedPeriods
@@ -2639,48 +2903,69 @@ export const nursingRoutes = new Hono<AuthEnv>()
             )
             .execute()
         : [];
-      if (targetPeriods.length > 0 && targetScheduleRows.length === 0) {
-        return c.json(
-          { error: `No Academic Schedule master entries exist for this student's batch in AY ${targetAy}. Configure the schedule before recording payment.` },
-          400
-        );
-      }
       resolvedScheduleRows = targetScheduleRows;
-      const targetCoveredMonths = expandBillingPeriodsToMonths(
-        String(targetAy || ""),
-        String(parsedRemarks.billingPeriodType || ""),
-        targetPeriods,
-        targetScheduleRows
-      );
-      if (targetPeriods.length > 0 && targetCoveredMonths.length === 0) {
-        return c.json(
-          { error: "The selected billing period does not match the configured Academic Schedule master." },
-          400
-        );
-      }
+      const targetCoveredMonths = targetScheduleRows.length > 0 && targetPeriods.length > 0
+        ? expandBillingPeriodsToMonths(
+            String(targetAy || ""),
+            String(parsedRemarks.billingPeriodType || ""),
+            targetPeriods,
+            targetScheduleRows
+          )
+        : [];
       resolvedCoveredMonths = targetCoveredMonths;
 
       const targetItems = Array.isArray(parsedRemarks.items) ? parsedRemarks.items : (Array.isArray(parsedRemarks.breakdown) ? parsedRemarks.breakdown : []);
-      const targetHasHostel = (input.feeType || "").toLowerCase().includes("hostel") || targetItems.some((i: any) => (i.name || "").toLowerCase().includes("hostel"));
-      const targetHasMess = (input.feeType || "").toLowerCase().includes("mess") || targetItems.some((i: any) => (i.name || "").toLowerCase().includes("mess"));
-      const targetHasAcademic = targetItems.some((i: any) => {
-        const n = (i.name || "").toLowerCase();
-        return !n.includes("hostel") && !n.includes("mess");
-      }) || (!targetHasHostel && !targetHasMess);
 
-      const componentKeys = (item: any): string[] => {
-        const componentId = String(item?.componentId || "").trim().toLowerCase();
-        const componentName = String(item?.name || "").trim().toLowerCase();
-        return [
-          ...(componentId ? [`id:${componentId}`] : []),
-          ...(componentName ? [`name:${componentName}`] : []),
-        ];
+      // Helper to identify canonical fee categories for duplicate verification:
+      const getFeeCategories = (itemOrFeeType: any): string[] => {
+        const cat = typeof itemOrFeeType === "string"
+          ? itemOrFeeType
+          : (itemOrFeeType?.category || itemOrFeeType?.name || "");
+        const s = cat.trim().toLowerCase();
+        if (s.includes("hostel & mess") || (s.includes("hostel") && s.includes("mess"))) {
+          return ["hostel", "mess"];
+        }
+        if (s.includes("mess")) return ["mess"];
+        if (s.includes("hostel")) return ["hostel"];
+        if (s.includes("course") || s.includes("tuition") || s.includes("academic") || s.includes("admission")) return ["academic"];
+        return [s || "academic"];
       };
-      const targetComponentKeys = new Set(
-        targetItems.flatMap(componentKeys)
-      );
 
-      if (targetPeriods.length > 0 && targetAy) {
+      // Helper to extract canonical YYYY-MM months for an item:
+      const getItemMonthsList = (item: any, academicYear: string, schedules: ScheduleRange[]): string[] => {
+        const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        const result: string[] = [];
+
+        const rawMonths: string[] = Array.isArray(item?.selectedMonths) && item.selectedMonths.length > 0
+          ? item.selectedMonths
+          : (Array.isArray(item?.coveredMonths) && item.coveredMonths.length > 0
+            ? item.coveredMonths
+            : (item?.periodLabel ? [item.periodLabel] : []));
+
+        for (const p of rawMonths) {
+          const trimmed = String(p).trim();
+          const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})$/);
+          if (isoMatch) {
+            result.push(`${isoMatch[1]}-${String(Number(isoMatch[2])).padStart(2, "0")}`);
+            continue;
+          }
+          const match = trimmed.match(/^([A-Za-z]+)\s+(\d{4})$/);
+          if (match) {
+            const mIdx = monthNames.indexOf(match[1].toLowerCase());
+            if (mIdx !== -1) {
+              result.push(`${match[2]}-${String(mIdx + 1).padStart(2, "0")}`);
+              continue;
+            }
+          }
+        }
+
+        if (result.length === 0 && schedules.length > 0 && rawMonths.length > 0) {
+          return expandBillingPeriodsToMonths(academicYear, "month", rawMonths, schedules);
+        }
+        return [...new Set(result)].sort();
+      };
+
+      if (targetAy) {
         const studentPastTxs = await db
           .select({
             id: nursingFeeTransactions.id,
@@ -2698,85 +2983,86 @@ export const nursingRoutes = new Hono<AuthEnv>()
           )
           .execute();
 
+        // 1. Prepare target items with their categories and normalized months
+        const normalizedTargetItems = targetItems.length > 0
+          ? targetItems.map((ti: any) => ({
+              categoryName: ti.category || ti.name || input.feeType || "Fee",
+              categories: getFeeCategories(ti),
+              months: getItemMonthsList(ti, String(targetAy), targetScheduleRows),
+              periods: Array.isArray(ti.selectedMonths) ? ti.selectedMonths : (ti.periodLabel ? [ti.periodLabel] : targetPeriods),
+            }))
+          : [{
+              categoryName: input.feeType || "Course Fee",
+              categories: getFeeCategories(input.feeType),
+              months: targetCoveredMonths.length > 0 ? targetCoveredMonths : getItemMonthsList(parsedRemarks, String(targetAy), targetScheduleRows),
+              periods: targetPeriods,
+            }];
+
+        // 2. Check each past transaction strictly per fee category
         for (const pastTx of studentPastTxs) {
           const pastRemarks = parseRemarks(pastTx.remarks);
           if (!pastRemarks) continue;
-          if (pastRemarks.academicYear && pastRemarks.academicYear !== targetAy) continue;
+          if (pastRemarks.academicYear && String(pastRemarks.academicYear) !== String(targetAy)) continue;
 
-          const pastItems = Array.isArray(pastRemarks.items) ? pastRemarks.items : (Array.isArray(pastRemarks.breakdown) ? pastRemarks.breakdown : []);
-          const pastHasHostel = (pastTx.feeType || "").toLowerCase().includes("hostel") || pastItems.some((i: any) => (i.name || "").toLowerCase().includes("hostel"));
-          const pastHasMess = (pastTx.feeType || "").toLowerCase().includes("mess") || pastItems.some((i: any) => (i.name || "").toLowerCase().includes("mess"));
-          const pastHasAcademic = pastItems.some((i: any) => {
-            const n = (i.name || "").toLowerCase();
-            return !n.includes("hostel") && !n.includes("mess");
-          }) || (!pastHasHostel && !pastHasMess);
+          const pastItems = Array.isArray(pastRemarks.items)
+            ? pastRemarks.items
+            : (Array.isArray(pastRemarks.breakdown) ? pastRemarks.breakdown : []);
 
-          const pastComponentKeys = new Set(
-            pastItems.flatMap(componentKeys)
-          );
-          const sharesExplicitComponent = [...targetComponentKeys].some((key) => pastComponentKeys.has(key));
+          const normalizedPastItems = pastItems.length > 0
+            ? pastItems.map((pi: any) => ({
+                categoryName: pi.category || pi.name || pastTx.feeType || "Fee",
+                categories: getFeeCategories(pi),
+                months: getItemMonthsList(pi, String(pastRemarks.academicYear || targetAy), targetScheduleRows),
+                periods: Array.isArray(pi.selectedMonths) ? pi.selectedMonths : (pi.periodLabel ? [pi.periodLabel] : []),
+              }))
+            : [{
+                categoryName: pastTx.feeType || "Fee",
+                categories: getFeeCategories(pastTx.feeType),
+                months: Array.isArray(pastRemarks.coveredMonths) && pastRemarks.coveredMonths.length > 0
+                  ? pastRemarks.coveredMonths.map((m: unknown) => String(m))
+                  : getItemMonthsList(pastRemarks, String(pastRemarks.academicYear || targetAy), targetScheduleRows),
+                periods: Array.isArray(pastRemarks.selectedPeriods)
+                  ? pastRemarks.selectedPeriods
+                  : (pastRemarks.billingPeriodValue ? [pastRemarks.billingPeriodValue] : []),
+              }];
 
-          const sharesCategory =
-            targetComponentKeys.size > 0 && pastComponentKeys.size > 0
-              ? sharesExplicitComponent
-              : (targetHasHostel && pastHasHostel) ||
-                (targetHasMess && pastHasMess) ||
-                (targetHasAcademic && pastHasAcademic);
+          for (const targetItem of normalizedTargetItems) {
+            for (const pastItem of normalizedPastItems) {
+              // A duplicate can ONLY occur if they share the exact same fee category (e.g. Mess vs Mess, Course vs Course)
+              const sharesCategory = targetItem.categories.some((tc) => pastItem.categories.includes(tc));
+              if (!sharesCategory) {
+                continue;
+              }
 
-          if (!sharesCategory) {
-            continue;
-          }
+              // Check month collisions
+              const overlappingMonths = targetItem.months.filter((m) => pastItem.months.includes(m));
+              if (overlappingMonths.length > 0) {
+                return c.json(
+                  {
+                    error: `Duplicate payment error: ${targetItem.categoryName} for ${overlappingMonths.join(", ")} is already covered by receipt ${pastTx.receiptNumber}.`,
+                  },
+                  400
+                );
+              }
 
-          const pastPeriodsForMonths: string[] = Array.isArray(pastRemarks.selectedPeriods)
-            ? pastRemarks.selectedPeriods
-            : (pastRemarks.billingPeriodValue ? [pastRemarks.billingPeriodValue] : []);
-          const pastCoveredMonths = Array.isArray(pastRemarks.coveredMonths)
-            ? pastRemarks.coveredMonths.map((month: unknown) => String(month))
-            : expandBillingPeriodsToMonths(
-                String(pastRemarks.academicYear || targetAy || ""),
-                String(pastRemarks.billingPeriodType || ""),
-                pastPeriodsForMonths,
-                targetScheduleRows
-              );
-          const overlappingMonths = targetCoveredMonths.filter((month) => pastCoveredMonths.includes(month));
-          if (overlappingMonths.length > 0) {
-            return c.json(
-              {
-                error: `Duplicate payment error: ${overlappingMonths.join(", ")} is already covered by receipt ${pastTx.receiptNumber}.`,
-              },
-              400
-            );
-          }
+              // Check broad billing period collisions (e.g. "Semester 1", "Full Academic Year") only when months are not specified
+              if (targetItem.months.length === 0 && pastItem.months.length === 0) {
+                const pastPeriods = pastItem.periods.map((p: any) => String(p).trim().toLowerCase());
+                const pastBpVal = String(pastRemarks.billingPeriodValue || "").trim().toLowerCase();
+                const pastCoversAll = pastBpVal.startsWith("all 12") || pastBpVal.startsWith("full academic") || pastBpVal.startsWith("all quarters") || pastBpVal.startsWith("all semesters");
 
-          const pastPeriods: string[] = [];
-          if (Array.isArray(pastRemarks.selectedPeriods)) {
-            pastRemarks.selectedPeriods.forEach((p: any) => {
-              if (typeof p === "string") pastPeriods.push(p.trim().toLowerCase());
-            });
-          }
-          const pastBpVal = (pastRemarks.billingPeriodValue || "").trim();
-          const pastCoversAllPeriods =
-            pastBpVal.startsWith("All 12 Months") ||
-            pastBpVal.startsWith("All 4 Quarters") ||
-            pastBpVal.startsWith("All Quarters") ||
-            pastBpVal.startsWith("All Semesters") ||
-            pastBpVal === "Full Academic Year";
-          if (pastBpVal) {
-            const clean = pastBpVal.replace(/\s*\(\d+[^)]*\)/g, "");
-            clean.split(",").forEach((s: string) => {
-              if (s.trim()) pastPeriods.push(s.trim().toLowerCase());
-            });
-          }
-
-          for (const reqPeriod of targetPeriods) {
-            const reqClean = reqPeriod.replace(/\s*\(\d+[^)]*\)/g, "").toLowerCase().trim();
-            if (pastCoversAllPeriods || pastPeriods.includes(reqClean) || pastPeriods.includes(reqPeriod.toLowerCase().trim())) {
-              return c.json(
-                {
-                  error: `Duplicate payment error: '${reqPeriod}' has already been paid for AY ${targetAy} in receipt ${pastTx.receiptNumber}. Duplicate payments for the same period are not allowed.`
-                },
-                400
-              );
+                for (const reqPeriod of targetItem.periods) {
+                  const reqClean = String(reqPeriod).replace(/\s*\(\d+[^)]*\)/g, "").toLowerCase().trim();
+                  if (pastCoversAll || pastPeriods.includes(reqClean)) {
+                    return c.json(
+                      {
+                        error: `Duplicate payment error: '${reqPeriod}' for ${targetItem.categoryName} has already been paid for AY ${targetAy} in receipt ${pastTx.receiptNumber}.`,
+                      },
+                      400
+                    );
+                  }
+                }
+              }
             }
           }
         }
@@ -2860,8 +3146,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
     if (parsedRemarks && typeof parsedRemarks === "object") {
       const periods: string[] = Array.isArray(parsedRemarks.selectedPeriods)
         ? parsedRemarks.selectedPeriods
-        : (parsedRemarks.billingPeriodValue ? [parsedRemarks.billingPeriodValue] : []);
-      const coveredMonths = resolvedCoveredMonths.length > 0
+        : (Array.isArray(parsedRemarks.selectedMonths) ? parsedRemarks.selectedMonths : (parsedRemarks.billingPeriodValue ? [parsedRemarks.billingPeriodValue] : []));
+      let coveredMonths = resolvedCoveredMonths.length > 0
         ? resolvedCoveredMonths
         : expandBillingPeriodsToMonths(
             String(parsedRemarks.academicYear || getAcademicYear(input.paymentDate)),
@@ -2869,16 +3155,87 @@ export const nursingRoutes = new Hono<AuthEnv>()
             periods,
             resolvedScheduleRows
           );
+
+      // Fallback: If expandBillingPeriodsToMonths returned empty, convert any month strings directly to YYYY-MM
+      if (coveredMonths.length === 0) {
+        const rawMonths = Array.isArray(parsedRemarks.selectedMonths) && parsedRemarks.selectedMonths.length > 0
+          ? parsedRemarks.selectedMonths
+          : periods;
+        const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        for (const p of rawMonths) {
+          const match = String(p).trim().match(/^([A-Za-z]+)\s+(\d{4})$/);
+          if (match) {
+            const mIdx = monthNames.indexOf(match[1].toLowerCase());
+            if (mIdx !== -1) {
+              coveredMonths.push(`${match[2]}-${String(mIdx + 1).padStart(2, "0")}`);
+            }
+          }
+        }
+        coveredMonths = [...new Set(coveredMonths)].sort();
+      }
+
       parsedRemarks.coveredMonths = coveredMonths;
-      parsedRemarks.scheduleSource = "academic_schedule_master";
+      parsedRemarks.selectedMonths = Array.isArray(parsedRemarks.selectedMonths) ? parsedRemarks.selectedMonths : periods;
+      parsedRemarks.selectedPeriods = periods;
+      parsedRemarks.scheduleSource = resolvedScheduleRows.length > 0 ? "academic_schedule_master" : "user_selected_period";
       parsedRemarks.scheduleIds = resolvedScheduleRows
         .map((schedule) => schedule.id)
         .filter((id): id is number => typeof id === "number");
+
+      // Build explicit periodDetails object
+      const periodDetails = {
+        academicYear: String(parsedRemarks.academicYear || getAcademicYear(input.paymentDate)),
+        feeType: input.feeType || parsedRemarks.category || "Course Fee",
+        paymentFrequency: (parsedRemarks.selectedMonths?.length > 0) ? "monthly" : (input.paymentFrequency ?? "yearly"),
+        periodType: (parsedRemarks.selectedMonths?.length > 0 || parsedRemarks.billingPeriodType === "month") ? "month" : (parsedRemarks.billingPeriodType || "academic_year"),
+        selectedMonths: parsedRemarks.selectedMonths,
+        coveredMonths: coveredMonths,
+        billingPeriodValue: parsedRemarks.billingPeriodValue || (Array.isArray(parsedRemarks.selectedMonths) ? parsedRemarks.selectedMonths.join(", ") : ""),
+        monthCount: Array.isArray(parsedRemarks.selectedMonths) ? parsedRemarks.selectedMonths.length : coveredMonths.length,
+        semester: parsedRemarks.selectedSemester || null,
+        periodSummary: Array.isArray(parsedRemarks.selectedMonths) && parsedRemarks.selectedMonths.length > 0
+          ? `${parsedRemarks.selectedMonths.join(", ")} (${parsedRemarks.selectedMonths.length} Months)`
+          : (parsedRemarks.billingPeriodValue || null),
+      };
+      parsedRemarks.periodDetails = periodDetails;
+
       if (Array.isArray(parsedRemarks.items)) {
-        parsedRemarks.items = parsedRemarks.items.map((item: any) => ({
-          ...item,
-          monthlyAllocations: splitAmountAcrossMonths(toNum(item.amount), coveredMonths),
-        }));
+        const monthNames = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        parsedRemarks.items = parsedRemarks.items.map((item: any) => {
+          let itemCoveredMonths: string[] = [];
+          if (Array.isArray(item.selectedMonths) && item.selectedMonths.length > 0) {
+            for (const p of item.selectedMonths) {
+              const match = String(p).trim().match(/^([A-Za-z]+)\s+(\d{4})$/);
+              if (match) {
+                const mIdx = monthNames.indexOf(match[1].toLowerCase());
+                if (mIdx !== -1) {
+                  itemCoveredMonths.push(`${match[2]}-${String(mIdx + 1).padStart(2, "0")}`);
+                }
+              }
+            }
+          }
+          if (itemCoveredMonths.length === 0) {
+            itemCoveredMonths = coveredMonths;
+          }
+          itemCoveredMonths = [...new Set(itemCoveredMonths)].sort();
+
+          return {
+            ...item,
+            coveredMonths: itemCoveredMonths,
+            monthlyAllocations: splitAmountAcrossMonths(toNum(item.amount), itemCoveredMonths),
+          };
+        });
+
+        const allItemsCovered = Array.from(
+          new Set([
+            ...coveredMonths,
+            ...parsedRemarks.items.flatMap((i: any) => Array.isArray(i.coveredMonths) ? i.coveredMonths : []),
+          ])
+        ).sort();
+        parsedRemarks.coveredMonths = allItemsCovered;
+        if (parsedRemarks.periodDetails) {
+          parsedRemarks.periodDetails.coveredMonths = allItemsCovered;
+        }
       }
       normalizedRemarks = JSON.stringify(parsedRemarks);
     }
@@ -2961,14 +3318,22 @@ export const nursingRoutes = new Hono<AuthEnv>()
         }
       }
 
+      const derivedFeeType =
+        input.feeType ||
+        (Array.isArray(parsedRemarks?.items) && parsedRemarks.items.length > 0
+          ? parsedRemarks.items.map((it: any) => it.category || it.name || it.description).filter(Boolean).slice(0, 3).join(", ")
+          : "Course Fee");
+
       const [createdTransaction] = await dbTx
         .insert(nursingFeeTransactions)
         .values({
           studentId: input.studentId,
           applicantId: student.applicantId ?? null,
           feeStructureId: input.feeStructureId ?? null,
-          feeType: input.feeType ?? "Course Fee",
-          paymentFrequency: input.paymentFrequency ?? "yearly",
+          feeType: derivedFeeType,
+          paymentFrequency: (Array.isArray(parsedRemarks?.selectedMonths) && parsedRemarks.selectedMonths.length > 0)
+            ? "monthly"
+            : (input.paymentFrequency ?? "yearly"),
           invoiceNo,
           receiptNumber,
           amount: String(input.amount),
@@ -4721,11 +5086,24 @@ export const nursingRoutes = new Hono<AuthEnv>()
         const studentTxList = feeTx.filter((tx) => {
           if (tx.studentId !== st.id) return false;
           const parsed = parseRemarks(tx.remarks);
-          const isGeneralReceipt = parsed?.isGeneralReceipt || tx.receiptNumber?.startsWith("RCP-GEN-");
           const isSeatBookingAdvance =
             parsed?.isSeatBookingAdvance ||
             tx.feeType?.toLowerCase().includes("seat booking");
-          return !isGeneralReceipt && !isSeatBookingAdvance;
+          if (isSeatBookingAdvance) return false;
+
+          const isGeneralReceipt = parsed?.isGeneralReceipt || tx.receiptNumber?.startsWith("RCP-GEN-");
+          if (isGeneralReceipt) {
+            const cat = (parsed?.category || tx.feeType || "").toLowerCase();
+            const items = Array.isArray(parsed?.items) ? parsed.items : [];
+            const hasFeeHead =
+              cat.includes("tuition") || cat.includes("course") || cat.includes("hostel") || cat.includes("mess") || cat.includes("admission") || cat.includes("exam") ||
+              items.some((it: any) => {
+                const n = (it.description || it.name || it.category || "").toLowerCase();
+                return n.includes("tuition") || n.includes("course") || n.includes("hostel") || n.includes("mess") || n.includes("admission") || n.includes("exam");
+              });
+            return hasFeeHead;
+          }
+          return true;
         });
         for (const tx of studentTxList) {
           const parsed = parseRemarks(tx.remarks);

@@ -43,6 +43,9 @@ import { formatCollegePaymentMode } from "@/lib/college-payment";
 import { format } from "date-fns";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { CollegeReceiptDialog } from "@/components/college/CollegeReceiptDialog";
+import { printCollegeReceipt, downloadCollegeReceipt } from "@/lib/college-receipt-pdf";
+import { Printer } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/college/student/$id")({
   component: StudentProfilePage,
@@ -229,6 +232,7 @@ function StudentProfilePage() {
   const [activeTab, setActiveTab] = React.useState<"info" | "docs" | "fees" | "attendance">("info");
   const [docModalOpen, setDocModalOpen] = React.useState(false);
   const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [collectFeeDialogOpen, setCollectFeeDialogOpen] = React.useState(false);
 
   const { data: student, isLoading, isError } = useQuery<any>({
     queryKey: ["nursing", "student", studentId],
@@ -1177,9 +1181,18 @@ function StudentProfilePage() {
           )}
 
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-semibold">Student Fee Ledger & Transactions</CardTitle>
-              <CardDescription>Payment receipts logged for this student</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Student Fee Ledger & Transactions</CardTitle>
+                <CardDescription>Payment receipts logged for this student</CardDescription>
+              </div>
+              <Button
+                size="sm"
+                className="bg-teal-600 hover:bg-teal-700 text-white flex items-center gap-1.5 text-xs"
+                onClick={() => setCollectFeeDialogOpen(true)}
+              >
+                <Receipt size={14} /> Record Payment / Issue Receipt
+              </Button>
             </CardHeader>
             <CardContent>
               {student.feeTransactions?.length === 0 ? (
@@ -1195,6 +1208,7 @@ function StudentProfilePage() {
                         <th className="p-3">Payment Mode</th>
                         <th className="p-3">Amount</th>
                         <th className="p-3">Status</th>
+                        <th className="p-3 text-center">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -1211,6 +1225,28 @@ function StudentProfilePage() {
                             <span className="px-2 py-0.5 rounded text-xs font-semibold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                               {tx.status}
                             </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                                onClick={() => printCollegeReceipt(tx)}
+                                title="Print Receipt A5"
+                              >
+                                <Printer size={13} className="mr-1" /> Print
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={() => downloadCollegeReceipt(tx)}
+                                title="Download PDF"
+                              >
+                                <Download size={13} />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1287,6 +1323,17 @@ function StudentProfilePage() {
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         student={student}
+      />
+
+      {/* College Fee Receipt Dialog */}
+      <CollegeReceiptDialog
+        open={collectFeeDialogOpen}
+        onOpenChange={setCollectFeeDialogOpen}
+        initialStudentId={student?.id}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["nursing", "student", studentId] });
+          queryClient.invalidateQueries({ queryKey: ["nursing"] });
+        }}
       />
     </div>
   );

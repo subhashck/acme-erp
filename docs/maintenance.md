@@ -45,3 +45,57 @@ sudo du -xh --max-depth=1 / 2>/dev/null | sort -h
 sudo du -xh --max-depth=1 /var/lib/docker 2>/dev/null | sort -h
 
 docker builder prune -a
+
+
+# for local docker build
+docker compose -f docker-compose.yml -f docker-compose.production.yml -f docker-compose.local.yml up -d --build
+
+# for PROD acme-erp-web deployment
+docker compose -f docker-compose.yml -f docker-compose.production.yml up -d --build
+
+---
+
+## 🗄️ MinIO Object Storage Migration & Maintenance
+
+MinIO removed their official Docker Hub images (`minio/minio:latest`, `minio/mc:latest`). ACME ERP uses Chainguard's maintained builds (`cgr.dev/chainguard/minio:latest`).
+
+### 1. Run MinIO Production Migration
+
+#### Linux VPS (Bash):
+```bash
+# Make script executable
+chmod +x ./scripts/migrate-minio-prod.sh
+
+# Run automated migration (takes backup, updates compose, verifies health & data)
+./scripts/migrate-minio-prod.sh
+
+# Or create a snapshot backup without migrating:
+./scripts/migrate-minio-prod.sh --backup-only
+
+# Verify storage health and bucket contents:
+./scripts/migrate-minio-prod.sh --verify-only
+```
+
+#### Windows Host (PowerShell):
+```powershell
+# Run automated migration
+.\scripts\migrate-minio-prod.ps1
+
+# Backup volume only
+.\scripts\migrate-minio-prod.ps1 -BackupOnly
+
+# Verify storage
+.\scripts\migrate-minio-prod.ps1 -VerifyOnly
+```
+
+### 2. Emergency Rollback
+
+If you need to restore your MinIO volume from an automated snapshot:
+
+```bash
+# Linux:
+./scripts/migrate-minio-prod.sh --rollback ./backups/minio_backup_<TIMESTAMP>.tar.gz
+
+# Windows:
+.\scripts\migrate-minio-prod.ps1 -Rollback .\backups\minio_backup_<TIMESTAMP>.tar.gz
+```

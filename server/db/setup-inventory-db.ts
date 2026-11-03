@@ -365,6 +365,95 @@ export async function createInventorySchemaAndTables() {
       "unit_rate" NUMERIC(12, 2) NOT NULL DEFAULT 0
     );
 
+    -- 24. Closing Stock Sync Sessions (acme-front push integration)
+    CREATE TABLE IF NOT EXISTS "inventory"."closing_stock_sync_sessions" (
+      "id" SERIAL PRIMARY KEY,
+      "sync_id" TEXT NOT NULL UNIQUE,
+      "source" TEXT NOT NULL DEFAULT 'acme-front',
+      "report_date" DATE NOT NULL,
+      "store_ids" TEXT,
+      "store_names" TEXT,
+      "total_records_expected" INTEGER NOT NULL DEFAULT 0,
+      "total_records_received" INTEGER NOT NULL DEFAULT 0,
+      "total_chunks_expected" INTEGER NOT NULL DEFAULT 0,
+      "total_chunks_received" INTEGER NOT NULL DEFAULT 0,
+      "total_cost" NUMERIC(14, 2) NOT NULL DEFAULT 0,
+      "total_mrp" NUMERIC(14, 2) NOT NULL DEFAULT 0,
+      "status" TEXT NOT NULL DEFAULT 'receiving',
+      "pushed_by" TEXT DEFAULT 'Operator',
+      "pushed_at" TIMESTAMP,
+      "completed_at" TIMESTAMP,
+      "reconciled_at" TIMESTAMP,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    -- 25. Closing Stock Chunks (idempotency ledger)
+    CREATE TABLE IF NOT EXISTS "inventory"."closing_stock_chunks" (
+      "id" SERIAL PRIMARY KEY,
+      "sync_session_id" INTEGER NOT NULL REFERENCES "inventory"."closing_stock_sync_sessions"("id") ON DELETE CASCADE,
+      "sync_id" TEXT NOT NULL,
+      "chunk_index" INTEGER NOT NULL,
+      "idempotency_key" TEXT NOT NULL UNIQUE,
+      "record_count" INTEGER NOT NULL,
+      "chunk_cost" NUMERIC(14, 2) NOT NULL DEFAULT 0,
+      "chunk_mrp" NUMERIC(14, 2) NOT NULL DEFAULT 0,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT "unq_sync_chunk" UNIQUE ("sync_id", "chunk_index")
+    );
+
+    -- 26. Closing Stock Snapshot Items (batch lines)
+    CREATE TABLE IF NOT EXISTS "inventory"."closing_stock_snapshot_items" (
+      "id" SERIAL PRIMARY KEY,
+      "sync_session_id" INTEGER NOT NULL REFERENCES "inventory"."closing_stock_sync_sessions"("id") ON DELETE CASCADE,
+      "sync_id" TEXT NOT NULL,
+      "idempotency_key" TEXT NOT NULL,
+      "report_date" DATE NOT NULL,
+      "store_id" TEXT NOT NULL,
+      "store_name" TEXT NOT NULL,
+      "erp_store_id" INTEGER REFERENCES "inventory"."stores"("id"),
+      "item_name" TEXT NOT NULL,
+      "salt_name" TEXT,
+      "group_name" TEXT,
+      "subgroup_name" TEXT,
+      "company_name" TEXT,
+      "packing" TEXT,
+      "batch_no" TEXT NOT NULL,
+      "expiry_date" TEXT,
+      "months_to_expiry" INTEGER,
+      "quantity" NUMERIC(14, 3) NOT NULL,
+      "base_unit" TEXT,
+      "preferred_unit" TEXT,
+      "conversion_ratio" NUMERIC(10, 4) DEFAULT 1,
+      "preferred_quantity" NUMERIC(14, 3),
+      "rate" NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      "cost_amount" NUMERIC(14, 2) NOT NULL DEFAULT 0,
+      "mrp" NUMERIC(12, 2) NOT NULL DEFAULT 0,
+      "total_mrp" NUMERIC(14, 2) NOT NULL DEFAULT 0,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT "unq_item_key" UNIQUE ("sync_id", "idempotency_key")
+    );
+
+    CREATE INDEX IF NOT EXISTS "idx_cs_snapshot_session" ON "inventory"."closing_stock_snapshot_items" ("sync_session_id");
+    CREATE INDEX IF NOT EXISTS "idx_cs_snapshot_date" ON "inventory"."closing_stock_snapshot_items" ("report_date");
+    CREATE INDEX IF NOT EXISTS "idx_cs_snapshot_item" ON "inventory"."closing_stock_snapshot_items" ("item_name");
+    CREATE INDEX IF NOT EXISTS "idx_cs_snapshot_store_date" ON "inventory"."closing_stock_snapshot_items" ("store_id", "report_date");
+
+    -- 27. Closing Stock Push API Keys (on-demand 1-hour authentication keys)
+    CREATE TABLE IF NOT EXISTS "inventory"."closing_stock_push_api_keys" (
+      "id" SERIAL PRIMARY KEY,
+      "key" TEXT NOT NULL UNIQUE,
+      "generated_by" TEXT DEFAULT 'Operator',
+      "expires_at" TIMESTAMP NOT NULL,
+      "last_used_at" TIMESTAMP,
+      "is_revoked" BOOLEAN NOT NULL DEFAULT false,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS "idx_cs_push_keys_expiry" ON "inventory"."closing_stock_push_api_keys" ("key", "expires_at", "is_revoked");
+
+
+
     -- -------------------------------------------------------------
     -- Idempotent Column Alterations (Ensure all columns exist)
     -- -------------------------------------------------------------

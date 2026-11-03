@@ -23,6 +23,9 @@ import {
   Trash2,
   Tag,
   AlertCircle,
+  Home,
+  Utensils,
+  Shield,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -77,10 +80,13 @@ export const Route = createFileRoute("/_authenticated/college/general-receipts")
 // ---------------------------------------------------------------------------
 export const GENERAL_RECEIPT_CATEGORIES = [
   { label: "Sale of Prospectus", value: "Sale of Prospectus", icon: FileText, color: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-800" },
-  { label: "Books & Stationary", value: "Books & Stationary", icon: BookOpen, color: "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 border-blue-200 dark:border-blue-800" },
-  { label: "Uniform & Attire", value: "Uniform", icon: Shirt, color: "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 border-purple-200 dark:border-purple-800" },
+  { label: "Books & Stationary", value: "Books & Stationary", icon: BookOpen, color: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 border-sky-200 dark:border-sky-800" },
+  { label: "Uniform & Attire", value: "Uniform", icon: Shirt, color: "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800" },
   { label: "ID Card / Badge", value: "ID Card & Badge", icon: CreditCard, color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800" },
   { label: "Certificate / Verification", value: "Certificate & Verification", icon: BadgeCheck, color: "text-cyan-600 dark:text-cyan-400 bg-cyan-50 dark:bg-cyan-950/60 border-cyan-200 dark:border-cyan-800" },
+  { label: "Admission & Registration Fee", value: "Admission Fee", icon: FileText, color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-800" },
+  { label: "Security Deposit (Refundable)", value: "Security Deposit", icon: Shield, color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200 dark:border-indigo-800" },
+  { label: "Examination Fee", value: "Examination Fee", icon: FileText, color: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/60 border-teal-200 dark:border-teal-800" },
   { label: "Fine / Penalty", value: "Fine & Penalty", icon: AlertCircle, color: "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-800" },
   { label: "Miscellaneous", value: "Miscellaneous", icon: Tag, color: "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800" },
 ] as const;
@@ -130,7 +136,7 @@ export interface GeneralReceiptTransaction {
   createdAt: string;
 }
 
-export function parseGeneralReceiptRemarks(remarks: unknown): any {
+function parseGeneralReceiptRemarks(remarks: unknown): any {
   if (!remarks) return null;
   if (typeof remarks === "object") return remarks;
   if (typeof remarks === "string") {
@@ -146,7 +152,7 @@ export function parseGeneralReceiptRemarks(remarks: unknown): any {
 // ---------------------------------------------------------------------------
 // PDF Receipt Generator
 // ---------------------------------------------------------------------------
-export const buildGeneralReceiptPDFDoc = (
+const buildGeneralReceiptPDFDoc = (
   tx: GeneralReceiptTransaction,
   userName?: string
 ): jsPDF => {
@@ -355,7 +361,7 @@ export const buildGeneralReceiptPDFDoc = (
   return doc;
 };
 
-export const generateGeneralReceiptPDF = (
+const generateGeneralReceiptPDF = (
   tx: GeneralReceiptTransaction,
   userName?: string
 ) => {
@@ -363,7 +369,7 @@ export const generateGeneralReceiptPDF = (
   doc.save(`Receipt-${tx.receiptNumber}.pdf`);
 };
 
-export const printGeneralReceiptPDF = (
+const printGeneralReceiptPDF = (
   tx: GeneralReceiptTransaction,
   userName?: string
 ) => {
@@ -379,7 +385,7 @@ export const printGeneralReceiptPDF = (
   }
 };
 
-export const formatGeneralReceiptWhatsAppMessage = (
+const formatGeneralReceiptWhatsAppMessage = (
   tx: GeneralReceiptTransaction
 ): string => {
   const parsed = parseGeneralReceiptRemarks(tx.remarks);
@@ -409,7 +415,7 @@ export const formatGeneralReceiptWhatsAppMessage = (
   return lines.join("\n");
 };
 
-export const shareGeneralReceiptPDFViaWhatsApp = async (
+const shareGeneralReceiptPDFViaWhatsApp = async (
   tx: GeneralReceiptTransaction,
   phone: string,
   userName?: string
@@ -449,7 +455,7 @@ export const shareGeneralReceiptPDFViaWhatsApp = async (
   return true;
 };
 
-export const openWhatsAppGeneralReceipt = (phone: string, text: string) => {
+const openWhatsAppGeneralReceipt = (phone: string, text: string) => {
   let clean = (phone || "").replace(/\D/g, "");
   if (!clean) {
     toast.error("Please enter a valid recipient phone number.");

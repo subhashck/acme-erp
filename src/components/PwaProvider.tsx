@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Download, RefreshCw, WifiOff, ServerOff, X } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { Button } from "../ui/button";
@@ -40,6 +40,7 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState(navigator.onLine);
   const [serverAvailable, setServerAvailable] = useState(true);
   const [checkingServer, setCheckingServer] = useState(false);
+  const consecutiveFailuresRef = useRef(0);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState("");
   const { needRefresh: [needRefresh, setNeedRefresh], updateServiceWorker } = useRegisterSW({
@@ -61,9 +62,21 @@ export function PwaProvider({ children }: { children: ReactNode }) {
         cache: "no-store",
         signal: AbortSignal.timeout(8000),
       });
-      setServerAvailable(response.status < 500);
+      const isReachable = response.status < 500;
+      if (isReachable) {
+        consecutiveFailuresRef.current = 0;
+        setServerAvailable(true);
+      } else {
+        consecutiveFailuresRef.current += 1;
+        if (manual || consecutiveFailuresRef.current >= 3) {
+          setServerAvailable(false);
+        }
+      }
     } catch {
-      setServerAvailable(false);
+      consecutiveFailuresRef.current += 1;
+      if (manual || consecutiveFailuresRef.current >= 3) {
+        setServerAvailable(false);
+      }
     } finally {
       if (manual) setCheckingServer(false);
     }
@@ -74,6 +87,19 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     const syncInstalled = () => setInstalled(standalone.matches ||
       Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
     syncInstalled();
+    const relatedAppsNavigator = navigator as Navigator & {
+      getInstalledRelatedApps?: () => Promise<Array<{ platform?: string }>>;
+    };
+    void relatedAppsNavigator.getInstalledRelatedApps?.().then(apps => {
+      if (apps.some(app => app.platform === "webapp")) {
+        setInstalled(true);
+        setPrompt(null);
+        setShowInstallHelp(false);
+      }
+    }).catch(() => {
+      // This API is unavailable in some browsers; display-mode and appinstalled
+      // remain the fallback checks.
+    });
     setIsSecureContext(window.isSecureContext);
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.getRegistration("/").then(registration => {
@@ -96,15 +122,25 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     const syncOnline = () => {
       const isOnline = navigator.onLine;
       setOnline(isOnline);
-      if (isOnline) void checkServer();
+      if (isOnline) {
+        consecutiveFailuresRef.current = 0;
+        void checkServer();
+      }
     };
     void checkServer();
-    const serverCheckTimer = window.setInterval(() => void checkServer(), 15000);
+    // Relaxed periodic polling: every 60s, only while tab is active and browser reports online
+    const serverCheckTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void checkServer();
+      }
+    }, 60000);
     // Check on returning to the app, without reloading an active form.
     const checkUpdate = () => {
       if (document.visibilityState === "visible" && navigator.onLine) {
         void navigator.serviceWorker?.getRegistration().then(registration => registration?.update())
-          .catch(error => console.warn("PWA update check failed:", error));
+          .catch(() => {
+            // Silently swallow background update check errors to prevent console spam
+          });
       }
     };
     window.addEventListener("beforeinstallprompt", beforeInstall);
@@ -143,7 +179,10 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     const choice = installPrompt.prompt()
       .then(() => installPrompt.userChoice)
       .then(result => {
-        if (result.outcome === "accepted") setShowInstallHelp(false);
+        if (result.outcome === "accepted") {
+          setInstalled(true);
+          setShowInstallHelp(false);
+        }
       })
       .catch(error => {
         console.warn("PWA installation prompt failed:", error);

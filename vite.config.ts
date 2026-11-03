@@ -12,14 +12,18 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@server": path.resolve(__dirname, "./server")
-    }
+      "@server": path.resolve(__dirname, "./server"),
+      stream: path.resolve(__dirname, "./src/lib/stubs/stream.ts"),
+    },
+  },
+  optimizeDeps: {
+    include: ["xlsx-js-style"],
   },
   plugins: [
     tanstackRouter({
       target: "react",
       routesDirectory: "./src/routes",
-      generatedRouteTree: "./src/routeTree.gen.ts"
+      generatedRouteTree: "./src/routeTree.gen.ts",
     }),
     react(),
     tailwindcss(),
@@ -29,6 +33,9 @@ export default defineConfig({
       includeAssets: ["icons/*.png", "icons/*.webp"],
       manifest: {
         id: "/",
+        related_applications: [
+          { platform: "webapp", url: "/manifest.webmanifest", id: "/" },
+        ],
         name: "ACME Hospital ERP",
         short_name: "ACME ERP",
         description: "ACME Hospital operations, accounts, HR and college management.",
@@ -40,8 +47,8 @@ export default defineConfig({
         icons: [
           { src: "/icons/pwa-192.png", sizes: "192x192", type: "image/png" },
           { src: "/icons/pwa-512.png", sizes: "512x512", type: "image/png" },
-          { src: "/icons/pwa-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
-        ]
+          { src: "/icons/pwa-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
       },
       workbox: {
         importScripts: ["/push-sw.js"],
@@ -53,7 +60,7 @@ export default defineConfig({
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api(?:\/|$)/, /^\/magazine(?:-api)?(?:\/|$)/],
         cleanupOutdatedCaches: true,
-        runtimeCaching: []
+        runtimeCaching: [],
       },
       build: {
         rolldownOptions: {
@@ -63,11 +70,11 @@ export default defineConfig({
               if (id.includes("jspdf") || id.includes("html2canvas")) return "pdf-export";
               if (id.includes("xlsx-js-style")) return "spreadsheet-export";
               if (id.includes("recharts")) return "charts";
-            }
-          }
-        }
-      }
-    })
+            },
+          },
+        },
+      },
+    }),
   ],
   server: {
     port: 5173,
@@ -80,7 +87,6 @@ export default defineConfig({
         changeOrigin: true,
         cookieDomainRewrite: "localhost",
       },
-
-    }
-  }
+    },
+  },
 });

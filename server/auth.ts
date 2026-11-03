@@ -44,7 +44,33 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true
   },
+  ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        requireEmailVerification: true,
+        disableImplicitSignUp: true,
+      }
+    }
+  } : {}),
+  account: {
+    accountLinking: {
+      // Users connect Google from their authenticated profile first.
+      disableImplicitLinking: true,
+    }
+  },
   user: {
+    validateUserInfo: ({ user, source }) => {
+      if (source.oauth?.providerId !== "google") return;
+      const email = user.email?.trim().toLowerCase() ?? "";
+      if (!email.endsWith("@gmail.com") || user.emailVerified !== true) {
+        return {
+          error: "google_account_not_allowed",
+          errorDescription: "Use a verified Gmail address to connect or sign in.",
+        };
+      }
+    },
     additionalFields: {
       mustChangePassword: {
         type: "boolean",

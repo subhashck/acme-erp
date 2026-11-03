@@ -1,6 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { Activity, LogIn } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authClient } from "../services/auth";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -8,12 +8,16 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { PublishedMagazineSection } from "../components/PublishedMagazineSection";
 import { PwaInstallHelp } from "../components/PwaProvider";
+import { googleAuthErrorMessage } from "../lib/google-auth-errors";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../components/ui/dialog";
 
 const isMagazineReturnPath = (path: string) => path === "/magazine/admin" || path.startsWith("/magazine/admin/");
 
 export const Route = createFileRoute("/login")({
   validateSearch: (search: Record<string, unknown>) => ({
-    redirect: typeof search.redirect === "string" ? search.redirect : "/"
+    redirect: typeof search.redirect === "string" ? search.redirect : "/",
+    error: typeof search.error === "string" ? search.error : undefined,
+    error_description: typeof search.error_description === "string" ? search.error_description : undefined,
   }),
   beforeLoad: async ({ search }) => {
     const session = await authClient.getSession();
@@ -30,11 +34,24 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const navigate = useNavigate();
-  const { redirect } = Route.useSearch();
+  const { redirect, error: oauthError, error_description: oauthErrorDescription } = Route.useSearch();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(false);
+  const [googleConfirmOpen, setGoogleConfirmOpen] = useState(false);
+
+  useEffect(() => {
+    if (oauthError) setError(googleAuthErrorMessage(oauthError, oauthErrorDescription));
+  }, [oauthError, oauthErrorDescription]);
+
+  useEffect(() => {
+    fetch("/api/public/auth-config").then((response) => response.ok ? response.json() : null)
+      .then((config) => setGoogleEnabled(config?.googleEnabled === true))
+      .catch(() => setGoogleEnabled(false));
+  }, []);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -51,6 +68,23 @@ function Login() {
       return;
     }
     await navigate({ to: redirect || "/" });
+  };
+
+  const signInWithGoogle = async () => {
+    setError(null);
+    setIsGoogleSubmitting(true);
+    try {
+      const result = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: isMagazineReturnPath(redirect) ? "/" : redirect || "/",
+        errorCallbackURL: "/login",
+      });
+      if (result.error) setError(result.error.message || "Unable to sign in with Google");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to sign in with Google");
+    } finally {
+      setIsGoogleSubmitting(false);
+    }
   };
 
   return (
@@ -85,8 +119,35 @@ function Login() {
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </Button>
             </form>
+            {googleEnabled && <>
+              <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                <span>or</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <Button type="button" variant="outline" className="w-full" disabled={isGoogleSubmitting} onClick={() => setGoogleConfirmOpen(true)}>
+                <span className="font-bold text-base" aria-hidden="true">G</span>
+                {isGoogleSubmitting ? "Connecting to Google..." : "Continue with Google"}
+              </Button>
+            </>}
           </CardContent>
         </Card>
+        <Dialog open={googleConfirmOpen} onOpenChange={setGoogleConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confirm Google sign-in approval</DialogTitle>
+              <DialogDescription>
+                Google sign-in is available only to staff approved by HR or an Administrator. Please confirm you have received approval before continuing.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setGoogleConfirmOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={() => { setGoogleConfirmOpen(false); void signInWithGoogle(); }}>
+                Yes, I have approval
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <PwaInstallHelp />
 
         {/* Latest Published Magazine Issues */}

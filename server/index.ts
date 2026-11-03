@@ -62,6 +62,20 @@ app.use("/api/*", async (c, next) => {
   if (c.req.path.startsWith("/api/public/")) {
     return next();
   }
+  // Machine-to-machine push integration: skip session cookie check (route validates Bearer API key)
+  if (
+    c.req.path.startsWith("/api/v1/inventory/closing-stock") ||
+    c.req.path.startsWith("/api/inventory/closing-stock")
+  ) {
+    const authHeader = c.req.header("Authorization") || c.req.header("X-ERP-API-Key");
+    if (
+      c.req.path === "/api/v1/inventory/closing-stock/batch" ||
+      c.req.path === "/api/inventory/closing-stock/batch" ||
+      (authHeader && authHeader.toLowerCase().startsWith("bearer"))
+    ) {
+      return next();
+    }
+  }
   // Test environment: resolve test admin session when x-test-admin header is provided
   if (process.env.NODE_ENV === "test" && c.req.header("x-test-admin") === "true") {
     const [adminUser] = await db.select().from(user).where(eq(user.role, "admin")).limit(1);

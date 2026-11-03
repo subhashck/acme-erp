@@ -213,7 +213,7 @@ export function DataTable<T extends Record<string, unknown>>({
       )}
 
       <div className={cn(renderMobileCard ? "hidden md:block overflow-x-auto" : "overflow-x-auto")}>
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="w-full min-w-180 text-sm">
           <thead>
             <tr className="border-b bg-muted/45 text-left text-xs uppercase text-muted-foreground">
               {showSerialNumber && <th scope="col" className="w-16 whitespace-nowrap px-4 py-3 font-semibold">Sl. No.</th>}

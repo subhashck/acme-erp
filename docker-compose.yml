@@ -18,9 +18,10 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: acme-erp-minio
     restart: always
+    user: root
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"
@@ -37,7 +38,7 @@ services:
       retries: 5
 
   minio-init:
-    image: minio/mc:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: acme-erp-minio-init
     depends_on:
       minio:
@@ -62,6 +63,8 @@ services:
       - NODE_ENV=production
       - VAPID_KEYS_FILE=/var/lib/acme-erp/vapid.env
       - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@acmehospital.health}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/acme_erp?sslmode=disable
       - BETTER_AUTH_SECRET=ee3e644fc63c3c50d5a15b3ff79057725f35f43698a91f194b34f7ccbff289cd
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-https://my-acme.cloud}
@@ -105,7 +108,7 @@ services:
 
   magazine-storage-init:
     profiles: [magazine]
-    image: minio/mc:latest
+    image: cgr.dev/chainguard/minio:latest
     restart: "no"
     environment:
       MINIO_ADMIN_USER: ${MINIO_ADMIN_USER:-minioadmin}

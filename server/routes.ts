@@ -28,6 +28,7 @@ import { magazineIntegrationRoutes } from "./routes/magazine-integration.ts";
 import { frontOfficeRoutes } from "./routes/front-office.ts";
 import { capitalRoutes } from "./routes/capital.ts";
 import { skillAssessmentRoutes } from "./routes/skill-assessment.ts";
+import { closingStockSyncRoutes } from "./routes/closing-stock-sync.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
@@ -57,6 +58,7 @@ export const api = new Hono<AuthEnv>()
   .route("/", magazineIntegrationRoutes)
   .route("/", frontOfficeRoutes)
   .route("/", capitalRoutes)
-  .route("/", skillAssessmentRoutes);
+  .route("/", skillAssessmentRoutes)
+  .route("/", closingStockSyncRoutes);
 
 export type AppType = typeof api;

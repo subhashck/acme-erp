@@ -438,6 +438,12 @@ export function SkillAssessmentsPage() {
                 </Link>
               </Button>
 
+              <Button asChild variant="outline" size="sm" className="gap-1.5 justify-center border-sky-300 dark:border-sky-800 text-sky-800 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40" title="View online CBT examination results & scorecards">
+                <Link to="/assessments/cbt-results">
+                  <Award size={15} />CBT Results
+                </Link>
+              </Button>
+
               {myExistingAssessment ? (
                 <Button
                   size="sm"
