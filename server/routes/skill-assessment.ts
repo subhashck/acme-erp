@@ -12,6 +12,7 @@ import {
   theoreticalQuestions,
   examConfigs,
   examAttempts,
+  departmentMonthlyQuestionBanks,
 } from "../db/schema-skill-assessment.ts";
 import {
   staff,
@@ -1328,6 +1329,499 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
   })
 
   // ---------------------------------------------------------------------------
+  // 9a. Department Monthly Question Banks: List
+  // ---------------------------------------------------------------------------
+  .get("/skill-assessment/monthly-banks", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const monthYear = c.req.query("monthYear"); // e.g. "2026-11"
+    const departmentName = c.req.query("departmentName");
+    const departmentIdStr = c.req.query("departmentId");
+    const status = c.req.query("status");
+
+    const conditions = [];
+    if (monthYear && monthYear !== "all") {
+      conditions.push(eq(departmentMonthlyQuestionBanks.monthYear, monthYear));
+    }
+    if (departmentName && departmentName !== "all") {
+      conditions.push(eq(departmentMonthlyQuestionBanks.departmentName, departmentName));
+    }
+    if (departmentIdStr && departmentIdStr !== "all") {
+      const deptId = parseInt(departmentIdStr, 10);
+      if (!isNaN(deptId)) {
+        conditions.push(eq(departmentMonthlyQuestionBanks.departmentId, deptId));
+      }
+    }
+    if (status && status !== "all") {
+      conditions.push(eq(departmentMonthlyQuestionBanks.status, status));
+    }
+
+    const banks = await db
+      .select()
+      .from(departmentMonthlyQuestionBanks)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(departmentMonthlyQuestionBanks.monthYear), asc(departmentMonthlyQuestionBanks.departmentName));
+
+    return c.json(banks);
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9b. Department Monthly Question Banks: Get Single with full question objects
+  // ---------------------------------------------------------------------------
+  .get("/skill-assessment/monthly-banks/:id", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid monthly bank ID" }, 400);
+
+    const [bank] = await db
+      .select()
+      .from(departmentMonthlyQuestionBanks)
+      .where(eq(departmentMonthlyQuestionBanks.id, id))
+      .limit(1);
+
+    if (!bank) {
+      return c.json({ error: "Department monthly question bank not found" }, 404);
+    }
+
+    const questionIds = Array.isArray(bank.questionIds) ? (bank.questionIds as number[]) : [];
+    let questions: any[] = [];
+    if (questionIds.length > 0) {
+      questions = await db
+        .select()
+        .from(theoreticalQuestions)
+        .where(inArray(theoreticalQuestions.id, questionIds))
+        .orderBy(asc(theoreticalQuestions.code));
+    }
+
+    return c.json({ bank, questions });
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9c. Department Monthly Question Banks: Create or Upsert
+  // ---------------------------------------------------------------------------
+  .post("/skill-assessment/monthly-banks", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const schema = z.object({
+      departmentId: z.number().int().optional().nullable(),
+      departmentName: z.string().min(1, "Department name is required"),
+      monthYear: z.string().regex(/^\d{4}-\d{2}$/, "monthYear must be in YYYY-MM format"),
+      title: z.string().optional(),
+      description: z.string().optional().nullable(),
+      questionIds: z.array(z.number().int()).optional(),
+      status: z.enum(["active", "draft", "archived"]).optional(),
+    });
+
+    const parsed = schema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message || "Invalid payload" }, 400);
+    }
+
+    const { departmentId, departmentName, monthYear, title, description, questionIds, status } = parsed.data;
+    const finalTitle = title || `${departmentName.trim()} - ${monthYear} Question Bank`;
+    const qIds = Array.from(new Set(questionIds || []));
+
+    const [bank] = await db
+      .insert(departmentMonthlyQuestionBanks)
+      .values({
+        departmentId: departmentId ?? null,
+        departmentName,
+        monthYear,
+        title: finalTitle,
+        description: description ?? null,
+        totalQuestions: qIds.length,
+        questionIds: qIds,
+        status: status || "active",
+        createdById: currentStaff ? String(currentStaff.staffId) : null,
+      })
+      .onConflictDoUpdate({
+        target: [departmentMonthlyQuestionBanks.departmentName, departmentMonthlyQuestionBanks.monthYear],
+        set: {
+          departmentId: departmentId !== undefined ? departmentId : sql`${departmentMonthlyQuestionBanks.departmentId}`,
+          title: finalTitle,
+          description: description !== undefined ? description : sql`${departmentMonthlyQuestionBanks.description}`,
+          totalQuestions: qIds.length,
+          questionIds: qIds,
+          status: status || "active",
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return c.json(bank, 201);
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9d. Department Monthly Question Banks: Update
+  // ---------------------------------------------------------------------------
+  .put("/skill-assessment/monthly-banks/:id", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid monthly bank ID" }, 400);
+
+    const schema = z.object({
+      title: z.string().optional(),
+      description: z.string().optional().nullable(),
+      questionIds: z.array(z.number().int()).optional(),
+      status: z.enum(["active", "draft", "archived"]).optional(),
+      departmentId: z.number().int().optional().nullable(),
+    });
+
+    const parsed = schema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message || "Invalid payload" }, 400);
+    }
+
+    const updateData: any = { updatedAt: new Date() };
+    if (parsed.data.title !== undefined) updateData.title = parsed.data.title;
+    if (parsed.data.description !== undefined) updateData.description = parsed.data.description;
+    if (parsed.data.status !== undefined) updateData.status = parsed.data.status;
+    if (parsed.data.departmentId !== undefined) updateData.departmentId = parsed.data.departmentId;
+    if (parsed.data.questionIds !== undefined) {
+      const qIds = Array.from(new Set(parsed.data.questionIds));
+      updateData.questionIds = qIds;
+      updateData.totalQuestions = qIds.length;
+    }
+
+    const [updated] = await db
+      .update(departmentMonthlyQuestionBanks)
+      .set(updateData)
+      .where(eq(departmentMonthlyQuestionBanks.id, id))
+      .returning();
+
+    if (!updated) {
+      return c.json({ error: "Monthly bank not found" }, 404);
+    }
+
+    return c.json(updated);
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9e. Department Monthly Question Banks: Assign/Unassign Questions
+  // ---------------------------------------------------------------------------
+  .post("/skill-assessment/monthly-banks/:id/assign", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid monthly bank ID" }, 400);
+
+    const schema = z.object({
+      questionIds: z.array(z.number().int()),
+      action: z.enum(["set", "add", "remove"]).default("set"),
+    });
+
+    const parsed = schema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message || "Invalid payload" }, 400);
+    }
+
+    const [bank] = await db
+      .select()
+      .from(departmentMonthlyQuestionBanks)
+      .where(eq(departmentMonthlyQuestionBanks.id, id))
+      .limit(1);
+
+    if (!bank) return c.json({ error: "Monthly bank not found" }, 404);
+
+    let currentIds = (Array.isArray(bank.questionIds) ? bank.questionIds : []) as number[];
+    const incoming = parsed.data.questionIds;
+
+    if (parsed.data.action === "add") {
+      currentIds = Array.from(new Set([...currentIds, ...incoming]));
+    } else if (parsed.data.action === "remove") {
+      const toRemove = new Set(incoming);
+      currentIds = currentIds.filter((qid) => !toRemove.has(qid));
+    } else {
+      currentIds = Array.from(new Set(incoming));
+    }
+
+    const [updated] = await db
+      .update(departmentMonthlyQuestionBanks)
+      .set({
+        questionIds: currentIds,
+        totalQuestions: currentIds.length,
+        updatedAt: new Date(),
+      })
+      .where(eq(departmentMonthlyQuestionBanks.id, id))
+      .returning();
+
+    return c.json(updated);
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9f. Department Monthly Question Banks: Auto-fill Questions based on Dept Tags
+  // ---------------------------------------------------------------------------
+  .post("/skill-assessment/monthly-banks/auto-fill", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const schema = z.object({
+      departmentName: z.string().min(1),
+      monthYear: z.string().regex(/^\d{4}-\d{2}$/),
+      departmentId: z.number().int().optional().nullable(),
+      includeGeneral: z.boolean().default(true),
+    });
+
+    const parsed = schema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message || "Invalid payload" }, 400);
+    }
+
+    const { departmentName, monthYear, departmentId, includeGeneral } = parsed.data;
+    const trimmedDept = departmentName.trim();
+
+    // Fetch all active questions
+    const allQuestions = await db
+      .select({ id: theoreticalQuestions.id, departmentTags: theoreticalQuestions.departmentTags })
+      .from(theoreticalQuestions)
+      .where(eq(theoreticalQuestions.active, true));
+
+    // Match questions
+    const matching = allQuestions.filter((q) => {
+      const tags = Array.isArray(q.departmentTags) ? (q.departmentTags as string[]) : [];
+      return tags.some((t) => {
+        const tTrim = (t || "").trim().toLowerCase();
+        if (tTrim === trimmedDept.toLowerCase() || tTrim === departmentName.toLowerCase()) return true;
+        if (includeGeneral && tTrim === "all") return true;
+        return false;
+      });
+    });
+
+    const matchedIds = matching.map((q) => q.id);
+    const title = `${trimmedDept} - ${monthYear} Question Bank`;
+    const description = `Monthly competency assessment question bank for ${trimmedDept} (${monthYear})`;
+
+    const [bank] = await db
+      .insert(departmentMonthlyQuestionBanks)
+      .values({
+        departmentId: departmentId ?? null,
+        departmentName,
+        monthYear,
+        title,
+        description,
+        totalQuestions: matchedIds.length,
+        questionIds: matchedIds,
+        status: "active",
+        createdById: currentStaff ? String(currentStaff.staffId) : null,
+      })
+      .onConflictDoUpdate({
+        target: [departmentMonthlyQuestionBanks.departmentName, departmentMonthlyQuestionBanks.monthYear],
+        set: {
+          totalQuestions: matchedIds.length,
+          questionIds: matchedIds,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return c.json({ bank, totalAdded: matchedIds.length });
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9g. Department Monthly Question Banks: Copy across months
+  // ---------------------------------------------------------------------------
+  .post("/skill-assessment/monthly-banks/copy", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const schema = z.object({
+      fromMonthYear: z.string().regex(/^\d{4}-\d{2}$/),
+      toMonthYear: z.string().regex(/^\d{4}-\d{2}$/),
+      departmentNames: z.array(z.string()).optional(),
+      overwrite: z.boolean().default(false),
+    });
+
+    const parsed = schema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsed.success) {
+      return c.json({ error: parsed.error.issues[0]?.message || "Invalid payload" }, 400);
+    }
+
+    const { fromMonthYear, toMonthYear, departmentNames, overwrite } = parsed.data;
+
+    if (fromMonthYear === toMonthYear) {
+      return c.json({ error: "Source and target month cannot be identical" }, 400);
+    }
+
+    const sourceConditions = [eq(departmentMonthlyQuestionBanks.monthYear, fromMonthYear)];
+    if (departmentNames && departmentNames.length > 0) {
+      sourceConditions.push(inArray(departmentMonthlyQuestionBanks.departmentName, departmentNames));
+    }
+
+    const sourceBanks = await db
+      .select()
+      .from(departmentMonthlyQuestionBanks)
+      .where(and(...sourceConditions));
+
+    if (sourceBanks.length === 0) {
+      return c.json({ error: `No question banks found for source month ${fromMonthYear}` }, 404);
+    }
+
+    let copiedCount = 0;
+    for (const sb of sourceBanks) {
+      const newTitle = sb.title.replace(fromMonthYear, toMonthYear);
+      const newDesc = sb.description ? sb.description.replace(fromMonthYear, toMonthYear) : null;
+
+      if (overwrite) {
+        await db
+          .insert(departmentMonthlyQuestionBanks)
+          .values({
+            departmentId: sb.departmentId,
+            departmentName: sb.departmentName,
+            monthYear: toMonthYear,
+            title: newTitle,
+            description: newDesc,
+            totalQuestions: sb.totalQuestions,
+            questionIds: sb.questionIds,
+            status: sb.status,
+            createdById: currentStaff ? String(currentStaff.staffId) : null,
+          })
+          .onConflictDoUpdate({
+            target: [departmentMonthlyQuestionBanks.departmentName, departmentMonthlyQuestionBanks.monthYear],
+            set: {
+              title: newTitle,
+              description: newDesc,
+              totalQuestions: sb.totalQuestions,
+              questionIds: sb.questionIds,
+              status: sb.status,
+              updatedAt: new Date(),
+            },
+          });
+        copiedCount++;
+      } else {
+        const [inserted] = await db
+          .insert(departmentMonthlyQuestionBanks)
+          .values({
+            departmentId: sb.departmentId,
+            departmentName: sb.departmentName,
+            monthYear: toMonthYear,
+            title: newTitle,
+            description: newDesc,
+            totalQuestions: sb.totalQuestions,
+            questionIds: sb.questionIds,
+            status: sb.status,
+            createdById: currentStaff ? String(currentStaff.staffId) : null,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (inserted) copiedCount++;
+      }
+    }
+
+    return c.json({
+      success: true,
+      copiedCount,
+      message: `Successfully copied ${copiedCount} department question bank(s) to ${toMonthYear}`,
+    });
+  })
+
+  // ---------------------------------------------------------------------------
+  // 9h. Department Monthly Question Banks: Delete
+  // ---------------------------------------------------------------------------
+  .delete("/skill-assessment/monthly-banks/:id", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const currentStaff = await getCurrentStaff(c);
+    const isAdmin = userRole === "admin";
+    const isHr =
+      isAdmin ||
+      userRole === "hr" ||
+      (currentStaff?.role || "").toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
+
+    if (!isHr) {
+      return c.json({ error: "Unauthorized. HR or Admin role required." }, 403);
+    }
+
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid monthly bank ID" }, 400);
+
+    const [deleted] = await db
+      .delete(departmentMonthlyQuestionBanks)
+      .where(eq(departmentMonthlyQuestionBanks.id, id))
+      .returning();
+
+    if (!deleted) return c.json({ error: "Monthly bank not found" }, 404);
+
+    return c.json({ success: true, message: "Monthly question bank deleted successfully" });
+  })
+
+  // ---------------------------------------------------------------------------
   // 10. Exam Configuration: Get Active Settings
   // ---------------------------------------------------------------------------
   .get("/skill-assessment/exam/config", async (c) => {
@@ -1575,12 +2069,73 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         return c.json({ error: "No active questions found in the question bank." }, 400);
       }
 
-      const finalExamQuestions = selectExamQuestions(allQuestions, targetQuestionsCount, candidateDeptName || "", {
-        basicPercentage: config?.basicPercentage ?? DEFAULT_EXAM_MIX.basicPercentage,
-        mediumPercentage: config?.mediumPercentage ?? DEFAULT_EXAM_MIX.mediumPercentage,
-        advancedPercentage: config?.advancedPercentage ?? DEFAULT_EXAM_MIX.advancedPercentage,
-        departmentPercentage: config?.departmentPercentage ?? DEFAULT_EXAM_MIX.departmentPercentage,
-      });
+      // Check if candidate's department has a specific question bank configured for this month (India time)
+      const kolkataMonthYear = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+      }).format(startedAt).slice(0, 7); // e.g. "2026-11"
+
+      const trimmedDeptName = (candidateDeptName || "").trim();
+
+      const [deptMonthlyBank] = await tx
+        .select()
+        .from(departmentMonthlyQuestionBanks)
+        .where(
+          and(
+            or(
+              eq(departmentMonthlyQuestionBanks.departmentName, candidateDeptName || ""),
+              sql`TRIM(${departmentMonthlyQuestionBanks.departmentName}) = ${trimmedDeptName}`,
+              candidateDeptId ? eq(departmentMonthlyQuestionBanks.departmentId, candidateDeptId) : sql`false`
+            ),
+            eq(departmentMonthlyQuestionBanks.monthYear, kolkataMonthYear),
+            eq(departmentMonthlyQuestionBanks.status, "active")
+          )
+        )
+        .limit(1);
+
+      let finalExamQuestions: typeof allQuestions = [];
+
+      const bankQuestionIds = deptMonthlyBank && Array.isArray(deptMonthlyBank.questionIds)
+        ? (deptMonthlyBank.questionIds as number[])
+        : [];
+
+      if (bankQuestionIds.length > 0) {
+        const bankQuestions = await tx
+          .select()
+          .from(theoreticalQuestions)
+          .where(
+            and(
+              inArray(theoreticalQuestions.id, bankQuestionIds),
+              eq(theoreticalQuestions.active, true)
+            )
+          );
+
+        if (bankQuestions.length > 0) {
+          if (bankQuestions.length <= targetQuestionsCount) {
+            // Shuffle the bank questions
+            finalExamQuestions = [...bankQuestions].sort(() => Math.random() - 0.5);
+          } else {
+            // Select questions from monthly bank adhering to the mix
+            finalExamQuestions = selectExamQuestions(bankQuestions, targetQuestionsCount, trimmedDeptName, {
+              basicPercentage: config?.basicPercentage ?? DEFAULT_EXAM_MIX.basicPercentage,
+              mediumPercentage: config?.mediumPercentage ?? DEFAULT_EXAM_MIX.mediumPercentage,
+              advancedPercentage: config?.advancedPercentage ?? DEFAULT_EXAM_MIX.advancedPercentage,
+              departmentPercentage: config?.departmentPercentage ?? DEFAULT_EXAM_MIX.departmentPercentage,
+            });
+          }
+        }
+      }
+
+      // Fallback if no monthly bank exists or empty
+      if (finalExamQuestions.length === 0) {
+        finalExamQuestions = selectExamQuestions(allQuestions, targetQuestionsCount, candidateDeptName || "", {
+          basicPercentage: config?.basicPercentage ?? DEFAULT_EXAM_MIX.basicPercentage,
+          mediumPercentage: config?.mediumPercentage ?? DEFAULT_EXAM_MIX.mediumPercentage,
+          advancedPercentage: config?.advancedPercentage ?? DEFAULT_EXAM_MIX.advancedPercentage,
+          departmentPercentage: config?.departmentPercentage ?? DEFAULT_EXAM_MIX.departmentPercentage,
+        });
+      }
 
       // Generate unique sequential attempt number using PostgreSQL database sequence: EXAM-YYYY-XXXX
       const year = new Date().getFullYear();
@@ -1617,6 +2172,8 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         totalTimeSeconds,
         perQuestionTimeSeconds,
         passPercentage,
+        monthlyBankTitle: deptMonthlyBank?.title || null,
+        monthlyBankMonthYear: kolkataMonthYear,
         questions: finalExamQuestions.map((q, idx) => ({
           id: q.id,
           index: idx + 1,

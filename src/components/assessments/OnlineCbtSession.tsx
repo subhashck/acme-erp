@@ -671,7 +671,7 @@ export function OnlineCbtSession({
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-1.5">
-                    <span>{examSession.departmentName || "General Nursing"}</span>
+                    <span>{examSession.monthlyBankTitle || examSession.departmentName || "General Nursing"}</span>
                     <span>•</span>
                     <span>
                       Question {currentIdx + 1} of {totalQuestions}

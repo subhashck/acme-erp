@@ -273,3 +273,28 @@ export const examAttempts = skillAssessmentSchema.table("exam_attempts", {
   ...timestamps,
 });
 
+// ---------------------------------------------------------------------------
+// 9. Department Monthly Question Banks
+// Enables assigning a specific question bank per department per month (YYYY-MM)
+// ---------------------------------------------------------------------------
+export const departmentMonthlyQuestionBanks = skillAssessmentSchema.table(
+  "department_monthly_question_banks",
+  {
+    id: serial("id").primaryKey(),
+    departmentId: integer("department_id"),
+    departmentName: text("department_name").notNull(),
+    monthYear: text("month_year").notNull(), // 'YYYY-MM', e.g. '2026-11'
+    title: text("title").notNull(),
+    description: text("description"),
+    totalQuestions: integer("total_questions").notNull().default(0),
+    questionIds: jsonb("question_ids").$type<number[]>().notNull().default([]),
+    status: text("status").notNull().default("active"), // 'active', 'draft', 'archived'
+    createdById: text("created_by_id"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("idx_skill_dept_monthly_bank_unique").on(table.departmentName, table.monthYear),
+  ]
+);
+
+

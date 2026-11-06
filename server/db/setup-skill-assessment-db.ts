@@ -218,6 +218,31 @@ export async function createSkillAssessmentSchemaAndTables() {
     CREATE INDEX IF NOT EXISTS "idx_skill_exam_attempts_staff" ON "skill_assessment"."exam_attempts" ("staff_id");
     CREATE INDEX IF NOT EXISTS "idx_skill_exam_attempts_assessment" ON "skill_assessment"."exam_attempts" ("assessment_id");
 
+    -- 9. Department Monthly Question Banks
+    CREATE TABLE IF NOT EXISTS "skill_assessment"."department_monthly_question_banks" (
+      "id" SERIAL PRIMARY KEY,
+      "department_id" INTEGER,
+      "department_name" TEXT NOT NULL,
+      "month_year" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "description" TEXT,
+      "total_questions" INTEGER NOT NULL DEFAULT 0,
+      "question_ids" JSONB NOT NULL DEFAULT '[]'::jsonb,
+      "status" TEXT NOT NULL DEFAULT 'active',
+      "created_by_id" TEXT,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS "idx_skill_dept_monthly_bank_unique" 
+    ON "skill_assessment"."department_monthly_question_banks" ("department_name", "month_year");
+
+    CREATE INDEX IF NOT EXISTS "idx_skill_dept_monthly_bank_month" 
+    ON "skill_assessment"."department_monthly_question_banks" ("month_year");
+
+    CREATE INDEX IF NOT EXISTS "idx_skill_dept_monthly_bank_dept" 
+    ON "skill_assessment"."department_monthly_question_banks" ("department_id");
+
     -- PostgreSQL Sequences for robust, collision-free numbering
     CREATE SEQUENCE IF NOT EXISTS "skill_assessment"."staff_skill_assessments_seq";
     CREATE SEQUENCE IF NOT EXISTS "skill_assessment"."exam_attempts_seq";
@@ -257,6 +282,7 @@ export async function createSkillAssessmentSchemaAndTables() {
   // Seed NABH competency guidelines and default active cycle
   await seedNabhGuidelines();
   await seedTheoreticalQuestionsAndExamConfig();
+  await seedDepartmentMonthlyBanks();
 }
 
 async function seedNabhGuidelines() {
@@ -1290,6 +1316,71 @@ async function seedTheoreticalQuestionsAndExamConfig() {
   }
 
   console.log(`Successfully verified and seeded ${questions.length} Theoretical Clinical Questions and Exam Configurations.`);
+}
+
+async function seedDepartmentMonthlyBanks() {
+  console.log("Seeding initial Department Monthly Question Banks...");
+
+  const deptRes = await pool.query(`SELECT id, name FROM departments ORDER BY name`);
+  const departmentsList = deptRes.rows as { id: number; name: string }[];
+
+  const qRes = await pool.query(`SELECT id, department_tags FROM skill_assessment.theoretical_questions WHERE active = true`);
+  const allQuestions = qRes.rows as { id: number; department_tags: string[] }[];
+
+  const targetMonths = ["2026-11", "2026-10"];
+
+  for (const month of targetMonths) {
+    for (const dept of departmentsList) {
+      const trimmedDept = dept.name.trim();
+
+      const existing = await pool.query(
+        `SELECT id FROM skill_assessment.department_monthly_question_banks WHERE department_name = $1 AND month_year = $2`,
+        [dept.name, month]
+      );
+      if (existing.rows.length > 0) continue;
+
+      let matching = allQuestions.filter(q => {
+        const tags = Array.isArray(q.department_tags) ? q.department_tags : [];
+        return tags.some(t => {
+          const tTrim = (t || "").trim().toLowerCase();
+          return tTrim === trimmedDept.toLowerCase() || tTrim === dept.name.toLowerCase();
+        });
+      });
+
+      if (matching.length === 0) {
+        matching = allQuestions.filter(q => {
+          const tags = Array.isArray(q.department_tags) ? q.department_tags : [];
+          return tags.some(t => (t || "").trim().toLowerCase() === "all");
+        });
+      }
+
+      const questionIds = matching.map(q => q.id);
+      const title = `${trimmedDept} - ${month} Question Bank`;
+      const description = `Monthly competency assessment question bank for ${trimmedDept} (${month})`;
+
+      await pool.query(
+        `
+        INSERT INTO skill_assessment.department_monthly_question_banks (
+          department_id, department_name, month_year, title, description,
+          total_questions, question_ids, status
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (department_name, month_year) DO NOTHING;
+        `,
+        [
+          dept.id,
+          dept.name,
+          month,
+          title,
+          description,
+          questionIds.length,
+          JSON.stringify(questionIds),
+          "active",
+        ]
+      );
+    }
+  }
+
+  console.log("Department Monthly Question Banks verified and seeded.");
 }
 
 if (process.argv[1] && import.meta.url === `file:///${process.argv[1].replace(/\\/g, "/")}`) {

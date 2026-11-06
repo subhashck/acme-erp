@@ -22,6 +22,7 @@
     "assessments:delete": "tsx scripts/delete_all_assessments.ts",
     "assessments:seed-questions": "tsx scripts/seed_500_questions.ts",
     "assessments:seed-departments": "tsx scripts/seed_500_questions.ts",
+    "assessments:import-2026": "tsx scripts/insert_training_assessment_2026.ts",
     "assessments:migrate-question-mix": "tsx server/db/migrate-exam-question-mix.ts",
     "db:migrate-nursing-applicant-batch": "tsx server/db/migrate-nursing-applicant-batch.ts",
     "test": "pnpm test:unit && pnpm test:integration",
