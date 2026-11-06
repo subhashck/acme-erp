@@ -72,6 +72,17 @@ export interface MonthlyFeeStructure {
   hostelFee?: string;
   hostelMessMonthlyFee?: string;
   totalAmount?: string;
+  feeType?: string;
+  paymentFrequency?: string;
+  oneTimeRebatePercent?: string | number | null;
+  admissionFee?: string | null;
+  securityDeposit?: string | null;
+  uniformFee?: string | null;
+  examFee?: string | null;
+  miscFee?: string | null;
+  rebatesConfig?: string | null;
+  surchargesConfig?: string | null;
+  componentsConfig?: string | null;
 }
 
 // Backward compatibility types & helpers for callers

@@ -61,6 +61,13 @@ describe("configured exam question selection", () => {
     expect(selectExamQuestions([], 20, "Ward", mix)).toEqual([]);
   });
 
+  it("recognizes the 'Clinical' tag as department-specific for clinical departments only", () => {
+    expect(isDepartmentQuestion(["Clinical"], "NICU", true)).toBe(true);
+    expect(isDepartmentQuestion(["clinical"], "Ward", true)).toBe(true);
+    expect(isDepartmentQuestion(["Clinical"], "Front Office", false)).toBe(false);
+    expect(isDepartmentQuestion(["Clinical"], "Accounts")).toBe(false);
+  });
+
   it("allows a single difficulty and does not mutate the source bank", () => {
     const pool = bank();
     const original = structuredClone(pool);

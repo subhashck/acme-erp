@@ -156,14 +156,29 @@ interface BillingPeriodDefinition {
   monthKeys: string[];
 }
 
+const getNext12MonthKeys = (baseDate: Date = new Date()): string[] => {
+  const result: string[] = [];
+  const cur = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(cur.getFullYear(), cur.getMonth() + i, 1);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    result.push(`${y}-${m}`);
+  }
+  return result;
+};
+
 const fallbackAcademicYearMonths = (academicYear: string): string[] => {
   const startYear = parseInt(academicYear.split("-")[0], 10);
-  if (!Number.isFinite(startYear)) return [];
-  return [
-    `${startYear}-06`, `${startYear}-07`, `${startYear}-08`, `${startYear}-09`,
-    `${startYear}-10`, `${startYear}-11`, `${startYear}-12`, `${startYear + 1}-01`,
-    `${startYear + 1}-02`, `${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`,
-  ];
+  const baseAy = Number.isFinite(startYear)
+    ? [
+        `${startYear}-06`, `${startYear}-07`, `${startYear}-08`, `${startYear}-09`,
+        `${startYear}-10`, `${startYear}-11`, `${startYear}-12`, `${startYear + 1}-01`,
+        `${startYear + 1}-02`, `${startYear + 1}-03`, `${startYear + 1}-04`, `${startYear + 1}-05`,
+      ]
+    : [];
+  const next12 = getNext12MonthKeys(new Date());
+  return Array.from(new Set([...baseAy, ...next12])).sort();
 };
 
 const monthKeyFromDate = (date: Date): string =>
@@ -251,7 +266,11 @@ const buildBillingPeriodDefinitions = (
   schedules: AcademicScheduleRow[]
 ): BillingPeriodDefinition[] => {
   const plan = inferScheduleMonthPlan(schedules);
-  const months = plan.months.length > 0 ? plan.months : fallbackAcademicYearMonths(academicYear);
+  const baseMonths = plan.months.length > 0 ? plan.months : fallbackAcademicYearMonths(academicYear);
+  const next12 = getNext12MonthKeys(new Date());
+  const months = periodType === "month"
+    ? Array.from(new Set([...baseMonths, ...next12])).sort()
+    : baseMonths;
   if (months.length === 0) return [];
 
   if (periodType === "month") {
@@ -1266,6 +1285,18 @@ function FeeManagementPage() {
     setSelectedPeriods(unpaid);
   };
 
+  const selectNext12Months = () => {
+    const next12Definitions = getNext12MonthKeys(new Date()).map(formatMonthKeyLong);
+    const unpaid = next12Definitions.filter(
+      (opt) => periodValueOptions.includes(opt) && !getPaidInfoForPeriod(opt)
+    );
+    if (unpaid.length === 0) {
+      toast.info("All next 12 months are already paid or not available in the current schedule.");
+      return;
+    }
+    setSelectedPeriods(unpaid);
+  };
+
   const selectPeriodPreset = (periods: string[]) => {
     const unpaid = periods.filter((p) => !getPaidInfoForPeriod(p));
     if (unpaid.length === 0) {
@@ -2269,7 +2300,7 @@ function FeeManagementPage() {
 
       <Dialog open={receiptModalOpen} onOpenChange={setReceiptModalOpen}>
         <DialogContent
-          className="w-[calc(100vw-1rem)] sm:max-w-[650px] max-h-[92dvh] p-0 flex flex-col overflow-hidden rounded-xl"
+          className="w-[calc(100vw-1rem)] sm:max-w-162 max-h-[92dvh] p-0 flex flex-col overflow-hidden rounded-xl"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -2380,6 +2411,14 @@ function FeeManagementPage() {
                 quantity?: number;
                 unitPrice?: number;
                 amount: number;
+                discountAmount?: number;
+                discountPerMonth?: number;
+                discountReason?: string;
+                surchargeAmount?: number;
+                surchargePerMonth?: number;
+                surchargeReason?: string;
+                netUnitPrice?: number;
+                baseAmount?: number;
               }> = Array.isArray(parsed) ? parsed : parsed?.items || [];
               const gross = Number(parsed?.grossSubtotal || 0);
               const disc = Number(parsed?.discountAmount || 0);

@@ -111,6 +111,42 @@ export function getAcademicYearMonths(academicYear: string) {
   ];
 }
 
+export function getNext12MonthsFromDate(baseDate: Date = new Date()) {
+  const result: Array<{ key: string; name: string; shortName: string; year: number }> = [];
+  const cur = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(cur.getFullYear(), cur.getMonth() + i, 1);
+    const monthIndex = d.getMonth();
+    const year = d.getFullYear();
+    const name = MONTH_NAMES[monthIndex];
+    const shortName = name.slice(0, 3);
+    result.push({
+      key: `${name} ${year}`,
+      name,
+      shortName,
+      year,
+    });
+  }
+  return result;
+}
+
+export function getSelectableMonthsSequence(academicYear: string, baseDate: Date = new Date()) {
+  const ay = getAcademicYearMonths(academicYear);
+  const next12 = getNext12MonthsFromDate(baseDate);
+
+  const map = new Map<string, { key: string; name: string; shortName: string; year: number; sortKey: number }>();
+
+  [...ay, ...next12].forEach((m) => {
+    const monthIdx = MONTH_NAMES.indexOf(m.name as any);
+    const sortKey = m.year * 100 + (monthIdx >= 0 ? monthIdx : 0);
+    if (!map.has(m.key)) {
+      map.set(m.key, { ...m, sortKey });
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => a.sortKey - b.sortKey);
+}
+
 export interface PaidFeeInfo {
   receiptNumber: string;
   paymentDate?: string;

@@ -1839,6 +1839,19 @@ function ShellContent({ session }: { session: any }) {
               >
                 <Menu size={18} />
               </Button>
+              <Link
+                to="/"
+                className="lg:hidden flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+                aria-label={`${hospital.name} dashboard`}
+              >
+                <img
+                  src="/icons/acme-sidebar.webp"
+                  alt={hospital.name}
+                  width={768}
+                  height={277}
+                  className="h-7 w-auto max-w-[120px] object-contain"
+                />
+              </Link>
               <div className="flex items-center">
                 <nav className="flex flex-wrap items-center gap-1 text-xs font-medium text-muted-foreground md:gap-1.5 md:text-sm" aria-label="Breadcrumb">
                   {getBreadcrumbs(location.pathname).map((item, idx, arr) => (

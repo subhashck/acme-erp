@@ -1102,9 +1102,30 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
     let filtered = questions;
 
     if (department && department !== "all") {
+      const deptTrim = department.trim().toLowerCase();
+      const allDepts = await db
+        .select({ name: departments.name, isClinical: departments.isClinical })
+        .from(departments);
+      const clinicalDeptNames = new Set(
+        allDepts.filter((d) => d.isClinical).map((d) => d.name.trim().toLowerCase())
+      );
+      const isTargetDeptClinical = clinicalDeptNames.has(deptTrim) || deptTrim === "clinical";
+
       filtered = filtered.filter((q) => {
         const tags = Array.isArray(q.departmentTags) ? (q.departmentTags as string[]) : [];
-        return tags.some((t) => t.toLowerCase().includes(department.toLowerCase()) || t.toLowerCase() === "all");
+        if (deptTrim === "clinical") {
+          return tags.some((t) => {
+            const tLow = t.trim().toLowerCase();
+            return tLow === "clinical" || clinicalDeptNames.has(tLow);
+          });
+        }
+        return tags.some((t) => {
+          const tLow = t.trim().toLowerCase();
+          if (tLow.includes(deptTrim) || deptTrim.includes(tLow)) return true;
+          if (tLow === "all") return true;
+          if (isTargetDeptClinical && tLow === "clinical") return true;
+          return false;
+        });
       });
     }
 
@@ -1637,18 +1658,37 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
     const { departmentName, monthYear, departmentId, includeGeneral } = parsed.data;
     const trimmedDept = departmentName.trim();
 
+    // Check if the department is marked as clinical in department master
+    let isClinicalDept = false;
+    if (departmentId) {
+      const [deptRecord] = await db
+        .select({ isClinical: departments.isClinical })
+        .from(departments)
+        .where(eq(departments.id, departmentId))
+        .limit(1);
+      if (deptRecord) isClinicalDept = deptRecord.isClinical;
+    } else {
+      const [deptRecord] = await db
+        .select({ isClinical: departments.isClinical })
+        .from(departments)
+        .where(sql`TRIM(LOWER(${departments.name})) = ${trimmedDept.toLowerCase()}`)
+        .limit(1);
+      if (deptRecord) isClinicalDept = deptRecord.isClinical;
+    }
+
     // Fetch all active questions
     const allQuestions = await db
       .select({ id: theoreticalQuestions.id, departmentTags: theoreticalQuestions.departmentTags })
       .from(theoreticalQuestions)
       .where(eq(theoreticalQuestions.active, true));
 
-    // Match questions
+    // Match questions: specific department, "clinical" (if department is marked clinical), or "all"
     const matching = allQuestions.filter((q) => {
       const tags = Array.isArray(q.departmentTags) ? (q.departmentTags as string[]) : [];
       return tags.some((t) => {
         const tTrim = (t || "").trim().toLowerCase();
         if (tTrim === trimmedDept.toLowerCase() || tTrim === departmentName.toLowerCase()) return true;
+        if (isClinicalDept && tTrim === "clinical") return true;
         if (includeGeneral && tTrim === "all") return true;
         return false;
       });
@@ -2078,6 +2118,24 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
 
       const trimmedDeptName = (candidateDeptName || "").trim();
 
+      // Check if candidate's department is clinical in department master
+      let isCandidateDeptClinical = false;
+      if (candidateDeptId) {
+        const [d] = await tx
+          .select({ isClinical: departments.isClinical })
+          .from(departments)
+          .where(eq(departments.id, candidateDeptId))
+          .limit(1);
+        if (d) isCandidateDeptClinical = d.isClinical;
+      } else if (candidateDeptName) {
+        const [d] = await tx
+          .select({ isClinical: departments.isClinical })
+          .from(departments)
+          .where(sql`TRIM(LOWER(${departments.name})) = ${trimmedDeptName.toLowerCase()}`)
+          .limit(1);
+        if (d) isCandidateDeptClinical = d.isClinical;
+      }
+
       const [deptMonthlyBank] = await tx
         .select()
         .from(departmentMonthlyQuestionBanks)
@@ -2122,7 +2180,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
               mediumPercentage: config?.mediumPercentage ?? DEFAULT_EXAM_MIX.mediumPercentage,
               advancedPercentage: config?.advancedPercentage ?? DEFAULT_EXAM_MIX.advancedPercentage,
               departmentPercentage: config?.departmentPercentage ?? DEFAULT_EXAM_MIX.departmentPercentage,
-            });
+            }, Math.random, isCandidateDeptClinical);
           }
         }
       }
@@ -2134,7 +2192,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           mediumPercentage: config?.mediumPercentage ?? DEFAULT_EXAM_MIX.mediumPercentage,
           advancedPercentage: config?.advancedPercentage ?? DEFAULT_EXAM_MIX.advancedPercentage,
           departmentPercentage: config?.departmentPercentage ?? DEFAULT_EXAM_MIX.departmentPercentage,
-        });
+        }, Math.random, isCandidateDeptClinical);
       }
 
       // Generate unique sequential attempt number using PostgreSQL database sequence: EXAM-YYYY-XXXX
@@ -2506,19 +2564,36 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
   // ---------------------------------------------------------------------------
   // Printable result certificates contain saved result metadata only, never keys.
   .get("/skill-assessment/exam/attempts/:attemptId/certificate", async (c) => {
-    const id = Number(c.req.param("attemptId"));
-    if (!Number.isInteger(id) || id <= 0) return c.json({ error: "Invalid attempt ID" }, 400);
+    const rawParam = c.req.param("attemptId");
+    const numId = Number(rawParam);
+    const isNum = Number.isInteger(numId) && numId > 0;
+    const isExamCode = /^EXAM-\d{4}-\d+$/i.test(rawParam) || /^CBT-EXAM-/i.test(rawParam);
+    if (!isNum && !isExamCode) return c.json({ error: "Invalid attempt ID" }, 400);
+
     const [attempt] = await db.select({
-      staffId: examAttempts.staffId, attemptNo: examAttempts.attemptNo,
-      status: examAttempts.status, completedAt: examAttempts.completedAt,
-      score: examAttempts.score, passPercentage: examAttempts.passPercentage,
-      departmentName: examAttempts.departmentName, totalQuestions: examAttempts.totalQuestions,
-      correctCount: examAttempts.correctCount, theoreticalRating: examAttempts.theoreticalRating,
-    }).from(examAttempts).where(eq(examAttempts.id, id)).limit(1);
+      id: examAttempts.id,
+      staffId: examAttempts.staffId,
+      attemptNo: examAttempts.attemptNo,
+      status: examAttempts.status,
+      completedAt: examAttempts.completedAt,
+      score: examAttempts.score,
+      passPercentage: examAttempts.passPercentage,
+      departmentName: examAttempts.departmentName,
+      totalQuestions: examAttempts.totalQuestions,
+      correctCount: examAttempts.correctCount,
+      theoreticalRating: examAttempts.theoreticalRating,
+    })
+      .from(examAttempts)
+      .where(isNum ? or(eq(examAttempts.id, numId), eq(examAttempts.attemptNo, rawParam)) : eq(examAttempts.attemptNo, rawParam))
+      .limit(1);
     if (!attempt) return c.json({ error: "Exam attempt not found" }, 404);
     const currentStaff = await getCurrentStaff(c);
     const role = (c.get("session")?.user?.role || "").toLowerCase();
-    const manager = role === "admin" || role === "hr" || currentStaff?.role?.toLowerCase() === "hr";
+    const manager =
+      role === "admin" ||
+      role === "hr" ||
+      currentStaff?.role?.toLowerCase() === "hr" ||
+      (currentStaff?.department || "").toLowerCase() === "hr";
     if (currentStaff?.staffId !== attempt.staffId && !manager) {
       return c.json({ error: "You can only print your own CBT result certificate." }, 403);
     }
@@ -2531,14 +2606,23 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       !Number.isFinite(benchmark) || score < 0 || score > 100 || benchmark < 0 || benchmark > 100) {
       return c.json({ error: "This attempt has incomplete result information. Please contact HR." }, 409);
     }
-    const [employee] = await db.select({ name: staff.name, code: staff.employeeCode })
+    let [employee] = await db.select({ name: staff.name, code: staff.employeeCode })
       .from(staff).where(and(eq(staff.staffId, attempt.staffId), eq(staff.active, true)))
       .orderBy(desc(staff.version)).limit(1);
+    if (!employee) {
+      [employee] = await db.select({ name: staff.name, code: staff.employeeCode })
+        .from(staff).where(eq(staff.staffId, attempt.staffId))
+        .orderBy(desc(staff.version)).limit(1);
+    }
     if (!employee) return c.json({ error: "The employee record could not be found. Please contact HR." }, 404);
     const hospital = await getHospitalSettingsFromDb();
     const certificate: CbtCertificate = {
       reference: `CBT-${attempt.attemptNo}`,
-      hospital: { name: hospital.name, address: hospital.address || null },
+      hospital: {
+        name: hospital.name,
+        address: hospital.address || null,
+        logoUrl: hospital.logoUrl || "/icons/acme-sidebar.webp",
+      },
       employee: { name: employee.name, code: employee.code, department: attempt.departmentName },
       exam: {
         attemptNo: attempt.attemptNo, completedAt: attempt.completedAt.toISOString(), status: attempt.status,

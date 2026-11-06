@@ -22,12 +22,18 @@ export function difficultyCounts(total: number, mix: ExamMix): number[] {
 type SelectableQuestion = { id: number; difficulty: string; departmentTags: unknown };
 
 function normalized(value: string) { return value.trim().toLowerCase(); }
-export function isDepartmentQuestion(tags: unknown, department: string): boolean {
+export function isDepartmentQuestion(tags: unknown, department: string, isClinical?: boolean): boolean {
   const name = normalized(department);
   if (!name || !Array.isArray(tags)) return false;
-  return tags.some(t => typeof t === "string" && normalized(t) &&
-    !["all", "hospital-wide"].includes(normalized(t)) &&
-    (name.includes(normalized(t)) || normalized(t).includes(name)));
+  return tags.some(t => {
+    if (typeof t !== "string") return false;
+    const norm = normalized(t);
+    if (!norm || ["all", "hospital-wide"].includes(norm)) return false;
+    if (norm === "clinical") {
+      return Boolean(isClinical);
+    }
+    return name.includes(norm) || norm.includes(name);
+  });
 }
 
 /** Difficulty targets take precedence if the two requested mixes cannot both be met.
@@ -36,6 +42,7 @@ export function isDepartmentQuestion(tags: unknown, department: string): boolean
 export function selectExamQuestions<T extends SelectableQuestion>(
   questions: T[], total: number, department: string, mix: ExamMix,
   random: () => number = Math.random,
+  isClinical?: boolean,
 ): T[] {
   const shuffle = <U>(values: U[]) => {
     const copy = [...values];
@@ -49,8 +56,8 @@ export function selectExamQuestions<T extends SelectableQuestion>(
   const size = Math.min(total, unique.length);
   const buckets = levels.map(level => {
     const pool = shuffle(unique.filter(q => q.difficulty === level));
-    const specific = pool.filter(q => isDepartmentQuestion(q.departmentTags, department));
-    const other = pool.filter(q => !isDepartmentQuestion(q.departmentTags, department));
+    const specific = pool.filter(q => isDepartmentQuestion(q.departmentTags, department, isClinical));
+    const other = pool.filter(q => !isDepartmentQuestion(q.departmentTags, department, isClinical));
     // Prefer hospital-wide questions over other specialties for the remaining share.
     const isGeneral = (q: T) => !Array.isArray(q.departmentTags) || !q.departmentTags.length ||
       q.departmentTags.some(t => typeof t === "string" && ["all", "hospital-wide"].includes(normalized(t)));

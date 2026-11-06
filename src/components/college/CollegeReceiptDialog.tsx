@@ -66,6 +66,8 @@ import {
   TIMEBOUND_FEE_CATEGORIES,
   MONTH_NAMES,
   getAcademicYearMonths,
+  getNext12MonthsFromDate,
+  getSelectableMonthsSequence,
   normalizeCategoryName,
   normalizeMonthToKey,
   buildItemDescription,
@@ -174,8 +176,11 @@ export function CollegeReceiptDialog({
   const [whatsappPhone, setWhatsappPhone] = React.useState("");
   const [whatsappModalOpen, setWhatsappModalOpen] = React.useState(false);
 
-  // Available academic year months sequence
-  const ayMonths = React.useMemo(() => getAcademicYearMonths(academicYear), [academicYear]);
+  // Available selectable months sequence (academic year + next 12 months from current/payment date)
+  const ayMonths = React.useMemo(
+    () => getSelectableMonthsSequence(academicYear, paymentDate ? new Date(paymentDate) : new Date()),
+    [academicYear, paymentDate]
+  );
 
   // Active fee categories from current items
   const activeCategories = React.useMemo(() => {
@@ -1452,6 +1457,40 @@ export function CollegeReceiptDialog({
 
                 {/* Render distinct period selector card for each active fee item */}
                 <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/40 px-3 py-1.5 rounded-lg border text-xs">
+                    <span className="font-medium text-foreground">
+                      Fee Head Billing Schedules ({items.length} active)
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const baseDate = paymentDate ? new Date(paymentDate) : new Date();
+                          const next12 = getNext12MonthsFromDate(baseDate);
+                          let totalSelected = 0;
+                          items.forEach((it) => {
+                            const unpaid = next12
+                              .filter((m) => !isMonthPaid(it.category, m.key))
+                              .map((m) => m.key);
+                            if (unpaid.length > 0) {
+                              updateItemMonths(it.id, unpaid);
+                              totalSelected += unpaid.length;
+                            }
+                          });
+                          if (totalSelected > 0) {
+                            toast.success(`Selected next 12 months from current date for active fee heads`);
+                          } else {
+                            toast.info(`All next 12 months from current date are already paid across active fee heads`);
+                          }
+                        }}
+                        className="px-2 py-0.5 text-[11px] rounded bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 font-semibold hover:bg-teal-100 dark:hover:bg-teal-900 cursor-pointer flex items-center gap-1"
+                        title="Select next 12 months from current date for all active fee heads"
+                      >
+                        <CalendarCheck className="h-3 w-3" /> Select Next 12 Months (All Active Heads)
+                      </button>
+                    </div>
+                  </div>
+
                   {items.map((item, itemIdx) => {
                     const isCourse = item.category === "Course Fee";
                     const isHostel = item.category === "Hostel Fee";
@@ -1579,6 +1618,25 @@ export function CollegeReceiptDialog({
                                 className="px-1.5 py-0.5 rounded border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
                               >
                                 Next 3 Mo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const baseDate = paymentDate ? new Date(paymentDate) : new Date();
+                                  const next12 = getNext12MonthsFromDate(baseDate);
+                                  const remaining = next12
+                                    .filter((m) => !isMonthPaid(item.category, m.key))
+                                    .map((m) => m.key);
+                                  if (remaining.length === 0) {
+                                    toast.info(`All next 12 months from current date are already paid for ${item.category}`);
+                                    return;
+                                  }
+                                  updateItemMonths(item.id, remaining);
+                                }}
+                                className="px-1.5 py-0.5 rounded border hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer font-medium"
+                                title="Select next 12 months starting from current date"
+                              >
+                                Next 12 Mo
                               </button>
                               <button
                                 type="button"

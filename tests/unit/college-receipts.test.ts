@@ -8,6 +8,8 @@ import { formatCollegePaymentMode } from "../../src/lib/college-payment";
 import {
   TIMEBOUND_FEE_CATEGORIES,
   getAcademicYearMonths,
+  getNext12MonthsFromDate,
+  getSelectableMonthsSequence,
   computeFeeItemsForSelection,
   normalizeCategoryName,
   normalizeMonthToKey,
@@ -210,6 +212,36 @@ describe("College Receipts & Multi-Head Fee Platform", () => {
       expect(months[6].key).toBe("December 2026");
       expect(months[7].key).toBe("January 2027");
       expect(months[12].key).toBe("June 2027");
+    });
+
+    it("generates exactly 12 months starting from current/given base date", () => {
+      const testDate = new Date(2026, 10, 6); // November 2026
+      const next12 = getNext12MonthsFromDate(testDate);
+      expect(next12.length).toBe(12);
+      expect(next12[0].key).toBe("November 2026");
+      expect(next12[1].key).toBe("December 2026");
+      expect(next12[2].key).toBe("January 2027");
+      expect(next12[11].key).toBe("October 2027");
+    });
+
+    it("combines academic year months and next 12 months in chronological order without duplicates", () => {
+      const testDate = new Date(2026, 10, 6); // November 2026
+      const combined = getSelectableMonthsSequence("2026-2027", testDate);
+      // Academic year 2026-2027: June 2026 - June 2027
+      // Next 12 months: November 2026 - October 2027
+      // Union: June 2026 through October 2027 = 17 months
+      expect(combined.length).toBe(17);
+      expect(combined[0].key).toBe("June 2026");
+      expect(combined[combined.length - 1].key).toBe("October 2027");
+      // All 12 months from November 2026 to October 2027 are present
+      const keys = combined.map((m) => m.key);
+      expect(keys).toContain("November 2026");
+      expect(keys).toContain("December 2026");
+      expect(keys).toContain("January 2027");
+      expect(keys).toContain("July 2027");
+      expect(keys).toContain("August 2027");
+      expect(keys).toContain("September 2027");
+      expect(keys).toContain("October 2027");
     });
 
     it("generates a valid A5 PDF for multi-month Hostel & Mess fee payments", () => {

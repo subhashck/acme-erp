@@ -1,0 +1,1440 @@
+[
+  {
+    "qNum": 1,
+    "section": "Infection Prevention: Hand Hygiene & Five Moments",
+    "question": "A nurse has examined a pregnant patient, removed gloves after contact with body fluids, and is about to prepare equipment for the next patient. Which action is most appropriate?",
+    "options": [
+      "Put on new gloves immediately, as gloves replace hand hygiene between patients",
+      "Perform hand hygiene after glove removal and before the next patient-related task",
+      "Perform hand hygiene only if visible contamination remains on the hands",
+      "Change the gloves and perform hand hygiene at the end of the next procedure"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Hand hygiene is required after glove removal and before the next patient-related task. Gloves do not replace hand hygiene.",
+    "existingCode": "MCQ-TRN-CLN-01-01",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "NICU",
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 2,
+    "section": "Infection Prevention: Hand Hygiene & Five Moments",
+    "question": "A clinician performs an abdominal examination, removes gloves and then adjusts a clean ultrasound probe cover. Which principle should guide the next hand hygiene action?",
+    "options": [
+      "Hand hygiene is unnecessary because the clinician wore gloves",
+      "Hand hygiene is needed only if the probe cover becomes visibly contaminated",
+      "Hand hygiene should be performed according to the preceding exposure and the next aseptic task",
+      "Hand hygiene can be postponed until the end of the consultation if the probe is disinfected"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Hand hygiene must account for both the preceding patient contact and the aseptic nature of the next task.",
+    "existingCode": "MCQ-TRN-CLN-01-02",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "NICU",
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 3,
+    "section": "Medication Safety",
+    "question": "A patient scheduled for an OBGYN procedure reports a previous severe reaction to an antibiotic that has been prescribed again. The allergy is absent from the electronic record. What is the safest response?",
+    "options": [
+      "Administer the medicine and document the reported allergy afterward",
+      "Withhold the medicine pending urgent review, communicate the allergy and ensure the record is reconciled",
+      "Administer a reduced dose under observation without consulting the prescriber",
+      "Replace it with another antibiotic of the same class based on availability"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "A reported severe allergy requires immediate clarification and clinical review before exposure. Substitution must be authorised.",
+    "existingCode": "MCQ-TRN-CLN-02-02",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 4,
+    "section": "Medication Safety",
+    "question": "Two staff members independently check a high-alert medicine, but both use the same incorrect weight copied from an old record. What does this demonstrate?",
+    "options": [
+      "Independent checking is unnecessary if both staff agree",
+      "Two signatures establish that the medicine is safe to administer",
+      "A double-check is effective only when the relevant source data and calculation are independently verified",
+      "The error is acceptable if the medicine is administered slowly"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Independent verification must assess the underlying data and calculations, not merely duplicate another person's assumptions.",
+    "existingCode": "MCQ-TRN-CLN-02-03",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 5,
+    "section": "Medication Safety",
+    "question": "A medication administration record shows that a dose was signed as administered, but the nurse is uncertain whether the patient actually received it. What should happen?",
+    "options": [
+      "Administer another dose immediately to ensure the patient receives treatment",
+      "Record the dose as omitted without investigating further",
+      "Assess the situation, verify available evidence, inform the responsible clinician and document accurately",
+      "Leave the existing record unchanged because it has already been signed"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "The team must establish the safest next step without risking a duplicate dose or falsifying the medication record.",
+    "existingCode": "MCQ-TRN-CLN-02-04",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 6,
+    "section": "IPD Nursing: Admission-to-Discharge Safety Checklist",
+    "question": "During admission, a patient's wristband and electronic record show different dates of birth. The patient is clinically stable. What is the safest action?",
+    "options": [
+      "Use the electronic record because it is the primary source",
+      "Use the wristband because it is physically attached to the patient",
+      "Pause identity-dependent procedures and resolve the discrepancy using approved identification procedures",
+      "Proceed using the patient's room number while registration corrects the discrepancy"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Conflicting identifiers must be resolved before identity-dependent care proceeds.",
+    "existingCode": "MCQ-TRN-CLN-05-01",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 7,
+    "section": "IPD Nursing: Admission-to-Discharge Safety Checklist",
+    "question": "A patient is transferred from the post-operative area to the ward. The handover mentions the procedure but omits a pending investigation and a recent change in vital signs. What is the most appropriate response?",
+    "options": [
+      "Accept the handover because the procedure details are complete",
+      "Obtain the missing clinical information and confirm responsibility for pending actions",
+      "Ask the patient to explain the pending investigation",
+      "Wait until the next doctor's round to reconcile the information"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "A safe transfer includes current condition, relevant risks, pending results and explicit responsibility for follow-up.",
+    "existingCode": "MCQ-TRN-CLN-05-02",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 8,
+    "section": "IPD Nursing: Admission-to-Discharge Safety Checklist",
+    "question": "During discharge preparation, a patient has a new symptom that was not present during the morning assessment. The discharge paperwork is already complete. What should the team do?",
+    "options": [
+      "Complete discharge because the documentation has been signed",
+      "Ask the patient to seek outpatient review if the symptom persists",
+      "Arrange clinical reassessment and reconsider discharge readiness before the patient leaves",
+      "Record the symptom in the discharge summary without changing the plan"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "A change in condition requires reassessment; administrative completion does not establish clinical readiness for discharge.",
+    "existingCode": "MCQ-TRN-CLN-05-03",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 9,
+    "section": "IPD Nursing: Admission-to-Discharge Safety Checklist",
+    "question": "Medication reconciliation identifies that a patient's regular medicine is absent from the inpatient chart. What is the best next step?",
+    "options": [
+      "Ask the patient to take their own supply without informing the clinical team",
+      "Add the medicine to the chart based on the previous prescription",
+      "Escalate the discrepancy to the authorised prescriber or pharmacist for review and documented resolution",
+      "Assume the omission was intentional because it is absent from the chart"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "The omission must be investigated and resolved by an authorised clinician, with the decision documented.",
+    "existingCode": "MCQ-TRN-CLN-05-04",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 10,
+    "section": "IPD Nursing: Admission-to-Discharge Safety Checklist",
+    "question": "A discharge checklist is fully ticked, but the patient cannot explain how to take the prescribed medicines or when to return for review. Which response best addresses the safety gap?",
+    "options": [
+      "Discharge the patient because the checklist is complete",
+      "Repeat the written instructions without checking understanding",
+      "Arrange appropriate counselling, use teach-back and confirm that essential instructions and follow-up are understood",
+      "Ask the attendant to sign that the instructions have been given"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Effective discharge requires understanding, not merely completed documentation or a signature.",
+    "existingCode": "MCQ-TRN-CLN-05-05",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 11,
+    "section": "OT Safety & Surgical Safety Checklist",
+    "question": "Before an OBGYN procedure, the consent form, theatre list and patient identification details are available, but the documented procedure differs from the procedure verbally described by the surgeon. What should happen?",
+    "options": [
+      "Proceed according to the theatre list because it is the formal schedule",
+      "Follow the consent form without further discussion",
+      "Pause the procedure until the discrepancy is resolved by the authorised team and the documentation is consistent",
+      "Ask the anaesthesia team to choose which procedure is most appropriate"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Conflicting procedure documentation must be reconciled before proceeding.",
+    "existingCode": "MCQ-TRN-CLN-06-01",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "OT"
+    ]
+  },
+  {
+    "qNum": 12,
+    "section": "OT Safety & Surgical Safety Checklist",
+    "question": "The surgical team completes the pre-operative checklist, but a newly arrived team member has not heard the time-out confirmation. What is the best approach?",
+    "options": [
+      "Continue because the majority of the team has already confirmed",
+      "Repeat or clarify the required team confirmation so the relevant participants share the same understanding before proceeding",
+      "Ask the new member to sign the checklist retrospectively",
+      "Complete another checklist after the procedure"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "The time-out is an active team verification, not merely a form-completion exercise.",
+    "existingCode": "MCQ-TRN-CLN-06-02",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "OT"
+    ]
+  },
+  {
+    "qNum": 13,
+    "section": "OT Safety & Surgical Safety Checklist",
+    "question": "A specimen collected during an operation has a label that does not match the accompanying request. The surgeon is occupied with another case. What is the safest action?",
+    "options": [
+      "Correct the label using the theatre list and send the specimen",
+      "Ask the receiving laboratory to determine the correct patient",
+      "Hold the specimen and urgently contact the authorised clinical team to resolve the discrepancy under specimen-identification policy",
+      "Send the specimen with a note that the label is uncertain"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Specimen identity must not be guessed or delegated to the laboratory as a substitute for resolution by the authorised team.",
+    "existingCode": "MCQ-TRN-CLN-06-03",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "OT"
+    ]
+  },
+  {
+    "qNum": 14,
+    "section": "OT Safety & Surgical Safety Checklist",
+    "question": "During the surgical count, a discrepancy is identified shortly before closure. The patient is stable and the operation is nearly complete. What is the best response?",
+    "options": [
+      "Complete closure and investigate after transfer to recovery",
+      "Repeat the count, inform the responsible surgical team and follow the approved discrepancy protocol before proceeding",
+      "Record the expected count and correct the documentation later",
+      "Ask the recovery team to complete the count after transfer"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "A count discrepancy requires immediate communication and resolution according to the surgical safety protocol.",
+    "existingCode": "MCQ-TRN-CLN-06-04",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "OT"
+    ]
+  },
+  {
+    "qNum": 15,
+    "section": "OT Safety & Surgical Safety Checklist",
+    "question": "The surgical checklist is complete, but the recovery team has not received information about a significant intra-operative event. Which principle is most relevant?",
+    "options": [
+      "Checklist completion removes the need for verbal handover",
+      "Only complications requiring reoperation need to be handed over",
+      "The receiving team must receive relevant intra-operative events, current risks and required post-operative monitoring instructions",
+      "The surgeon may communicate the information at the next routine round"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Safe post-operative transfer requires an effective clinical handover, including events that may affect recovery.",
+    "existingCode": "MCQ-TRN-CLN-06-05",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "OT"
+    ]
+  },
+  {
+    "qNum": 16,
+    "section": "NICU Basic Emergency Recognition",
+    "question": "A newborn in NICU develops grunting, chest retractions and increasing oxygen requirement. The monitor still displays a heart rate within the displayed target range. What is the best response?",
+    "options": [
+      "Continue observation because the heart rate is acceptable",
+      "Silence the monitor and repeat observations after the next feed",
+      "Alert the NICU clinical team immediately because the respiratory signs indicate possible deterioration",
+      "Adjust oxygen delivery independently to restore the previous saturation"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Respiratory distress requires immediate clinical assessment even when one monitored parameter appears acceptable.",
+    "existingCode": "MCQ-TRN-CLN-07-01",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 17,
+    "section": "NICU Basic Emergency Recognition",
+    "question": "A newborn becomes unusually lethargic and feeds poorly. The infant has no obvious fever. Which interpretation is safest?",
+    "options": [
+      "The absence of fever excludes significant infection",
+      "Poor feeding and lethargy can be signs of neonatal deterioration and require prompt clinical assessment",
+      "The infant should be allowed to sleep until the next scheduled feed",
+      "Feeding should be increased before reporting the change"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Neonatal illness may present with subtle or non-specific signs, including poor feeding and lethargy.",
+    "existingCode": "MCQ-TRN-CLN-07-02",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 18,
+    "section": "NICU Basic Emergency Recognition",
+    "question": "A NICU infant's temperature is below the unit's accepted range despite routine care. What is the most appropriate response?",
+    "options": [
+      "Wait for the next routine temperature check because isolated low readings are expected",
+      "Increase room heating without informing the clinical team",
+      "Alert the NICU team promptly and follow the neonatal thermal-management protocol",
+      "Feed the infant and reassess only if the temperature remains low the next day"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Neonatal hypothermia can indicate or contribute to serious illness and requires prompt assessment and protocol-based management.",
+    "existingCode": "MCQ-TRN-CLN-07-03",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 19,
+    "section": "NICU Basic Emergency Recognition",
+    "question": "A newborn at risk of hypoglycaemia becomes jittery and less responsive. A bedside glucose measurement is available, but the assigned clinician has not yet arrived. What is the safest action?",
+    "options": [
+      "Give an oral glucose preparation without assessing feeding safety or following a protocol",
+      "Wait for the next scheduled glucose measurement",
+      "Activate the NICU escalation pathway immediately and ensure urgent assessment and protocol-directed management",
+      "Assume the symptoms are caused by normal newborn behaviour"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Possible symptomatic neonatal hypoglycaemia requires urgent clinical assessment and protocol-directed action.",
+    "existingCode": "MCQ-TRN-CLN-07-04",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 20,
+    "section": "NICU Basic Emergency Recognition",
+    "question": "A monitor alarm repeatedly sounds in NICU. A staff member believes it is probably caused by a loose sensor, but the infant has not yet been assessed. What should happen?",
+    "options": [
+      "Silence the alarm permanently to avoid disturbing other infants",
+      "Confirm the infant's clinical condition and alert the responsible NICU staff; only authorised staff should troubleshoot and adjust settings",
+      "Disconnect the monitor until the next observation",
+      "Reduce the alarm volume and document that the infant appeared settled"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "An alarm must not be dismissed as a technical issue before the infant's condition is assessed.",
+    "existingCode": "MCQ-TRN-CLN-07-05",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "NICU"
+    ]
+  },
+  {
+    "qNum": 21,
+    "section": "Safe Specimen Collection & Labelling",
+    "question": "A phlebotomist has collected blood from an ART patient. Before the tubes are labelled, an urgent call requires the phlebotomist to leave the collection area. What is the safest course of action?",
+    "options": [
+      "Leave the tubes for another staff member to label from the printed request forms",
+      "Label all tubes after returning, using the collection sequence to identify them",
+      "Secure the specimens and ensure identification and labelling are completed under the approved procedure, with any uncertainty escalated rather than guessed",
+      "Ask the patient to identify which tube belongs to each test"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Specimen identity must remain reliably linked to the patient. Labelling must follow the hospital's approved point-of-collection procedure; identity must never be reconstructed by guesswork.",
+    "existingCode": "MCQ-TRN-CLN-08-01",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory",
+      "Nursing Central",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 22,
+    "section": "Safe Specimen Collection & Labelling",
+    "question": "Two paediatric patients have similar names and are scheduled for blood collection at the same time. Which process best reduces wrong-patient risk?",
+    "options": [
+      "Collect both samples first and distinguish them by collection time",
+      "Use two approved identifiers against each patient's request and label each specimen according to the approved bedside procedure before moving to the next patient",
+      "Ask the parents to identify the tubes after collection",
+      "Use the bed number as the primary identifier if the parents confirm the names"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Positive identification at collection and immediate, traceable labelling reduce specimen mix-ups.",
+    "existingCode": "MCQ-TRN-CLN-08-02",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory",
+      "Nursing Central",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 23,
+    "section": "Safe Specimen Collection & Labelling",
+    "question": "A sample reaches the laboratory with the correct patient's name but an incorrect or missing second identifier. What is the best response?",
+    "options": [
+      "Process it because the name matches the request",
+      "Add the second identifier from the electronic system without checking the specimen's origin",
+      "Hold the specimen and follow the laboratory's specimen-acceptance and rejection/escalation policy",
+      "Ask the patient to confirm the sample after it has been processed"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "A partial identity match is not sufficient where the required identification criteria are not met.",
+    "existingCode": "MCQ-TRN-CLN-08-03",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory",
+      "Nursing Central",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 24,
+    "section": "Safe Specimen Collection & Labelling",
+    "question": "A specimen requires a particular collection tube and timely transport, but the correct tube is temporarily unavailable. What is the safest action?",
+    "options": [
+      "Use a visually similar tube and inform the laboratory later",
+      "Transfer the sample into the correct tube after collection",
+      "Contact the authorised laboratory/clinical team for the approved alternative or collection plan before proceeding",
+      "Collect the sample in any sterile container and let the laboratory decide how to process it"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Container selection affects specimen integrity and test validity; an unapproved substitute may invalidate the result.",
+    "existingCode": "MCQ-TRN-CLN-08-04",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory",
+      "Nursing Central",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 25,
+    "section": "Safe Specimen Collection & Labelling",
+    "question": "A laboratory receives a specimen with a matching label but visible leakage from the transport container. Which response is most appropriate?",
+    "options": [
+      "Open the container immediately to inspect the specimen",
+      "Continue processing because the patient identifiers match",
+      "Apply the laboratory's leakage, exposure-control and specimen-acceptance procedure, protecting staff and preserving traceability",
+      "Transfer the specimen to another container without recording the incident"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Correct identification does not remove the risks associated with a leaking specimen; safety, integrity and traceability must all be addressed.",
+    "existingCode": "MCQ-TRN-CLN-08-05",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory",
+      "Nursing Central",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 26,
+    "section": "Laboratory Sample Movement & Reporting Workflow",
+    "question": "A laboratory specimen is received within the expected transport time, but the request form and container show different patient identifiers. What should the laboratory do?",
+    "options": [
+      "Process the specimen using the container label because it is physically attached",
+      "Process the specimen using the request form because it is the formal order",
+      "Hold the specimen and follow the identification-discrepancy policy, involving the authorised sending team",
+      "Select the identifier that matches the most recent patient registration"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Conflicting identifiers must be resolved through the approved process. Staff must not decide which identifier is correct by assumption.",
+    "existingCode": "MCQ-TRN-CLN-09-01",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory"
+    ]
+  },
+  {
+    "qNum": 27,
+    "section": "Laboratory Sample Movement & Reporting Workflow",
+    "question": "A critical result is telephoned to the clinical area, but the receiving person cannot correctly repeat the result during read-back. What should the laboratory professional do?",
+    "options": [
+      "End the call because the result has already been communicated",
+      "Repeat and clarify the result, confirm the recipient's understanding and document communication according to policy",
+      "Send a routine email and consider the notification complete",
+      "Record that the call was answered without further verification"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Critical-value communication requires accurate transmission, confirmation of understanding and documentation.",
+    "existingCode": "MCQ-TRN-CLN-09-02",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory"
+    ]
+  },
+  {
+    "qNum": 28,
+    "section": "Laboratory Sample Movement & Reporting Workflow",
+    "question": "A critical result is ready, but the treating clinician does not answer the first call. What is the best response?",
+    "options": [
+      "Wait for the clinician to return the call during routine working hours",
+      "Send the result to any available staff member without checking their authority",
+      "Follow the laboratory's escalation pathway until the result reaches an authorised recipient, documenting attempts and communication",
+      "Release the result only through the next routine report batch"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Critical results require timely escalation through the designated pathway, not passive waiting.",
+    "existingCode": "MCQ-TRN-CLN-09-03",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory"
+    ]
+  },
+  {
+    "qNum": 29,
+    "section": "Laboratory Sample Movement & Reporting Workflow",
+    "question": "A sample courier delivers specimens to the laboratory but has not recorded the transfer time or receiving person's details. Why is this a safety concern?",
+    "options": [
+      "It affects billing but not laboratory quality",
+      "It weakens traceability and makes it harder to investigate delays, loss or specimen-integrity concerns",
+      "It matters only when the test is outsourced",
+      "It can be resolved by recording an estimated time at the end of the week"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Accurate specimen tracking supports accountability, investigation and confidence in specimen integrity.",
+    "existingCode": "MCQ-TRN-CLN-09-04",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Laboratory"
+    ]
+  },
+  {
+    "qNum": 30,
+    "section": "Vital Signs & Early Warning Recognition",
+    "question": "A pregnant patient in the waiting area reports a severe headache and visual disturbance. No blood pressure has yet been measured. What is the best action?",
+    "options": [
+      "Arrange a routine appointment with the obstetrician",
+      "Ask the patient to rest and return if symptoms persist",
+      "Activate immediate clinical assessment because these symptoms may indicate a serious pregnancy complication",
+      "Ask the patient to obtain a blood pressure reading outside the hospital before returning"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Severe headache and visual disturbance during pregnancy are warning symptoms requiring urgent assessment.",
+    "existingCode": "MCQ-TRN-CLN-12-03",
+    "domainCode": "PROCEDURES",
+    "departmentTags": [
+      "Ward",
+      "ICU/HDU",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 31,
+    "section": "OPD Patient Journey & Continuity of Clinical Care",
+    "question": "An OPD patient has completed an investigation, but the result is not visible in the treating clinician's workflow. The patient is waiting to make a treatment decision. What is the best action?",
+    "options": [
+      "Ask the patient to return on another day without checking the result status",
+      "Verify the investigation status with the responsible laboratory or diagnostic unit and escalate the delay through the approved pathway",
+      "Ask a staff member to interpret the preliminary result verbally",
+      "Arrange a repeat investigation immediately without checking whether the original sample was processed"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Continuity requires traceable follow-up of investigations and timely communication with the responsible clinician.",
+    "existingCode": "MCQ-TRN-CLN-14-01",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 32,
+    "section": "OPD Patient Journey & Continuity of Clinical Care",
+    "question": "A patient who was stable at OPD registration becomes pale, sweaty and faint while waiting for a diagnostic procedure. What is the best response?",
+    "options": [
+      "Complete the procedure first because the appointment is already scheduled",
+      "Escort the patient to the billing desk to verify registration",
+      "Activate urgent clinical assessment and communicate the change in condition",
+      "Ask the patient to sit alone until the symptoms resolve"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "New deterioration overrides routine workflow and requires prompt clinical reassessment.",
+    "existingCode": "MCQ-TRN-CLN-14-02",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 33,
+    "section": "OPD Patient Journey & Continuity of Clinical Care",
+    "question": "An investigation report has been released, but the patient has no documented follow-up plan. Which action best supports continuity?",
+    "options": [
+      "Assume the patient will arrange follow-up independently",
+      "Ensure the report reaches the responsible clinician and that the authorised follow-up process is completed and documented",
+      "Give the patient a copy and consider the care episode complete",
+      "Schedule the next appointment without checking the clinician's instructions"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Report release alone does not ensure clinical review or follow-up.",
+    "existingCode": "MCQ-TRN-CLN-14-03",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 34,
+    "section": "OPD Patient Journey & Continuity of Clinical Care",
+    "question": "A patient is sent from OPD to another department, but the receiving unit reports that the order is incomplete. What is the safest response?",
+    "options": [
+      "Ask the receiving unit to proceed using the patient's verbal explanation",
+      "Re-enter the order based on the previous patient's workflow",
+      "Clarify the order with the authorised clinician or sending unit and ensure the corrected information is transmitted through the approved process",
+      "Cancel the investigation without notifying the treating clinician"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Missing or ambiguous orders must be clarified rather than inferred.",
+    "existingCode": "MCQ-TRN-CLN-14-04",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 35,
+    "section": "OPD Patient Journey & Continuity of Clinical Care",
+    "question": "A patient has been referred for urgent review, but the receiving department is temporarily unavailable. What is the best action?",
+    "options": [
+      "Return the patient to the waiting area without further communication",
+      "Allow the patient to choose another department",
+      "Maintain responsibility for safe coordination until an authorised receiving team or alternative pathway is confirmed, escalating any clinical concern",
+      "Close the referral because the destination could not receive the patient immediately"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Safe patient movement requires an accepted handover or a clearly established alternative plan.",
+    "existingCode": "MCQ-TRN-CLN-14-05",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "OPD"
+    ]
+  },
+  {
+    "qNum": 36,
+    "section": "Clinical Emergency Triage & Escalation",
+    "question": "Two patients arrive simultaneously: one has a routine appointment and the other is a pregnant patient reporting heavy bleeding with dizziness. What is the appropriate priority?",
+    "options": [
+      "Assess patients in arrival order to maintain fairness",
+      "Prioritise the patient with the earlier appointment time",
+      "Activate urgent clinical assessment for the patient with bleeding and dizziness while ensuring the other patient's care is safely managed",
+      "Complete both registrations before alerting clinical staff"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Triage is based on clinical urgency, not arrival order, appointment status or administrative completion.",
+    "existingCode": "MCQ-TRN-CLN-15-01",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "OPD",
+      "Nursing Central",
+      "ICU/HDU"
+    ]
+  },
+  {
+    "qNum": 37,
+    "section": "Clinical Emergency Triage & Escalation",
+    "question": "A patient with chest discomfort says the symptoms are improving and requests to continue waiting for the scheduled consultation. What should reception do?",
+    "options": [
+      "Respect the request and retain the original appointment sequence",
+      "Ask the patient to sign a refusal form and leave the hospital",
+      "Immediately alert clinical staff for assessment, without assuming that symptom improvement excludes an emergency",
+      "Direct the patient to the pharmacy for advice"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Potentially serious symptoms require clinical assessment even if they temporarily improve.",
+    "existingCode": "MCQ-TRN-CLN-15-03",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "OPD",
+      "Nursing Central",
+      "ICU/HDU"
+    ]
+  },
+  {
+    "qNum": 38,
+    "section": "Clinical Emergency Triage & Escalation",
+    "question": "A patient's observations are within the recorded warning thresholds, but the clinician is concerned because the patient looks markedly worse than before. What principle should guide the response?",
+    "options": [
+      "Recorded thresholds always override clinical concern",
+      "The patient can be reassessed only at the next scheduled interval",
+      "Clinical concern and changes from baseline warrant appropriate reassessment and escalation even if a threshold has not been crossed",
+      "Escalation should occur only after a second staff member independently reaches the same conclusion"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Early warning tools support clinical judgement; they do not replace it.",
+    "existingCode": "MCQ-TRN-CLN-15-05",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "OPD",
+      "Nursing Central",
+      "ICU/HDU"
+    ]
+  },
+  {
+    "qNum": 39,
+    "section": "CSSD Sterilisation & Sterile Supply Management",
+    "question": "A sterilisation cycle report shows acceptable physical parameters, but the required chemical indicator result is unacceptable. What should happen to the affected load?",
+    "options": [
+      "Release the load because the physical parameters are more important",
+      "Release it if the external package indicator has changed colour",
+      "Hold the load and investigate according to the sterilisation monitoring and release procedure",
+      "Repeat the chemical indicator test on one pack and release the remaining load without further review"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Release decisions must follow the complete approved monitoring criteria; a failed indicator must not be ignored.",
+    "existingCode": "MCQ-TRN-CLN-17-01",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 40,
+    "section": "CSSD Sterilisation & Sterile Supply Management",
+    "question": "A sterile pack has intact packaging and a valid expiry date but is found damp after storage. What is the best decision?",
+    "options": [
+      "Use it if the internal instruments appear clean",
+      "Dry the outside of the pack and return it to sterile storage",
+      "Treat the pack as compromised and follow the approved reprocessing or replacement procedure",
+      "Extend the expiry date after the pack dries"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Moisture can compromise the sterile barrier, so the pack must not be treated as sterile merely because its expiry date remains valid.",
+    "existingCode": "MCQ-TRN-CLN-17-02",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 41,
+    "section": "CSSD Sterilisation & Sterile Supply Management",
+    "question": "A batch has completed the sterilisation cycle, but the required cycle documentation is incomplete. Which action is most appropriate?",
+    "options": [
+      "Release the batch based on the operator's memory of the cycle",
+      "Hold release until the documentation and required monitoring results have been verified through the approved process",
+      "Complete the missing entries from a previous cycle",
+      "Release the batch if the requesting department confirms urgency"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Traceable documentation and verification are essential elements of safe load release.",
+    "existingCode": "MCQ-TRN-CLN-17-03",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 42,
+    "section": "CSSD Sterilisation & Sterile Supply Management",
+    "question": "A staff member finds a sterile tray mixed with used instruments on a transport trolley. What is the main concern and the appropriate response?",
+    "options": [
+      "The concern is only a delay in transport; the tray may be used if its wrapper looks intact",
+      "The tray should be returned directly to sterile storage after visual inspection",
+      "Clean and dirty workflow segregation has failed; the tray must be treated as potentially compromised and assessed through the approved process",
+      "The used instruments should be removed and the trolley returned to the OT"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Mixing clean and contaminated supplies creates a cross-contamination risk and requires appropriate segregation and assessment.",
+    "existingCode": "MCQ-TRN-CLN-17-04",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 43,
+    "section": "CSSD Sterilisation & Sterile Supply Management",
+    "question": "A sterilisation indicator passes, but the instrument set contains visible soil discovered during post-cycle inspection. What is the best action?",
+    "options": [
+      "Release the set because sterilisation has already been completed",
+      "Remove the visibly soiled instrument and release the remaining set without documenting the issue",
+      "Hold the set and follow the approved non-conformity and reprocessing procedure",
+      "Wipe the instrument with disinfectant and return it to the set"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Sterilisation does not compensate for inadequate cleaning. Visible soil requires the set to be withheld and managed through the approved reprocessing procedure.",
+    "existingCode": "MCQ-TRN-CLN-17-05",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 44,
+    "section": "OT/CSSD Support Workflow",
+    "question": "A used instrument tray is ready for transfer from OT to CSSD, but the designated closed transport container is unavailable. What is the safest response?",
+    "options": [
+      "Carry the tray uncovered using protective gloves",
+      "Place the tray on a clean trolley and use the public corridor",
+      "Secure the instruments in an approved alternative containment arrangement and follow the designated dirty-route procedure before transfer",
+      "Leave the instruments exposed in OT until the end of the shift"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Used instruments require safe containment and controlled transport to minimise exposure and cross-contamination.",
+    "existingCode": "MCQ-TRN-CLN-18-01",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "OT",
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 45,
+    "section": "OT/CSSD Support Workflow",
+    "question": "A clean supply trolley is accidentally taken through the designated dirty-instrument route. What should happen next?",
+    "options": [
+      "Return the trolley to the clean area because the route was brief",
+      "Wipe the trolley wheels and continue without reporting the deviation",
+      "Prevent further use until the trolley and affected supplies have been assessed and managed under the approved contamination-control procedure",
+      "Transfer the supplies to another trolley without documenting the incident"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "A route deviation may compromise clean supplies and requires an appropriate assessment and corrective action.",
+    "existingCode": "MCQ-TRN-CLN-18-02",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "OT",
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 46,
+    "section": "OT/CSSD Support Workflow",
+    "question": "An OT requests an urgently needed sterile set, but the set's release status cannot be verified in the CSSD records. What is the best response?",
+    "options": [
+      "Issue the set based on the staff member's recollection of the cycle",
+      "Issue it if the external indicator has changed colour",
+      "Withhold the set until the authorised release status is confirmed, while arranging an approved alternative if necessary",
+      "Ask the OT team to sign a waiver accepting responsibility"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Unverified release status is not acceptable evidence of sterility, even in an urgent situation.",
+    "existingCode": "MCQ-TRN-CLN-18-03",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "OT",
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 47,
+    "section": "OT/CSSD Support Workflow",
+    "question": "During the transfer of used instruments, a sharp instrument protrudes from the transport container. What should the staff member do?",
+    "options": [
+      "Push it back into the container using a gloved hand",
+      "Carry the container carefully and deal with the instrument on arrival",
+      "Restrict access, avoid handling the protruding sharp and obtain assistance through the approved sharps and exposure-control procedure",
+      "Remove the instrument using a tissue and place it in a general waste bin"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Protruding sharps create an immediate injury risk and must not be manipulated by unapproved methods.",
+    "existingCode": "MCQ-TRN-CLN-18-04",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "OT",
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 48,
+    "section": "OT/CSSD Support Workflow",
+    "question": "A CSSD-to-OT delivery record shows the correct set name but does not identify the receiving person. Why should this be corrected?",
+    "options": [
+      "It affects stock costing but not patient safety",
+      "It weakens traceability and accountability for the transfer of critical sterile supplies",
+      "It matters only if the set is later found to be damaged",
+      "It can be corrected using an estimated recipient at the end of the month"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Traceable transfer documentation supports accountability and investigation of supply-related incidents.",
+    "existingCode": "MCQ-TRN-CLN-18-05",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "OT",
+      "CSSD"
+    ]
+  },
+  {
+    "qNum": 49,
+    "section": "Cleaning & Disinfection of Patient Areas",
+    "question": "A housekeeping staff member is instructed to clean a blood spill in an examination room. A patient is still present, and the cleaning product requires a specified contact time. Which sequence is most appropriate?",
+    "options": [
+      "Begin wiping immediately, then ask the patient to leave if the spill remains",
+      "Restrict access as appropriate, use the required PPE and approved spill procedure, and maintain the product's specified contact time",
+      "Spray disinfectant over the spill and allow the patient to remain because the product is intended for clinical areas",
+      "Mop the spill with routine floor cleaner and document the incident only if the floor remains stained"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Safe spill management requires area control, appropriate PPE, the correct procedure and the specified disinfectant contact time.",
+    "existingCode": "MCQ-TRN-CLN-19-01",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "Housekeeping",
+      "Ward",
+      "ICU/HDU"
+    ]
+  },
+  {
+    "qNum": 50,
+    "section": "Cleaning & Disinfection of Patient Areas",
+    "question": "A disinfectant surface remains visibly wet for less than the product's specified contact time because a staff member wipes it dry. What is the key issue?",
+    "options": [
+      "The surface is necessarily sterile because disinfectant was applied",
+      "The required disinfection process may not have been achieved, so the surface must be managed according to the product and facility procedure",
+      "Contact time matters only for visibly dirty surfaces",
+      "A second staff member's signature can substitute for the required contact time"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Disinfectant efficacy depends on following the approved use instructions, including contact time.",
+    "existingCode": "MCQ-TRN-CLN-19-04",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "Housekeeping",
+      "Ward",
+      "ICU/HDU"
+    ]
+  },
+  {
+    "qNum": 51,
+    "section": "Patient Fall Prevention & Safe Mobility",
+    "question": "A patient falls while walking in the corridor. The patient is alert and asks to be helped up immediately. What is the best initial response?",
+    "options": [
+      "Lift the patient using two staff members before other patients gather",
+      "Ask the patient to stand slowly while holding a nearby trolley",
+      "Call clinical staff, protect the scene and avoid moving the patient until assessed unless an immediate hazard requires movement",
+      "Allow the patient to rest briefly and then continue walking if they feel better"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "A fall may cause an injury that is not immediately apparent. Clinical assessment should precede movement unless there is immediate danger.",
+    "existingCode": "MCQ-TRN-CLN-20-02",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 52,
+    "section": "Blood/Body Fluid Exposure Management",
+    "question": "A staff member sustains a needlestick injury while handling used clinical equipment. The puncture appears small and painless. What is the best response?",
+    "options": [
+      "Observe the site and report only if redness develops",
+      "Wash the affected area promptly with soap and water, report immediately and obtain urgent exposure assessment through the approved pathway",
+      "Apply a concentrated disinfectant to the wound and continue working",
+      "Squeeze the wound repeatedly, then complete the incident form at the end of the shift"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Prompt first aid, reporting and clinical assessment are necessary even when the injury appears minor.",
+    "existingCode": "MCQ-TRN-CLN-22-01",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "OT",
+      "Laboratory"
+    ]
+  },
+  {
+    "qNum": 53,
+    "section": "Blood/Body Fluid Exposure Management",
+    "question": "A splash of potentially infectious body fluid enters a staff member's eye. What should happen first?",
+    "options": [
+      "Wipe the eye with a disinfectant wipe and report later",
+      "Keep the eye closed until the occupational health team arrives",
+      "Flush the eye promptly using the designated eyewash or clean water, then report immediately for exposure assessment",
+      "Apply antibiotic eye drops without medical advice"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Immediate irrigation is the priority, followed by urgent reporting and assessment.",
+    "existingCode": "MCQ-TRN-CLN-22-02",
+    "domainCode": "HIC",
+    "departmentTags": [
+      "Nursing Central",
+      "Ward",
+      "OT",
+      "Laboratory"
+    ]
+  },
+  {
+    "qNum": 54,
+    "section": "Patient Rights, Consent & Confidentiality",
+    "question": "A patient has signed a consent form for an ART procedure, but the clinical team discovers that the patient has misunderstood an important aspect of the proposed procedure. What is the best action?",
+    "options": [
+      "Proceed because the signed form establishes consent",
+      "Ask a witness to confirm that the signature is genuine",
+      "Pause the procedure and ensure the authorised clinician addresses the misunderstanding and confirms valid informed consent before proceeding",
+      "Ask the patient to sign another form without repeating the explanation"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "A signature alone does not establish valid informed consent if material information has not been understood.",
+    "existingCode": "MCQ-TRN-CLN-23-01",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "OPD",
+      "Front Office"
+    ]
+  },
+  {
+    "qNum": 55,
+    "section": "Patient Rights, Consent & Confidentiality",
+    "question": "A person telephones reception claiming to be the husband of an ART patient and requests the patient's investigation results. What should reception do?",
+    "options": [
+      "Release the results because spouses are automatically entitled to all information",
+      "Confirm only whether the results are ready, without checking authority",
+      "Verify identity and legal authority through the approved process and disclose only information permitted by policy and applicable law",
+      "Send the results to the number used for the call if the caller knows the patient's date of birth"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "A claimed relationship alone does not establish authority to receive confidential health information.",
+    "existingCode": "MCQ-TRN-CLN-23-03",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Ward",
+      "OPD",
+      "Front Office"
+    ]
+  },
+  {
+    "qNum": 56,
+    "section": "Clinical Handover Using SBAR",
+    "question": "A nurse calls a senior clinician about a post-operative patient's deterioration and begins by describing the patient's entire medical history. Which improvement would make the handover more effective?",
+    "options": [
+      "Omit all background information and report only the latest vital sign",
+      "Begin with the immediate situation and concern, then give relevant background, assessment and the specific action required",
+      "Provide the patient's full history before identifying the patient",
+      "Replace the verbal handover with an unacknowledged written note"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "SBAR prioritises the immediate concern while retaining the relevant context and a clear request for action.",
+    "existingCode": "MCQ-TRN-CLN-25-01",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 57,
+    "section": "Clinical Handover Using SBAR",
+    "question": "During an SBAR call, a staff member reports the situation and background but says, \"The patient doesn't look right,\" without describing observed changes. What is the main weakness?",
+    "options": [
+      "The situation section should contain only the patient's name",
+      "The background section should include unrelated historical details",
+      "The assessment lacks specific, relevant observations and a clear description of the concern within the staff member's role",
+      "The recommendation should always be omitted so the clinician can decide independently"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Useful handover information must be specific and factual rather than vague or speculative.",
+    "existingCode": "MCQ-TRN-CLN-25-02",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 58,
+    "section": "Clinical Handover Using SBAR",
+    "question": "A nurse hands over a patient with a pending critical investigation result but does not identify who will follow it up. Which SBAR-related safety requirement has been missed?",
+    "options": [
+      "The handover must include only completed investigations",
+      "The pending task requires explicit ownership, a clear next action and confirmation that the receiving person accepts responsibility",
+      "The laboratory should automatically assume responsibility for all subsequent clinical decisions",
+      "The result can be omitted because it has not yet been issued"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "A handover must make outstanding tasks and their ownership explicit to prevent omissions.",
+    "existingCode": "MCQ-TRN-CLN-25-03",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 59,
+    "section": "Clinical Handover Using SBAR",
+    "question": "A clinician receiving an urgent SBAR handover repeats the information incorrectly. What should the sender do?",
+    "options": [
+      "End the call because the information has already been transmitted",
+      "Correct the misunderstanding immediately, confirm the essential details and ensure the agreed action is clear",
+      "Send a message after the call without checking whether it is received",
+      "Record that the handover was completed because the recipient answered"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Closed-loop communication confirms that critical information has been correctly understood.",
+    "existingCode": "MCQ-TRN-CLN-25-04",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Ward",
+      "ICU/HDU",
+      "OT",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 60,
+    "section": "Mock Code Review: Clinical Emergency Scenario",
+    "question": "During a mock emergency, the team activates the correct alert but responders reach the wrong clinical area because the caller gives an incomplete location. Which improvement is most important?",
+    "options": [
+      "Increase the number of staff receiving every alert",
+      "Require the caller to provide the exact location and relevant access details, with confirmation where the protocol requires it",
+      "Replace verbal emergency calls with written messages",
+      "Ask the response team to search the entire hospital whenever a code is announced"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Precise location communication is essential to reduce response delays.",
+    "existingCode": "MCQ-TRN-CLN-29-01",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "ICU/HDU",
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 61,
+    "section": "Mock Code Review: Clinical Emergency Scenario",
+    "question": "A mock code is completed successfully, but the observer records that the crash cart arrived late and no one was assigned to guide the response team. What is the best next step?",
+    "options": [
+      "Close the drill because the simulated patient recovered",
+      "Record the findings, assign corrective actions and owners, establish timelines and verify completion",
+      "Repeat the drill immediately without discussing the gaps",
+      "Record only the final outcome and exclude response times from the report"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "A drill is a quality-improvement tool; identified gaps require accountable corrective action and follow-up.",
+    "existingCode": "MCQ-TRN-CLN-29-02",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "ICU/HDU",
+      "Ward",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 62,
+    "section": "Emergency Coordination",
+    "question": "An emergency response team receives a call stating that a patient has collapsed, but the caller cannot provide the exact room number. What should happen?",
+    "options": [
+      "Delay dispatch until every detail is available",
+      "Dispatch according to the available information while urgently clarifying the location and guiding responders through the approved communication pathway",
+      "Ask the caller to send a photograph before dispatch",
+      "Send the team to the main reception area regardless of where the collapse occurred"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Essential response must not be unnecessarily delayed, while location clarification proceeds urgently.",
+    "existingCode": "MCQ-TRN-CLN-30-01",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "Operations",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 63,
+    "section": "Emergency Coordination",
+    "question": "During an emergency, one coordinator receives an update that the patient has moved to another room. Another team is still travelling to the original location. What is the best action?",
+    "options": [
+      "Allow the teams to discover the new location independently",
+      "Update the response teams promptly, confirm the revised location and maintain a clear communication chain",
+      "Cancel all responders and restart the activation process",
+      "Wait until the first team arrives before communicating the change"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Accurate real-time communication prevents responders from being misdirected.",
+    "existingCode": "MCQ-TRN-CLN-30-02",
+    "domainCode": "COP_BLS",
+    "departmentTags": [
+      "Operations",
+      "Nursing Central"
+    ]
+  },
+  {
+    "qNum": 64,
+    "section": "ART/Infertility Patient Safety",
+    "question": "An ART specimen arrives at the laboratory with a label that appears correct, but the accompanying documentation shows a different patient identifier. What is the safest action?",
+    "options": [
+      "Use the label because it is attached directly to the specimen",
+      "Use the paperwork because it contains the full patient history",
+      "Stop processing and transfer, preserve the specimen under the approved conditions and escalate the discrepancy to the authorised ART/laboratory team",
+      "Ask the nearest staff member to decide which identifier is more likely to be correct"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "ART specimen discrepancies require immediate containment and authorised resolution. Identity must never be guessed.",
+    "existingCode": "MCQ-TRN-CLN-32-01",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 65,
+    "section": "ART/Infertility Patient Safety",
+    "question": "A staff member discovers that two ART patient records have been opened simultaneously and similar specimen labels are being prepared. Which control is most important?",
+    "options": [
+      "Complete all labels quickly and distinguish them by preparation time",
+      "Rely on the embryologist's memory of the patients",
+      "Apply the approved patient-identification and specimen traceability procedure at each required stage, with the required independent checks",
+      "Use the treatment cycle number alone as the patient identifier"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "ART safety depends on robust, stage-specific identification and traceability controls.",
+    "existingCode": "MCQ-TRN-CLN-32-02",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 66,
+    "section": "ART/Infertility Patient Safety",
+    "question": "A required consent document cannot be located immediately before an ART procedure. The patient attended earlier and staff believe consent was probably obtained. What should happen?",
+    "options": [
+      "Proceed based on the staff's recollection",
+      "Ask the patient to sign a generic form after the procedure",
+      "Pause the consent-dependent step and verify valid consent and documentation through the authorised ART team",
+      "Proceed if the laboratory has already prepared the specimen"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Consent cannot be presumed from previous attendance, staff recollection or procedural preparation.",
+    "existingCode": "MCQ-TRN-CLN-32-03",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 67,
+    "section": "ART/Infertility Patient Safety",
+    "question": "An ART sample movement log contains all transfer times but does not identify who received the sample at one handover point. Why is this important?",
+    "options": [
+      "It affects only the department's administrative score",
+      "It creates a traceability gap that may prevent confirmation of custody and investigation of an identification or handling error",
+      "It is acceptable if the sample was not visibly damaged",
+      "It can be completed using the name of the person who usually works in that area"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Each required handover must be traceable to the responsible person under the approved process.",
+    "existingCode": "MCQ-TRN-CLN-32-04",
+    "domainCode": "PSQ",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 68,
+    "section": "Confidentiality of Fertility/ART Patients",
+    "question": "A visitor asks whether a particular person is attending the fertility clinic. The visitor knows the person's name and says they are a close family friend. What should staff do?",
+    "options": [
+      "Confirm attendance but withhold the treatment details",
+      "Confirm only if the visitor provides the patient's telephone number",
+      "Neither confirm nor deny the patient's attendance and refer the enquiry through the authorised disclosure process",
+      "Share the appointment date because it is not a medical result"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Even confirming attendance can disclose sensitive health information.",
+    "existingCode": "MCQ-TRN-CLN-33-01",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 69,
+    "section": "Confidentiality of Fertility/ART Patients",
+    "question": "An employee needs to coordinate an ART patient's appointment with another authorised department. Which approach best follows the principle of minimum necessary disclosure?",
+    "options": [
+      "Send the entire fertility record to avoid repeated requests",
+      "Share the relevant appointment or operational information through the approved channel, limiting clinical details to what is authorised and necessary",
+      "Use a personal messaging group because several employees can respond quickly",
+      "Discuss the patient in the public corridor because all staff work for the same hospital"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "Information should be limited to the legitimate purpose and shared only through authorised channels.",
+    "existingCode": "MCQ-TRN-CLN-33-02",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 70,
+    "section": "Confidentiality of Fertility/ART Patients",
+    "question": "A staff member discovers that an ART patient list containing names and treatment dates has been left visible at reception. What is the most appropriate action?",
+    "options": [
+      "Leave it in place because reception is within the hospital",
+      "Photograph the list to preserve evidence before moving it",
+      "Secure the list immediately, prevent further unauthorised access and report the potential privacy incident through the approved process",
+      "Ask waiting patients to avoid reading the list"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Confidential information must be secured promptly, with the incident reported appropriately.",
+    "existingCode": "MCQ-TRN-CLN-33-03",
+    "domainCode": "DOC_COMM",
+    "departmentTags": [
+      "Assisted Reproductive Technology (ART)"
+    ]
+  },
+  {
+    "qNum": 71,
+    "section": "Paediatric Safety & Medication Dose Verification",
+    "question": "A paediatric prescription is based on the child's weight, but the recorded weight was taken several weeks earlier and the child has had a significant change in condition. What is the safest action?",
+    "options": [
+      "Use the previous weight because the prescription is already signed",
+      "Estimate the current weight from the child's appearance",
+      "Ensure the current weight and dose are verified according to the clinical protocol, and clarify the prescription with the authorised prescriber or pharmacist before proceeding if needed",
+      "Reduce the prescribed dose by a fixed percentage to account for uncertainty"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Weight-based dosing depends on reliable patient data and appropriate verification. Staff must not estimate or independently alter the dose.",
+    "existingCode": "MCQ-TRN-CLN-34-01",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "NICU",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 72,
+    "section": "Paediatric Safety & Medication Dose Verification",
+    "question": "A paediatric medicine dose appears mathematically correct, but it exceeds the usual recommended maximum dose for the indication. What should happen?",
+    "options": [
+      "Administer it because the arithmetic is correct",
+      "Use the calculated dose if the parent has consented",
+      "Hold the medicine and clarify the dose against the applicable prescribing guidance with the authorised prescriber or pharmacist",
+      "Automatically reduce it to the usual maximum without informing the prescriber"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Correct arithmetic does not establish that the prescribed dose is clinically appropriate; the apparent discrepancy requires authorised review.",
+    "existingCode": "MCQ-TRN-CLN-34-02",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "NICU",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 73,
+    "section": "Paediatric Safety & Medication Dose Verification",
+    "question": "A nurse is preparing a high-alert paediatric medicine. A second staff member checks the calculation but does not independently verify the patient's weight or prescribed concentration. What is the main weakness?",
+    "options": [
+      "The second check is unnecessary because the calculation has been reviewed",
+      "The check does not independently validate the source data and medicine concentration that determine the final dose",
+      "The check is complete if both staff members sign the same record",
+      "Independent checking is relevant only to adult patients"
+    ],
+    "correctOptionIndex": 1,
+    "explanation": "A meaningful independent check must verify the critical inputs and calculation, as required by the hospital's policy.",
+    "existingCode": "MCQ-TRN-CLN-34-03",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "NICU",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 74,
+    "section": "Paediatric Safety & Medication Dose Verification",
+    "question": "A caregiver says that a child developed a suspected adverse reaction after receiving a prescribed medicine. The next dose is due shortly. What is the best response?",
+    "options": [
+      "Tell the caregiver to continue the medicine because it was prescribed",
+      "Recommend an alternative medicine based on the symptoms",
+      "Promptly involve the authorised clinician or pharmacist to assess the reaction and determine the safest next step before further administration where indicated",
+      "Ask the caregiver to skip all remaining medicines without clinical review"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Suspected adverse reactions require clinical assessment and an authorised decision about subsequent doses.",
+    "existingCode": "MCQ-TRN-CLN-34-04",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "NICU",
+      "Ward"
+    ]
+  },
+  {
+    "qNum": 75,
+    "section": "Paediatric Safety & Medication Dose Verification",
+    "question": "A child has two medication charts in the record following transfer between units. Both contain similar medicines but different administration times. What is the safest action?",
+    "options": [
+      "Use the newest chart without reviewing the transfer documentation",
+      "Follow both charts until the next doctor's round",
+      "Reconcile the orders with the authorised prescriber or pharmacist, establish the valid current regimen and ensure the superseded chart is handled through the approved process",
+      "Choose the chart with fewer medicines to reduce medication exposure"
+    ],
+    "correctOptionIndex": 2,
+    "explanation": "Duplicate or conflicting orders can cause omissions and duplicate doses; the valid regimen must be explicitly established.",
+    "existingCode": "MCQ-TRN-CLN-34-05",
+    "domainCode": "MOM",
+    "departmentTags": [
+      "NICU",
+      "Ward"
+    ]
+  }
+]

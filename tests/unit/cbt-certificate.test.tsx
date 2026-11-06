@@ -20,6 +20,8 @@ describe("CBT certificate", () => {
     const html = renderToStaticMarkup(<CbtCertificateDocument certificate={certificate} />);
     for (const text of ["Test Employee", "EMP-10", "Ward", "90.00%", "80.00%", "CBT-EXAM-2026-0100", "15 October 2026", "Certificate of CBT Achievement"]) expect(html).toContain(text);
     expect(html).toContain('id="printable-cbt-certificate"');
+    expect(html).toContain('class="cbt-certificate-logo"');
+    expect(html).toContain('/icons/acme-sidebar.webp');
   });
 
   it("does not describe a failed result as an achievement or pass", () => {

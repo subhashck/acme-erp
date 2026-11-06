@@ -232,6 +232,7 @@ select {
   #printable-cbt-certificate .cbt-certificate-statement { margin: 12px auto; }
   #printable-cbt-certificate .cbt-certificate-record { margin-top: 0; }
   #printable-cbt-certificate .cbt-certificate-eyebrow { margin-top: 12px; }
+  #printable-cbt-certificate .cbt-certificate-logo { height: 48px; max-width: 150px; object-fit: contain; display: block; }
   #printable-cbt-certificate .cbt-certificate-emblem { width: 46px; height: 46px; flex-basis: 46px; }
 }
 
@@ -256,7 +257,9 @@ select {
   box-shadow: 0 12px 40px rgb(16 43 49 / 8%);
 }
 .cbt-certificate::before { content: ""; position: absolute; inset: 10px; border: 1px solid #dfd4bc; pointer-events: none; }
-.cbt-certificate-header { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.cbt-certificate-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.cbt-certificate-logo { height: 56px; width: auto; max-width: 175px; object-fit: contain; flex: 0 0 auto; display: block; }
+.cbt-certificate-header-text { flex: 1; min-width: 0; text-align: center; }
 .cbt-certificate-emblem { display: flex; align-items: center; justify-content: center; width: 56px; height: 56px; flex: 0 0 56px; border: 1px solid #b89a60; border-radius: 50%; color: #957538; }
 .cbt-certificate-hospital { font-family: Georgia, serif; font-size: clamp(20px, 3vw, 27px); font-weight: 700; line-height: 1.25; letter-spacing: -.02em; }
 .cbt-certificate-address { margin-top: 6px; font-size: 11px; color: #637176; }
@@ -535,7 +538,17 @@ input[type="number"] {
 }
 .erp-sidebar[data-collapsed="false"] .erp-sidebar-logo-full,
 .erp-sidebar[data-collapsed="false"] .erp-sidebar-nav-expanded {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
   transition-delay: 80ms, 80ms, 0ms;
+}
+.erp-sidebar[data-collapsed="false"] .erp-sidebar-logo-symbol,
+.erp-sidebar[data-collapsed="false"] .erp-sidebar-nav-collapsed {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-6px);
+  transition-delay: 0ms, 0ms, 160ms;
 }
 
 @media (min-width: 1024px) {

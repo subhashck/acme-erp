@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Award, Printer } from "lucide-react";
 import { Button } from "../../ui/button";
 import type { CbtCertificate } from "../../lib/cbt-certificate";
-import { authClient } from "../../services/auth";
 import { CbtCertificateBarcode } from "./CbtCertificateBarcode";
 
 function certificateDate(value: string) {
@@ -13,13 +12,29 @@ function certificateDate(value: string) {
 
 export function CbtCertificateDocument({ certificate }: { certificate: CbtCertificate }) {
   const { hospital, employee, exam } = certificate;
+  const logoSrc = hospital.logoUrl || "/icons/acme-sidebar.webp";
+
   return <article id="printable-cbt-certificate" className="cbt-certificate" data-outcome={exam.passed ? "passed" : "below-benchmark"} aria-label="CBT result certificate">
     <div className="cbt-certificate-header">
-      <div className="cbt-certificate-emblem"><Award size={32} strokeWidth={1.2} aria-hidden="true" /></div>
-      <div>
-      <p className="cbt-certificate-hospital">{hospital.name}</p>
-      {hospital.address && <p className="cbt-certificate-address">{hospital.address}</p>}
+      <img
+        src={logoSrc}
+        alt={hospital.name || "ACME Hospital Logo"}
+        className="cbt-certificate-logo"
+        width={768}
+        height={277}
+        loading="eager"
+        decoding="sync"
+        onError={(e) => {
+          if (e.currentTarget.src !== "/icons/acme-sidebar.webp") {
+            e.currentTarget.src = "/icons/acme-sidebar.webp";
+          }
+        }}
+      />
+      <div className="cbt-certificate-header-text">
+        <p className="cbt-certificate-hospital">{hospital.name}</p>
+        {hospital.address && <p className="cbt-certificate-address">{hospital.address}</p>}
       </div>
+      <div className="cbt-certificate-emblem"><Award size={32} strokeWidth={1.2} aria-hidden="true" /></div>
     </div>
     <div className="cbt-certificate-rule" />
     <p className="cbt-certificate-eyebrow">Staff assessments · Computer-based examination</p>
@@ -51,26 +66,25 @@ export function CbtCertificateDocument({ certificate }: { certificate: CbtCertif
 }
 
 export function CbtCertificatePage({ attemptId }: { attemptId: string }) {
-  const session = authClient.useSession();
-  const userId = session.data?.user?.id;
   const result = useQuery<CbtCertificate>({
-    queryKey: ["cbt-result-certificate", userId, attemptId],
+    queryKey: ["cbt-result-certificate", attemptId],
     queryFn: async () => {
       const response = await fetch(`/api/skill-assessment/exam/attempts/${encodeURIComponent(attemptId)}/certificate`);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || "Could not load this certificate.");
       return body;
     },
-    retry: false,
-    enabled: Boolean(userId),
+    retry: 1,
+    enabled: Boolean(attemptId),
   });
+
   return <div className="cbt-certificate-page min-w-0 space-y-5">
     <div className="print:hidden flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <Button variant="outline" className="min-h-11 w-full sm:w-auto" asChild><Link to="/assessments">Back to Assessments</Link></Button>
       {result.data && !result.isError && <Button className="min-h-11 w-full sm:w-auto" onClick={() => window.print()}><Printer size={16} className="mr-2" aria-hidden="true" />Print / Save as PDF</Button>}
     </div>
-    {!userId || result.isLoading ? <p role="status">Loading your result certificate...</p>
-      : result.isError ? <div role="alert" className="rounded-xl border p-4 sm:p-6 space-y-3"><p className="break-words">{result.error.message}</p><Button className="min-h-11 w-full sm:w-auto" variant="outline" onClick={() => result.refetch()}>Retry</Button></div>
+    {result.isLoading ? <p role="status">Loading your result certificate...</p>
+      : result.isError ? <div role="alert" className="rounded-xl border p-4 sm:p-6 space-y-3"><p className="wrap-break-word">{result.error.message}</p><Button className="min-h-11 w-full sm:w-auto" variant="outline" onClick={() => result.refetch()}>Retry</Button></div>
       : result.data ? <CbtCertificateDocument certificate={result.data} /> : null}
   </div>;
 }

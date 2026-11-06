@@ -143,10 +143,10 @@ export function QuestionBankTab() {
     },
   });
 
-  const departmentList: { id: number; name: string }[] = useMemo(() => {
+  const departmentList: { id: number; name: string; isClinical?: boolean }[] = useMemo(() => {
     if (!Array.isArray(deptsData)) return [];
     return deptsData
-      .map((d: any) => ({ id: d.id, name: d.name }))
+      .map((d: any) => ({ id: d.id, name: d.name, isClinical: Boolean(d.isClinical) }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [deptsData]);
 
@@ -428,8 +428,11 @@ export function QuestionBankTab() {
   };
 
   const toggleDeptTag = (dept: string) => {
+    const trimmed = dept.trim();
     setDepartmentTags((prev) =>
-      prev.includes(dept) ? prev.filter((d) => d !== dept) : [...prev, dept]
+      prev.some((d) => d.toLowerCase() === trimmed.toLowerCase())
+        ? prev.filter((d) => d.toLowerCase() !== trimmed.toLowerCase())
+        : [...prev, trimmed]
     );
   };
 
@@ -797,9 +800,10 @@ export function QuestionBankTab() {
                 className="w-full h-8.5 px-2.5 rounded-lg border border-border bg-background text-xs"
               >
                 <option value="all">All Departments / Tags</option>
+                <option value="Clinical">🏥 Clinical (All Clinical Depts)</option>
                 {departmentList.map((d) => (
                   <option key={d.id} value={d.name.trim()}>
-                    {d.name.trim()}
+                    {d.name.trim()}{d.isClinical ? " (Clinical)" : ""}
                   </option>
                 ))}
               </select>
@@ -886,12 +890,24 @@ export function QuestionBankTab() {
                             </Badge>
 
                             {tags.length > 0 && (
-                              <div className="flex items-center gap-1">
-                                {tags.map((t: string) => (
-                                  <Badge key={t} variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground">
-                                    {t.trim()}
-                                  </Badge>
-                                ))}
+                              <div className="flex flex-wrap items-center gap-1">
+                                {tags.map((t: string) => {
+                                  const isClin = t.trim().toLowerCase() === "clinical";
+                                  return (
+                                    <Badge
+                                      key={t}
+                                      variant={isClin ? "default" : "outline"}
+                                      className={cn(
+                                        "text-[9px] px-1.5 py-0",
+                                        isClin
+                                          ? "bg-teal-600 hover:bg-teal-700 text-white font-semibold border-teal-600 shadow-2xs"
+                                          : "text-muted-foreground"
+                                      )}
+                                    >
+                                      {isClin ? "🏥 Clinical" : t.trim()}
+                                    </Badge>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -1016,6 +1032,7 @@ export function QuestionBankTab() {
         <AssignQuestionsDialog
           bank={activeBank}
           allQuestions={allActiveQuestions}
+          departmentList={departmentList}
           onClose={() => setIsAssignModalOpen(false)}
           onSave={(selectedIds) => {
             assignQuestionsMutation.mutate({
@@ -1213,10 +1230,42 @@ export function QuestionBankTab() {
 
               {/* Department Tag Badges */}
               <div className="space-y-1.5">
-                <label className="font-semibold text-foreground">Department Tags</label>
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-lg border border-border bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-foreground">Department Tags</label>
+                  <span className="text-[10px] text-muted-foreground">Select "Clinical" for all clinical departments, or specific departments</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 rounded-lg border border-border bg-muted/20">
+                  {/* Dedicated Clinical Tag Button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleDeptTag("Clinical")}
+                    className={cn(
+                      "px-2.5 py-1 rounded text-[11px] font-semibold border transition-all cursor-pointer flex items-center gap-1",
+                      departmentTags.some((t) => t.toLowerCase() === "clinical")
+                        ? "bg-teal-600 text-white border-teal-600 shadow-xs"
+                        : "bg-teal-50/70 border-teal-300 text-teal-800 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-700 hover:bg-teal-100"
+                    )}
+                    title="Applicable to all departments marked as Clinical in department master"
+                  >
+                    🏥 Clinical (All Clinical Depts)
+                  </button>
+
+                  {/* Dedicated All Tag Button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleDeptTag("all")}
+                    className={cn(
+                      "px-2 py-0.5 rounded text-[11px] font-medium border transition-colors cursor-pointer",
+                      departmentTags.some((t) => t.toLowerCase() === "all")
+                        ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                        : "bg-background border-border text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    🌐 All
+                  </button>
+
                   {departmentList.map((d) => {
-                    const isSelected = departmentTags.includes(d.name.trim());
+                    const isSelected = departmentTags.some((t) => t.toLowerCase() === d.name.trim().toLowerCase());
                     return (
                       <button
                         type="button"
@@ -1230,6 +1279,7 @@ export function QuestionBankTab() {
                         )}
                       >
                         {d.name.trim()}
+                        {d.isClinical && <span className="ml-1 text-[9px] opacity-75 font-normal">(Clin)</span>}
                       </button>
                     );
                   })}
@@ -1560,6 +1610,7 @@ function SingleBankWorkspace({
 interface AssignQuestionsDialogProps {
   bank: any;
   allQuestions: any[];
+  departmentList: { id: number; name: string; isClinical?: boolean }[];
   onClose: () => void;
   onSave: (selectedIds: number[]) => void;
   isSaving: boolean;
@@ -1568,6 +1619,7 @@ interface AssignQuestionsDialogProps {
 function AssignQuestionsDialog({
   bank,
   allQuestions,
+  departmentList,
   onClose,
   onSave,
   isSaving,
@@ -1578,8 +1630,16 @@ function AssignQuestionsDialog({
 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(initialIds);
   const [filterSearch, setFilterSearch] = useState("");
+  const [filterDeptScope, setFilterDeptScope] = useState<"all" | "recommended" | "clinical">("all");
   const [filterDomain, setFilterDomain] = useState("all");
   const [filterDifficulty, setFilterDifficulty] = useState("all");
+
+  const isBankDeptClinical = useMemo(() => {
+    const d = departmentList.find(
+      (item) => item.name.trim().toLowerCase() === bank.departmentName.trim().toLowerCase()
+    );
+    return d?.isClinical ?? false;
+  }, [departmentList, bank.departmentName]);
 
   const filteredQuestions = useMemo(() => {
     return allQuestions.filter((q) => {
@@ -1591,9 +1651,24 @@ function AssignQuestionsDialog({
         const matchesText = (q.question || "").toLowerCase().includes(s);
         if (!matchesCode && !matchesText) return false;
       }
+      if (filterDeptScope !== "all") {
+        const tags = Array.isArray(q.departmentTags) ? q.departmentTags : [];
+        if (filterDeptScope === "clinical") {
+          return tags.some((t: string) => t.trim().toLowerCase() === "clinical");
+        }
+        if (filterDeptScope === "recommended") {
+          const deptLower = bank.departmentName.trim().toLowerCase();
+          return tags.some((t: string) => {
+            const tLow = t.trim().toLowerCase();
+            if (tLow === deptLower || tLow === "all") return true;
+            if (isBankDeptClinical && tLow === "clinical") return true;
+            return false;
+          });
+        }
+      }
       return true;
     });
-  }, [allQuestions, filterSearch, filterDomain, filterDifficulty]);
+  }, [allQuestions, filterSearch, filterDomain, filterDifficulty, filterDeptScope, bank.departmentName, isBankDeptClinical]);
 
   const toggleSelect = (id: number) => {
     setSelectedIds((prev) => {
@@ -1629,9 +1704,14 @@ function AssignQuestionsDialog({
             <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
               <CheckSquare size={16} className="text-teal-600" />
               Assign Questions • {bank.departmentName.trim()} ({formatMonthLabel(bank.monthYear)})
+              {isBankDeptClinical && (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 font-semibold">
+                  Clinical Department
+                </span>
+              )}
             </h3>
             <p className="text-xs text-muted-foreground">
-              Select questions from the 581 master question pool to include in this department's monthly examination.
+              Select questions from the master question pool to include in this department's monthly examination.
             </p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -1640,7 +1720,7 @@ function AssignQuestionsDialog({
         </div>
 
         {/* Filter Controls */}
-        <div className="p-3 border-b border-border bg-muted/30 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs shrink-0">
+        <div className="p-3 border-b border-border bg-muted/30 grid grid-cols-1 sm:grid-cols-5 gap-2 text-xs shrink-0">
           <div className="relative sm:col-span-2">
             <Search size={14} className="absolute left-2.5 top-2.5 text-muted-foreground" />
             <input
@@ -1650,6 +1730,20 @@ function AssignQuestionsDialog({
               onChange={(e) => setFilterSearch(e.target.value)}
               className="w-full h-8 pl-8 pr-3 rounded-lg border border-border bg-background text-xs"
             />
+          </div>
+
+          <div>
+            <select
+              value={filterDeptScope}
+              onChange={(e) => setFilterDeptScope(e.target.value as any)}
+              className="w-full h-8 px-2 rounded-lg border border-border bg-background text-xs font-medium"
+            >
+              <option value="all">Scope: All Questions</option>
+              <option value="recommended">
+                ⭐ Recommended ({bank.departmentName.trim()}{isBankDeptClinical ? " + Clinical + All" : " + All"})
+              </option>
+              <option value="clinical">🏥 "Clinical" Tag Only</option>
+            </select>
           </div>
 
           <div>
@@ -1741,9 +1835,25 @@ function AssignQuestionsDialog({
                     </Badge>
 
                     {tags.length > 0 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        [{tags.join(", ")}]
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {tags.map((t: string) => {
+                          const isClin = t.trim().toLowerCase() === "clinical";
+                          return (
+                            <Badge
+                              key={t}
+                              variant={isClin ? "default" : "outline"}
+                              className={cn(
+                                "text-[8px] px-1 py-0",
+                                isClin
+                                  ? "bg-teal-600 text-white border-teal-600 font-semibold"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {isClin ? "🏥 Clinical" : t.trim()}
+                            </Badge>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
 
