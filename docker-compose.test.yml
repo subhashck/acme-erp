@@ -1,0 +1,23 @@
+# Ephemeral Postgres for automated testing.
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d     # start
+#   pnpm test:integration                                # run tests
+#   docker compose -f docker-compose.test.yml down -v    # teardown (wipes data)
+
+services:
+  test-db:
+    image: postgres:16-alpine
+    container_name: acme-erp-test-db
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: acme_erp_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpassword
+    tmpfs:
+      - /var/lib/postgresql/data   # RAM-backed storage for speed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d acme_erp_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 10

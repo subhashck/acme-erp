@@ -1,3 +1,4 @@
+import { pushRoutes } from "./routes/push.ts";
 import { Hono } from "hono";
 import type { AuthEnv } from "./auth.ts";
 import { attendanceRoutes } from "./routes/attendance.ts";
@@ -7,14 +8,32 @@ import { leavesRoutes } from "./routes/leaves.ts";
 import { mastersRoutes } from "./routes/masters.ts";
 import { messagesRoutes } from "./routes/messages.ts";
 import { notificationRoutes } from "./routes/notifications.ts";
+import { payrollDeductionRoutes } from "./routes/payroll-deductions.ts";
 import { payrollRoutes } from "./routes/payroll.ts";
 import { rosterRoutes } from "./routes/roster.ts";
 import { staffRoutes } from "./routes/staff.ts";
 import { accountsRoutes } from "./routes/accounts.ts";
 import { dailyClosingRoutes } from "./routes/daily-closing.ts";
+import { monthlyReportRoutes } from "./routes/monthly-report.ts";
+import { adminUserRoutes } from "./routes/admin-users.ts";
+import { purchasesRoutes } from "./routes/purchases.ts";
+import { offDaysRoutes } from "./routes/off-days.ts";
+import { bankExpensesRoutes } from "./routes/bank-expenses.ts";
+import { bankAccountsRoutes } from "./routes/bank-accounts.ts";
+import { nursingRoutes } from "./routes/nursing.ts";
+import { inventoryRoutes } from "./routes/inventory.ts";
+import { transfersRoutes } from "./routes/transfers.ts";
+import { posRoutes } from "./routes/pos.ts";
+import { magazineIntegrationRoutes } from "./routes/magazine-integration.ts";
+import { frontOfficeRoutes } from "./routes/front-office.ts";
+import { capitalRoutes } from "./routes/capital.ts";
+import { skillAssessmentRoutes } from "./routes/skill-assessment.ts";
+import { closingStockSyncRoutes } from "./routes/closing-stock-sync.ts";
+import { mobilePinAuthRoutes } from "./routes/mobile-pin-auth.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
+  .route("/", pushRoutes)
   .route("/", notificationRoutes)
   .route("/", immunizationRoutes)
   .route("/", mastersRoutes)
@@ -23,8 +42,25 @@ export const api = new Hono<AuthEnv>()
   .route("/", attendanceRoutes)
   .route("/", rosterRoutes)
   .route("/", payrollRoutes)
+  .route("/", payrollDeductionRoutes)
   .route("/", messagesRoutes)
+  .route("/", monthlyReportRoutes)
   .route("/", accountsRoutes)
-  .route("/", dailyClosingRoutes);
+  .route("/", dailyClosingRoutes)
+  .route("/", adminUserRoutes)
+  .route("/", purchasesRoutes)
+  .route("/", offDaysRoutes)
+  .route("/", bankExpensesRoutes)
+  .route("/", bankAccountsRoutes)
+  .route("/", nursingRoutes)
+  .route("/", inventoryRoutes)
+  .route("/", transfersRoutes)
+  .route("/", posRoutes)
+  .route("/", magazineIntegrationRoutes)
+  .route("/", frontOfficeRoutes)
+  .route("/", capitalRoutes)
+  .route("/", skillAssessmentRoutes)
+  .route("/", closingStockSyncRoutes)
+  .route("/mobile-pin-auth", mobilePinAuthRoutes);
 
 export type AppType = typeof api;

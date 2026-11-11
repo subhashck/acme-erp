@@ -12,13 +12,16 @@ import {
   departments,
   staffDepartments,
 } from "../db/schema.ts";
-import { jsonBody } from "./shared.ts";
+import { jsonBody, hasHrOrAccountsViewAccess } from "./shared.ts";
 
 export const accountsRoutes = new Hono<AuthEnv>()
   // -------------------------------------------------------------------------
   // Incomes / Expenses Transactions (Day Report)
   // -------------------------------------------------------------------------
   .get("/accounts/transactions", async (c) => {
+    if (!(await hasHrOrAccountsViewAccess(c))) {
+      return c.json({ error: "Forbidden: HR/Accounts or Management Approver view access required" }, 403);
+    }
     const date = c.req.query("date");
     if (!date) {
       return c.json({ error: "Date parameter is required" }, 400);

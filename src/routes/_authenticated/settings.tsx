@@ -1,5 +1,6 @@
+import { PushNotificationSettings } from "@/components/PushNotificationSettings";
 import * as React from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouteContext } from "@tanstack/react-router";
 import { authClient } from "@/services/auth";
 import { ModuleLayout } from "@/components/ModuleLayout";
 import { Field } from "@/components/Field";
@@ -24,13 +25,19 @@ import {
   getSystemSettings,
   type SystemSettings
 } from "@/lib/settings";
+import { googleAuthErrorMessage } from "@/lib/google-auth-errors";
 
 export const Route = createFileRoute("/_authenticated/settings")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    error: typeof search.error === "string" ? search.error : undefined,
+    error_description: typeof search.error_description === "string" ? search.error_description : undefined,
+  }),
   component: SettingsPage
 });
 
 function SettingsPage() {
-  const session = authClient.useSession();
+  const { session } = useRouteContext({ from: "/_authenticated" }) as { session?: any };
+  const oauthSearch = Route.useSearch();
   const isAdmin = session.data?.user.role === "admin";
 
   const systemSettings = useSystemSettings();
@@ -48,6 +55,11 @@ function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [passwordMessage, setPasswordMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
   const [submittingPassword, setSubmittingPassword] = React.useState(false);
+  const [googleLinked, setGoogleLinked] = React.useState(false);
+  const [googleConfigured, setGoogleConfigured] = React.useState(false);
+  const [googleBusy, setGoogleBusy] = React.useState(false);
+  const [googleMessage, setGoogleMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
+  const googleEligible = session.data?.user?.email?.toLowerCase().endsWith("@gmail.com") === true;
 
   // System settings form state
   const [sysTheme, setSysTheme] = React.useState<"light" | "dark">("light");
@@ -62,6 +74,51 @@ function SettingsPage() {
   React.useEffect(() => {
     setSysTheme(systemSettings.theme);
   }, [systemSettings]);
+
+  React.useEffect(() => {
+    let active = true;
+    fetch("/api/public/auth-config")
+      .then((response) => response.ok ? response.json() : null)
+      .then((config) => { if (active) setGoogleConfigured(config?.googleEnabled === true); })
+      .catch(() => { if (active) setGoogleConfigured(false); });
+    return () => { active = false; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!googleEligible) return;
+    let active = true;
+    authClient.listAccounts().then(({ data, error }) => {
+      if (!active) return;
+      if (error) {
+        setGoogleMessage({ type: "error", text: error.message || "Unable to check linked sign-in methods." });
+        return;
+      }
+      setGoogleLinked(data?.some((item) => item.providerId === "google") ?? false);
+    }).catch(() => {
+      if (active) setGoogleMessage({ type: "error", text: "Unable to check linked sign-in methods." });
+    });
+    return () => { active = false; };
+  }, [googleEligible]);
+
+  React.useEffect(() => {
+    if (oauthSearch.error) {
+      setGoogleMessage({ type: "error", text: googleAuthErrorMessage(oauthSearch.error, oauthSearch.error_description) });
+    }
+  }, [oauthSearch.error, oauthSearch.error_description]);
+
+  const handleConnectGoogle = async () => {
+    setGoogleBusy(true);
+    setGoogleMessage(null);
+    try {
+      const result = await authClient.linkSocial({ provider: "google", callbackURL: "/settings", errorCallbackURL: "/settings" });
+      if (result.error) setGoogleMessage({ type: "error", text: result.error.message || "Unable to connect Google." });
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : "";
+      setGoogleMessage({ type: "error", text: googleAuthErrorMessage(rawMessage, rawMessage) });
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
 
   // Submit profile details change
   const handleUpdateProfileName = async (e: React.FormEvent) => {
@@ -166,6 +223,7 @@ function SettingsPage() {
           {/* TAB 1: Profile & Security */}
           {activeTab === "profile" && (
             <div className="space-y-6">
+              <PushNotificationSettings />
               {/* Account details info card */}
               <Card className="bg-card/50 backdrop-blur shadow-sm">
                 <CardHeader className="pb-4 border-b">
@@ -179,7 +237,7 @@ function SettingsPage() {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl border bg-muted/35">
                     <div className="flex items-center gap-4">
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-slate-950 dark:bg-slate-800 text-white font-extrabold text-lg shadow-inner">
-                        {(session.data?.user?.name || "").split(" ").map((n) => n[0] || "").join("").toUpperCase().slice(0, 2) || "U"}
+                        {((session?.data?.user?.name || session?.user?.name || "").split(" ") as string[]).map((n: string) => n[0] || "").join("").toUpperCase().slice(0, 2) || "U"}
                       </div>
                       <div className="flex flex-col">
                         <span className="font-extrabold text-foreground text-base">{session.data?.user.name}</span>
@@ -190,6 +248,28 @@ function SettingsPage() {
                       {isAdmin ? "Administrator Access" : "Staff Access"}
                     </Badge>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm">
+                <CardHeader className="pb-4 border-b">
+                  <CardTitle className="text-base">Google sign-in</CardTitle>
+                  <CardDescription>Connect a verified Gmail address to this existing ERP account. Password sign-in remains available.</CardDescription>
+                </CardHeader>
+                <CardContent className="pt-5 space-y-3">
+                  {!googleEligible ? (
+                    <p className="text-sm text-muted-foreground">Google sign-in is available for ERP accounts registered with a Gmail address.</p>
+                  ) : !googleConfigured ? (
+                    <p className="text-sm text-muted-foreground">Google sign-in is not configured on this server. Ask an administrator to set the Google OAuth client ID and secret, then restart ERP.</p>
+                  ) : googleLinked ? (
+                    <p className="text-sm text-emerald-700 dark:text-emerald-400">Google is connected. You can use it on the sign-in page.</p>
+                  ) : (
+                    <Button type="button" variant="outline" disabled={googleBusy} onClick={() => void handleConnectGoogle()}>
+                      <span className="font-bold" aria-hidden="true">G</span>
+                      {googleBusy ? "Connecting..." : "Connect Google account"}
+                    </Button>
+                  )}
+                  {googleMessage && <p role="status" className={`text-sm ${googleMessage.type === "error" ? "text-destructive" : "text-emerald-700"}`}>{googleMessage.text}</p>}
                 </CardContent>
               </Card>
 

@@ -13,7 +13,16 @@ export const Route = createFileRoute("/_authenticated")({
         }
       });
     }
-    return { session: session.data };
+    // Force password change if the flag is set
+    if (session.data.user.mustChangePassword && location.pathname !== "/change-password") {
+      throw redirect({ to: "/change-password" });
+    }
+    return {
+      session: {
+        ...session.data,
+        data: session.data
+      }
+    };
   },
   component: Shell
 });

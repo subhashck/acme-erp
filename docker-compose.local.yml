@@ -1,0 +1,5 @@
+services:
+  web:
+    environment:
+      BETTER_AUTH_URL: http://localhost:8787
+      TRUSTED_ORIGINS: http://localhost:8787,https://my-acme.cloud

@@ -18,7 +18,7 @@ export interface PayrollSettings {
   basicPct: number;
   hraPct: number;
   conveyancePct: number;
-  medicalPct: number;
+  skillAllowancePct: number;
   specialPct: number;
 }
 
@@ -46,7 +46,7 @@ const DEFAULT_PAYROLL: PayrollSettings = {
   basicPct: 50,
   hraPct: 30,
   conveyancePct: 10,
-  medicalPct: 5,
+  skillAllowancePct: 5,
   specialPct: 5,
 };
 
@@ -141,11 +141,16 @@ export interface SalaryTemplate {
   basicSalary: number;
   hra: number;
   conveyance: number;
-  medical: number;
+  skillAllowance: number;
   special: number;
   epf: number;
   esi: number;
   professionalTax: number;
+  deductTds?: boolean;
+  tdsPercent?: number;
+  tds?: number;
+  securityDepositTotal?: number;
+  securityDeposit?: number;
   otherDeductions: number;
   lateAttendance?: number;
 }

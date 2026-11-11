@@ -5,6 +5,7 @@ import type { AuthEnv } from "../auth.ts";
 import { db } from "../db/client.ts";
 import { messages, staff, staffDepartments, user } from "../db/schema.ts";
 import { chatEmitter, dispatchMessage } from "../utils/chat-notifier.ts";
+import { sendNotification } from "../utils/notifier.ts";
 
 export const messagesRoutes = new Hono<AuthEnv>()
   .get("/colleagues", async (c) => {
@@ -281,5 +282,124 @@ export const messagesRoutes = new Hono<AuthEnv>()
 
     dispatchMessage(newMsg);
 
+    // Keep communication push content generic; the inbox link opens the
+    // conversation without exposing message text on a locked screen.
+    try {
+      let recipientIds: string[] = [];
+      if (newMsg.channelType === "direct" && newMsg.receiverId) {
+        recipientIds = [newMsg.receiverId];
+      } else if (newMsg.channelType === "organization") {
+        const recipients = await db.select({ id: user.id }).from(user)
+          .where(sql`${user.id} != ${userId}`);
+        recipientIds = recipients.map(recipient => recipient.id);
+      } else if (newMsg.channelType === "department" && newMsg.departmentId) {
+        const recipients = await db.execute(sql`
+          SELECT DISTINCT u.id
+          FROM staff_departments sd
+          JOIN staff st ON st.staff_id = sd.staff_id AND st.version = sd.staff_version
+          JOIN "user" u ON lower(u.email) = lower(st.email)
+          WHERE sd.department_id = ${newMsg.departmentId}
+            AND sd.status = 'Active'
+            AND u.id <> ${userId}
+        `);
+        recipientIds = (recipients.rows as Array<{ id: string }>).map(recipient => recipient.id);
+      }
+      await Promise.all(recipientIds.map(recipientId => sendNotification({
+        userId: recipientId,
+        title: newMsg.channelType === "direct" ? "New direct message" : "New communication message",
+        message: "You have a new message in Communication.",
+        type: "info",
+        link: "/communication",
+      })));
+    } catch (error) {
+      // Communication delivery must remain available if notification setup fails.
+      console.warn("Failed to notify communication recipients:", error);
+    }
+
     return c.json(newMsg);
+  })
+  // ── DELETE /messages/direct/:colleagueId ─────────────────────────────────
+  // Clears all direct messages between current user and a colleague
+  .delete("/messages/direct/:colleagueId", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const { colleagueId } = c.req.param();
+
+    await db
+      .delete(messages)
+      .where(
+        sql`${messages.channelType} = 'direct' AND (
+          (${messages.senderId} = ${userId} AND ${messages.receiverId} = ${colleagueId}) OR
+          (${messages.senderId} = ${colleagueId} AND ${messages.receiverId} = ${userId})
+        )`
+      )
+      .execute();
+
+    dispatchMessage({
+      action: "clear_direct",
+      channelType: "direct",
+      senderId: userId,
+      receiverId: colleagueId,
+    });
+
+    return c.json({ ok: true });
+  })
+  // ── DELETE /messages/:id ──────────────────────────────────────────────────
+  // Deletes a single message.
+  // Direct messages: sender, receiver, or admin can delete.
+  // Org / Department messages: allowed within 1 hour of sending by sender or admin.
+  .delete("/messages/:id", async (c) => {
+    const session = c.get("session");
+    const userId = session.user.id;
+    const isAdmin = session.user.role === "admin";
+    const id = Number(c.req.param("id"));
+
+    if (isNaN(id)) {
+      return c.json({ error: "Invalid message ID" }, 400);
+    }
+
+    const [target] = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, id))
+      .limit(1);
+
+    if (!target) {
+      return c.json({ error: "Message not found" }, 404);
+    }
+
+    if (target.channelType === "direct") {
+      const isParticipant = target.senderId === userId || target.receiverId === userId;
+      if (!isParticipant && !isAdmin) {
+        return c.json({ error: "Unauthorized to delete this message" }, 403);
+      }
+    } else {
+      // Organization / Department broadcast messages
+      const isSender = target.senderId === userId;
+      if (!isSender && !isAdmin) {
+        return c.json({ error: "You can only delete your own messages" }, 403);
+      }
+
+      const ageMs = Date.now() - new Date(target.createdAt).getTime();
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      if (ageMs > ONE_HOUR_MS) {
+        return c.json(
+          { error: "Organization and management messages can only be deleted within 1 hour of sending." },
+          403
+        );
+      }
+    }
+
+    await db.delete(messages).where(eq(messages.id, id)).execute();
+
+    dispatchMessage({
+      action: "delete_message",
+      id: target.id,
+      channelType: target.channelType,
+      departmentId: target.departmentId,
+      senderId: target.senderId,
+      receiverId: target.receiverId,
+    });
+
+    return c.json({ ok: true, id: target.id });
   });

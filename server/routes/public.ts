@@ -23,6 +23,8 @@ import {
   dailyPaymentChannels,
   user,
 } from "../db/schema.ts";
+import { fetchPublishedMagazineIssues, isMagazineEnabled } from "../services/magazine-feed.ts";
+import { getHospitalSettingsFromDb } from "../services/hospital-settings.ts";
 
 // ---------------------------------------------------------------------------
 // HMAC helpers (Web Crypto — available natively in Node 18+)
@@ -107,6 +109,9 @@ export async function verifyToken(token: string): Promise<SignedPayload> {
 // ---------------------------------------------------------------------------
 
 export const publicRoutes = new Hono()
+  .get("/public/auth-config", (c) => c.json({
+    googleEnabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+  }))
   /**
    * GET /public/reports/shared/:token
    * Verifies the signed token and returns full report detail JSON.
@@ -150,6 +155,7 @@ export const publicRoutes = new Hono()
         quantity: dailyServiceLines.quantity,
         amount: dailyServiceLines.amount,
         isNightEntry: dailyServiceLines.isNightEntry,
+        narration: dailyServiceLines.narration,
         serviceName: serviceCatalog.serviceName,
         department: serviceCatalog.department,
         sortOrder: serviceCatalog.sortOrder,
@@ -231,4 +237,15 @@ export const publicRoutes = new Hono()
       // Include expiry so the frontend can display it
       _linkExpiresAt: payload.expiresAt,
     });
-  });
+  })
+
+  // ERP owns only promotion; publishing and media are served by Magazine.
+  .get('/public/magazine/config', (c) => {
+    const publicUrl = isMagazineEnabled() ? process.env.MAGAZINE_PUBLIC_URL : undefined;
+    return c.json({ publicUrl: publicUrl ? new URL('/magazine', publicUrl).href : null });
+  })
+  .get('/public/magazine', async (c) => {
+    const settings = await getHospitalSettingsFromDb();
+    return c.json(settings.showPublishedMagazines ? await fetchPublishedMagazineIssues() : []);
+  })
+  .get('/public/magazine/*', c => c.json({ error: 'ERP Magazine issues have been retired' }, 410));

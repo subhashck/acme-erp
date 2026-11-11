@@ -1,4 +1,4 @@
-import { and, desc, asc, eq, sql, gte, lte, inArray } from "drizzle-orm";
+import { and, desc, asc, eq, ne, sql, gte, lte, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AuthEnv } from "../auth.ts";
@@ -21,6 +21,7 @@ import {
   user,
   expenseCategories,
   expenseCatalog,
+  nursingFeeTransactions,
 } from "../db/schema.ts";
 import { jsonBody } from "./shared.ts";
 
@@ -349,7 +350,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
       { department: "OPD_GYNAE", serviceName: "Blood Draw / Phlebotomy Charges", defaultRate: 100, sortOrder: 13 },
       { department: "OPD_GYNAE", serviceName: "Liquid Based Pap Smear", defaultRate: 800, sortOrder: 14 },
       { department: "OPD_GYNAE", serviceName: "Hysteroscopy Diagnostic", defaultRate: 15000, sortOrder: 15 },
-      
+
       // Dental Services
       { department: "DENTAL", serviceName: "Dental Consultation - New Case", defaultRate: 300, sortOrder: 101 },
       { department: "DENTAL", serviceName: "Dental Consultation - Old Case", defaultRate: 200, sortOrder: 102 },
@@ -464,6 +465,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
         quantity: dailyServiceLines.quantity,
         amount: dailyServiceLines.amount,
         isNightEntry: dailyServiceLines.isNightEntry,
+        narration: dailyServiceLines.narration,
         serviceName: serviceCatalog.serviceName,
         department: serviceCatalog.department,
         sortOrder: serviceCatalog.sortOrder,
@@ -578,6 +580,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             quantity: z.number(),
             amount: z.number(),
             isNightEntry: z.boolean().default(false).optional(),
+            narration: z.string().nullable().optional(),
           })
         ),
         pharmacyIncome: z.object({
@@ -596,6 +599,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             category: z.string(),
             details: z.string(),
             amount: z.number(),
+            narration: z.string().nullable().optional(),
           })
         ),
         staffAdvances: z.array(
@@ -638,6 +642,9 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             amount: z.number(),
           })
         ),
+        cashDenominations: z.union([z.record(z.string(), z.number()), z.string(), z.null()]).optional(),
+        reconciliationTolerance: z.number().default(0).optional(),
+        soiledNotes: z.number().nullable().optional(),
       })
     );
 
@@ -655,7 +662,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     // Calculations
     const opdTotal = payload.serviceLines.reduce((sum, line) => sum + line.amount, 0);
-    
+
     // Pharmacy calculation (legacy field — now optional, service lines capture pharmacy/general)
     const pharmacyIncome = payload.pharmacyIncome;
     const miscIncomeParsed = pharmacyIncome ? JSON.parse(pharmacyIncome.miscIncome) : [];
@@ -665,19 +672,19 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     const pharmacyTotal = pharmacyIncome
       ? pharmacyIncome.otWardTotal + pharmacyIncome.acmeNewTotal + pharmacyIncome.parking +
-        pharmacyIncome.coffeeShop + pharmacyIncome.canteenIncome + pharmacyIncome.creditCardChargesNight +
-        pharmacyIncome.trainingFee + pharmacyIncome.humankindSales + miscTotal
+      pharmacyIncome.coffeeShop + pharmacyIncome.canteenIncome + pharmacyIncome.creditCardChargesNight +
+      pharmacyIncome.trainingFee + pharmacyIncome.humankindSales + miscTotal
       : 0;
 
     const ipdAdmissionsTotal = payload.ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
     const ipdDischargesTotal = payload.ipdDischarges.reduce((sum, item) => sum + item.amount, 0);
     const additionalTotal = payload.additionalIncome.reduce((sum, item) => sum + item.amount, 0);
     const discountsTotal = payload.discountsReturns.reduce((sum, item) => sum + item.amount, 0);
-    const totalIncome = 
-      opdTotal + 
-      pharmacyTotal + 
-      ipdAdmissionsTotal + 
-      ipdDischargesTotal + 
+    const totalIncome =
+      opdTotal +
+      pharmacyTotal +
+      ipdAdmissionsTotal +
+      ipdDischargesTotal +
       additionalTotal -
       discountsTotal;
 
@@ -719,6 +726,15 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           totalExpenditure: totalExpenditure.toFixed(2),
           closingBalance: closingBalance.toFixed(2),
           bankDeposits: payload.bankDeposits || null,
+          cashDenominations: (() => {
+            if (!payload.cashDenominations) return null;
+            if (typeof payload.cashDenominations === "string") {
+              try { return JSON.parse(payload.cashDenominations); } catch { return null; }
+            }
+            return payload.cashDenominations;
+          })(),
+          reconciliationTolerance: (payload.reconciliationTolerance ?? 0).toFixed(2),
+          soiledNotes: payload.soiledNotes ? payload.soiledNotes.toString() : null,
           status: payload.status,
         })
         .returning()
@@ -736,6 +752,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               quantity: line.quantity,
               amount: line.amount.toString(),
               isNightEntry: line.isNightEntry ?? false,
+              narration: line.narration ?? null,
             }))
           )
           .execute();
@@ -769,6 +786,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               category: item.category,
               details: item.details,
               amount: item.amount.toString(),
+              narration: item.narration ?? null,
             }))
           )
           .execute();
@@ -906,6 +924,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             quantity: z.number(),
             amount: z.number(),
             isNightEntry: z.boolean().default(false).optional(),
+            narration: z.string().nullable().optional(),
           })
         ),
         pharmacyIncome: z.object({
@@ -924,6 +943,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             category: z.string(),
             details: z.string(),
             amount: z.number(),
+            narration: z.string().nullable().optional(),
           })
         ),
         staffAdvances: z.array(
@@ -966,12 +986,15 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
             amount: z.number(),
           })
         ),
+        cashDenominations: z.union([z.record(z.string(), z.number()), z.string(), z.null()]).optional(),
+        reconciliationTolerance: z.number().default(0).optional(),
+        soiledNotes: z.number().nullable().optional(),
       })
     );
 
     // Calculations
     const opdTotal = payload.serviceLines.reduce((sum, line) => sum + line.amount, 0);
-    
+
     // Pharmacy calculation (legacy field — now optional)
     const pharmacyIncomePut = payload.pharmacyIncome;
     const miscIncomeParsedPut = pharmacyIncomePut ? JSON.parse(pharmacyIncomePut.miscIncome) : [];
@@ -981,8 +1004,8 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
 
     const pharmacyTotalPut = pharmacyIncomePut
       ? pharmacyIncomePut.otWardTotal + pharmacyIncomePut.acmeNewTotal + pharmacyIncomePut.parking +
-        pharmacyIncomePut.coffeeShop + pharmacyIncomePut.canteenIncome + pharmacyIncomePut.creditCardChargesNight +
-        pharmacyIncomePut.trainingFee + pharmacyIncomePut.humankindSales + miscTotalPut
+      pharmacyIncomePut.coffeeShop + pharmacyIncomePut.canteenIncome + pharmacyIncomePut.creditCardChargesNight +
+      pharmacyIncomePut.trainingFee + pharmacyIncomePut.humankindSales + miscTotalPut
       : 0;
 
     const ipdAdmissionsTotal = payload.ipdAdmissions.reduce((sum, item) => sum + item.amount, 0);
@@ -1033,6 +1056,15 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
           totalExpenditure: totalExpenditure.toFixed(2),
           closingBalance: closingBalance.toFixed(2),
           bankDeposits: payload.bankDeposits || null,
+          cashDenominations: (() => {
+            if (!payload.cashDenominations) return null;
+            if (typeof payload.cashDenominations === "string") {
+              try { return JSON.parse(payload.cashDenominations); } catch { return null; }
+            }
+            return payload.cashDenominations;
+          })(),
+          reconciliationTolerance: (payload.reconciliationTolerance ?? 0).toFixed(2),
+          soiledNotes: payload.soiledNotes ? payload.soiledNotes.toString() : null,
           status: payload.status,
           updatedAt: new Date(),
         })
@@ -1063,6 +1095,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               quantity: line.quantity,
               amount: line.amount.toString(),
               isNightEntry: line.isNightEntry ?? false,
+              narration: line.narration ?? null,
             }))
           )
           .execute();
@@ -1096,6 +1129,7 @@ export const dailyClosingRoutes = new Hono<AuthEnv>()
               category: item.category,
               details: item.details,
               amount: item.amount.toString(),
+              narration: item.narration ?? null,
             }))
           )
           .execute();

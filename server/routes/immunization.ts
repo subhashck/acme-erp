@@ -43,7 +43,7 @@ export const immunizationRoutes = new Hono<AuthEnv>()
 
     if (search) {
       query = query.where(
-        sql`${patients.name} LIKE ${`%${search}%`} OR ${patients.mrn} LIKE ${`%${search}%`} OR ${patients.phone} LIKE ${`%${search}%`}`
+        sql`${patients.name} ILIKE ${`%${search}%`} OR ${patients.mrn} ILIKE ${`%${search}%`} OR ${patients.phone} ILIKE ${`%${search}%`}`
       );
     }
 

@@ -1,0 +1,2243 @@
+import { eq, sql, and, desc, asc, ilike, inArray, gte, lte, or, gt, lt } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { Hono } from "hono";
+import type { AuthEnv } from "../auth.ts";
+import { db } from "../db/client.ts";
+import {
+  stores,
+  storeStaffAssignments,
+  itemBatches,
+  storeBatchStock,
+  stockLedger,
+  stockAdjustments,
+  stockAdjustmentItems,
+  purchaseInvoices,
+  purchaseInvoiceItems,
+  purchaseInvoicePayments,
+  consumptionVouchers,
+  consumptionVoucherItems,
+  consumptionReturns,
+  consumptionReturnItems,
+} from "../db/schema-inventory.ts";
+import {
+  items,
+  itemTypes,
+  unitTypes,
+  staff,
+  user,
+  departments,
+  vendors,
+  grns,
+  grnItems,
+  purchaseOrders,
+  poItems,
+} from "../db/schema.ts";
+import { generateDocNumber } from "../services/sequence.ts";
+import { recordStockMovement } from "../services/stock-engine.ts";
+import { idParam, jsonBody, requireAdmin, convertItemQuantityToBase, resolveUnitId, canPostConsumptionVoucher } from "./shared.ts";
+import { z } from "zod";
+
+const app = new Hono<AuthEnv>();
+
+// ---------------------------------------------------------------------------
+// Schemas
+// ---------------------------------------------------------------------------
+
+const storeInput = z.object({
+  name: z.string().min(2, "Store name is required"),
+  code: z.string().min(2, "Store code is required"),
+  type: z.enum(["central", "retail_pharmacy", "ward", "college", "lab"]).default("retail_pharmacy"),
+  departmentId: z.number().int().positive().optional().nullable(),
+  location: z.string().optional().nullable(),
+  active: z.boolean().default(true),
+  isDefault: z.boolean().default(false),
+});
+
+const storeUpdateInput = storeInput.partial();
+
+const staffAssignmentInput = z.object({
+  staffId: z.number().int().positive(),
+  canBill: z.boolean().default(true),
+  canReceive: z.boolean().default(true),
+  canTransfer: z.boolean().default(true),
+  active: z.boolean().default(true),
+});
+
+const adjustmentItemInput = z.object({
+  itemId: z.number().int().positive("Item is required"),
+  batchId: z.number().int().positive("Batch is required"),
+  systemQty: z.coerce.number().min(0),
+  physicalQty: z.coerce.number().min(0),
+  unitId: z.coerce.number().int().positive().optional().nullable(),
+  unit: z.string().optional().nullable(),
+  type: z.enum(["gain", "loss", "expired", "damaged"]).default("gain"),
+});
+
+const adjustmentInput = z.object({
+  storeId: z.number().int().positive("Store is required"),
+  reason: z.string().min(2, "Reason is required"),
+  items: z.array(adjustmentItemInput).min(1, "At least one adjustment item is required"),
+});
+
+const purchaseInvoiceItemInput = z
+  .object({
+    id: z.coerce.number().optional(),
+    itemId: z.coerce.number().int().positive("Item is required"),
+    grnItemId: z.coerce.number().int().positive().optional().nullable(),
+    quantity: z.coerce.number().min(0.001, "Quantity must be > 0").optional(),
+    billedQty: z.coerce.number().min(0.001).optional(),
+    unitId: z.coerce.number().int().positive("Unit is required"),
+    unitRate: z.coerce.number().min(0, "Unit rate must be >= 0"),
+    discountPercent: z.coerce.number().min(0).default(0),
+    discountAmount: z.coerce.number().min(0).default(0),
+    taxableAmount: z.coerce.number().min(0),
+    hsnCode: z.string().optional().nullable(),
+    gstPercent: z.coerce.number().min(0).default(0),
+    cgstAmount: z.coerce.number().min(0).default(0),
+    sgstAmount: z.coerce.number().min(0).default(0),
+    igstAmount: z.coerce.number().min(0).default(0),
+    totalAmount: z.coerce.number().min(0),
+  })
+  .transform((data) => ({
+    ...data,
+    quantity: data.quantity ?? data.billedQty ?? 0,
+    grnItemId: data.grnItemId || null,
+  }));
+
+const purchaseInvoiceInput = z
+  .object({
+    invoiceNo: z.string().optional(),
+    vendorInvoiceNo: z.string().optional(),
+    invoiceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+    vendorId: z.coerce.number().int().positive("Vendor is required"),
+    grnId: z.coerce.number().int().positive().optional().nullable(),
+    poId: z.coerce.number().int().positive().optional().nullable(),
+    subtotal: z.coerce.number().min(0).default(0),
+    discountAmount: z.coerce.number().min(0).default(0),
+    taxableAmount: z.coerce.number().min(0).default(0),
+    cgstAmount: z.coerce.number().min(0).default(0),
+    sgstAmount: z.coerce.number().min(0).default(0),
+    igstAmount: z.coerce.number().min(0).default(0),
+    tdsAmount: z.coerce.number().min(0).default(0),
+    roundOff: z.coerce.number().default(0),
+    netAmount: z.coerce.number().min(0),
+    creditDays: z.coerce.number().min(0).optional(),
+    paymentTermsDays: z.coerce.number().min(0).optional(),
+    dueDate: z.string().optional().nullable(),
+    remarks: z.string().optional().nullable(),
+    items: z.array(purchaseInvoiceItemInput).min(1, "At least one line item is required"),
+  })
+  .transform((data) => {
+    const invNo = (data.invoiceNo || data.vendorInvoiceNo || "").trim();
+    if (!invNo) {
+      throw new Error("Invoice number is required");
+    }
+    return {
+      ...data,
+      invoiceNo: invNo,
+      creditDays: data.creditDays ?? data.paymentTermsDays ?? 0,
+      dueDate: data.dueDate && data.dueDate.trim() !== "" ? data.dueDate : null,
+      grnId: data.grnId || null,
+      poId: data.poId || null,
+    };
+  });
+
+const purchaseInvoicePaymentInput = z
+  .object({
+    paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+    amount: z.coerce.number().min(0.01, "Amount must be > 0"),
+    paymentMode: z
+      .string()
+      .transform((val) => {
+        const lower = val.toLowerCase().trim();
+        if (["rtgs", "neft", "imps", "bank_transfer", "netbanking", "wire"].includes(lower)) return "rtgs";
+        if (["upi", "online"].includes(lower)) return "upi";
+        if (["card", "credit_card", "debit_card"].includes(lower)) return "card";
+        if (["cheque", "check"].includes(lower)) return "cheque";
+        if (["cash"].includes(lower)) return "cash";
+        if (["other", "credit_note"].includes(lower)) return "other";
+        return lower;
+      })
+      .pipe(z.enum(["cash", "upi", "card", "rtgs", "cheque", "other"])),
+    referenceNo: z.string().optional().nullable(),
+    remarks: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+  })
+  .transform((data) => ({
+    paymentDate: data.paymentDate,
+    amount: data.amount,
+    paymentMode: data.paymentMode,
+    referenceNo: data.referenceNo || null,
+    remarks: data.remarks || data.notes || null,
+  }));
+
+const consumptionVoucherItemInput = z.object({
+  itemId: z.coerce.number().int().positive("Item is required"),
+  batchId: z.coerce.number().int().positive("Batch is required"),
+  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
+  unitId: z.coerce.number().optional().nullable(),
+  unit: z.string().optional(),
+  unitRate: z.coerce.number().min(0).optional().default(0),
+  totalCost: z.coerce.number().min(0).optional().default(0),
+});
+
+const consumptionVoucherInput = z.object({
+  storeId: z.coerce.number().int().positive("Store is required"),
+  purpose: z.string().min(2, "Purpose / department reason is required"),
+  remarks: z.string().optional().nullable(),
+  voucherDate: z.string().optional().nullable(),
+  items: z.array(consumptionVoucherItemInput).min(1, "At least one item is required"),
+});
+
+const consumptionReturnItemInput = z.object({
+  voucherItemId: z.coerce.number().optional().nullable(),
+  itemId: z.coerce.number().int().positive("Item is required"),
+  batchId: z.coerce.number().int().positive("Batch is required"),
+  returnedQty: z.coerce.number().positive("Returned quantity must be greater than 0"),
+  unitId: z.coerce.number().optional().nullable(),
+  unit: z.string().optional(),
+  unitRate: z.coerce.number().min(0).optional().default(0),
+});
+
+const consumptionReturnInput = z.object({
+  storeId: z.coerce.number().int().positive("Store is required"),
+  originalVoucherId: z.coerce.number().optional().nullable(),
+  reason: z.string().min(2, "Return reason is required"),
+  remarks: z.string().optional().nullable(),
+  returnDate: z.string().optional().nullable(),
+  items: z.array(consumptionReturnItemInput).min(1, "At least one item is required"),
+});
+
+// ---------------------------------------------------------------------------
+// Stores CRUD
+// ---------------------------------------------------------------------------
+
+export const inventoryRoutes = app
+  .get("/inventory/stores", async (c) => {
+    const query = c.req.query();
+    const conditions = [];
+
+    if (query.active === "true") {
+      conditions.push(eq(stores.active, true));
+    }
+    if (query.type) {
+      conditions.push(eq(stores.type, query.type));
+    }
+
+    let baseQuery = db
+      .select({
+        id: stores.id,
+        name: stores.name,
+        code: stores.code,
+        type: stores.type,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        location: stores.location,
+        active: stores.active,
+        isDefault: stores.isDefault,
+        createdAt: stores.createdAt,
+        updatedAt: stores.updatedAt,
+      })
+      .from(stores)
+      .leftJoin(departments, eq(stores.departmentId, departments.id));
+
+    if (conditions.length > 0) {
+      baseQuery = baseQuery.where(and(...conditions)) as any;
+    }
+
+    const rows = await baseQuery.orderBy(stores.name).execute();
+    return c.json(rows);
+  })
+  .post("/inventory/stores", async (c) => {
+    const input = await jsonBody(c, storeInput);
+
+    if (input.isDefault) {
+      await db.update(stores).set({ isDefault: false });
+    }
+
+    const [row] = await db.insert(stores).values(input).returning();
+    return c.json(row, 201);
+  })
+  .patch("/inventory/stores/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, storeUpdateInput);
+
+    if (input.isDefault) {
+      await db.update(stores).set({ isDefault: false });
+    }
+
+    const [updated] = await db.update(stores).set(input).where(eq(stores.id, id)).returning();
+    if (!updated) {
+      return c.json({ error: "Store not found" }, 404);
+    }
+    return c.json(updated);
+  })
+  .delete("/inventory/stores/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [updated] = await db.update(stores).set({ active: false }).where(eq(stores.id, id)).returning();
+    if (!updated) {
+      return c.json({ error: "Store not found" }, 404);
+    }
+    return c.json({ success: true, message: "Store deactivated successfully" });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Store Staff Assignments
+  // ---------------------------------------------------------------------------
+  .get("/inventory/stores/:storeId/staff", async (c) => {
+    const { storeId } = z.object({ storeId: z.coerce.number() }).parse(c.req.param());
+
+    const assignments = await db
+      .select({
+        id: storeStaffAssignments.id,
+        staffId: storeStaffAssignments.staffId,
+        staffName: staff.name,
+        staffEmail: staff.email,
+        staffRole: staff.role,
+        storeId: storeStaffAssignments.storeId,
+        canBill: storeStaffAssignments.canBill,
+        canReceive: storeStaffAssignments.canReceive,
+        canTransfer: storeStaffAssignments.canTransfer,
+        active: storeStaffAssignments.active,
+        createdAt: storeStaffAssignments.createdAt,
+      })
+      .from(storeStaffAssignments)
+      .leftJoin(staff, eq(storeStaffAssignments.staffId, staff.staffId))
+      .where(eq(storeStaffAssignments.storeId, storeId))
+      .orderBy(staff.name);
+
+    return c.json(assignments);
+  })
+  .post("/inventory/stores/:storeId/staff", async (c) => {
+    const { storeId } = z.object({ storeId: z.coerce.number() }).parse(c.req.param());
+    const input = await jsonBody(c, staffAssignmentInput);
+
+    const [row] = await db
+      .insert(storeStaffAssignments)
+      .values({
+        storeId,
+        staffId: input.staffId,
+        canBill: input.canBill,
+        canReceive: input.canReceive,
+        canTransfer: input.canTransfer,
+        active: input.active,
+      })
+      .returning();
+
+    return c.json(row, 201);
+  })
+  .patch("/inventory/store-staff/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(
+      c,
+      z.object({
+        canBill: z.boolean().optional(),
+        canReceive: z.boolean().optional(),
+        canTransfer: z.boolean().optional(),
+        active: z.boolean().optional(),
+      })
+    );
+
+    const [updated] = await db
+      .update(storeStaffAssignments)
+      .set(input)
+      .where(eq(storeStaffAssignments.id, id))
+      .returning();
+
+    if (!updated) return c.json({ error: "Assignment not found" }, 404);
+    return c.json(updated);
+  })
+  .delete("/inventory/store-staff/:id", requireAdmin, async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [deleted] = await db.delete(storeStaffAssignments).where(eq(storeStaffAssignments.id, id)).returning();
+    if (!deleted) return c.json({ error: "Assignment not found" }, 404);
+    return c.json({ success: true });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Live Stock Inquiry
+  // ---------------------------------------------------------------------------
+  .get("/inventory/stock", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? Math.max(1, parseInt(query.page, 10)) : 1;
+    const limit = query.limit ? Math.max(1, parseInt(query.limit, 10)) : (query.pageSize ? Math.max(1, parseInt(query.pageSize, 10)) : 20);
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(storeBatchStock.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.itemId && query.itemId !== "all") {
+      conditions.push(eq(storeBatchStock.itemId, parseInt(query.itemId, 10)));
+    }
+    if (query.itemTypeId && query.itemTypeId !== "all") {
+      conditions.push(eq(items.itemTypeId, parseInt(query.itemTypeId, 10)));
+    }
+    if (query.isSaleable !== undefined && query.isSaleable !== "" && query.isSaleable !== "all") {
+      conditions.push(eq(items.isSaleable, query.isSaleable === "true"));
+    }
+    if (query.search && query.search.trim()) {
+      const s = `%${query.search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(items.name, s),
+          ilike(itemBatches.batchNumber, s),
+          ilike(items.barcode, s),
+          ilike(items.hsnCode, s),
+          ilike(itemBatches.barcode, s)
+        )
+      );
+    }
+    if (query.expiringBefore) {
+      conditions.push(lte(itemBatches.expiryDate, query.expiringBefore));
+    }
+    if (query.stockStatus === "in_stock") {
+      conditions.push(gt(storeBatchStock.quantityOnHand, 0));
+    } else if (query.stockStatus === "out_of_stock") {
+      conditions.push(lte(storeBatchStock.quantityOnHand, 0));
+    } else if (query.stockStatus === "low_stock") {
+      conditions.push(
+        and(
+          gt(storeBatchStock.quantityOnHand, 0),
+          lte(storeBatchStock.quantityOnHand, sql`COALESCE(${items.reorderLevel}, 0)`)
+        )
+      );
+    } else if (query.stockStatus === "expired") {
+      conditions.push(sql`${itemBatches.expiryDate} <= CURRENT_DATE`);
+    } else if (query.stockStatus === "expiring_soon_30") {
+      conditions.push(
+        sql`${itemBatches.expiryDate} > CURRENT_DATE AND ${itemBatches.expiryDate} <= CURRENT_DATE + INTERVAL '30 days'`
+      );
+    } else if (query.stockStatus === "expiring_soon_90") {
+      conditions.push(
+        sql`${itemBatches.expiryDate} > CURRENT_DATE AND ${itemBatches.expiryDate} <= CURRENT_DATE + INTERVAL '90 days'`
+      );
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(storeBatchStock)
+      .leftJoin(stores, eq(storeBatchStock.storeId, stores.id))
+      .leftJoin(items, eq(storeBatchStock.itemId, items.id))
+      .leftJoin(itemBatches, eq(storeBatchStock.batchId, itemBatches.id))
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    // Sorting
+    let orderByClause;
+    const isDesc = query.sortOrder === "desc";
+    const sortFn = isDesc ? desc : asc;
+
+    switch (query.sortBy) {
+      case "storeName":
+        orderByClause = [sortFn(stores.name), asc(items.name)];
+        break;
+      case "batchNumber":
+        orderByClause = [sortFn(itemBatches.batchNumber)];
+        break;
+      case "expiryDate":
+        orderByClause = [sortFn(itemBatches.expiryDate), asc(items.name)];
+        break;
+      case "quantityOnHand":
+        orderByClause = [sortFn(storeBatchStock.quantityOnHand)];
+        break;
+      case "availableQty":
+        orderByClause = [sortFn(storeBatchStock.availableQty)];
+        break;
+      case "purchaseRate":
+        orderByClause = [sortFn(itemBatches.purchaseRate)];
+        break;
+      case "mrp":
+        orderByClause = [sortFn(itemBatches.mrp)];
+        break;
+      case "itemName":
+      default:
+        orderByClause = [sortFn(items.name), asc(itemBatches.expiryDate)];
+        break;
+    }
+
+    const baseUnitAlias = alias(unitTypes, "base_unit_t");
+    const purchaseUnitAlias = alias(unitTypes, "pur_unit_t");
+    const saleUnitAlias = alias(unitTypes, "sale_unit_t");
+
+    const rows = await db
+      .select({
+        id: storeBatchStock.id,
+        storeId: storeBatchStock.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        itemId: storeBatchStock.itemId,
+        itemName: items.name,
+        itemBarcode: items.barcode,
+        hsnCode: items.hsnCode,
+        reorderLevel: items.reorderLevel,
+        unit: baseUnitAlias.symbol,
+        unitName: baseUnitAlias.name,
+        baseUnit: baseUnitAlias.symbol,
+        baseUnitName: baseUnitAlias.name,
+        purchaseUnit: purchaseUnitAlias.symbol,
+        purchaseUnitName: purchaseUnitAlias.name,
+        saleUnit: saleUnitAlias.symbol,
+        saleUnitName: saleUnitAlias.name,
+        itemTypeId: items.itemTypeId,
+        itemTypeName: itemTypes.name,
+        isSaleable: items.isSaleable,
+        batchId: storeBatchStock.batchId,
+        batchNumber: itemBatches.batchNumber,
+        batchBarcode: itemBatches.barcode,
+        expiryDate: itemBatches.expiryDate,
+        mrp: itemBatches.mrp,
+        purchaseRate: itemBatches.purchaseRate,
+        saleRate: itemBatches.saleRate,
+        quantityOnHand: storeBatchStock.quantityOnHand,
+        allocatedQty: storeBatchStock.allocatedQty,
+        availableQty: storeBatchStock.availableQty,
+        updatedAt: storeBatchStock.updatedAt,
+      })
+      .from(storeBatchStock)
+      .leftJoin(stores, eq(storeBatchStock.storeId, stores.id))
+      .leftJoin(items, eq(storeBatchStock.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(purchaseUnitAlias, eq(items.purchaseUnitId, purchaseUnitAlias.id))
+      .leftJoin(saleUnitAlias, eq(items.saleUnitId, saleUnitAlias.id))
+      .leftJoin(itemTypes, eq(items.itemTypeId, itemTypes.id))
+      .leftJoin(itemBatches, eq(storeBatchStock.batchId, itemBatches.id))
+      .where(whereClause)
+      .orderBy(...orderByClause)
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+  .get("/inventory/stock/summary", async (c) => {
+    const query = c.req.query();
+    const conditions = [];
+
+    if (query.storeId) {
+      conditions.push(eq(storeBatchStock.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.search) {
+      conditions.push(ilike(items.name, `%${query.search}%`));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const rows = await db
+      .select({
+        storeId: storeBatchStock.storeId,
+        storeName: stores.name,
+        itemId: storeBatchStock.itemId,
+        itemName: items.name,
+        unit: unitTypes.symbol,
+        totalQuantityOnHand: sql<number>`sum(${storeBatchStock.quantityOnHand})`,
+        totalAvailableQty: sql<number>`sum(${storeBatchStock.availableQty})`,
+        batchCount: sql<number>`count(${storeBatchStock.batchId})`,
+      })
+      .from(storeBatchStock)
+      .leftJoin(stores, eq(storeBatchStock.storeId, stores.id))
+      .leftJoin(items, eq(storeBatchStock.itemId, items.id))
+      .leftJoin(unitTypes, eq(items.baseUnitId, unitTypes.id))
+      .where(whereClause)
+      .groupBy(storeBatchStock.storeId, stores.name, storeBatchStock.itemId, items.name, unitTypes.symbol)
+      .orderBy(items.name);
+
+    return c.json(rows);
+  })
+
+  // ---------------------------------------------------------------------------
+  // Immutable Stock Ledger Inquiry
+  // ---------------------------------------------------------------------------
+  .get("/inventory/ledger", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? Math.max(1, parseInt(query.page, 10)) : 1;
+    const limit = query.limit ? Math.max(1, parseInt(query.limit, 10)) : (query.pageSize ? Math.max(1, parseInt(query.pageSize, 10)) : 20);
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(stockLedger.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.itemId && query.itemId !== "all") {
+      conditions.push(eq(stockLedger.itemId, parseInt(query.itemId, 10)));
+    }
+    if (query.batchId && query.batchId !== "all") {
+      conditions.push(eq(stockLedger.batchId, parseInt(query.batchId, 10)));
+    }
+    if (query.movementType && query.movementType !== "all") {
+      conditions.push(eq(stockLedger.movementType, query.movementType as any));
+    }
+    if (query.search && query.search.trim()) {
+      const s = `%${query.search.trim()}%`;
+      conditions.push(
+        or(
+          ilike(items.name, s),
+          ilike(itemBatches.batchNumber, s),
+          ilike(stockLedger.referenceType, s),
+          sql`${stockLedger.referenceId}::text ILIKE ${s}`
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(stockLedger.transactionDate, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const toDate = new Date(query.dateTo);
+      toDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockLedger.transactionDate, toDate));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stockLedger)
+      .leftJoin(items, eq(stockLedger.itemId, items.id))
+      .leftJoin(itemBatches, eq(stockLedger.batchId, itemBatches.id))
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const baseUnitAlias = alias(unitTypes, "base_unit_ledger_t");
+    const purchaseUnitAlias = alias(unitTypes, "pur_unit_ledger_t");
+    const saleUnitAlias = alias(unitTypes, "sale_unit_ledger_t");
+
+    const rows = await db
+      .select({
+        id: stockLedger.id,
+        transactionDate: stockLedger.transactionDate,
+        storeId: stockLedger.storeId,
+        storeName: stores.name,
+        itemId: stockLedger.itemId,
+        itemName: items.name,
+        unit: baseUnitAlias.symbol,
+        unitName: baseUnitAlias.name,
+        baseUnit: baseUnitAlias.symbol,
+        purchaseUnit: purchaseUnitAlias.symbol,
+        saleUnit: saleUnitAlias.symbol,
+        batchId: stockLedger.batchId,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        movementType: stockLedger.movementType,
+        referenceType: stockLedger.referenceType,
+        referenceId: stockLedger.referenceId,
+        quantityChange: stockLedger.quantityChange,
+        balanceAfter: stockLedger.balanceAfter,
+        costPrice: stockLedger.costPrice,
+        salePrice: stockLedger.salePrice,
+        createdBy: stockLedger.createdBy,
+        createdByName: user.name,
+      })
+      .from(stockLedger)
+      .leftJoin(stores, eq(stockLedger.storeId, stores.id))
+      .leftJoin(items, eq(stockLedger.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(purchaseUnitAlias, eq(items.purchaseUnitId, purchaseUnitAlias.id))
+      .leftJoin(saleUnitAlias, eq(items.saleUnitId, saleUnitAlias.id))
+      .leftJoin(itemBatches, eq(stockLedger.batchId, itemBatches.id))
+      .leftJoin(user, eq(stockLedger.createdBy, user.id))
+      .where(whereClause)
+      .orderBy(desc(stockLedger.transactionDate), desc(stockLedger.id))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Physical Stock Adjustments
+  // ---------------------------------------------------------------------------
+  .get("/inventory/adjustments", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(stockAdjustments.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(stockAdjustments.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(stockAdjustments.adjustmentNo, `%${query.search}%`),
+          ilike(stockAdjustments.reason, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(stockAdjustments.createdAt, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(stockAdjustments.createdAt, end));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(stockAdjustments)
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const rows = await db
+      .select({
+        id: stockAdjustments.id,
+        adjustmentNo: stockAdjustments.adjustmentNo,
+        storeId: stockAdjustments.storeId,
+        storeName: stores.name,
+        reason: stockAdjustments.reason,
+        status: stockAdjustments.status,
+        createdBy: stockAdjustments.createdBy,
+        createdByName: user.name,
+        createdAt: stockAdjustments.createdAt,
+      })
+      .from(stockAdjustments)
+      .leftJoin(stores, eq(stockAdjustments.storeId, stores.id))
+      .leftJoin(user, eq(stockAdjustments.createdBy, user.id))
+      .where(whereClause)
+      .orderBy(desc(stockAdjustments.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+  .get("/inventory/adjustments/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const [adj] = await db
+      .select({
+        id: stockAdjustments.id,
+        adjustmentNo: stockAdjustments.adjustmentNo,
+        storeId: stockAdjustments.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        reason: stockAdjustments.reason,
+        status: stockAdjustments.status,
+        createdBy: stockAdjustments.createdBy,
+        createdByName: user.name,
+        createdAt: stockAdjustments.createdAt,
+      })
+      .from(stockAdjustments)
+      .leftJoin(stores, eq(stockAdjustments.storeId, stores.id))
+      .leftJoin(user, eq(stockAdjustments.createdBy, user.id))
+      .where(eq(stockAdjustments.id, id));
+
+    if (!adj) return c.json({ error: "Stock adjustment not found" }, 404);
+
+    const baseUnitAlias = alias(unitTypes, "adj_base_unit");
+    const itemUnitAlias = alias(unitTypes, "adj_item_unit");
+
+    const itemsList = await db
+      .select({
+        id: stockAdjustmentItems.id,
+        itemId: stockAdjustmentItems.itemId,
+        itemName: items.name,
+        unitId: stockAdjustmentItems.unitId,
+        unit: sql<string>`COALESCE(${itemUnitAlias.symbol}, ${baseUnitAlias.symbol})`,
+        batchId: stockAdjustmentItems.batchId,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        systemQty: stockAdjustmentItems.systemQty,
+        physicalQty: stockAdjustmentItems.physicalQty,
+        differenceQty: stockAdjustmentItems.differenceQty,
+        type: stockAdjustmentItems.type,
+      })
+      .from(stockAdjustmentItems)
+      .leftJoin(items, eq(stockAdjustmentItems.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(itemUnitAlias, eq(stockAdjustmentItems.unitId, itemUnitAlias.id))
+      .leftJoin(itemBatches, eq(stockAdjustmentItems.batchId, itemBatches.id))
+      .where(eq(stockAdjustmentItems.adjustmentId, id));
+
+    return c.json({ ...adj, items: itemsList });
+  })
+  .post("/inventory/adjustments", async (c) => {
+    const input = await jsonBody(c, adjustmentInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    try {
+      const createdAdj = await db.transaction(async (tx) => {
+        const adjustmentNo = await generateDocNumber(tx, "ADJ");
+
+        const [adj] = await tx
+          .insert(stockAdjustments)
+          .values({
+            adjustmentNo,
+            storeId: input.storeId,
+            reason: input.reason,
+            status: "draft",
+            createdBy: userId || null,
+          })
+          .returning();
+
+        for (const item of input.items) {
+          const diff = item.physicalQty - item.systemQty;
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          await tx.insert(stockAdjustmentItems).values({
+            adjustmentId: adj.id,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            systemQty: item.systemQty,
+            physicalQty: item.physicalQty,
+            differenceQty: diff,
+            unitId: resolvedUnitId || null,
+            type: item.type as any,
+          });
+        }
+
+        return adj;
+      });
+
+      return c.json(createdAdj, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to create adjustment" }, 400);
+    }
+  })
+  .patch("/inventory/adjustments/:id/post", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const adj = await db.query.stockAdjustments.findFirst({
+      where: eq(stockAdjustments.id, id),
+      with: {
+        items: true,
+      },
+    });
+
+    if (!adj) return c.json({ error: "Stock adjustment not found" }, 404);
+    if (adj.status !== "draft") {
+      return c.json({ error: `Adjustment cannot be posted from '${adj.status}' status` }, 400);
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of adj.items) {
+          const diff = Number(item.differenceQty);
+          if (diff === 0) continue;
+
+          // Convert difference quantity to base unit if recorded with a custom unit type
+          const { baseQuantity } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            Math.abs(diff),
+            item.unitId
+          );
+
+          const quantityChange = diff > 0 ? baseQuantity : -baseQuantity;
+
+          if (quantityChange > 0) {
+            await recordStockMovement(tx, {
+              storeId: adj.storeId,
+              itemId: item.itemId,
+              batchId: item.batchId,
+              movementType: "ADJUSTMENT_ADD",
+              referenceType: "STOCK_ADJUSTMENT",
+              referenceId: adj.id,
+              quantityChange,
+              userId: userId || null,
+            });
+          } else {
+            await recordStockMovement(tx, {
+              storeId: adj.storeId,
+              itemId: item.itemId,
+              batchId: item.batchId,
+              movementType: item.type === "damaged" || item.type === "expired" ? "DAMAGE" : "ADJUSTMENT_SUB",
+              referenceType: "STOCK_ADJUSTMENT",
+              referenceId: adj.id,
+              quantityChange,
+              userId: userId || null,
+            });
+          }
+        }
+
+        await tx
+          .update(stockAdjustments)
+          .set({
+            status: "posted",
+            approvedBy: userId || null,
+          })
+          .where(eq(stockAdjustments.id, id));
+      });
+
+      return c.json({ success: true, message: "Stock adjustment successfully posted to ledger" });
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to post adjustment" }, 400);
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Purchase Invoices (Vendor Bills matched against GRNs)
+  // ---------------------------------------------------------------------------
+  .get("/inventory/purchase-invoices", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.vendorId && query.vendorId !== "all") {
+      conditions.push(eq(purchaseInvoices.vendorId, parseInt(query.vendorId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(purchaseInvoices.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(purchaseInvoices.invoiceNo, `%${query.search}%`),
+          ilike(vendors.name, `%${query.search}%`),
+          ilike(grns.grnNo, `%${query.search}%`),
+          ilike(purchaseOrders.poNo, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(purchaseInvoices.invoiceDate, query.dateFrom));
+    }
+    if (query.dateTo) {
+      conditions.push(lte(purchaseInvoices.invoiceDate, query.dateTo));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(purchaseInvoices)
+      .leftJoin(vendors, eq(purchaseInvoices.vendorId, vendors.id))
+      .leftJoin(grns, eq(purchaseInvoices.grnId, grns.id))
+      .leftJoin(purchaseOrders, eq(purchaseInvoices.poId, purchaseOrders.id))
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const rows = await db
+      .select({
+        id: purchaseInvoices.id,
+        invoiceNo: purchaseInvoices.invoiceNo,
+        invoiceDate: purchaseInvoices.invoiceDate,
+        vendorId: purchaseInvoices.vendorId,
+        vendorName: vendors.name,
+        grnId: purchaseInvoices.grnId,
+        grnNo: grns.grnNo,
+        poId: purchaseInvoices.poId,
+        poNo: purchaseOrders.poNo,
+        status: purchaseInvoices.status,
+        subtotal: purchaseInvoices.subtotal,
+        discountAmount: purchaseInvoices.discountAmount,
+        taxableAmount: purchaseInvoices.taxableAmount,
+        cgstAmount: purchaseInvoices.cgstAmount,
+        sgstAmount: purchaseInvoices.sgstAmount,
+        igstAmount: purchaseInvoices.igstAmount,
+        tdsAmount: purchaseInvoices.tdsAmount,
+        roundOff: purchaseInvoices.roundOff,
+        netAmount: purchaseInvoices.netAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+        balanceAmount: sql<number>`(${purchaseInvoices.netAmount} - ${purchaseInvoices.paidAmount})`,
+        creditDays: purchaseInvoices.creditDays,
+        dueDate: purchaseInvoices.dueDate,
+        remarks: purchaseInvoices.remarks,
+        createdAt: purchaseInvoices.createdAt,
+      })
+      .from(purchaseInvoices)
+      .leftJoin(vendors, eq(purchaseInvoices.vendorId, vendors.id))
+      .leftJoin(grns, eq(purchaseInvoices.grnId, grns.id))
+      .leftJoin(purchaseOrders, eq(purchaseInvoices.poId, purchaseOrders.id))
+      .where(whereClause)
+      .orderBy(desc(purchaseInvoices.invoiceDate), desc(purchaseInvoices.id))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+  .get("/inventory/purchase-invoices/unbilled-grns", async (c) => {
+    const query = c.req.query();
+    const vendorId = query.vendorId ? parseInt(query.vendorId, 10) : undefined;
+
+    // Subquery: all grnIds already billed in an active purchase invoice
+    const billedGrnsSubquery = db
+      .select({ grnId: purchaseInvoices.grnId })
+      .from(purchaseInvoices)
+      .where(
+        and(
+          sql`${purchaseInvoices.grnId} IS NOT NULL`,
+          sql`${purchaseInvoices.status} != 'cancelled'`
+        )
+      );
+
+    const conditions = [
+      eq(grns.status, "posted"),
+      sql`${grns.id} NOT IN (${billedGrnsSubquery})`,
+    ];
+
+    if (vendorId && !isNaN(vendorId)) {
+      conditions.push(eq(grns.vendorId, vendorId));
+    }
+
+    const availableGrns = await db
+      .select({
+        id: grns.id,
+        grnNo: grns.grnNo,
+        grnDate: grns.grnDate,
+        dateOfDelivery: grns.dateOfDelivery,
+        poId: grns.poId,
+        poNo: purchaseOrders.poNo,
+        vendorId: grns.vendorId,
+        vendorName: vendors.name,
+        status: grns.status,
+        discountAmount: grns.discountAmount,
+        remarks: grns.remarks,
+        createdAt: grns.createdAt,
+      })
+      .from(grns)
+      .leftJoin(vendors, eq(grns.vendorId, vendors.id))
+      .leftJoin(purchaseOrders, eq(grns.poId, purchaseOrders.id))
+      .where(and(...conditions))
+      .orderBy(desc(grns.grnDate), desc(grns.id));
+
+    const grnIds = availableGrns.map((g) => g.id);
+    if (grnIds.length === 0) {
+      return c.json([]);
+    }
+
+    const itemsRows = await db
+      .select({
+        id: grnItems.id,
+        grnId: grnItems.grnId,
+        poItemId: grnItems.poItemId,
+        itemId: grnItems.itemId,
+        itemName: sql<string>`coalesce(${grnItems.itemName}, ${items.name})`,
+        batchId: grnItems.batchId,
+        batch: grnItems.batch,
+        expiryDate: grnItems.expiryDate,
+        unitId: grnItems.unitId,
+        unitSymbol: unitTypes.symbol,
+        unitName: unitTypes.name,
+        receivedQty: grnItems.receivedQty,
+        freeQty: grnItems.freeQty,
+        unitRate: sql<number>`coalesce(${grnItems.unitRate}, ${poItems.unitRate}, ${items.rate}, 0)`,
+        discountPercent: sql<number>`coalesce(${grnItems.discountPercent}, 0)`,
+        discountAmount: sql<number>`coalesce(${grnItems.discountAmount}, 0)`,
+        taxableAmount: grnItems.taxableAmount,
+        gstPercent: sql<number>`coalesce(${grnItems.gstPercent}, ${poItems.gstPercent}, ${items.gstPercent}, 0)`,
+        poOrderedQty: sql<number>`coalesce(${poItems.orderedQty}, ${grnItems.receivedQty}, 0)`,
+        notes: grnItems.notes,
+      })
+      .from(grnItems)
+      .leftJoin(items, eq(grnItems.itemId, items.id))
+      .leftJoin(unitTypes, eq(grnItems.unitId, unitTypes.id))
+      .leftJoin(poItems, eq(grnItems.poItemId, poItems.id))
+      .where(inArray(grnItems.grnId, grnIds));
+
+    const itemsByGrnId = new Map<number, any[]>();
+    for (const item of itemsRows) {
+      if (!itemsByGrnId.has(item.grnId)) {
+        itemsByGrnId.set(item.grnId, []);
+      }
+      itemsByGrnId.get(item.grnId)!.push({
+        ...item,
+        unit: item.unitSymbol || item.unitName || "unit",
+      });
+    }
+
+    const result = availableGrns.map((grn) => ({
+      ...grn,
+      items: itemsByGrnId.get(grn.id) || [],
+    }));
+
+    return c.json(result);
+  })
+  .get("/inventory/purchase-invoices/pending", async (c) => {
+    const rows = await db
+      .select({
+        id: purchaseInvoices.id,
+        invoiceNo: purchaseInvoices.invoiceNo,
+        invoiceDate: purchaseInvoices.invoiceDate,
+        vendorId: purchaseInvoices.vendorId,
+        vendorName: vendors.name,
+        status: purchaseInvoices.status,
+        netAmount: purchaseInvoices.netAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+        balanceAmount: sql<number>`(${purchaseInvoices.netAmount} - ${purchaseInvoices.paidAmount})`,
+        dueDate: purchaseInvoices.dueDate,
+        creditDays: purchaseInvoices.creditDays,
+      })
+      .from(purchaseInvoices)
+      .leftJoin(vendors, eq(purchaseInvoices.vendorId, vendors.id))
+      .where(
+        and(
+          inArray(purchaseInvoices.status, ["verified", "approved", "partially_paid"] as any),
+          sql`(${purchaseInvoices.netAmount} - ${purchaseInvoices.paidAmount}) > 0`
+        )
+      )
+      .orderBy(asc(purchaseInvoices.dueDate));
+
+    return c.json(rows);
+  })
+  .get("/inventory/purchase-invoices/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const [invoice] = await db
+      .select({
+        id: purchaseInvoices.id,
+        invoiceNo: purchaseInvoices.invoiceNo,
+        invoiceDate: purchaseInvoices.invoiceDate,
+        vendorId: purchaseInvoices.vendorId,
+        vendorName: vendors.name,
+        vendorGst: vendors.gstNumber,
+        vendorPhone: vendors.phone,
+        vendorAddress: vendors.address,
+        grnId: purchaseInvoices.grnId,
+        grnNo: grns.grnNo,
+        poId: purchaseInvoices.poId,
+        poNo: purchaseOrders.poNo,
+        status: purchaseInvoices.status,
+        subtotal: purchaseInvoices.subtotal,
+        discountAmount: purchaseInvoices.discountAmount,
+        taxableAmount: purchaseInvoices.taxableAmount,
+        cgstAmount: purchaseInvoices.cgstAmount,
+        sgstAmount: purchaseInvoices.sgstAmount,
+        igstAmount: purchaseInvoices.igstAmount,
+        tdsAmount: purchaseInvoices.tdsAmount,
+        roundOff: purchaseInvoices.roundOff,
+        netAmount: purchaseInvoices.netAmount,
+        paidAmount: purchaseInvoices.paidAmount,
+        balanceAmount: sql<number>`(${purchaseInvoices.netAmount} - ${purchaseInvoices.paidAmount})`,
+        creditDays: purchaseInvoices.creditDays,
+        dueDate: purchaseInvoices.dueDate,
+        remarks: purchaseInvoices.remarks,
+        verifiedBy: purchaseInvoices.verifiedBy,
+        approvedBy: purchaseInvoices.approvedBy,
+        createdBy: purchaseInvoices.createdBy,
+        createdAt: purchaseInvoices.createdAt,
+      })
+      .from(purchaseInvoices)
+      .leftJoin(vendors, eq(purchaseInvoices.vendorId, vendors.id))
+      .leftJoin(grns, eq(purchaseInvoices.grnId, grns.id))
+      .leftJoin(purchaseOrders, eq(purchaseInvoices.poId, purchaseOrders.id))
+      .where(eq(purchaseInvoices.id, id));
+
+    if (!invoice) return c.json({ error: "Purchase invoice not found" }, 404);
+
+    const itemsList = await db
+      .select({
+        id: purchaseInvoiceItems.id,
+        itemId: purchaseInvoiceItems.itemId,
+        itemName: items.name,
+        grnItemId: purchaseInvoiceItems.grnItemId,
+        quantity: purchaseInvoiceItems.quantity,
+        unitId: purchaseInvoiceItems.unitId,
+        unitSymbol: unitTypes.symbol,
+        unitName: unitTypes.name,
+        unitRate: purchaseInvoiceItems.unitRate,
+        discountPercent: purchaseInvoiceItems.discountPercent,
+        discountAmount: purchaseInvoiceItems.discountAmount,
+        taxableAmount: purchaseInvoiceItems.taxableAmount,
+        hsnCode: purchaseInvoiceItems.hsnCode,
+        gstPercent: purchaseInvoiceItems.gstPercent,
+        cgstAmount: purchaseInvoiceItems.cgstAmount,
+        sgstAmount: purchaseInvoiceItems.sgstAmount,
+        igstAmount: purchaseInvoiceItems.igstAmount,
+        totalAmount: purchaseInvoiceItems.totalAmount,
+        grnReceivedQty: grnItems.receivedQty,
+        poOrderedQty: poItems.orderedQty,
+      })
+      .from(purchaseInvoiceItems)
+      .leftJoin(items, eq(purchaseInvoiceItems.itemId, items.id))
+      .leftJoin(unitTypes, eq(purchaseInvoiceItems.unitId, unitTypes.id))
+      .leftJoin(grnItems, eq(purchaseInvoiceItems.grnItemId, grnItems.id))
+      .leftJoin(poItems, eq(grnItems.poItemId, poItems.id))
+      .where(eq(purchaseInvoiceItems.invoiceId, id));
+
+    const paymentsList = await db
+      .select({
+        id: purchaseInvoicePayments.id,
+        paymentDate: purchaseInvoicePayments.paymentDate,
+        amount: purchaseInvoicePayments.amount,
+        paymentMode: purchaseInvoicePayments.paymentMode,
+        referenceNo: purchaseInvoicePayments.referenceNo,
+        remarks: purchaseInvoicePayments.remarks,
+        createdBy: purchaseInvoicePayments.createdBy,
+        createdByName: user.name,
+        createdAt: purchaseInvoicePayments.createdAt,
+      })
+      .from(purchaseInvoicePayments)
+      .leftJoin(user, eq(purchaseInvoicePayments.createdBy, user.id))
+      .where(eq(purchaseInvoicePayments.invoiceId, id))
+      .orderBy(desc(purchaseInvoicePayments.paymentDate));
+
+    return c.json({
+      ...invoice,
+      items: itemsList,
+      payments: paymentsList,
+    });
+  })
+  .post("/inventory/purchase-invoices", async (c) => {
+    const input = await jsonBody(c, purchaseInvoiceInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    try {
+      const createdInvoice = await db.transaction(async (tx) => {
+        let computedDueDate = input.dueDate;
+        if (!computedDueDate && input.creditDays) {
+          const d = new Date(input.invoiceDate);
+          d.setDate(d.getDate() + input.creditDays);
+          computedDueDate = d.toISOString().split("T")[0];
+        }
+
+        const [invoice] = await tx
+          .insert(purchaseInvoices)
+          .values({
+            invoiceNo: input.invoiceNo,
+            invoiceDate: input.invoiceDate,
+            vendorId: input.vendorId,
+            grnId: input.grnId || null,
+            poId: input.poId || null,
+            status: "draft",
+            subtotal: input.subtotal,
+            discountAmount: input.discountAmount,
+            taxableAmount: input.taxableAmount,
+            cgstAmount: input.cgstAmount,
+            sgstAmount: input.sgstAmount,
+            igstAmount: input.igstAmount,
+            tdsAmount: input.tdsAmount,
+            roundOff: input.roundOff,
+            netAmount: input.netAmount,
+            creditDays: input.creditDays,
+            dueDate: computedDueDate || null,
+            remarks: input.remarks || null,
+            createdBy: userId || null,
+          })
+          .returning();
+
+        for (const item of input.items) {
+          await tx.insert(purchaseInvoiceItems).values({
+            invoiceId: invoice.id,
+            itemId: item.itemId,
+            grnItemId: item.grnItemId || null,
+            quantity: item.quantity,
+            unitId: item.unitId,
+            unitRate: item.unitRate,
+            discountPercent: item.discountPercent,
+            discountAmount: item.discountAmount,
+            taxableAmount: item.taxableAmount,
+            hsnCode: item.hsnCode || null,
+            gstPercent: item.gstPercent,
+            cgstAmount: item.cgstAmount,
+            sgstAmount: item.sgstAmount,
+            igstAmount: item.igstAmount,
+            totalAmount: item.totalAmount,
+          });
+        }
+
+        return invoice;
+      });
+
+      return c.json(createdInvoice, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to create purchase invoice" }, 400);
+    }
+  })
+  .patch("/inventory/purchase-invoices/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, purchaseInvoiceInput);
+
+    const [existing] = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    if (!existing) return c.json({ error: "Purchase invoice not found" }, 404);
+    if (existing.status === "paid" || existing.status === "cancelled") {
+      return c.json({ error: `Cannot edit invoice in '${existing.status}' status` }, 400);
+    }
+
+    try {
+      const updatedInvoice = await db.transaction(async (tx) => {
+        let computedDueDate = input.dueDate;
+        if (!computedDueDate && input.creditDays) {
+          const d = new Date(input.invoiceDate);
+          d.setDate(d.getDate() + input.creditDays);
+          computedDueDate = d.toISOString().split("T")[0];
+        }
+
+        const [invoice] = await tx
+          .update(purchaseInvoices)
+          .set({
+            invoiceNo: input.invoiceNo,
+            invoiceDate: input.invoiceDate,
+            vendorId: input.vendorId,
+            grnId: input.grnId || null,
+            poId: input.poId || null,
+            subtotal: input.subtotal,
+            discountAmount: input.discountAmount,
+            taxableAmount: input.taxableAmount,
+            cgstAmount: input.cgstAmount,
+            sgstAmount: input.sgstAmount,
+            igstAmount: input.igstAmount,
+            tdsAmount: input.tdsAmount,
+            roundOff: input.roundOff,
+            netAmount: input.netAmount,
+            creditDays: input.creditDays,
+            dueDate: computedDueDate || null,
+            remarks: input.remarks || null,
+          })
+          .where(eq(purchaseInvoices.id, id))
+          .returning();
+
+        // Replace items
+        await tx.delete(purchaseInvoiceItems).where(eq(purchaseInvoiceItems.invoiceId, id));
+
+        for (const item of input.items) {
+          await tx.insert(purchaseInvoiceItems).values({
+            invoiceId: invoice.id,
+            itemId: item.itemId,
+            grnItemId: item.grnItemId || null,
+            quantity: item.quantity,
+            unitId: item.unitId,
+            unitRate: item.unitRate,
+            discountPercent: item.discountPercent,
+            discountAmount: item.discountAmount,
+            taxableAmount: item.taxableAmount,
+            hsnCode: item.hsnCode || null,
+            gstPercent: item.gstPercent,
+            cgstAmount: item.cgstAmount,
+            sgstAmount: item.sgstAmount,
+            igstAmount: item.igstAmount,
+            totalAmount: item.totalAmount,
+          });
+        }
+
+        return invoice;
+      });
+
+      return c.json(updatedInvoice);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to update purchase invoice" }, 400);
+    }
+  })
+  .patch("/inventory/purchase-invoices/:id/verify", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const [existing] = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    if (!existing) return c.json({ error: "Purchase invoice not found" }, 404);
+
+    const [updated] = await db
+      .update(purchaseInvoices)
+      .set({
+        status: "verified",
+        verifiedBy: userId || null,
+      })
+      .where(eq(purchaseInvoices.id, id))
+      .returning();
+
+    return c.json({ success: true, invoice: updated });
+  })
+  .patch("/inventory/purchase-invoices/:id/approve", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const [existing] = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    if (!existing) return c.json({ error: "Purchase invoice not found" }, 404);
+
+    const [updated] = await db
+      .update(purchaseInvoices)
+      .set({
+        status: "approved",
+        approvedBy: userId || null,
+      })
+      .where(eq(purchaseInvoices.id, id))
+      .returning();
+
+    return c.json({ success: true, invoice: updated });
+  })
+  .post("/inventory/purchase-invoices/:id/payments", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, purchaseInvoicePaymentInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const [invoice] = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    if (!invoice) return c.json({ error: "Purchase invoice not found" }, 404);
+
+    const newPaidAmount = Number(invoice.paidAmount || 0) + input.amount;
+    const netAmount = Number(invoice.netAmount || 0);
+    const newStatus = newPaidAmount >= netAmount ? "paid" : "partially_paid";
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [payment] = await tx
+          .insert(purchaseInvoicePayments)
+          .values({
+            invoiceId: id,
+            paymentDate: input.paymentDate,
+            amount: input.amount,
+            paymentMode: input.paymentMode,
+            referenceNo: input.referenceNo || null,
+            remarks: input.remarks || null,
+            createdBy: userId || null,
+          })
+          .returning();
+
+        const [updatedInvoice] = await tx
+          .update(purchaseInvoices)
+          .set({
+            paidAmount: newPaidAmount,
+            status: newStatus,
+          })
+          .where(eq(purchaseInvoices.id, id))
+          .returning();
+
+        return { payment, invoice: updatedInvoice };
+      });
+
+      return c.json(result, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to record payment" }, 400);
+    }
+  })
+  .delete("/inventory/purchase-invoices/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const [existing] = await db.select().from(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    if (!existing) return c.json({ error: "Purchase invoice not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft invoices can be deleted" }, 400);
+    }
+
+    await db.delete(purchaseInvoices).where(eq(purchaseInvoices.id, id));
+    return c.json({ success: true, message: "Purchase invoice deleted successfully" });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Inventory Reports & Analytics
+  // ---------------------------------------------------------------------------
+  .get("/inventory/reports/stock-valuation", async (c) => {
+    const query = c.req.query();
+    const storeId = query.storeId ? parseInt(query.storeId, 10) : undefined;
+
+    const conditions = [];
+    if (storeId) {
+      conditions.push(eq(storeBatchStock.storeId, storeId));
+    }
+    conditions.push(sql`${storeBatchStock.quantityOnHand} > 0`);
+
+    const rows = await db
+      .select({
+        storeId: storeBatchStock.storeId,
+        storeName: stores.name,
+        itemId: storeBatchStock.itemId,
+        itemName: items.name,
+        unit: unitTypes.symbol,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        purchaseRate: itemBatches.purchaseRate,
+        mrp: itemBatches.mrp,
+        quantityOnHand: storeBatchStock.quantityOnHand,
+        totalCostValue: sql<number>`round((${storeBatchStock.quantityOnHand} * coalesce(${itemBatches.purchaseRate}, 0))::numeric, 2)`,
+        totalMrpValue: sql<number>`round((${storeBatchStock.quantityOnHand} * coalesce(${itemBatches.mrp}, 0))::numeric, 2)`,
+      })
+      .from(storeBatchStock)
+      .innerJoin(stores, eq(storeBatchStock.storeId, stores.id))
+      .innerJoin(items, eq(storeBatchStock.itemId, items.id))
+      .leftJoin(unitTypes, eq(items.baseUnitId, unitTypes.id))
+      .innerJoin(itemBatches, eq(storeBatchStock.batchId, itemBatches.id))
+      .where(and(...conditions))
+      .orderBy(stores.name, items.name);
+
+    const totalValuation = rows.reduce((sum, r) => sum + Number(r.totalCostValue || 0), 0);
+    const totalMrpValuation = rows.reduce((sum, r) => sum + Number(r.totalMrpValue || 0), 0);
+
+    return c.json({
+      summary: {
+        totalItems: rows.length,
+        totalCostValuation: Number(totalValuation.toFixed(2)),
+        totalMrpValuation: Number(totalMrpValuation.toFixed(2)),
+      },
+      data: rows,
+    });
+  })
+  .get("/inventory/reports/expiry-alert", async (c) => {
+    const query = c.req.query();
+    const daysThreshold = query.days ? parseInt(query.days, 10) : 90;
+    const storeId = query.storeId ? parseInt(query.storeId, 10) : undefined;
+
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + daysThreshold);
+    const targetDateStr = targetDate.toISOString().split("T")[0];
+
+    const conditions = [
+      sql`${storeBatchStock.quantityOnHand} > 0`,
+      sql`${itemBatches.expiryDate} <= ${targetDateStr}`,
+    ];
+
+    if (storeId) {
+      conditions.push(eq(storeBatchStock.storeId, storeId));
+    }
+
+    const atRiskBatches = await db
+      .select({
+        storeId: storeBatchStock.storeId,
+        storeName: stores.name,
+        itemId: storeBatchStock.itemId,
+        itemName: items.name,
+        unit: unitTypes.symbol,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        purchaseRate: itemBatches.purchaseRate,
+        quantityOnHand: storeBatchStock.quantityOnHand,
+        totalValue: sql<number>`round((${storeBatchStock.quantityOnHand} * coalesce(${itemBatches.purchaseRate}, 0))::numeric, 2)`,
+      })
+      .from(storeBatchStock)
+      .innerJoin(stores, eq(storeBatchStock.storeId, stores.id))
+      .innerJoin(items, eq(storeBatchStock.itemId, items.id))
+      .leftJoin(unitTypes, eq(items.baseUnitId, unitTypes.id))
+      .innerJoin(itemBatches, eq(storeBatchStock.batchId, itemBatches.id))
+      .where(and(...conditions))
+      .orderBy(asc(itemBatches.expiryDate));
+
+    return c.json(atRiskBatches);
+  })
+  .get("/inventory/reports/reorder-alerts", async (c) => {
+    const reorderItems = await db
+      .select({
+        itemId: items.id,
+        itemName: items.name,
+        unit: unitTypes.symbol,
+        reorderLevel: items.reorderLevel,
+        reorderQty: items.reorderQty,
+        rate: items.rate,
+        currentStock: sql<number>`coalesce(sum(${storeBatchStock.quantityOnHand}), 0)`,
+      })
+      .from(items)
+      .leftJoin(unitTypes, eq(items.baseUnitId, unitTypes.id))
+      .leftJoin(storeBatchStock, eq(items.id, storeBatchStock.itemId))
+      .where(sql`${items.reorderLevel} > 0`)
+      .groupBy(items.id, items.name, unitTypes.symbol, items.reorderLevel, items.reorderQty, items.rate)
+      .having(sql`coalesce(sum(${storeBatchStock.quantityOnHand}), 0) <= ${items.reorderLevel}`);
+
+    return c.json(reorderItems);
+  })
+
+  // ---------------------------------------------------------------------------
+  // Internal Consumptions & Returns
+  // ---------------------------------------------------------------------------
+
+  .get("/inventory/consumptions/can-post", async (c) => {
+    const query = c.req.query();
+    const storeId = query.storeId ? parseInt(query.storeId, 10) : 0;
+    if (!storeId) return c.json({ canPost: false });
+    const canPost = await canPostConsumptionVoucher(c, storeId);
+    return c.json({ canPost });
+  })
+
+  .get("/inventory/consumptions", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(consumptionVouchers.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(consumptionVouchers.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(consumptionVouchers.voucherNo, `%${query.search}%`),
+          ilike(consumptionVouchers.purpose, `%${query.search}%`),
+          ilike(consumptionVouchers.remarks, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(consumptionVouchers.voucherDate, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(consumptionVouchers.voucherDate, end));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(consumptionVouchers)
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const createdByUser = alias(user, "cv_created_user");
+    const postedByUser = alias(user, "cv_posted_user");
+
+    const rows = await db
+      .select({
+        id: consumptionVouchers.id,
+        voucherNo: consumptionVouchers.voucherNo,
+        voucherDate: consumptionVouchers.voucherDate,
+        storeId: consumptionVouchers.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        purpose: consumptionVouchers.purpose,
+        status: consumptionVouchers.status,
+        remarks: consumptionVouchers.remarks,
+        createdBy: consumptionVouchers.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionVouchers.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionVouchers.postedAt,
+        createdAt: consumptionVouchers.createdAt,
+        totalCost: sql<number>`COALESCE((SELECT SUM(total_cost) FROM inventory.consumption_voucher_items WHERE voucher_id = ${consumptionVouchers.id}), 0)`,
+        itemCount: sql<number>`COALESCE((SELECT COUNT(*) FROM inventory.consumption_voucher_items WHERE voucher_id = ${consumptionVouchers.id}), 0)`,
+      })
+      .from(consumptionVouchers)
+      .leftJoin(stores, eq(consumptionVouchers.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(createdByUser, eq(consumptionVouchers.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionVouchers.postedBy, postedByUser.id))
+      .where(whereClause)
+      .orderBy(desc(consumptionVouchers.voucherDate), desc(consumptionVouchers.id))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+
+  .get("/inventory/consumptions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const createdByUser = alias(user, "cv_detail_created_user");
+    const postedByUser = alias(user, "cv_detail_posted_user");
+
+    const [voucher] = await db
+      .select({
+        id: consumptionVouchers.id,
+        voucherNo: consumptionVouchers.voucherNo,
+        voucherDate: consumptionVouchers.voucherDate,
+        storeId: consumptionVouchers.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        purpose: consumptionVouchers.purpose,
+        status: consumptionVouchers.status,
+        remarks: consumptionVouchers.remarks,
+        createdBy: consumptionVouchers.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionVouchers.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionVouchers.postedAt,
+        createdAt: consumptionVouchers.createdAt,
+      })
+      .from(consumptionVouchers)
+      .leftJoin(stores, eq(consumptionVouchers.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(createdByUser, eq(consumptionVouchers.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionVouchers.postedBy, postedByUser.id))
+      .where(eq(consumptionVouchers.id, id));
+
+    if (!voucher) return c.json({ error: "Consumption voucher not found" }, 404);
+
+    const baseUnitAlias = alias(unitTypes, "cv_base_unit");
+    const itemUnitAlias = alias(unitTypes, "cv_item_unit");
+
+    const itemsList = await db
+      .select({
+        id: consumptionVoucherItems.id,
+        itemId: consumptionVoucherItems.itemId,
+        itemName: items.name,
+        unitId: consumptionVoucherItems.unitId,
+        unit: sql<string>`COALESCE(${itemUnitAlias.symbol}, ${baseUnitAlias.symbol})`,
+        batchId: consumptionVoucherItems.batchId,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        purchaseRate: itemBatches.purchaseRate,
+        quantity: consumptionVoucherItems.quantity,
+        unitRate: consumptionVoucherItems.unitRate,
+        totalCost: consumptionVoucherItems.totalCost,
+        availableQty: sql<number>`COALESCE((SELECT available_qty FROM inventory.store_batch_stock WHERE store_id = ${voucher.storeId} AND batch_id = ${consumptionVoucherItems.batchId}), 0)`,
+      })
+      .from(consumptionVoucherItems)
+      .leftJoin(items, eq(consumptionVoucherItems.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(itemUnitAlias, eq(consumptionVoucherItems.unitId, itemUnitAlias.id))
+      .leftJoin(itemBatches, eq(consumptionVoucherItems.batchId, itemBatches.id))
+      .where(eq(consumptionVoucherItems.voucherId, id));
+
+    const totalCost = itemsList.reduce((sum, item) => sum + Number(item.totalCost || 0), 0);
+
+    return c.json({ ...voucher, totalCost, items: itemsList });
+  })
+
+  .post("/inventory/consumptions", async (c) => {
+    const input = await jsonBody(c, consumptionVoucherInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    try {
+      const createdVoucher = await db.transaction(async (tx) => {
+        const voucherNo = await generateDocNumber(tx, "CVCH");
+
+        const [vch] = await tx
+          .insert(consumptionVouchers)
+          .values({
+            voucherNo,
+            storeId: input.storeId,
+            purpose: input.purpose,
+            remarks: input.remarks || null,
+            voucherDate: input.voucherDate ? new Date(input.voucherDate) : new Date(),
+            status: "draft",
+            createdBy: userId || null,
+          })
+          .returning();
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          const rate = Number(item.unitRate) || 0;
+          const cost = Number(item.totalCost) || (Number(item.quantity) * rate);
+
+          await tx.insert(consumptionVoucherItems).values({
+            voucherId: vch.id,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            quantity: item.quantity,
+            unitId: resolvedUnitId || 1,
+            unitRate: rate,
+            totalCost: cost,
+          });
+        }
+
+        return vch;
+      });
+
+      return c.json(createdVoucher, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to create consumption voucher" }, 400);
+    }
+  })
+
+  .patch("/inventory/consumptions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, consumptionVoucherInput);
+
+    const [existing] = await db
+      .select()
+      .from(consumptionVouchers)
+      .where(eq(consumptionVouchers.id, id));
+
+    if (!existing) return c.json({ error: "Consumption voucher not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft vouchers can be edited" }, 400);
+    }
+
+    try {
+      const updatedVoucher = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(consumptionVouchers)
+          .set({
+            storeId: input.storeId,
+            purpose: input.purpose,
+            remarks: input.remarks || null,
+            voucherDate: input.voucherDate ? new Date(input.voucherDate) : existing.voucherDate,
+            updatedAt: new Date(),
+          })
+          .where(eq(consumptionVouchers.id, id))
+          .returning();
+
+        await tx.delete(consumptionVoucherItems).where(eq(consumptionVoucherItems.voucherId, id));
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          const rate = Number(item.unitRate) || 0;
+          const cost = Number(item.totalCost) || (Number(item.quantity) * rate);
+
+          await tx.insert(consumptionVoucherItems).values({
+            voucherId: id,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            quantity: item.quantity,
+            unitId: resolvedUnitId || 1,
+            unitRate: rate,
+            totalCost: cost,
+          });
+        }
+
+        return updated;
+      });
+
+      return c.json(updatedVoucher);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to update consumption voucher" }, 400);
+    }
+  })
+
+  .post("/inventory/consumptions/:id/post", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const voucher = await db.query.consumptionVouchers.findFirst({
+      where: eq(consumptionVouchers.id, id),
+      with: {
+        items: true,
+      },
+    });
+
+    if (!voucher) return c.json({ error: "Consumption voucher not found" }, 404);
+    if (voucher.status !== "draft") {
+      return c.json({ error: `Voucher cannot be posted from '${voucher.status}' status` }, 400);
+    }
+
+    // Check Dept Head / Subhead / Admin permission
+    const allowed = await canPostConsumptionVoucher(c, voucher.storeId);
+    if (!allowed) {
+      return c.json({
+        error: "Forbidden: Only the Department Head or Subhead (or Admin) can post this consumption voucher."
+      }, 403);
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of voucher.items) {
+          const qty = Number(item.quantity);
+          if (qty <= 0) continue;
+
+          // Convert quantity to base unit if custom unit
+          const { baseQuantity } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            qty,
+            item.unitId
+          );
+
+          await recordStockMovement(tx, {
+            storeId: voucher.storeId,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            movementType: "CONSUMPTION",
+            referenceType: "CONSUMPTION_VOUCHER",
+            referenceId: voucher.id,
+            quantityChange: -baseQuantity,
+            costPrice: Number(item.unitRate) || 0,
+            userId: userId || null,
+          });
+        }
+
+        await tx
+          .update(consumptionVouchers)
+          .set({
+            status: "posted",
+            postedBy: userId || null,
+            postedAt: new Date(),
+          })
+          .where(eq(consumptionVouchers.id, id));
+      });
+
+      return c.json({ success: true, message: "Consumption voucher successfully posted and stock updated" });
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to post consumption voucher" }, 400);
+    }
+  })
+
+  .delete("/inventory/consumptions/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [existing] = await db.select().from(consumptionVouchers).where(eq(consumptionVouchers.id, id));
+    if (!existing) return c.json({ error: "Consumption voucher not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft vouchers can be deleted" }, 400);
+    }
+    await db.delete(consumptionVouchers).where(eq(consumptionVouchers.id, id));
+    return c.json({ success: true });
+  })
+
+  // ---------------------------------------------------------------------------
+  // Consumption Returns
+  // ---------------------------------------------------------------------------
+
+  .get("/inventory/consumption-returns", async (c) => {
+    const query = c.req.query();
+    const page = query.page ? parseInt(query.page, 10) : 1;
+    const limit = query.limit ? parseInt(query.limit, 10) : 20;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.storeId && query.storeId !== "all") {
+      conditions.push(eq(consumptionReturns.storeId, parseInt(query.storeId, 10)));
+    }
+    if (query.status && query.status !== "all") {
+      conditions.push(eq(consumptionReturns.status, query.status as any));
+    }
+    if (query.search) {
+      conditions.push(
+        or(
+          ilike(consumptionReturns.returnNo, `%${query.search}%`),
+          ilike(consumptionReturns.reason, `%${query.search}%`),
+          ilike(consumptionReturns.remarks, `%${query.search}%`)
+        )
+      );
+    }
+    if (query.dateFrom) {
+      conditions.push(gte(consumptionReturns.returnDate, new Date(query.dateFrom)));
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setHours(23, 59, 59, 999);
+      conditions.push(lte(consumptionReturns.returnDate, end));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(consumptionReturns)
+      .where(whereClause);
+
+    const total = Number(countResult?.count || 0);
+
+    const createdByUser = alias(user, "cr_created_user");
+    const postedByUser = alias(user, "cr_posted_user");
+    const origVoucher = alias(consumptionVouchers, "cr_orig_vch");
+
+    const rows = await db
+      .select({
+        id: consumptionReturns.id,
+        returnNo: consumptionReturns.returnNo,
+        returnDate: consumptionReturns.returnDate,
+        originalVoucherId: consumptionReturns.originalVoucherId,
+        originalVoucherNo: origVoucher.voucherNo,
+        storeId: consumptionReturns.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        reason: consumptionReturns.reason,
+        status: consumptionReturns.status,
+        remarks: consumptionReturns.remarks,
+        createdBy: consumptionReturns.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionReturns.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionReturns.postedAt,
+        createdAt: consumptionReturns.createdAt,
+        itemCount: sql<number>`COALESCE((SELECT COUNT(*) FROM inventory.consumption_return_items WHERE return_id = ${consumptionReturns.id}), 0)`,
+      })
+      .from(consumptionReturns)
+      .leftJoin(stores, eq(consumptionReturns.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(origVoucher, eq(consumptionReturns.originalVoucherId, origVoucher.id))
+      .leftJoin(createdByUser, eq(consumptionReturns.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionReturns.postedBy, postedByUser.id))
+      .where(whereClause)
+      .orderBy(desc(consumptionReturns.returnDate), desc(consumptionReturns.id))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      data: rows,
+      pagination: {
+        page,
+        pageSize: limit,
+        totalRecords: total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    });
+  })
+
+  .get("/inventory/consumption-returns/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+
+    const createdByUser = alias(user, "cr_detail_created_user");
+    const postedByUser = alias(user, "cr_detail_posted_user");
+    const origVoucher = alias(consumptionVouchers, "cr_detail_orig_vch");
+
+    const [returnDoc] = await db
+      .select({
+        id: consumptionReturns.id,
+        returnNo: consumptionReturns.returnNo,
+        returnDate: consumptionReturns.returnDate,
+        originalVoucherId: consumptionReturns.originalVoucherId,
+        originalVoucherNo: origVoucher.voucherNo,
+        storeId: consumptionReturns.storeId,
+        storeName: stores.name,
+        storeCode: stores.code,
+        departmentId: stores.departmentId,
+        departmentName: departments.name,
+        reason: consumptionReturns.reason,
+        status: consumptionReturns.status,
+        remarks: consumptionReturns.remarks,
+        createdBy: consumptionReturns.createdBy,
+        createdByName: createdByUser.name,
+        postedBy: consumptionReturns.postedBy,
+        postedByName: postedByUser.name,
+        postedAt: consumptionReturns.postedAt,
+        createdAt: consumptionReturns.createdAt,
+      })
+      .from(consumptionReturns)
+      .leftJoin(stores, eq(consumptionReturns.storeId, stores.id))
+      .leftJoin(departments, eq(stores.departmentId, departments.id))
+      .leftJoin(origVoucher, eq(consumptionReturns.originalVoucherId, origVoucher.id))
+      .leftJoin(createdByUser, eq(consumptionReturns.createdBy, createdByUser.id))
+      .leftJoin(postedByUser, eq(consumptionReturns.postedBy, postedByUser.id))
+      .where(eq(consumptionReturns.id, id));
+
+    if (!returnDoc) return c.json({ error: "Consumption return not found" }, 404);
+
+    const baseUnitAlias = alias(unitTypes, "cr_base_unit");
+    const itemUnitAlias = alias(unitTypes, "cr_item_unit");
+
+    const itemsList = await db
+      .select({
+        id: consumptionReturnItems.id,
+        voucherItemId: consumptionReturnItems.voucherItemId,
+        itemId: consumptionReturnItems.itemId,
+        itemName: items.name,
+        unitId: consumptionReturnItems.unitId,
+        unit: sql<string>`COALESCE(${itemUnitAlias.symbol}, ${baseUnitAlias.symbol})`,
+        batchId: consumptionReturnItems.batchId,
+        batchNumber: itemBatches.batchNumber,
+        expiryDate: itemBatches.expiryDate,
+        returnedQty: consumptionReturnItems.returnedQty,
+        unitRate: consumptionReturnItems.unitRate,
+      })
+      .from(consumptionReturnItems)
+      .leftJoin(items, eq(consumptionReturnItems.itemId, items.id))
+      .leftJoin(baseUnitAlias, eq(items.baseUnitId, baseUnitAlias.id))
+      .leftJoin(itemUnitAlias, eq(consumptionReturnItems.unitId, itemUnitAlias.id))
+      .leftJoin(itemBatches, eq(consumptionReturnItems.batchId, itemBatches.id))
+      .where(eq(consumptionReturnItems.returnId, id));
+
+    return c.json({ ...returnDoc, items: itemsList });
+  })
+
+  .post("/inventory/consumption-returns", async (c) => {
+    const input = await jsonBody(c, consumptionReturnInput);
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    try {
+      const createdReturn = await db.transaction(async (tx) => {
+        const returnNo = await generateDocNumber(tx, "CRET");
+
+        const [ret] = await tx
+          .insert(consumptionReturns)
+          .values({
+            returnNo,
+            originalVoucherId: input.originalVoucherId || null,
+            storeId: input.storeId,
+            reason: input.reason,
+            remarks: input.remarks || null,
+            returnDate: input.returnDate ? new Date(input.returnDate) : new Date(),
+            status: "draft",
+            createdBy: userId || null,
+          })
+          .returning();
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          await tx.insert(consumptionReturnItems).values({
+            returnId: ret.id,
+            voucherItemId: item.voucherItemId || null,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            returnedQty: item.returnedQty,
+            unitId: resolvedUnitId || 1,
+            unitRate: Number(item.unitRate) || 0,
+          });
+        }
+
+        return ret;
+      });
+
+      return c.json(createdReturn, 201);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to create consumption return" }, 400);
+    }
+  })
+
+  .patch("/inventory/consumption-returns/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const input = await jsonBody(c, consumptionReturnInput);
+
+    const [existing] = await db
+      .select()
+      .from(consumptionReturns)
+      .where(eq(consumptionReturns.id, id));
+
+    if (!existing) return c.json({ error: "Consumption return not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft returns can be edited" }, 400);
+    }
+
+    try {
+      const updatedReturn = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(consumptionReturns)
+          .set({
+            storeId: input.storeId,
+            originalVoucherId: input.originalVoucherId || null,
+            reason: input.reason,
+            remarks: input.remarks || null,
+            returnDate: input.returnDate ? new Date(input.returnDate) : existing.returnDate,
+            updatedAt: new Date(),
+          })
+          .where(eq(consumptionReturns.id, id))
+          .returning();
+
+        await tx.delete(consumptionReturnItems).where(eq(consumptionReturnItems.returnId, id));
+
+        for (const item of input.items) {
+          const resolvedUnitId = await resolveUnitId(tx, item.unitId, item.unit);
+          await tx.insert(consumptionReturnItems).values({
+            returnId: id,
+            voucherItemId: item.voucherItemId || null,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            returnedQty: item.returnedQty,
+            unitId: resolvedUnitId || 1,
+            unitRate: Number(item.unitRate) || 0,
+          });
+        }
+
+        return updated;
+      });
+
+      return c.json(updatedReturn);
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to update consumption return" }, 400);
+    }
+  })
+
+  .post("/inventory/consumption-returns/:id/post", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const session = await c.get("session");
+    const userId = session?.user?.id;
+
+    const returnDoc = await db.query.consumptionReturns.findFirst({
+      where: eq(consumptionReturns.id, id),
+      with: {
+        items: true,
+      },
+    });
+
+    if (!returnDoc) return c.json({ error: "Consumption return not found" }, 404);
+    if (returnDoc.status !== "draft") {
+      return c.json({ error: `Return cannot be posted from '${returnDoc.status}' status` }, 400);
+    }
+
+    const allowed = await canPostConsumptionVoucher(c, returnDoc.storeId);
+    if (!allowed) {
+      return c.json({
+        error: "Forbidden: Only the Department Head or Subhead (or Admin) can post this consumption return."
+      }, 403);
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of returnDoc.items) {
+          const qty = Number(item.returnedQty);
+          if (qty <= 0) continue;
+
+          const { baseQuantity } = await convertItemQuantityToBase(
+            tx,
+            item.itemId,
+            qty,
+            item.unitId
+          );
+
+          await recordStockMovement(tx, {
+            storeId: returnDoc.storeId,
+            itemId: item.itemId,
+            batchId: item.batchId,
+            movementType: "CONSUMPTION_RETURN",
+            referenceType: "CONSUMPTION_RETURN",
+            referenceId: returnDoc.id,
+            quantityChange: baseQuantity, // positive = stock in
+            costPrice: Number(item.unitRate) || 0,
+            userId: userId || null,
+          });
+        }
+
+        await tx
+          .update(consumptionReturns)
+          .set({
+            status: "posted",
+            postedBy: userId || null,
+            postedAt: new Date(),
+          })
+          .where(eq(consumptionReturns.id, id));
+      });
+
+      return c.json({ success: true, message: "Consumption return successfully posted and stock restored" });
+    } catch (err: any) {
+      return c.json({ error: err.message || "Failed to post consumption return" }, 400);
+    }
+  })
+
+  .delete("/inventory/consumption-returns/:id", async (c) => {
+    const { id } = idParam.parse(c.req.param());
+    const [existing] = await db.select().from(consumptionReturns).where(eq(consumptionReturns.id, id));
+    if (!existing) return c.json({ error: "Consumption return not found" }, 404);
+    if (existing.status !== "draft") {
+      return c.json({ error: "Only draft returns can be deleted" }, 400);
+    }
+    await db.delete(consumptionReturns).where(eq(consumptionReturns.id, id));
+    return c.json({ success: true });
+  });

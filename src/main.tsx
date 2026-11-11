@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { queryClient } from "./lib/query";
 import { router } from "./router";
 import { initializeSettings } from "./lib/settings";
+import { PwaProvider } from "./components/PwaProvider";
 import "./styles.css";
 
 initializeSettings();
@@ -12,7 +13,9 @@ initializeSettings();
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <PwaProvider>
+        <RouterProvider router={router} />
+      </PwaProvider>
     </QueryClientProvider>
   </React.StrictMode>
 );

@@ -1,3 +1,5 @@
+import { sql } from "drizzle-orm";
+import { pushConfig } from "../services/push.ts";
 import { EventEmitter } from "node:events";
 import { db } from "../db/client.ts";
 import { notifications } from "../db/schema.ts";
@@ -29,7 +31,17 @@ export async function sendNotification(params: CreateNotificationParams) {
     };
 
     // Insert to DB using Drizzle
-    const [inserted] = await db.insert(notifications).values(values).returning();
+    const inserted = await db.transaction(async tx => {
+      const [notification] = await tx.insert(notifications).values(values).returning();
+      if (notification && pushConfig()) {
+        await tx.execute(sql`INSERT INTO push_deliveries (notification_id, subscription_id)
+          SELECT ${notification.id}, p.id FROM push_subscriptions p
+          JOIN session s ON s.id = p.session_id AND s."expiresAt" > NOW()
+          WHERE p.user_id = ${params.userId}
+          ON CONFLICT DO NOTHING`);
+      }
+      return notification;
+    });
 
     if (inserted) {
       // Emit to active SSE listeners

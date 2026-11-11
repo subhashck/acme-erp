@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { CalendarClock, AlertCircle, Calendar as CalendarIcon, X, Plus, Paperclip } from "lucide-react";
+import { CalendarClock, AlertCircle, Calendar as CalendarIcon, Download, X, Plus, Paperclip, Search, SlidersHorizontal, ArrowUpRight, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { Field } from "../../../components/Field";
@@ -9,7 +9,6 @@ import { ModuleLayout } from "../../../components/ModuleLayout";
 import { DataTable } from "../../../components/DataTable";
 import { queryClient, useRpcQuery } from "../../../lib/query";
 import { client } from "../../../services/rpc";
-import { authClient } from "../../../services/auth";
 import type { StaffRow, LeaveTypeRow, LeaveRow } from "../../../types";
 import { Button } from "../../../ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../ui/card";
@@ -29,6 +28,9 @@ import { Label } from "../../../ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "../../../components/ui/popover";
 import { Calendar } from "../../../components/ui/calendar";
 import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import XLSX from "xlsx-js-style";
+import { toast } from "../../../lib/toast";
 
 export const Route = createFileRoute("/_authenticated/hr/leaves")({
   component: LeaveManagement
@@ -52,9 +54,9 @@ const leaveSchema = z.object({
   if (value.isHalfDay) return true;
   if (!value.endDate) return true;
   
-  const start = new Date(value.startDate);
-  const end = new Date(value.endDate);
-  return end >= start;
+  const startStr = value.startDate.slice(0, 10);
+  const endStr = value.endDate.slice(0, 10);
+  return endStr >= startStr;
 }, {
   path: ["endDate"],
   message: "End date must be on or after start date."
@@ -119,17 +121,21 @@ function LeaveManagement() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [sortBy, setSortBy] = useState("createdAt");
-  const [sortOrder, setSortOrder] = useState("desc");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const changeSort = (key: string, direction: "asc" | "desc") => {
+    setSortBy(key); setSortOrder(direction); setPage(1);
+  };
   const limit = 10;
 
-  const session = authClient.useSession();
+  const { session } = Route.useRouteContext() as { session?: any };
   const isAdmin = session.data?.user?.role === "admin";
 
   const staffQuery = useRpcQuery<StaffRow[]>(["staff"], () => client.hr.staff.$get());
   const leaveTypesQuery = useRpcQuery<LeaveTypeRow[]>(["masters-leave-types"], () => client.masters["leave-types"].$get());
   const leavesQuery = useRpcQuery<{ data: LeaveRow[]; total: number; page: number; limit: number }>(
-    ["leaves", page, search, statusFilter, typeFilter, sortBy, sortOrder],
+    ["leaves", page, search, statusFilter, typeFilter, dateRange?.from, dateRange?.to, sortBy, sortOrder],
     () => client.hr.leaves.$get({
       query: {
         page: String(page),
@@ -137,6 +143,8 @@ function LeaveManagement() {
         search,
         status: statusFilter,
         leaveType: typeFilter,
+        startDate: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        endDate: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : "",
         sortBy,
         sortOrder
       }
@@ -146,10 +154,15 @@ function LeaveManagement() {
   const activeLeaveTypes = (leaveTypesQuery.data ?? []).filter((r) => r.active).map((r) => r.name);
   const staffList = (staffQuery.data ?? []).map((staff) => [String(staff.staffId), `${staff.employeeCode} - ${staff.name}`] as [string, string]);
 
-  const leaves = (leavesQuery.data?.data ?? []).map((leave) => ({
+  const leaves = (leavesQuery.data?.data ?? []).map((leave, index) => ({
     ...leave,
+    serialNo: ((leavesQuery.data?.page ?? page) - 1) * (leavesQuery.data?.limit ?? limit) + index + 1,
     dateRange: `${formatDate(leave.startDate)} to ${formatDate(leave.endDate)}`
   }));
+  const hasActiveFilters = Boolean(search || statusFilter !== "All" || typeFilter !== "All" || dateRange?.from);
+  const clearFilters = () => {
+    setSearch(""); setStatusFilter("All"); setTypeFilter("All"); setDateRange(undefined); setPage(1);
+  };
   
   const currentStaff = staffQuery.data?.find((s) => s.email === session.data?.user?.email);
   const canSelectStaff = isAdmin || session.data?.user?.role === "hr" || currentStaff?.isExecutive === true;
@@ -188,17 +201,101 @@ function LeaveManagement() {
     if (!startDateVal) return 0;
     if (isHalfDayVal) return 0.5;
     if (!endDateVal) return 0;
-    const start = new Date(startDateVal);
-    const end = new Date(endDateVal);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return 0;
+    const startStr = startDateVal.slice(0, 10);
+    const endStr = endDateVal.slice(0, 10);
+    if (endStr < startStr) return 0;
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T00:00:00Z`);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 0;
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
   }, [startDateVal, endDateVal, isHalfDayVal]);
+
+  const handleExportExcel = async () => {
+    try {
+      const params = new URLSearchParams({
+        page: "1",
+        limit: "100000",
+        search,
+        status: statusFilter,
+        leaveType: typeFilter,
+        startDate: dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "",
+        endDate: dateRange?.to ? format(dateRange.to, "yyyy-MM-dd") : "",
+        sortBy,
+        sortOrder,
+      });
+      const response = await fetch(`/api/hr/leaves?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch leave records for export");
+      const result = await response.json() as { data: LeaveRow[] };
+
+      if (!result.data.length) {
+        toast.error("No leave records match the selected filters");
+        return;
+      }
+
+      const exportRows = result.data.map((leave: LeaveRow & { createdAt?: string }, index: number) => {
+        const start = leave.startDate.slice(0, 10);
+        const end = leave.endDate.slice(0, 10);
+        const duration = leave.isHalfDay
+          ? 0.5
+          : Math.max(1, Math.round((new Date(`${end}T00:00:00Z`).getTime() - new Date(`${start}T00:00:00Z`).getTime()) / 86400000) + 1);
+        return {
+          "Sl. No.": index + 1,
+          "Request No": leave.requestNo,
+          "Employee Code": leave.employeeCode,
+          "Employee Name": leave.staffName,
+          Department: leave.departmentName || "",
+          "Leave Type": leave.leaveType,
+          "Start Date": start,
+          "End Date": end,
+          "Duration (Days)": duration,
+          "Half Day": leave.isHalfDay ? "Yes" : "No",
+          Reason: leave.reason,
+          Status: leave.status,
+          "Reviewer Note": leave.reviewerNote || "",
+          "Requested On": leave.createdAt ? format(new Date(leave.createdAt), "yyyy-MM-dd HH:mm") : "",
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      worksheet["!cols"] = [
+        { wch: 9 },
+        { wch: 18 }, { wch: 16 }, { wch: 24 }, { wch: 20 }, { wch: 20 },
+        { wch: 13 }, { wch: 13 }, { wch: 16 }, { wch: 11 }, { wch: 36 },
+        { wch: 26 }, { wch: 32 }, { wch: 19 },
+      ];
+      const range = XLSX.utils.decode_range(worksheet["!ref"] || "A1:A1");
+      for (let column = range.s.c; column <= range.e.c; column += 1) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: 0, c: column })];
+        if (cell) {
+          cell.s = {
+            font: { bold: true, color: { rgb: "FFFFFF" } },
+            fill: { fgColor: { rgb: "0F766E" } },
+            alignment: { horizontal: "center", vertical: "center" },
+          };
+        }
+      }
+      worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+      worksheet["!autofilter"] = { ref: worksheet["!ref"] || "A1:N1" };
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Leave Requests");
+      const rangeLabel = dateRange?.from
+        ? `${format(dateRange.from, "yyyyMMdd")}-${format(dateRange.to || dateRange.from, "yyyyMMdd")}`
+        : "all-dates";
+      XLSX.writeFile(workbook, `leave-requests-${rangeLabel}.xlsx`);
+      toast.success(`Exported ${exportRows.length} leave records`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export leave records");
+    }
+  };
 
   const submitLeave = leaveForm.handleSubmit(async (values) => {
     // Force end date to be equal to start date for half day leaves
     const finalEndDate = values.isHalfDay ? values.startDate : values.endDate!;
-    const start = new Date(values.startDate);
-    const end = new Date(finalEndDate);
+    const startStr = values.startDate.slice(0, 10);
+    const endStr = finalEndDate.slice(0, 10);
+    const start = new Date(`${startStr}T00:00:00Z`);
+    const end = new Date(`${endStr}T00:00:00Z`);
     const days = values.isHalfDay ? 0.5 : Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
 
     const balance = (balanceQuery.data ?? []).find(b => b.leaveType === values.leaveType);
@@ -214,8 +311,8 @@ function LeaveManagement() {
       formData.append("staffId", String(values.staffId));
       formData.append("leaveType", values.leaveType);
       formData.append("isHalfDay", String(values.isHalfDay));
-      formData.append("startDate", new Date(values.startDate).toISOString());
-      formData.append("endDate", new Date(finalEndDate).toISOString());
+      formData.append("startDate", startStr);
+      formData.append("endDate", endStr);
       formData.append("reason", values.reason);
       if (file) {
         formData.append("supportingDocument", file);
@@ -248,7 +345,11 @@ function LeaveManagement() {
         queryClient.invalidateQueries({ queryKey: ["staff-leave-balance", String(values.staffId)] });
       }
     } catch (err) {
-      alert("Failed to submit leave request: " + (err instanceof Error ? err.message : String(err)));
+      const detail = err instanceof Error ? err.message : String(err);
+      const connectivity = !navigator.onLine || err instanceof TypeError
+        ? " The request was not confirmed as saved. Keep this form open, check your connection, and submit again."
+        : " Your request was not confirmed as saved. Review the leave list before retrying to avoid a duplicate.";
+      alert("Failed to submit leave request: " + detail + connectivity);
     }
   });
 
@@ -257,8 +358,8 @@ function LeaveManagement() {
       title="Leave Management"
       description="Request time off and manage employee leave approvals."
       action={
-        <Button onClick={() => setShowForm(true)}>
-          <CalendarClock size={16} className="mr-2" /> Request Leave
+        <Button className="min-h-11 gap-2 rounded-lg shadow-sm" onClick={() => setShowForm(true)}>
+          <Plus size={16} /> Request Leave
         </Button>
       }
     >
@@ -276,22 +377,39 @@ function LeaveManagement() {
             </Card>
           )} */}
 
-          <Card>
-            <CardHeader className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b">
-              <CardTitle className="text-base">Leave Request History</CardTitle>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-2 w-full xl:w-auto">
+          <Card className="rounded-xl border-border/70 shadow-sm">
+            <CardHeader className="space-y-4 border-b bg-muted/20 p-4 md:p-5 rounded-t-xl">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><CalendarClock size={20} /></div>
+                  <div>
+                    <CardTitle className="text-base font-semibold">Leave Request History</CardTitle>
+                    <p className="mt-1 text-xs text-muted-foreground">Track requests, review status and manage time off.</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border bg-background px-3 py-1 text-xs font-medium tabular-nums">{leavesQuery.isLoading ? "Loading…" : `${leavesQuery.data?.total ?? 0} matching requests`}</span>
+                  {hasActiveFilters && <Button variant="ghost" className="min-h-11 gap-1.5 text-xs" onClick={clearFilters}><X size={14} />Clear filters</Button>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"><SlidersHorizontal size={13} />Filters</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 items-center gap-3 w-full">
+                <div className="relative min-w-0">
+                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
                 <input
                   type="text"
-                  placeholder="Search..."
-                  className="h-9 w-full lg:w-48 rounded-md border border-input  px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  aria-label="Search leave requests"
+                  placeholder="Search requests or employees…"
+                  className="h-11 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-xs shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
                 />
+                </div>
                 <ShadcnSelect value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1); }}>
-                  <SelectTrigger className="h-9 w-full lg:w-40 bg-background text-sm">
+                  <SelectTrigger aria-label="Filter by status" className="h-11 w-full min-w-0 rounded-lg bg-background text-xs">
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent>
@@ -305,7 +423,7 @@ function LeaveManagement() {
                 </ShadcnSelect>
 
                 <ShadcnSelect value={typeFilter} onValueChange={(val) => { setTypeFilter(val); setPage(1); }}>
-                  <SelectTrigger className="h-9 w-full lg:w-44 bg-background text-sm">
+                  <SelectTrigger aria-label="Filter by leave type" className="h-11 w-full min-w-0 rounded-lg bg-background text-xs">
                     <SelectValue placeholder="All Leave Types" />
                   </SelectTrigger>
                   <SelectContent>
@@ -316,34 +434,68 @@ function LeaveManagement() {
                   </SelectContent>
                 </ShadcnSelect>
 
-                <ShadcnSelect value={`${sortBy}-${sortOrder}`} onValueChange={(val) => {
-                  const [field, order] = val.split("-");
-                  setSortBy(field);
-                  setSortOrder(order);
-                  setPage(1);
-                }}>
-                  <SelectTrigger className="h-9 w-full lg:w-44 bg-background text-sm">
-                    <SelectValue placeholder="Sort By" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="createdAt-desc">Newest First</SelectItem>
-                    <SelectItem value="createdAt-asc">Oldest First</SelectItem>
-                    <SelectItem value="startDate-asc">Start Date (Asc)</SelectItem>
-                    <SelectItem value="startDate-desc">Start Date (Desc)</SelectItem>
-                    <SelectItem value="staffName-asc">Employee (A-Z)</SelectItem>
-                    <SelectItem value="staffName-desc">Employee (Z-A)</SelectItem>
-                  </SelectContent>
-                </ShadcnSelect>
+                <div className="flex min-w-0 items-center gap-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "h-11 min-w-0 w-full rounded-lg justify-start text-left text-xs font-normal px-3",
+                          !dateRange?.from && "text-muted-foreground"
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />
+                        <span className="truncate">{dateRange?.from
+                          ? dateRange.to
+                            ? `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
+                            : format(dateRange.from, "dd MMM yyyy")
+                          : "Filter by leave dates"}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto max-w-[calc(100vw-2rem)] overflow-x-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={dateRange}
+                        onSelect={(range) => {
+                          setDateRange(range);
+                          setPage(1);
+                        }}
+                        numberOfMonths={2}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {dateRange?.from && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-11 shrink-0"
+                      onClick={() => { setDateRange(undefined); setPage(1); }}
+                      title="Clear date range"
+                    >
+                      <X size={14} />
+                    </Button>
+                  )}
+                </div>
+
+
+
+                <Button variant="outline" className="h-11 gap-2 rounded-lg border-primary/20 bg-background text-xs text-primary hover:bg-primary/5" onClick={handleExportExcel}>
+                  <Download size={15} /> Export Excel
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               {/* Desktop Table View */}
-              <div className="hidden md:block">
+              <div className="hidden md:block [&_thead]:bg-muted/30 [&_th]:text-[11px] [&_th]:font-semibold [&_td]:text-xs [&_tbody_tr]:transition-colors [&_tbody_tr:hover]:bg-muted/20">
                 <DataTable
                   rows={leaves}
+                  enableSorting
+                  sorting={{ key: sortBy, direction: sortOrder }}
+                  onSortChange={changeSort}
                   columns={[
+                    { id: "serialNo", label: "Sl. No.", sortable: false, className: "w-16 tabular-nums text-muted-foreground", headerClassName: "whitespace-nowrap", render: row => row.serialNo },
                     ["requestNo", "Request"],
-                    ["staffName", "Employee"],
+                    { id: "staffName", label: "Employee", render: row => <span className="font-semibold text-foreground">{row.staffName}</span> },
                     ["departmentName", "Department"],
                     {
                       id: "leaveType",
@@ -352,18 +504,19 @@ function LeaveManagement() {
                         <div className="flex items-center gap-2">
                           <span>{row.leaveType}</span>
                           {(row as any).isHalfDay && (
-                            <Badge variant="default" className="text-[10px] py-0 px-1 border-primary/30 text-primary/80">Half Day</Badge>
+                            <Badge variant="default" className="rounded-full border border-violet-200 bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800 dark:border-violet-800 dark:bg-violet-950/50 dark:text-violet-300">Half Day</Badge>
                           )}
                         </div>
                       )
                     },
-                    ["dateRange", "Dates"],
+                    { id: "dateRange", label: "Dates", sortKey: "startDate", render: row => row.dateRange },
                     {
                       id: "status",
                       label: "Status",
                       render: (row) => (
                         <Badge
                           className={cn(
+                            "rounded-full border px-2.5 py-1 text-[10px] font-semibold",
                             row.status === "Approved" && "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/30",
                             row.status === "Pending" && "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/30",
                             row.status === "Pending Payroll Approval" && "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:border-indigo-900/30",
@@ -381,11 +534,12 @@ function LeaveManagement() {
                       render: (row) => (
                         <Button
                           variant="outline"
-                          size="default"
+                          size="sm"
+                          className="gap-1.5 rounded-lg border-primary/20 text-xs text-primary hover:bg-primary/5"
                           asChild
                         >
                           <Link to="/hr/review-leave" search={{ leaveId: row.id }}>
-                            View
+                            View <ArrowUpRight size={13} aria-hidden="true" />
                           </Link>
                         </Button>
                       )
@@ -396,16 +550,26 @@ function LeaveManagement() {
               </div>
 
               {/* Mobile Card List View */}
-              <div className="block md:hidden divide-y divide-border">
+              <div className="flex max-w-full items-center gap-1 overflow-x-auto border-b px-3 py-2 md:hidden" aria-label="Sort leave columns">
+                {[["requestNo", "Request"], ["staffName", "Employee"], ["departmentName", "Department"], ["leaveType", "Type"], ["startDate", "Dates"], ["status", "Status"]].map(([key, label]) => {
+                  const Icon = sortBy === key ? (sortOrder === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+                  return <Button key={key} variant={sortBy === key ? "secondary" : "ghost"} className="min-h-11 shrink-0 gap-1.5 px-2 text-xs" onClick={() => changeSort(key, sortBy === key && sortOrder === "asc" ? "desc" : "asc")} aria-label={`Sort by ${label} ${sortBy === key && sortOrder === "asc" ? "descending" : "ascending"}`}>
+                    {label}<Icon size={12} aria-hidden="true" />
+                  </Button>;
+                })}
+              </div>
+              <div className="block md:hidden space-y-3 bg-muted/10 p-3">
                 {leaves.length > 0 ? (
                   leaves.map((leave) => (
-                    <div key={leave.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm text-foreground">
+                    <div key={leave.id} className="rounded-xl border bg-card p-4 space-y-3 shadow-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="flex items-center gap-2 font-semibold text-xs text-foreground">
+                          <span className="rounded-md bg-muted px-2 py-1 tabular-nums text-muted-foreground" aria-label={`Serial number ${leave.serialNo}`}>{leave.serialNo}</span>
                           {leave.requestNo}
                         </span>
                         <Badge
                           className={cn(
+                            "rounded-full border px-2.5 py-1 text-[10px] font-semibold",
                             leave.status === "Approved" && "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-900/30",
                             leave.status === "Pending" && "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/30",
                             leave.status === "Pending Payroll Approval" && "bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-950/30 dark:text-indigo-300 dark:border-indigo-900/30",
@@ -447,7 +611,9 @@ function LeaveManagement() {
                   ))
                 ) : (
                   <div className="p-8 text-center text-muted-foreground text-sm">
-                    No records yet
+                    <CalendarClock size={24} className="mx-auto mb-2 text-muted-foreground/60" />
+                    <p className="font-medium text-foreground">{leavesQuery.isLoading ? "Loading leave requests…" : "No leave requests found"}</p>
+                    <p className="mt-1 text-xs">{hasActiveFilters ? "Try adjusting or clearing your filters." : "New leave requests will appear here."}</p>
                   </div>
                 )}
               </div>
@@ -491,7 +657,6 @@ function LeaveManagement() {
         <>
           <div 
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={handleCloseForm}
           />
           <div 
             className="fixed inset-y-0 left-0 z-50 w-full sm:w-96 bg-background border-r border-border shadow-2xl flex flex-col animate-in slide-in-from-left duration-300"
@@ -581,14 +746,14 @@ function LeaveManagement() {
                               )}
                             >
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                              {field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                              {field.value ? format(new Date(`${field.value.slice(0, 10)}T00:00:00`), "PPP") : <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                              selected={field.value ? new Date(`${field.value.slice(0, 10)}T00:00:00`) : undefined}
+                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
                             />
                           </PopoverContent>
                         </Popover>
@@ -618,15 +783,15 @@ function LeaveManagement() {
                             >
                               <CalendarIcon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
                               {isHalfDayVal && startDateVal
-                                ? format(new Date(startDateVal), "PPP")
-                                : field.value ? format(new Date(field.value), "PPP") : <span>Pick a date</span>}
+                                ? format(new Date(`${startDateVal.slice(0, 10)}T00:00:00`), "PPP")
+                                : field.value ? format(new Date(`${field.value.slice(0, 10)}T00:00:00`), "PPP") : <span>Pick a date</span>}
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
                             <Calendar
                               mode="single"
-                              selected={field.value ? new Date(field.value) : undefined}
-                              onSelect={(date) => field.onChange(date ? date.toISOString() : "")}
+                              selected={field.value ? new Date(`${field.value.slice(0, 10)}T00:00:00`) : undefined}
+                              onSelect={(date) => field.onChange(date ? format(date, "yyyy-MM-dd") : "")}
                             />
                           </PopoverContent>
                         </Popover>
