@@ -30,18 +30,29 @@ import { cn } from "@/utils/cn";
 interface OnlineCbtSessionProps {
   onClose: () => void;
   assessmentId?: number | null;
+  targetDepartmentId?: number | null;
+  purpose?: string | null;
+  enrollmentId?: number | null;
   onFinished?: (result: any) => void;
 }
 
 export function OnlineCbtSession({
   onClose,
   assessmentId,
+  targetDepartmentId,
+  purpose,
+  enrollmentId,
   onFinished,
 }: OnlineCbtSessionProps) {
   const queryClient = useQueryClient();
 
   const [isLoadingExam, setIsLoadingExam] = useState(true);
   const [startError, setStartError] = useState<string | null>(null);
+  const [startErrorDetails, setStartErrorDetails] = useState<{
+    code?: string;
+    nextEligibleAt?: string;
+    cooldownDaysRemaining?: number;
+  } | null>(null);
   const [examSession, setExamSession] = useState<any | null>(null);
 
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -188,12 +199,23 @@ export function OnlineCbtSession({
     fetch("/api/skill-assessment/exam/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assessmentId }),
+      body: JSON.stringify({
+        assessmentId,
+        targetDepartmentId,
+        purpose,
+        enrollmentId,
+      }),
       signal: controller.signal,
     })
       .then(async (res) => {
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.error || "Failed to start online examination session");
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const err: any = new Error(body.error || "Failed to start online examination session");
+          err.code = body.code;
+          err.nextEligibleAt = body.nextEligibleAt;
+          err.cooldownDaysRemaining = body.cooldownDaysRemaining;
+          throw err;
+        }
         return body;
       })
       .then((data) => {
@@ -253,6 +275,11 @@ export function OnlineCbtSession({
         if (controller.signal.aborted) return;
         toast.error(err.message || "Could not launch examination.");
         setStartError(err.message || "Could not start the examination.");
+        setStartErrorDetails({
+          code: err.code,
+          nextEligibleAt: err.nextEligibleAt,
+          cooldownDaysRemaining: err.cooldownDaysRemaining,
+        });
       })
       .finally(() => {
         if (!controller.signal.aborted) setIsLoadingExam(false);
@@ -420,7 +447,58 @@ export function OnlineCbtSession({
   return (
     <section aria-label="Online CBT examination" className="online-cbt-session w-full min-w-0 [overflow-wrap:anywhere]">
       <div className="bg-card border border-border w-full min-w-0 md:h-[calc(100dvh-13rem)] md:min-h-[34rem] rounded-2xl flex flex-col overflow-hidden">
-        {startError && <div role="alert" className="p-6 space-y-4"><h2 className="font-semibold">Unable to start CBT</h2><p>{startError}</p><Button variant="outline" onClick={onClose}>Back to Online CBT</Button></div>}
+        {startError && (
+          <div role="alert" className="flex-1 flex flex-col items-center justify-center p-8 text-center max-w-lg mx-auto space-y-4">
+            <div
+              className={cn(
+                "size-14 rounded-2xl flex items-center justify-center shadow-xs",
+                startErrorDetails?.code === "CBT_ALREADY_PASSED"
+                  ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400"
+                  : startErrorDetails?.code === "CBT_COOLDOWN_ACTIVE"
+                  ? "bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400"
+                  : "bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400"
+              )}
+            >
+              {startErrorDetails?.code === "CBT_ALREADY_PASSED" ? (
+                <CheckCircle2 size={32} />
+              ) : startErrorDetails?.code === "CBT_COOLDOWN_ACTIVE" ? (
+                <Clock size={32} />
+              ) : (
+                <AlertTriangle size={32} />
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <h2 className="text-base font-bold text-foreground">
+                {startErrorDetails?.code === "CBT_ALREADY_PASSED"
+                  ? "CBT Already Passed"
+                  : startErrorDetails?.code === "CBT_COOLDOWN_ACTIVE"
+                  ? "Remediation Period Active"
+                  : startErrorDetails?.code === "CBT_MAX_ATTEMPTS"
+                  ? "Maximum Monthly Attempts Reached"
+                  : "Unable to Start CBT Examination"}
+              </h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {startError}
+              </p>
+            </div>
+
+            {startErrorDetails?.code === "CBT_COOLDOWN_ACTIVE" && (
+              <div className="w-full p-3.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-left text-xs space-y-1.5">
+                <div className="font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                  <Clock size={13} /> Retest Policy & Early Authorization
+                </div>
+                <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90 leading-normal">
+                  A 10-day cooling period applies between attempts to ensure adequate remediation. If you have completed training early, an <strong>HR Manager or System Administrator</strong> can authorize your retest directly.
+                </p>
+              </div>
+            )}
+
+            <Button variant="outline" onClick={onClose} className="mt-2 text-xs">
+              Back to Online CBT
+            </Button>
+          </div>
+        )}
         {/* Loading State */}
         {isLoadingExam && (
           <div className="flex-1 flex flex-col items-center justify-center p-8 space-y-3">
@@ -443,9 +521,23 @@ export function OnlineCbtSession({
                   <Award size={20} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-foreground">Examination Scorecard & Review</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-foreground">Examination Scorecard & Review</h3>
+                    {(examResult.isRetest || examSession?.isRetest) && (
+                      <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] py-0 px-1.5 font-bold gap-1">
+                        <RotateCcw size={9} /> Retest (Attempt 2)
+                      </Badge>
+                    )}
+                    {examSession?.examPurpose && examSession.examPurpose !== "core_monthly" && (
+                      <Badge className="bg-sky-600 text-white text-[9px] py-0 px-1.5 font-bold gap-1">
+                        <Building2 size={9} /> {examSession.examPurpose === "rotation" ? "Rotation Track" : "Cross-Dept"}
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Attempt No: {examResult.attemptNo} • Benchmark: {Number(examSession?.passPercentage ?? 60)}%
+                    Attempt No: {examResult.attemptNo} • Benchmark: {Number(examSession?.passPercentage ?? 80)}%
+                    {examSession?.departmentName && ` • Tested Domain: ${examSession.departmentName}`}
+                    {examSession?.homeDepartmentName && examSession.homeDepartmentName !== examSession.departmentName && ` (Home: ${examSession.homeDepartmentName})`}
                   </p>
                 </div>
               </div>
@@ -487,6 +579,13 @@ export function OnlineCbtSession({
                   <p className="text-xs opacity-90">
                     Scaled Competency Rating: <strong>{examResult.theoreticalRating} / 5.0</strong>
                   </p>
+                  {!examResult.passed && (
+                    <p className="text-[11px] pt-1 text-amber-800 dark:text-amber-200">
+                      {(examResult.isRetest || examSession?.isRetest)
+                        ? "Maximum monthly attempts reached (Attempt 2 of 2). Please consult HR for remediation and in-service training."
+                        : "A 10-day cooling period applies before retesting. HR can authorize an earlier retest if in-service training is completed."}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-4 text-center">
@@ -654,6 +753,16 @@ export function OnlineCbtSession({
                     <h3 className="text-xs font-bold text-foreground">
                       Theoretical Assessment ({examSession.attemptNo})
                     </h3>
+                    {examSession.isRetest && (
+                      <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-[9px] py-0 px-1.5 font-bold gap-1 shadow-2xs">
+                        <RotateCcw size={9} /> Attempt 2 (Retest)
+                      </Badge>
+                    )}
+                    {examSession.examPurpose && examSession.examPurpose !== "core_monthly" && (
+                      <Badge className="bg-sky-600 text-white text-[9px] py-0 px-1.5 font-bold gap-1 shadow-2xs">
+                        <Building2 size={9} /> {examSession.examPurpose === "rotation" ? "Rotation" : "Cross-Dept"} ({examSession.departmentName})
+                      </Badge>
+                    )}
                     {tabSwitchCount === 0 ? (
                       <Badge
                         variant="outline"

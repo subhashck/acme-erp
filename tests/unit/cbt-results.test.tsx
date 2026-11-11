@@ -93,6 +93,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => ({
     }
     return { data: null, isLoading: false, isError: false };
   },
+  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
@@ -135,9 +136,133 @@ describe("CbtResultsPage component", () => {
     expect(markup).toContain("All Outcomes");
   });
 
-  it("renders export CSV and refresh buttons", () => {
+  it("renders export Excel and refresh buttons", () => {
     const markup = renderToStaticMarkup(<CbtResultsPage />);
-    expect(markup).toContain("Export CSV");
+    expect(markup).toContain("Export Excel");
     expect(markup).toContain("Refresh");
+  });
+
+  it("renders Review button when staff access is enabled or user is privileged", () => {
+    state.permissions = {
+      isAdmin: false,
+      isHr: false,
+      isNursingSuper: false,
+      isStaffCompetencyModuleEnabled: true,
+      currentStaff: { staffId: 10 },
+    };
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).toContain("Review");
+  });
+
+  it("hides Review button when staff access is restricted and user is regular staff", () => {
+    state.permissions = {
+      isAdmin: false,
+      isHr: false,
+      isNursingSuper: false,
+      isStaffCompetencyModuleEnabled: false,
+      currentStaff: { staffId: 10 },
+    };
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).not.toContain("Review");
+  });
+
+  it("still shows Review button when staff access is restricted if user is HR/Admin", () => {
+    state.permissions = {
+      isAdmin: true,
+      isHr: true,
+      isNursingSuper: false,
+      isStaffCompetencyModuleEnabled: false,
+      currentStaff: { staffId: 1 },
+    };
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).toContain("Review");
+  });
+
+  it("renders Authorize Retest button for HR/Admin on failed attempts", () => {
+    state.permissions = {
+      isAdmin: true,
+      isHr: true,
+      isNursingSuper: false,
+      isStaffCompetencyModuleEnabled: false,
+      currentStaff: { staffId: 1 },
+    };
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).toContain("Authorize Same-Month Retest");
+  });
+
+  it("does not render Authorize Retest button for regular staff", () => {
+    state.permissions = {
+      isAdmin: false,
+      isHr: false,
+      isNursingSuper: false,
+      isStaffCompetencyModuleEnabled: true,
+      currentStaff: { staffId: 10 },
+    };
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).not.toContain("Authorize Same-Month Retest");
+  });
+
+  it("renders Retest Authorized and Attempt 2 badges correctly", () => {
+    state.permissions = {
+      isAdmin: true,
+      isHr: true,
+      currentStaff: { staffId: 1 },
+    };
+    state.attemptsData.data = [
+      {
+        ...state.attemptsData.data[0],
+        isRetest: true,
+      },
+      {
+        ...state.attemptsData.data[1],
+        retestAuthorized: true,
+        retestAuthorizedBy: "HR Admin",
+      },
+    ];
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).toContain("Attempt 2 (Retest)");
+    expect(markup).toContain("Retest Authorized");
+  });
+
+  it("renders live realtime in-progress tests with answered progress and live indicators", () => {
+    state.permissions = {
+      isAdmin: true,
+      isHr: true,
+      currentStaff: { staffId: 1 },
+    };
+    state.attemptsData.summary = {
+      ...state.attemptsData.summary,
+      inProgressCount: 1,
+    };
+    state.attemptsData.data = [
+      {
+        id: 99,
+        attemptNo: "EXAM-2026-9999",
+        staffId: 10,
+        staffName: "Nurse John Doe",
+        employeeCode: "EMP-0010",
+        designation: "Staff Nurse",
+        departmentName: "ICU/HDU",
+        status: "in_progress",
+        totalQuestions: 20,
+        score: null,
+        passPercentage: "60.00",
+        theoreticalRating: null,
+        correctCount: null,
+        incorrectCount: null,
+        unansweredCount: null,
+        timeSpentSeconds: 300,
+        remainingSeconds: 900,
+        answeredCount: 12,
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+      },
+    ];
+    const markup = renderToStaticMarkup(<CbtResultsPage />);
+    expect(markup).toContain("Live CBT Examination");
+    expect(markup).toContain("Testing Now");
+    expect(markup).toContain("12 / 20");
+    expect(markup).toContain("60% answered");
+    expect(markup).toContain("Live In-Progress");
   });
 });

@@ -14,11 +14,22 @@ import {
   staffOffDayRequests,
   staffWeeklyOffDays,
 } from "../db/schema.ts";
-import { getCurrentStaff } from "./shared.ts";
+import { getCurrentStaff, isManagementApprover } from "./shared.ts";
 
 export const dashboardRoutes = new Hono<AuthEnv>().get(
   "/dashboard",
   async (c) => {
+    const session = c.get("session");
+    const userRole = (session?.user?.role || "").trim().toLowerCase();
+    const isAdmin = userRole === "admin";
+    const isMgt = await isManagementApprover(c);
+
+    if (!isAdmin && !isMgt) {
+      return c.json(
+        { error: "Access denied. Dashboard is restricted to Administrators and Management Approvers." },
+        403
+      );
+    }
     const todayStr = new Date().toISOString().split("T")[0];
     const requestedScheduleDate = c.req.query("scheduleDate");
     const parsedScheduleDate = requestedScheduleDate
@@ -237,8 +248,6 @@ export const dashboardRoutes = new Hono<AuthEnv>().get(
       validOffOrLeaveStaffIds.has(id)
     ).length;
 
-    const session = c.get("session");
-    const userRole = (session?.user?.role || "").toLowerCase();
     const canViewWorkforceSchedule = userRole === "admin" || userRole === "hr";
     let workforceSchedule: Array<{
       departmentId: number | null;

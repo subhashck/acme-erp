@@ -12,6 +12,8 @@ import { db } from "./db/client.ts";
 import { user } from "./db/schema.ts";
 import { api } from "./routes.ts";
 import { publicRoutes } from "./routes/public.ts";
+import { publicStationRoutes } from "./routes/mobile-pin-auth.ts";
+import { staticPagesApp, renderHomeHtml } from "./routes/static-pages.ts";
 import { serveStatic } from "@hono/node-server/serve-static";
 
 export const app = new Hono<AuthEnv>();
@@ -43,6 +45,7 @@ app.use(
 
 // Mount public (unauthenticated) API routes BEFORE the auth middleware
 app.route("/api", publicRoutes);
+app.route("/api/public", publicStationRoutes);
 
 app.use("/api/*", async (c, next) => {
   // Auth endpoints: delegate directly to better-auth and return its response
@@ -112,6 +115,25 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 app.route("/api", api);
+
+// Static public pages (Privacy Policy, Terms of Service, Public Landing Page, Google Verification)
+app.route("/", staticPagesApp);
+
+app.get("/", async (c, next) => {
+  const cookieHeader = c.req.header("cookie") || "";
+  const hasSession =
+    cookieHeader.includes("better-auth.session_token") ||
+    cookieHeader.includes("__Secure-better-auth.session_token");
+
+  // If user already has a session or requested app mode explicitly, serve the SPA
+  if (hasSession || c.req.query("app") === "true") {
+    return next();
+  }
+
+  // Otherwise (unauthenticated visitor or Google verification review bot), render static HTML landing page
+  c.header("Content-Type", "text/html; charset=UTF-8");
+  return c.html(renderHomeHtml());
+});
 
 // Custom 404 handler: Ensure /api/* routes NEVER fall through to serve index.html
 app.notFound(async (c) => {

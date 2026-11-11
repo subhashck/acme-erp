@@ -1787,3 +1787,32 @@ export const docterzSyncLog = sqliteTable("docterz_sync_log", {
   finishedAt: timestamp("finished_at"),
 });
 
+export const desktopAuthPins = sqliteTable("desktop_auth_pins", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  pinHash: text("pin_hash").notNull(),
+  pinSalt: text("pin_salt").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  attemptsCount: integer("attempts_count").notNull().default(0),
+  desktopSessionId: text("desktop_session_id").references(() => session.id, { onDelete: "set null" }),
+  deviceName: text("device_name"),
+  clientIp: text("client_ip"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index("idx_desktop_auth_pins_lookup").on(table.userId, table.expiresAt),
+]);
+
+export const desktopAuthPinsRelations = relations(desktopAuthPins, ({ one }) => ({
+  user: one(user, {
+    fields: [desktopAuthPins.userId],
+    references: [user.id],
+  }),
+  desktopSession: one(session, {
+    fields: [desktopAuthPins.desktopSessionId],
+    references: [session.id],
+  }),
+}));
+
+

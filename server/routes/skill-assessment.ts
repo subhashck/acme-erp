@@ -13,6 +13,7 @@ import {
   examConfigs,
   examAttempts,
   departmentMonthlyQuestionBanks,
+  crossDeptExamEnrollments,
 } from "../db/schema-skill-assessment.ts";
 import {
   staff,
@@ -1882,7 +1883,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       totalQuestions: 20,
       totalTimeSeconds: 1200,
       perQuestionTimeSeconds: 60,
-      passPercentage: "60.00",
+      passPercentage: "80.00",
       ...DEFAULT_EXAM_MIX,
       active: true,
     });
@@ -1902,7 +1903,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       totalQuestions: z.number().int().min(5).max(100).default(20),
       totalTimeSeconds: z.number().int().min(120).max(7200).default(1200),
       perQuestionTimeSeconds: z.number().int().min(15).max(600).default(60),
-      passPercentage: z.number().min(30).max(100).default(60),
+      passPercentage: z.number().min(30).max(100).default(80),
       basicPercentage: z.number().int().min(0).max(100).default(DEFAULT_EXAM_MIX.basicPercentage),
       mediumPercentage: z.number().int().min(0).max(100).default(DEFAULT_EXAM_MIX.mediumPercentage),
       advancedPercentage: z.number().int().min(0).max(100).default(DEFAULT_EXAM_MIX.advancedPercentage),
@@ -1962,7 +1963,403 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
   })
 
   // ---------------------------------------------------------------------------
+  // 11b. Candidate Examination Tracks Discovery (Model C Cross-Dept Support)
+  // Returns all available examination tracks for the candidate:
+  // - Primary Home Department track (Core Monthly)
+  // - Any Active HR/Nursing-Super Approved Cross-Department tracks
+  // ---------------------------------------------------------------------------
+  .get("/skill-assessment/exam/my-tracks", async (c) => {
+    const currentStaff = await getCurrentStaff(c);
+    if (!currentStaff) {
+      return c.json({ error: "Linked staff profile required" }, 403);
+    }
+
+    const now = new Date();
+    const month = cbtCalendarMonthWindow(now);
+
+    // Active passing benchmark from settings
+    const [config] = await db
+      .select({ passPercentage: examConfigs.passPercentage })
+      .from(examConfigs)
+      .where(eq(examConfigs.active, true))
+      .orderBy(asc(examConfigs.id))
+      .limit(1);
+    const passingLockoutScore = Number(config?.passPercentage || 80);
+
+    // 1. Staff's active home department
+    const [homeDeptRecord] = await db
+      .select({ id: departments.id, name: departments.name })
+      .from(staffDepartments)
+      .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+      .where(and(eq(staffDepartments.staffId, currentStaff.staffId), eq(staffDepartments.status, "Active")))
+      .limit(1);
+
+    const homeDeptId = homeDeptRecord?.id || null;
+    const homeDeptName = homeDeptRecord?.name || "General Nursing";
+
+    // 2. Active cross-department enrollments
+    const enrollments = await db
+      .select({
+        id: crossDeptExamEnrollments.id,
+        targetDepartmentId: crossDeptExamEnrollments.targetDepartmentId,
+        targetDepartmentName: departments.name,
+        purpose: crossDeptExamEnrollments.purpose,
+        notes: crossDeptExamEnrollments.notes,
+        monthYear: crossDeptExamEnrollments.monthYear,
+        validUntil: crossDeptExamEnrollments.validUntil,
+        assignedByName: crossDeptExamEnrollments.assignedByName,
+      })
+      .from(crossDeptExamEnrollments)
+      .innerJoin(departments, eq(crossDeptExamEnrollments.targetDepartmentId, departments.id))
+      .where(
+        and(
+          eq(crossDeptExamEnrollments.staffId, currentStaff.staffId),
+          eq(crossDeptExamEnrollments.status, "active"),
+          or(
+            isNull(crossDeptExamEnrollments.validUntil),
+            gte(crossDeptExamEnrollments.validUntil, now)
+          )
+        )
+      );
+
+    // Build raw tracks list: Primary Home Track + Any Approved Cross-Dept Tracks
+    const rawTrackList = [
+      {
+        trackType: "core_monthly",
+        purpose: "core_monthly",
+        purposeLabel: "Core Monthly Assessment",
+        targetDepartmentId: homeDeptId,
+        targetDepartmentName: homeDeptName,
+        isHome: true,
+        enrollmentId: null,
+        notes: "Mandatory monthly departmental theoretical assessment",
+        validUntil: null,
+        assignedByName: null,
+      },
+      ...enrollments.map((e) => {
+        let purposeLabel = "Cross-Department Track";
+        if (e.purpose === "rotation") purposeLabel = "Clinical Rotation Qualification";
+        else if (e.purpose === "transfer_vetting") purposeLabel = "Pre-Transfer Competency Evaluation";
+        else if (e.purpose === "hospital_wide_certification") purposeLabel = "Hospital-Wide Certification";
+        else if (e.purpose === "voluntary") purposeLabel = "Elective Upskilling";
+
+        return {
+          trackType: e.purpose,
+          purpose: e.purpose,
+          purposeLabel,
+          targetDepartmentId: e.targetDepartmentId,
+          targetDepartmentName: e.targetDepartmentName,
+          isHome: false,
+          enrollmentId: e.id,
+          notes: e.notes,
+          validUntil: e.validUntil,
+          assignedByName: e.assignedByName,
+        };
+      }),
+    ];
+
+    // For each track, check attempts, in-progress session, cooling period, pass status
+    const tracksWithStatus = await Promise.all(
+      rawTrackList.map(async (t) => {
+        const deptId = t.targetDepartmentId;
+
+        // Check for in-progress attempt
+        const [inProgress] = await db
+          .select({
+            id: examAttempts.id,
+            attemptNo: examAttempts.attemptNo,
+            startedAt: examAttempts.startedAt,
+            totalTimeSeconds: examAttempts.totalTimeSeconds,
+          })
+          .from(examAttempts)
+          .where(
+            and(
+              eq(examAttempts.staffId, currentStaff.staffId),
+              eq(examAttempts.status, "in_progress"),
+              or(
+                deptId ? eq(examAttempts.targetDepartmentId, deptId) : sql`false`,
+                deptId ? eq(examAttempts.departmentId, deptId) : sql`false`,
+                eq(examAttempts.departmentName, t.targetDepartmentName)
+              )
+            )
+          )
+          .orderBy(desc(examAttempts.startedAt))
+          .limit(1);
+
+        // Check completed attempts this month for this specific target department track
+        const completed = await db
+          .select({
+            id: examAttempts.id,
+            score: examAttempts.score,
+            status: examAttempts.status,
+            startedAt: examAttempts.startedAt,
+            completedAt: examAttempts.completedAt,
+            retestAuthorized: examAttempts.retestAuthorized,
+          })
+          .from(examAttempts)
+          .where(
+            and(
+              eq(examAttempts.staffId, currentStaff.staffId),
+              or(
+                deptId ? eq(examAttempts.targetDepartmentId, deptId) : sql`false`,
+                deptId ? eq(examAttempts.departmentId, deptId) : sql`false`,
+                eq(examAttempts.departmentName, t.targetDepartmentName)
+              ),
+              gte(examAttempts.startedAt, sql`${month.start.toISOString()}::timestamptz`),
+              sql`${examAttempts.startedAt} < ${month.next.toISOString()}::timestamptz`,
+              inArray(examAttempts.status, ["completed", "timed_out", "abandoned"])
+            )
+          )
+          .orderBy(desc(examAttempts.startedAt));
+
+        const attemptsCount = completed.length;
+        const hasPassed = completed.some((a) => Number(a.score ?? 0) >= passingLockoutScore);
+        const latestAttempt = completed[0];
+        const latestScore = latestAttempt ? Number(latestAttempt.score ?? 0) : null;
+
+        let canStart = true;
+        let lockReason: string | null = null;
+        let cooldownDaysRemaining: number | null = null;
+
+        if (inProgress) {
+          canStart = true; // Can resume
+        } else if (hasPassed) {
+          canStart = false;
+          lockReason = `Passing score achieved (≥ ${passingLockoutScore}%). No retest required.`;
+        } else if (attemptsCount >= 2) {
+          canStart = false;
+          lockReason = "Maximum allowed monthly attempts (2) completed.";
+        } else if (attemptsCount === 1 && latestAttempt) {
+          const completedTime = latestAttempt.completedAt ?? latestAttempt.startedAt;
+          const elapsedMs = now.getTime() - new Date(completedTime).getTime();
+          const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
+          const isTenDaysElapsed = elapsedMs >= tenDaysMs;
+          const isHrAuthorized = latestAttempt.retestAuthorized === true;
+
+          if (!isHrAuthorized && !isTenDaysElapsed) {
+            canStart = false;
+            cooldownDaysRemaining = Math.max(1, Math.ceil((new Date(completedTime).getTime() + tenDaysMs - now.getTime()) / (24 * 3600 * 1000)));
+            lockReason = `10-day cooling period active (${cooldownDaysRemaining} day${cooldownDaysRemaining > 1 ? "s" : ""} remaining). Retest unlocks or contact HR.`;
+          }
+        }
+
+        return {
+          ...t,
+          attemptsCount,
+          hasPassed,
+          latestScore,
+          canStart,
+          lockReason,
+          cooldownDaysRemaining,
+          inProgressAttemptId: inProgress?.id ?? null,
+          inProgressAttemptNo: inProgress?.attemptNo ?? null,
+        };
+      })
+    );
+
+    return c.json({
+      homeDepartment: { id: homeDeptId, name: homeDeptName },
+      tracks: tracksWithStatus,
+    });
+  })
+
+  // ---------------------------------------------------------------------------
+  // 11c. Cross-Department Exam Enrollments Management (Model C)
+  // ---------------------------------------------------------------------------
+  .get("/skill-assessment/cross-dept-enrollments", async (c) => {
+    const actor = await getAssessmentActor(c);
+    if (!actor.isAdmin && !actor.isHr && !actor.isSuper) {
+      if (!actor.currentStaff) return c.json({ error: "Staff profile required" }, 403);
+    }
+
+    const staffIdParam = c.req.query("staffId") ? Number(c.req.query("staffId")) : undefined;
+    const targetDeptIdParam = c.req.query("targetDepartmentId") ? Number(c.req.query("targetDepartmentId")) : undefined;
+    const statusParam = c.req.query("status") || "active";
+
+    const conditions: any[] = [];
+    if (staffIdParam) conditions.push(eq(crossDeptExamEnrollments.staffId, staffIdParam));
+    if (targetDeptIdParam) conditions.push(eq(crossDeptExamEnrollments.targetDepartmentId, targetDeptIdParam));
+    if (statusParam && statusParam !== "all") conditions.push(eq(crossDeptExamEnrollments.status, statusParam));
+
+    // Non-privileged users can only see their own enrollments
+    if (!actor.isAdmin && !actor.isHr && !actor.isSuper) {
+      conditions.push(eq(crossDeptExamEnrollments.staffId, actor.currentStaff!.staffId));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const list = await db
+      .select({
+        id: crossDeptExamEnrollments.id,
+        staffId: crossDeptExamEnrollments.staffId,
+        staffName: staff.name,
+        employeeCode: staff.employeeCode,
+        staffRole: staff.role,
+        targetDepartmentId: crossDeptExamEnrollments.targetDepartmentId,
+        targetDepartmentName: departments.name,
+        homeDepartmentId: crossDeptExamEnrollments.homeDepartmentId,
+        purpose: crossDeptExamEnrollments.purpose,
+        notes: crossDeptExamEnrollments.notes,
+        monthYear: crossDeptExamEnrollments.monthYear,
+        validFrom: crossDeptExamEnrollments.validFrom,
+        validUntil: crossDeptExamEnrollments.validUntil,
+        status: crossDeptExamEnrollments.status,
+        assignedByStaffId: crossDeptExamEnrollments.assignedByStaffId,
+        assignedByName: crossDeptExamEnrollments.assignedByName,
+        createdAt: crossDeptExamEnrollments.createdAt,
+      })
+      .from(crossDeptExamEnrollments)
+      .leftJoin(staff, eq(crossDeptExamEnrollments.staffId, staff.staffId))
+      .leftJoin(departments, eq(crossDeptExamEnrollments.targetDepartmentId, departments.id))
+      .where(whereClause)
+      .orderBy(desc(crossDeptExamEnrollments.createdAt));
+
+    return c.json(list);
+  })
+
+  .post("/skill-assessment/cross-dept-enrollments", async (c) => {
+    const actor = await getAssessmentActor(c);
+    if (!actor.isAdmin && !actor.isHr && !actor.isSuper) {
+      return c.json({ error: "Only HR administrators and Nursing Superintendents can assign cross-department test tracks." }, 403);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const schema = z.object({
+      staffId: z.number().int().positive(),
+      targetDepartmentId: z.number().int().positive(),
+      purpose: z.enum(["rotation", "transfer_vetting", "hospital_wide_certification", "voluntary"]).default("rotation"),
+      notes: z.string().optional(),
+      monthYear: z.string().optional(),
+      validUntil: z.string().optional(),
+    });
+
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) return c.json({ error: "Invalid enrollment data: " + parsed.error.issues[0]?.message }, 400);
+
+    const { staffId, targetDepartmentId, purpose, notes, monthYear, validUntil } = parsed.data;
+
+    // Check staff exists
+    const [targetStaff] = await db.select({ staffId: staff.staffId, name: staff.name }).from(staff).where(eq(staff.staffId, staffId)).limit(1);
+    if (!targetStaff) return c.json({ error: "Staff member not found" }, 404);
+
+    // Check target department exists
+    const [targetDept] = await db.select({ id: departments.id, name: departments.name }).from(departments).where(eq(departments.id, targetDepartmentId)).limit(1);
+    if (!targetDept) return c.json({ error: "Target department not found" }, 404);
+
+    // Find staff's home department
+    const [homeDept] = await db
+      .select({ id: departments.id })
+      .from(staffDepartments)
+      .where(and(eq(staffDepartments.staffId, staffId), eq(staffDepartments.status, "Active")))
+      .limit(1);
+
+    if (homeDept && homeDept.id === targetDepartmentId) {
+      return c.json({ error: `${targetStaff.name} is already permanently assigned to ${targetDept.name} as their home department.` }, 400);
+    }
+
+    // Check if active enrollment already exists
+    const [existing] = await db
+      .select({ id: crossDeptExamEnrollments.id })
+      .from(crossDeptExamEnrollments)
+      .where(
+        and(
+          eq(crossDeptExamEnrollments.staffId, staffId),
+          eq(crossDeptExamEnrollments.targetDepartmentId, targetDepartmentId),
+          eq(crossDeptExamEnrollments.status, "active")
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      return c.json({ error: `${targetStaff.name} already has an active cross-department enrollment for ${targetDept.name}.` }, 409);
+    }
+
+    const actorName = actor.currentStaff?.name || c.get("session")?.user?.name || "HR Admin";
+
+    const [enrollment] = await db
+      .insert(crossDeptExamEnrollments)
+      .values({
+        staffId,
+        targetDepartmentId,
+        homeDepartmentId: homeDept?.id || null,
+        purpose,
+        notes: notes || null,
+        monthYear: monthYear || null,
+        validFrom: new Date(),
+        validUntil: validUntil ? new Date(validUntil) : null,
+        status: "active",
+        assignedByStaffId: actor.currentStaff?.staffId || null,
+        assignedByName: actorName,
+      })
+      .returning();
+
+    return c.json({
+      success: true,
+      message: `Successfully enrolled ${targetStaff.name} in ${targetDept.name} (${purpose}) examination track.`,
+      enrollment,
+    });
+  })
+
+  .patch("/skill-assessment/cross-dept-enrollments/:id", async (c) => {
+    const actor = await getAssessmentActor(c);
+    if (!actor.isAdmin && !actor.isHr && !actor.isSuper) {
+      return c.json({ error: "Only HR administrators and Nursing Superintendents can modify cross-department test tracks." }, 403);
+    }
+
+    const id = Number(c.req.param("id"));
+    if (!id) return c.json({ error: "Invalid enrollment ID" }, 400);
+
+    const body = await c.req.json().catch(() => ({}));
+    const schema = z.object({
+      status: z.enum(["active", "completed", "revoked"]).optional(),
+      notes: z.string().optional(),
+      validUntil: z.string().nullable().optional(),
+    });
+
+    const parsed = schema.safeParse(body);
+    if (!parsed.success) return c.json({ error: "Invalid update data" }, 400);
+
+    const updateData: any = { updatedAt: new Date() };
+    if (parsed.data.status) updateData.status = parsed.data.status;
+    if (parsed.data.notes !== undefined) updateData.notes = parsed.data.notes;
+    if (parsed.data.validUntil !== undefined) {
+      updateData.validUntil = parsed.data.validUntil ? new Date(parsed.data.validUntil) : null;
+    }
+
+    const [updated] = await db
+      .update(crossDeptExamEnrollments)
+      .set(updateData)
+      .where(eq(crossDeptExamEnrollments.id, id))
+      .returning();
+
+    if (!updated) return c.json({ error: "Enrollment not found" }, 404);
+
+    return c.json({ success: true, message: `Enrollment status updated to ${updated.status}.`, enrollment: updated });
+  })
+
+  .delete("/skill-assessment/cross-dept-enrollments/:id", async (c) => {
+    const actor = await getAssessmentActor(c);
+    if (!actor.isAdmin && !actor.isHr && !actor.isSuper) {
+      return c.json({ error: "Only HR administrators and Nursing Superintendents can revoke cross-department test tracks." }, 403);
+    }
+
+    const id = Number(c.req.param("id"));
+    if (!id) return c.json({ error: "Invalid enrollment ID" }, 400);
+
+    const [revoked] = await db
+      .update(crossDeptExamEnrollments)
+      .set({ status: "revoked", updatedAt: new Date() })
+      .where(eq(crossDeptExamEnrollments.id, id))
+      .returning();
+
+    if (!revoked) return c.json({ error: "Enrollment not found" }, 404);
+
+    return c.json({ success: true, message: "Cross-department enrollment revoked." });
+  })
+
+  // ---------------------------------------------------------------------------
   // 12. Online Exam: Start Assessment Session (Configured question count)
+  // Supports Model C Track-based examinations with quota isolation per target department
   // ---------------------------------------------------------------------------
   .post("/skill-assessment/exam/start", async (c) => {
     const currentStaff = await getCurrentStaff(c);
@@ -1971,16 +2368,40 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       return c.json({ error: "A linked staff profile is required to take an examination." }, 403);
     }
 
-    const parsed = z.object({ assessmentId: z.number().int().positive().nullish() }).safeParse(await c.req.json().catch(() => ({})));
-    if (!parsed.success) return c.json({ error: "Invalid assessment ID" }, 400);
+    const bodyRaw = await c.req.json().catch(() => ({}));
+    const parsed = z.object({
+      assessmentId: z.number().int().positive().nullish(),
+      targetDepartmentId: z.number().int().positive().nullish(),
+      purpose: z.enum(["core_monthly", "rotation", "transfer_vetting", "hospital_wide_certification", "voluntary"]).nullish(),
+      enrollmentId: z.number().int().positive().nullish(),
+    }).safeParse(bodyRaw);
+    if (!parsed.success) return c.json({ error: "Invalid examination request payload" }, 400);
     const assessmentId = parsed.data.assessmentId ?? null;
 
     return db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(72419, ${currentStaff.staffId})`);
 
       const targetStaffId = currentStaff.staffId;
-      let candidateDeptId: number | null = null;
-      let candidateDeptName: string | null = null;
+      let candidateHomeDeptId: number | null = null;
+      let candidateHomeDeptName: string = "General Nursing";
+
+      // Find staff's active primary home department
+      const [homeDeptRecord] = await tx
+        .select({ id: departments.id, name: departments.name })
+        .from(staffDepartments)
+        .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
+        .where(and(eq(staffDepartments.staffId, targetStaffId), eq(staffDepartments.status, "Active")))
+        .limit(1);
+
+      if (homeDeptRecord) {
+        candidateHomeDeptId = homeDeptRecord.id;
+        candidateHomeDeptName = homeDeptRecord.name;
+      }
+
+      let candidateDeptId: number | null = candidateHomeDeptId;
+      let candidateDeptName: string = candidateHomeDeptName;
+      let examPurpose: string = "core_monthly";
+      let resolvedEnrollmentId: number | null = null;
 
       if (assessmentId) {
         const [assessment] = await tx
@@ -2003,27 +2424,57 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         }
         candidateDeptId = assessment.departmentId;
         candidateDeptName = assessment.departmentName;
-      }
-
-      if (!candidateDeptName && currentStaff) {
-        // Find staff's department
-        const [deptRecord] = await tx
+        examPurpose = "core_monthly";
+      } else if (parsed.data.targetDepartmentId && parsed.data.targetDepartmentId !== candidateHomeDeptId) {
+        // Model C: Cross-department exam track requested
+        const requestedDeptId = parsed.data.targetDepartmentId;
+        const [targetDept] = await tx
           .select({ id: departments.id, name: departments.name })
-          .from(staffDepartments)
-          .innerJoin(departments, eq(staffDepartments.departmentId, departments.id))
-          .where(and(eq(staffDepartments.staffId, currentStaff.staffId), eq(staffDepartments.status, "Active")))
+          .from(departments)
+          .where(eq(departments.id, requestedDeptId))
           .limit(1);
 
-        if (deptRecord) {
-          candidateDeptId = deptRecord.id;
-          candidateDeptName = deptRecord.name;
-        } else {
-          candidateDeptName = "General Nursing";
+        if (!targetDept) {
+          return c.json({ error: "Selected target department not found" }, 404);
         }
+
+        const actor = await getAssessmentActor(c);
+        const isPrivileged = actor.isAdmin || actor.isHr || actor.isSuper;
+
+        // Check active enrollment in cross_dept_exam_enrollments
+        const [activeEnrollment] = await tx
+          .select()
+          .from(crossDeptExamEnrollments)
+          .where(
+            and(
+              eq(crossDeptExamEnrollments.staffId, targetStaffId),
+              eq(crossDeptExamEnrollments.targetDepartmentId, requestedDeptId),
+              eq(crossDeptExamEnrollments.status, "active"),
+              or(
+                isNull(crossDeptExamEnrollments.validUntil),
+                gte(crossDeptExamEnrollments.validUntil, new Date())
+              )
+            )
+          )
+          .orderBy(desc(crossDeptExamEnrollments.id))
+          .limit(1);
+
+        if (!activeEnrollment && !isPrivileged) {
+          return c.json({
+            code: "CROSS_DEPT_NOT_ENROLLED",
+            error: `You are not enrolled in an authorized examination track for ${targetDept.name}. Please contact HR or Nursing Superintendent to assign a rotation or cross-training track.`,
+          }, 403);
+        }
+
+        candidateDeptId = targetDept.id;
+        candidateDeptName = targetDept.name;
+        examPurpose = parsed.data.purpose || activeEnrollment?.purpose || "rotation";
+        resolvedEnrollmentId = activeEnrollment?.id || parsed.data.enrollmentId || null;
       }
 
       // -------------------------------------------------------------------------
       // Anti-Misuse & Progress Resumption: Check for existing IN-PROGRESS attempt
+      // Scoped to this specific target department track
       // -------------------------------------------------------------------------
       const [existingAttempt] = await tx
         .select()
@@ -2031,7 +2482,12 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         .where(
           and(
             eq(examAttempts.staffId, targetStaffId),
-            eq(examAttempts.status, "in_progress")
+            eq(examAttempts.status, "in_progress"),
+            or(
+              candidateDeptId ? eq(examAttempts.targetDepartmentId, candidateDeptId) : sql`false`,
+              candidateDeptId ? eq(examAttempts.departmentId, candidateDeptId) : sql`false`,
+              eq(examAttempts.departmentName, candidateDeptName)
+            )
           )
         )
         .orderBy(desc(examAttempts.startedAt))
@@ -2049,44 +2505,24 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           attemptNo: existingAttempt.attemptNo,
           assessmentId: existingAttempt.assessmentId,
           departmentName: existingAttempt.departmentName || candidateDeptName,
+          targetDepartmentId: existingAttempt.targetDepartmentId || candidateDeptId,
+          homeDepartmentId: existingAttempt.homeDepartmentId || candidateHomeDeptId,
+          homeDepartmentName: existingAttempt.homeDepartmentName || candidateHomeDeptName,
+          examPurpose: existingAttempt.examPurpose || examPurpose,
+          enrollmentId: existingAttempt.enrollmentId || resolvedEnrollmentId,
           totalQuestions: existingAttempt.totalQuestions,
           totalTimeSeconds: existingAttempt.totalTimeSeconds,
           remainingSeconds,
           perQuestionTimeSeconds: existingAttempt.perQuestionTimeSeconds,
           passPercentage: existingAttempt.passPercentage,
           isResumed: true,
+          isRetest: existingAttempt.isRetest ?? false,
           savedAnswers: examSelectedAnswers(questions, (existingAttempt.answers || {}) as Record<string, unknown>),
           questions: publicExamQuestions(questions),
         });
       }
 
-      // One new attempt per staff member per India calendar month, irrespective
-      // of linked assessment or outcome. The staff advisory lock above serializes
-      // this check with creation; resuming an existing session consumes no new slot.
-      const startedAt = new Date();
-      const month = cbtCalendarMonthWindow(startedAt);
-      const [monthlyAttempt] = await tx.select({ id: examAttempts.id })
-        .from(examAttempts)
-        .where(and(
-          eq(examAttempts.staffId, targetStaffId),
-          // timestamptz bounds keep India midnight correct against the database
-          // session's timestamp convention (started_at is timestamp without TZ).
-          gte(examAttempts.startedAt, sql`${month.start.toISOString()}::timestamptz`),
-          sql`${examAttempts.startedAt} < ${month.next.toISOString()}::timestamptz`,
-        ))
-        .limit(1);
-      if (monthlyAttempt) {
-        const nextDate = month.next.toLocaleDateString("en-IN", {
-          timeZone: "Asia/Kolkata", day: "numeric", month: "long", year: "numeric",
-        });
-        return c.json({
-          code: "CBT_MONTHLY_LIMIT",
-          error: `Only one CBT exam is allowed per calendar month (India time). Your next exam is available on ${nextDate}.`,
-          nextEligibleAt: month.next.toISOString(),
-        }, 429);
-      }
-
-      // Load active exam configuration
+      // Load active exam configuration from settings (default 80% passing benchmark)
       const [config] = await tx
         .select()
         .from(examConfigs)
@@ -2097,7 +2533,110 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       const targetQuestionsCount = config?.totalQuestions || 20;
       const totalTimeSeconds = config?.totalTimeSeconds || 1200;
       const perQuestionTimeSeconds = config?.perQuestionTimeSeconds || 60;
-      const passPercentage = config?.passPercentage || "60.00";
+      const passPercentage = config?.passPercentage ? String(config.passPercentage) : "80.00";
+      const passingLockoutScore = Number(passPercentage);
+
+      // Calendar month attempt governance:
+      // Supports retesting within the same calendar month under strict governance:
+      // - Isolated per target department track (candidate can take home exam and rotation exam independently)
+      // - Passing lockout: If candidate already passed (>= passing lockout score from settings), no retest allowed.
+      // - Maximum monthly cap: Max 2 attempts (Attempt 1 + 1 Retest) per target track.
+      // - 10-day minimum cooling period between attempts, unless authorized by HR/Admin.
+      // - Department In-charge is excluded: only HR/Admin can authorize retests.
+      const startedAt = new Date();
+      const month = cbtCalendarMonthWindow(startedAt);
+
+      const monthCompletedAttempts = await tx
+        .select({
+          id: examAttempts.id,
+          score: examAttempts.score,
+          passPercentage: examAttempts.passPercentage,
+          status: examAttempts.status,
+          startedAt: examAttempts.startedAt,
+          completedAt: examAttempts.completedAt,
+          retestAuthorized: examAttempts.retestAuthorized,
+          retestAuthorizedBy: examAttempts.retestAuthorizedBy,
+          isRetest: examAttempts.isRetest,
+          targetDepartmentId: examAttempts.targetDepartmentId,
+        })
+        .from(examAttempts)
+        .where(and(
+          eq(examAttempts.staffId, targetStaffId),
+          or(
+            candidateDeptId ? eq(examAttempts.targetDepartmentId, candidateDeptId) : sql`false`,
+            candidateDeptId ? eq(examAttempts.departmentId, candidateDeptId) : sql`false`,
+            eq(examAttempts.departmentName, candidateDeptName)
+          ),
+          gte(examAttempts.startedAt, sql`${month.start.toISOString()}::timestamptz`),
+          sql`${examAttempts.startedAt} < ${month.next.toISOString()}::timestamptz`,
+          inArray(examAttempts.status, ["completed", "timed_out", "abandoned"])
+        ))
+        .orderBy(desc(examAttempts.startedAt));
+
+      let isRetestAttempt = false;
+
+      if (monthCompletedAttempts.length > 0) {
+        const latestAttempt = monthCompletedAttempts[0];
+        const hasPassed = monthCompletedAttempts.some(
+          (a) => Number(a.score ?? 0) >= passingLockoutScore
+        );
+
+        // 1. Passing Lockout: If already passed (>= passing lockout threshold from settings), retests are not permitted
+        if (hasPassed) {
+          return c.json({
+            code: "CBT_ALREADY_PASSED",
+            error: `You have already passed this month's CBT examination for ${candidateDeptName} (score ≥ ${passingLockoutScore}%). Retests are not required.`,
+          }, 403);
+        }
+
+        // 2. Maximum Monthly Cap: Max 2 attempts (Attempt 1 + 1 Retest) per track
+        if (monthCompletedAttempts.length >= 2) {
+          return c.json({
+            code: "CBT_MAX_ATTEMPTS",
+            error: `You have completed the maximum allowed attempts (2) for ${candidateDeptName} in this calendar month. Please contact HR for in-service training.`,
+            nextEligibleAt: month.next.toISOString(),
+          }, 429);
+        }
+
+        // 3. Cooling Period & Retest Authorization:
+        // Default cooling period: 10 days minimum (240 hours).
+        const completedTime = latestAttempt.completedAt ?? latestAttempt.startedAt;
+        const elapsedMs = startedAt.getTime() - new Date(completedTime).getTime();
+        const tenDaysMs = 10 * 24 * 60 * 60 * 1000;
+        const isTenDaysElapsed = elapsedMs >= tenDaysMs;
+        const isHrAuthorized = latestAttempt.retestAuthorized === true;
+
+        if (!isHrAuthorized && !isTenDaysElapsed) {
+          const unlockTime = new Date(new Date(completedTime).getTime() + tenDaysMs);
+          const unlockDateStr = unlockTime.toLocaleDateString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const daysRemaining = Math.max(1, Math.ceil((unlockTime.getTime() - startedAt.getTime()) / (24 * 3600 * 1000)));
+
+          return c.json({
+            code: "CBT_COOLDOWN_ACTIVE",
+            error: `Mandatory 10-day remediation period active for ${candidateDeptName} (${daysRemaining} day${daysRemaining > 1 ? "s" : ""} remaining). Your retest will be available on ${unlockDateStr}, or contact HR for authorization.`,
+            nextEligibleAt: unlockTime.toISOString(),
+            cooldownDaysRemaining: daysRemaining,
+          }, 429);
+        }
+
+        // Eligible for Retest (either 10 days elapsed or HR authorized)
+        isRetestAttempt = true;
+
+        // Consume the HR authorization flag on the prior attempt
+        if (isHrAuthorized) {
+          await tx
+            .update(examAttempts)
+            .set({ retestAuthorized: false, updatedAt: new Date() })
+            .where(eq(examAttempts.id, latestAttempt.id));
+        }
+      }
 
       // Fetch all active questions from question bank
       const allQuestions = await tx
@@ -2109,7 +2648,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         return c.json({ error: "No active questions found in the question bank." }, 400);
       }
 
-      // Check if candidate's department has a specific question bank configured for this month (India time)
+      // Check if target department has a specific question bank configured for this month (India time)
       const kolkataMonthYear = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Kolkata",
         year: "numeric",
@@ -2118,7 +2657,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
 
       const trimmedDeptName = (candidateDeptName || "").trim();
 
-      // Check if candidate's department is clinical in department master
+      // Check if target department is clinical in department master
       let isCandidateDeptClinical = false;
       if (candidateDeptId) {
         const [d] = await tx
@@ -2199,7 +2738,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       const year = new Date().getFullYear();
       const attemptNo = await getNextExamAttemptNo(year, tx);
 
-      // Record the attempt in database
+      // Record the attempt in database with cross-department tracking
       const [attempt] = await tx
         .insert(examAttempts)
         .values({
@@ -2208,6 +2747,11 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           staffId: targetStaffId,
           departmentId: candidateDeptId || null,
           departmentName: candidateDeptName || null,
+          targetDepartmentId: candidateDeptId || null,
+          homeDepartmentId: candidateHomeDeptId || null,
+          homeDepartmentName: candidateHomeDeptName || null,
+          examPurpose,
+          enrollmentId: resolvedEnrollmentId,
           status: "in_progress",
           startedAt,
           totalQuestions: finalExamQuestions.length,
@@ -2217,6 +2761,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           questionSnapshot: snapshotExamQuestions(finalExamQuestions),
           passPercentage: String(passPercentage),
           answers: {},
+          isRetest: isRetestAttempt,
         })
         .returning();
 
@@ -2226,12 +2771,18 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         attemptNo: attempt.attemptNo,
         assessmentId: attempt.assessmentId,
         departmentName: candidateDeptName,
+        targetDepartmentId: candidateDeptId,
+        homeDepartmentId: candidateHomeDeptId,
+        homeDepartmentName: candidateHomeDeptName,
+        examPurpose,
+        enrollmentId: resolvedEnrollmentId,
         totalQuestions: finalExamQuestions.length,
         totalTimeSeconds,
         perQuestionTimeSeconds,
         passPercentage,
         monthlyBankTitle: deptMonthlyBank?.title || null,
         monthlyBankMonthYear: kolkataMonthYear,
+        isRetest: isRetestAttempt,
         questions: finalExamQuestions.map((q, idx) => ({
           id: q.id,
           index: idx + 1,
@@ -2340,9 +2891,110 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         }
       }
       return c.json({
-        ...result, attemptId, attemptNo: attempt.attemptNo, timeSpentSeconds, expired,
+        ...result, attemptId, attemptNo: attempt.attemptNo, isRetest: attempt.isRetest ?? false, timeSpentSeconds, expired,
         syncedToAssessmentId: syncedAssessment?.id ?? null, syncedAssessment,
       });
+    });
+  })
+
+  // ---------------------------------------------------------------------------
+  // 12c. Online Exam: Authorize Retest (Admin & HR Only)
+  // ---------------------------------------------------------------------------
+  .post("/skill-assessment/exam/authorize-retest", async (c) => {
+    const userRole = (c.get("session")?.user?.role || "").toLowerCase();
+    const isAdmin = userRole === "admin";
+    const currentStaff = await getCurrentStaff(c);
+    const isHr = isAdmin || userRole === "hr" || (currentStaff?.role || "").toLowerCase() === "hr";
+
+    // Strictly exclude department in-charges and non-HR approvers
+    if (!isAdmin && !isHr) {
+      return c.json({ error: "Only HR personnel and System Administrators are authorized to approve retests." }, 403);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const attemptId = body.attemptId ? Number(body.attemptId) : null;
+    const staffId = body.staffId ? Number(body.staffId) : null;
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+
+    if (!reason || reason.length < 3) {
+      return c.json({ error: "A valid reason (minimum 3 characters) is required to authorize a retest." }, 400);
+    }
+
+    if (!attemptId && !staffId) {
+      return c.json({ error: "Either attemptId or staffId is required." }, 400);
+    }
+
+    // Find the target attempt
+    let targetAttempt: typeof examAttempts.$inferSelect | undefined;
+    if (attemptId) {
+      [targetAttempt] = await db
+        .select()
+        .from(examAttempts)
+        .where(eq(examAttempts.id, attemptId))
+        .limit(1);
+    } else if (staffId) {
+      const month = cbtCalendarMonthWindow(new Date());
+      [targetAttempt] = await db
+        .select()
+        .from(examAttempts)
+        .where(and(
+          eq(examAttempts.staffId, staffId),
+          gte(examAttempts.startedAt, sql`${month.start.toISOString()}::timestamptz`),
+          sql`${examAttempts.startedAt} < ${month.next.toISOString()}::timestamptz`,
+          inArray(examAttempts.status, ["completed", "timed_out", "abandoned"])
+        ))
+        .orderBy(desc(examAttempts.startedAt))
+        .limit(1);
+    }
+
+    if (!targetAttempt) {
+      return c.json({ error: "No completed or eligible exam attempt found to authorize retest." }, 404);
+    }
+
+    // Check if candidate already passed (using active passing benchmark from settings, default 80%)
+    const [config] = await db
+      .select({ passPercentage: examConfigs.passPercentage })
+      .from(examConfigs)
+      .where(eq(examConfigs.active, true))
+      .orderBy(asc(examConfigs.id))
+      .limit(1);
+
+    const passingLockoutScore = Number(config?.passPercentage || targetAttempt.passPercentage || 80);
+    const score = Number(targetAttempt.score ?? 0);
+    if (score >= passingLockoutScore) {
+      return c.json({
+        error: `Candidate achieved a score of ${score}%, meeting or exceeding the passing lockout threshold (${passingLockoutScore}%). Retests are not allowed for passing scores.`,
+      }, 400);
+    }
+
+    // Authorize retest
+    const actorName = currentStaff?.name || c.get("session")?.user?.name || "HR Admin";
+    await db
+      .update(examAttempts)
+      .set({
+        retestAuthorized: true,
+        retestAuthorizedAt: new Date(),
+        retestAuthorizedBy: actorName,
+        retestReason: reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(examAttempts.id, targetAttempt.id));
+
+    // Get candidate name
+    const [candidate] = await db
+      .select({ name: staff.name })
+      .from(staff)
+      .where(eq(staff.staffId, targetAttempt.staffId))
+      .limit(1);
+
+    const candidateName = candidate?.name || `Staff #${targetAttempt.staffId}`;
+
+    return c.json({
+      success: true,
+      message: `Retest successfully authorized for ${candidateName}. The candidate can now start Attempt 2.`,
+      attemptId: targetAttempt.id,
+      staffId: targetAttempt.staffId,
+      candidateName,
     });
   })
 
@@ -2367,6 +3019,47 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
     const pageParam = c.req.query("page");
     const pageSizeParam = c.req.query("pageSize");
 
+    // Auto-expire stale in-progress attempts whose total duration has elapsed
+    try {
+      const now = new Date();
+      const staleAttempts = await db
+        .select()
+        .from(examAttempts)
+        .where(
+          and(
+            eq(examAttempts.status, "in_progress"),
+            sql`${examAttempts.startedAt} + (${examAttempts.totalTimeSeconds} || ' seconds')::interval < ${now.toISOString()}::timestamptz`
+          )
+        );
+
+      for (const st of staleAttempts) {
+        const questions = st.questionSnapshot || [];
+        const answers = (st.answers || {}) as Record<string, unknown>;
+        const result = questions.length > 0
+          ? gradeExam(questions, answers, Number(st.passPercentage ?? 80))
+          : { score: 0, theoreticalRating: 0, correctCount: 0, incorrectCount: 0, unansweredCount: st.totalQuestions, review: [] };
+
+        const completedAt = new Date(new Date(st.startedAt).getTime() + (st.totalTimeSeconds || 1200) * 1000);
+
+        await db
+          .update(examAttempts)
+          .set({
+            status: "timed_out",
+            completedAt,
+            updatedAt: now,
+            timeSpentSeconds: st.totalTimeSeconds,
+            score: result.score.toFixed(2),
+            theoreticalRating: result.theoreticalRating.toFixed(2),
+            correctCount: result.correctCount,
+            incorrectCount: result.incorrectCount,
+            unansweredCount: result.unansweredCount,
+          })
+          .where(eq(examAttempts.id, st.id));
+      }
+    } catch (e) {
+      console.warn("Failed to auto-expire stale in-progress attempts", e);
+    }
+
     const conditions: any[] = [];
 
     if (assessmentId) {
@@ -2387,7 +3080,14 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       ));
       const deptIds = [...new Set([...ledDepartments, ...namedDepartments].map((dept) => dept.id))];
       if (deptIds.length > 0) {
-        conditions.push(or(eq(examAttempts.staffId, currentStaff.staffId), inArray(examAttempts.departmentId, deptIds)));
+        conditions.push(
+          or(
+            eq(examAttempts.staffId, currentStaff.staffId),
+            inArray(examAttempts.departmentId, deptIds),
+            inArray(examAttempts.targetDepartmentId, deptIds),
+            inArray(examAttempts.homeDepartmentId, deptIds)
+          )
+        );
       } else {
         conditions.push(eq(examAttempts.staffId, currentStaff.staffId));
       }
@@ -2401,7 +3101,8 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           ilike(examAttempts.attemptNo, `%${search}%`),
           ilike(staff.name, `%${search}%`),
           ilike(staff.employeeCode, `%${search}%`),
-          ilike(examAttempts.departmentName, `%${search}%`)
+          ilike(examAttempts.departmentName, `%${search}%`),
+          ilike(examAttempts.homeDepartmentName, `%${search}%`)
         )
       );
     }
@@ -2415,21 +3116,32 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         conditions.push(
           and(
             inArray(examAttempts.status, ["completed", "timed_out"]),
-            sql`COALESCE(${examAttempts.score}, 0)::numeric >= COALESCE(${examAttempts.passPercentage}, 60)::numeric`
+            sql`COALESCE(${examAttempts.score}, 0)::numeric >= COALESCE(${examAttempts.passPercentage}, 80)::numeric`
           )
         );
       } else if (outcomeParam === "failed") {
         conditions.push(
           and(
             inArray(examAttempts.status, ["completed", "timed_out"]),
-            sql`COALESCE(${examAttempts.score}, 0)::numeric < COALESCE(${examAttempts.passPercentage}, 60)::numeric`
+            sql`COALESCE(${examAttempts.score}, 0)::numeric < COALESCE(${examAttempts.passPercentage}, 80)::numeric`
           )
         );
       }
     }
 
     if (departmentIdParam) {
-      conditions.push(eq(examAttempts.departmentId, departmentIdParam));
+      conditions.push(
+        or(
+          eq(examAttempts.departmentId, departmentIdParam),
+          eq(examAttempts.targetDepartmentId, departmentIdParam),
+          eq(examAttempts.homeDepartmentId, departmentIdParam)
+        )
+      );
+    }
+
+    const purposeParam = c.req.query("examPurpose");
+    if (purposeParam && purposeParam !== "all") {
+      conditions.push(eq(examAttempts.examPurpose, purposeParam));
     }
 
     if (startDateParam) {
@@ -2455,6 +3167,11 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           designation: staff.role,
           departmentId: examAttempts.departmentId,
           departmentName: examAttempts.departmentName,
+          targetDepartmentId: examAttempts.targetDepartmentId,
+          homeDepartmentId: examAttempts.homeDepartmentId,
+          homeDepartmentName: examAttempts.homeDepartmentName,
+          examPurpose: examAttempts.examPurpose,
+          enrollmentId: examAttempts.enrollmentId,
           status: examAttempts.status,
           totalQuestions: examAttempts.totalQuestions,
           score: examAttempts.score,
@@ -2466,6 +3183,13 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
           timeSpentSeconds: examAttempts.timeSpentSeconds,
           startedAt: examAttempts.startedAt,
           completedAt: examAttempts.completedAt,
+          isRetest: examAttempts.isRetest,
+          retestAuthorized: examAttempts.retestAuthorized,
+          retestAuthorizedAt: examAttempts.retestAuthorizedAt,
+          retestAuthorizedBy: examAttempts.retestAuthorizedBy,
+          retestReason: examAttempts.retestReason,
+          answers: examAttempts.answers,
+          totalTimeSeconds: examAttempts.totalTimeSeconds,
         })
         .from(examAttempts)
         .leftJoin(staff, and(eq(examAttempts.staffId, staff.staffId), eq(staff.active, true)))
@@ -2476,13 +3200,25 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         query = query.where(whereClause);
       }
 
-      const attempts = await query.limit(50);
-      return c.json(attempts);
+      const rawAttempts = await query.limit(50);
+      const mapped = rawAttempts.map((a) => {
+        const answersObj = (a.answers && typeof a.answers === "object") ? a.answers : {};
+        const answeredCount = Object.keys(answersObj).length;
+        const remainingSeconds = examRemainingSeconds(a.startedAt, a.totalTimeSeconds);
+        return {
+          ...a,
+          answers: undefined,
+          answeredCount: a.status === "in_progress" ? answeredCount : ((a.correctCount ?? 0) + (a.incorrectCount ?? 0)),
+          remainingSeconds: a.status === "in_progress" ? remainingSeconds : 0,
+        };
+      });
+      return c.json(mapped);
     }
 
+    const isExport = c.req.query("export") === "true" || pageSizeParam === "all";
     const page = Math.max(1, parseInt(pageParam, 10) || 1);
-    const pageSize = Math.min(100, Math.max(1, parseInt(pageSizeParam || "20", 10) || 20));
-    const offset = (page - 1) * pageSize;
+    const pageSize = isExport ? 10000 : Math.min(100, Math.max(1, parseInt(pageSizeParam || "20", 10) || 20));
+    const offset = isExport ? 0 : (page - 1) * pageSize;
 
     // Total count
     const [countRow] = await db
@@ -2497,8 +3233,8 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       .select({
         totalAttempts: sql<number>`count(*)::int`,
         completedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') then 1 end)::int`,
-        passedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') and COALESCE(${examAttempts.score}, 0)::numeric >= COALESCE(${examAttempts.passPercentage}, 60)::numeric then 1 end)::int`,
-        failedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') and COALESCE(${examAttempts.score}, 0)::numeric < COALESCE(${examAttempts.passPercentage}, 60)::numeric then 1 end)::int`,
+        passedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') and COALESCE(${examAttempts.score}, 0)::numeric >= COALESCE(${examAttempts.passPercentage}, 80)::numeric then 1 end)::int`,
+        failedCount: sql<number>`count(case when ${examAttempts.status} in ('completed', 'timed_out') and COALESCE(${examAttempts.score}, 0)::numeric < COALESCE(${examAttempts.passPercentage}, 80)::numeric then 1 end)::int`,
         inProgressCount: sql<number>`count(case when ${examAttempts.status} = 'in_progress' then 1 end)::int`,
         avgScore: sql<string | null>`avg(case when ${examAttempts.status} in ('completed', 'timed_out') then ${examAttempts.score}::numeric end)`,
         avgRating: sql<string | null>`avg(case when ${examAttempts.status} in ('completed', 'timed_out') then ${examAttempts.theoreticalRating}::numeric end)`,
@@ -2518,6 +3254,11 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         designation: staff.role,
         departmentId: examAttempts.departmentId,
         departmentName: examAttempts.departmentName,
+        targetDepartmentId: examAttempts.targetDepartmentId,
+        homeDepartmentId: examAttempts.homeDepartmentId,
+        homeDepartmentName: examAttempts.homeDepartmentName,
+        examPurpose: examAttempts.examPurpose,
+        enrollmentId: examAttempts.enrollmentId,
         status: examAttempts.status,
         totalQuestions: examAttempts.totalQuestions,
         score: examAttempts.score,
@@ -2529,6 +3270,13 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
         timeSpentSeconds: examAttempts.timeSpentSeconds,
         startedAt: examAttempts.startedAt,
         completedAt: examAttempts.completedAt,
+        isRetest: examAttempts.isRetest,
+        retestAuthorized: examAttempts.retestAuthorized,
+        retestAuthorizedAt: examAttempts.retestAuthorizedAt,
+        retestAuthorizedBy: examAttempts.retestAuthorizedBy,
+        retestReason: examAttempts.retestReason,
+        answers: examAttempts.answers,
+        totalTimeSeconds: examAttempts.totalTimeSeconds,
       })
       .from(examAttempts)
       .leftJoin(staff, and(eq(examAttempts.staffId, staff.staffId), eq(staff.active, true)))
@@ -2537,11 +3285,23 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
       .limit(pageSize)
       .offset(offset);
 
+    const mappedAttempts = attempts.map((a) => {
+      const answersObj = (a.answers && typeof a.answers === "object") ? a.answers : {};
+      const answeredCount = Object.keys(answersObj).length;
+      const remainingSeconds = examRemainingSeconds(a.startedAt, a.totalTimeSeconds);
+      return {
+        ...a,
+        answers: undefined,
+        answeredCount: a.status === "in_progress" ? answeredCount : ((a.correctCount ?? 0) + (a.incorrectCount ?? 0)),
+        remainingSeconds: a.status === "in_progress" ? remainingSeconds : 0,
+      };
+    });
+
     const completed = Number(summaryRow?.completedCount ?? 0);
     const passed = Number(summaryRow?.passedCount ?? 0);
 
     return c.json({
-      data: attempts,
+      data: mappedAttempts,
       pagination: {
         page,
         pageSize,

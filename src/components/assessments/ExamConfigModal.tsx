@@ -37,7 +37,7 @@ export function ExamConfigModal({ isOpen, onClose, embedded = false }: ExamConfi
   const [totalQuestions, setTotalQuestions] = useState(20);
   const [totalTimeMinutes, setTotalTimeMinutes] = useState(20);
   const [perQuestionSeconds, setPerQuestionSeconds] = useState(60);
-  const [passPercentage, setPassPercentage] = useState(60);
+  const [passPercentage, setPassPercentage] = useState(80);
   const [mix, setMix] = useState(DEFAULT_EXAM_MIX);
   const difficultyTotal = mix.basicPercentage + mix.mediumPercentage + mix.advancedPercentage;
   const mixValid = Object.values(mix).every(v => Number.isInteger(v) && v >= 0 && v <= 100) && difficultyTotal === 100;
@@ -50,7 +50,7 @@ export function ExamConfigModal({ isOpen, onClose, embedded = false }: ExamConfi
       if (config.totalQuestions) setTotalQuestions(config.totalQuestions);
       if (config.totalTimeSeconds) setTotalTimeMinutes(Math.round(config.totalTimeSeconds / 60));
       if (config.perQuestionTimeSeconds) setPerQuestionSeconds(config.perQuestionTimeSeconds);
-      if (config.passPercentage) setPassPercentage(Number(config.passPercentage) || 60);
+      if (config.passPercentage) setPassPercentage(Number(config.passPercentage) || 80);
       setMix({
         basicPercentage: config.basicPercentage ?? DEFAULT_EXAM_MIX.basicPercentage,
         mediumPercentage: config.mediumPercentage ?? DEFAULT_EXAM_MIX.mediumPercentage,
@@ -174,7 +174,7 @@ export function ExamConfigModal({ isOpen, onClose, embedded = false }: ExamConfi
 
             <div>
               <label className="font-semibold block mb-1 text-foreground">
-                Passing Benchmark (%)
+                Passing Benchmark & Lockout Score (%)
               </label>
               <input
                 type="number"
@@ -186,7 +186,7 @@ export function ExamConfigModal({ isOpen, onClose, embedded = false }: ExamConfi
                 required
               />
               <span className="text-[10px] text-muted-foreground block mt-0.5">
-                Standard NABH benchmark: 60%
+                Standard passing benchmark & retest lockout: 80%
               </span>
             </div>
           </div>

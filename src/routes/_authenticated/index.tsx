@@ -32,6 +32,7 @@ import { cn } from "../../utils/cn";
 import { PublishedMagazineSection } from "../../components/PublishedMagazineSection";
 import { getShiftConfig } from "../../lib/roster-utils";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { useUserPermissions } from "../../lib/permissions";
 import * as React from "react";
 
 export const Route = createFileRoute("/_authenticated/")({
@@ -40,6 +41,8 @@ export const Route = createFileRoute("/_authenticated/")({
 
 function Dashboard() {
   const { session } = Route.useRouteContext() as { session?: any };
+  const permissions = useUserPermissions();
+  const canAccessDashboard = permissions.canViewDashboard; // Restricted to Admin and Management Approvers
   const userName = session.data?.user.name || "Administrator";
   const userRole = session.data?.user.role || "staff";
   const isAdminOrHr = userRole === "admin" || userRole === "hr";
@@ -114,7 +117,7 @@ function Dashboard() {
       }>;
     }>;
   }>(["dashboard", scheduleAnchorDate], () => client.dashboard.$get({ query: { scheduleDate: scheduleAnchorDate } }), {
-    enabled: !!session.data
+    enabled: !!session.data && canAccessDashboard
   });
 
   const punchStatusQuery = useRpcQuery<{ status: string; checkInTime?: string; checkOutTime?: string }>(
@@ -230,6 +233,195 @@ function Dashboard() {
           colorClass: "text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border-amber-100 dark:border-amber-900/30"
         }
       ];
+
+  if (!canAccessDashboard) {
+    return (
+      <div className="flex max-w-7xl flex-col gap-6 mx-auto">
+        {/* Welcome Greeting Banner */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-800 to-teal-950 p-6 md:p-8 text-white shadow-md border border-slate-800 dark:border-slate-800/80">
+          <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 w-64 h-64 rounded-full bg-teal-500/10 blur-3xl pointer-events-none" />
+          <div className="absolute left-1/3 bottom-0 w-80 h-80 rounded-full bg-blue-500/5 blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+            <div className="space-y-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-500/20 text-teal-350 border border-teal-500/30 uppercase tracking-wider">
+                <Activity size={12} className="animate-pulse" /> Staff Portal
+              </span>
+              <h2 className="text-2xl md:text-3xl font-black tracking-tight mt-1">
+                Welcome back, {userName}!
+              </h2>
+              <p className="text-xs md:text-sm text-slate-350 leading-relaxed max-w-xl">
+                Logged in with <span className="font-bold text-teal-400 capitalize">{userRole}</span> access. Use the workstation links below to manage your attendance, requests, and departmental activities.
+              </p>
+            </div>
+            <div className="shrink-0 flex flex-wrap items-center justify-end gap-2">
+              {!punchStatusQuery.isLoading && (
+                <Button
+                  onClick={() => punchMutation.mutate()}
+                  disabled={punchMutation.isPending || punchStatusQuery.data?.status === "punched_out"}
+                  className={cn(
+                    "font-bold h-10 px-4",
+                    punchStatusQuery.data?.status === "punched_in"
+                      ? "bg-amber-600 hover:bg-amber-500 text-white border-0"
+                      : punchStatusQuery.data?.status === "punched_out"
+                      ? "bg-slate-600 text-slate-300 border-0 cursor-not-allowed"
+                      : "bg-teal-600 hover:bg-teal-500 text-white border-0"
+                  )}
+                >
+                  {punchMutation.isPending
+                    ? "Processing..."
+                    : punchStatusQuery.data?.status === "punched_in"
+                    ? "Punch Out"
+                    : punchStatusQuery.data?.status === "punched_out"
+                    ? "Shift Ended"
+                    : "Punch In"}
+                </Button>
+              )}
+              <Link to="/hr/leaves">
+                <Button className="font-bold bg-teal-600 hover:bg-teal-500 text-white border-0 h-10 px-4">
+                  Request Leave
+                </Button>
+              </Link>
+              <Link to="/hr/payroll">
+                <Button variant="outline" className="font-bold border-white/20 text-white bg-white/5 hover:bg-white/10 h-10 px-4">
+                  My Payslips
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* Access Restriction Notice */}
+        <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200 shadow-sm flex items-start gap-3">
+          <ShieldCheck className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold">Executive Dashboard Restricted</h3>
+            <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+              Hospital-wide operational KPIs, department workforce schedules, and executive financial summaries are restricted to Management Approvers and System Administrators. Please use your authorized workstation shortcuts below.
+            </p>
+          </div>
+        </div>
+
+        {/* Workstation Shortcuts Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <Link to="/assessments" className="group block">
+            <Card className="h-full border border-border bg-card hover:border-teal-500 transition-all hover:shadow-md">
+              <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                    CBT & Skill Assessments
+                  </span>
+                  <div className="grid size-9 place-items-center rounded-lg bg-teal-50 dark:bg-teal-950 text-teal-600 dark:text-teal-400">
+                    <ClipboardCheck size={18} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Take NABH-compliant online theoretical examinations, review your results, and view competency records.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {permissions.canViewCollege && (
+            <Link to="/college" className="group block">
+              <Card className="h-full border border-border bg-card hover:border-teal-500 transition-all hover:shadow-md">
+                <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                      Acme College of Nursing
+                    </span>
+                    <div className="grid size-9 place-items-center rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400">
+                      <Landmark size={18} />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Manage student admissions, batch attendance, course schedules, and academic fee collection.
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+          )}
+
+          {permissions.canViewInventory && (
+            <Link to="/inventory/stock" className="group block">
+              <Card className="h-full border border-border bg-card hover:border-teal-500 transition-all hover:shadow-md">
+                <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                      Pharmacy & Store Stock
+                    </span>
+                    <div className="grid size-9 place-items-center rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                      <Receipt size={18} />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    View real-time batch stock levels, process POS dispensary bills, and track store requisitions.
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
+          )}
+
+          <Link to="/hr/attendance" className="group block">
+            <Card className="h-full border border-border bg-card hover:border-teal-500 transition-all hover:shadow-md">
+              <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                    Attendance & Punch Logs
+                  </span>
+                  <div className="grid size-9 place-items-center rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400">
+                    <CalendarClock size={18} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  View daily biometric punches, shift attendance history, and monthly presence summary.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to="/communication" className="group block">
+            <Card className="h-full border border-border bg-card hover:border-teal-500 transition-all hover:shadow-md">
+              <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                    Department Communication
+                  </span>
+                  <div className="grid size-9 place-items-center rounded-lg bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400">
+                    <Bell size={18} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Access internal announcements, staff notices, and departmental chat channels.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link to="/settings" className="group block">
+            <Card className="h-full border border-border bg-card hover:border-teal-500 transition-all hover:shadow-md">
+              <CardContent className="p-5 flex flex-col justify-between h-full gap-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400">
+                    Profile & Security Settings
+                  </span>
+                  <div className="grid size-9 place-items-center rounded-lg bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400">
+                    <Settings size={18} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Update your contact details, change password, and manage your linked Google account.
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+
+        {/* Latest Published Magazine Issues */}
+        <PublishedMagazineSection variant="dashboard" limit={3} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex max-w-7xl flex-col gap-6 mx-auto">

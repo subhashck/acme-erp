@@ -196,6 +196,35 @@ export function normalizeMonthToKey(token: string): string {
   return trimmed;
 }
 
+export function normalizeToIsoMonthKey(token: string): string {
+  if (!token) return "";
+  const trimmed = String(token).trim();
+
+  // Format: YYYY-MM or YYYY-M
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})$/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = String(Number(isoMatch[2])).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+
+  // Format: "June 2026" or "Jun 2026" or "June '26"
+  const wordMatch = trimmed.match(/^([A-Za-z]+)\s+['’]?(\d{2,4})$/);
+  if (wordMatch) {
+    const rawMon = wordMatch[1].toLowerCase();
+    const rawYr = wordMatch[2];
+    const fullYr = rawYr.length === 2 ? `20${rawYr}` : rawYr;
+    const mIdx = MONTH_NAMES.findIndex((name) =>
+      name.toLowerCase().startsWith(rawMon.slice(0, 3))
+    );
+    if (mIdx !== -1) {
+      return `${fullYr}-${String(mIdx + 1).padStart(2, "0")}`;
+    }
+  }
+
+  return trimmed;
+}
+
 // Helper to build line item description (strictly monthly)
 export const buildItemDescription = (
   cat: FeeCategoryType,

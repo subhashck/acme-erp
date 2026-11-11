@@ -62,6 +62,53 @@ function getAcademicYearMonths(academicYear: string): string[] {
   ];
 }
 
+const MONTH_NAMES_MAP: Record<string, string> = {
+  january: "01", jan: "01",
+  february: "02", feb: "02",
+  march: "03", mar: "03",
+  april: "04", apr: "04",
+  may: "05",
+  june: "06", jun: "06",
+  july: "07", jul: "07",
+  august: "08", aug: "08",
+  september: "09", sep: "09", sept: "09",
+  october: "10", oct: "10",
+  november: "11", nov: "11",
+  december: "12", dec: "12",
+};
+
+export function normalizeToIsoMonth(token: string): string {
+  if (!token) return "";
+  const trimmed = String(token).trim();
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})$/);
+  if (isoMatch) {
+    const y = isoMatch[1];
+    const m = String(Number(isoMatch[2])).padStart(2, "0");
+    return `${y}-${m}`;
+  }
+  const wordMatch = trimmed.match(/^([A-Za-z]+)\s+['’]?(\d{2,4})$/);
+  if (wordMatch) {
+    const rawMon = wordMatch[1].toLowerCase();
+    const rawYr = wordMatch[2];
+    const fullYr = rawYr.length === 2 ? `20${rawYr}` : rawYr;
+    const mStr = MONTH_NAMES_MAP[rawMon] || MONTH_NAMES_MAP[rawMon.slice(0, 3)];
+    if (mStr) {
+      return `${fullYr}-${mStr}`;
+    }
+  }
+  return trimmed;
+}
+
+export type FeeHeadCategory = "course" | "hostel" | "mess" | "other";
+
+export function classifyFeeCategory(nameOrCat: string): FeeHeadCategory {
+  const c = String(nameOrCat || "").toLowerCase().trim();
+  if (c.includes("mess") || c.includes("catering") || c.includes("food") || c.includes("dining") || c.includes("meal")) return "mess";
+  if (c.includes("hostel") || c.includes("lodging") || c.includes("room")) return "hostel";
+  if (c.includes("course") || c.includes("tuition") || c.includes("academic")) return "course";
+  return "other";
+}
+
 type ScheduleRange = {
   id?: number;
   semester: number;
@@ -4994,6 +5041,8 @@ export const nursingRoutes = new Hono<AuthEnv>()
     const pageSizeParam = c.req.query("pageSize");
     const searchParam = c.req.query("search")?.trim().toLowerCase() || "";
     const dueStatusParam = c.req.query("dueStatus") || "all";
+    const feeHeadParam = c.req.query("feeHead") || "all";
+    const agingParam = c.req.query("aging") || "all";
 
     const page = Math.max(1, Number(pageParam) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(pageSizeParam) || 20));
@@ -5072,8 +5121,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
           feeStructures.find((fs) => fs.courseId === courseId && matchQuota(fs.quotaCategory, "general")) ||
           feeStructures.find((fs) => fs.courseId === courseId);
 
-        // If no fee structure exists for this course, don't use an arbitrary fallback amount; use 0
-        const annualFeeAmount = baseFeeStruct ? toNum(baseFeeStruct.totalAmount) : 0;
+        const baseTariffs = baseFeeStruct ? extractMonthlyTariffs(baseFeeStruct) : null;
+        const isBaseMonthly = baseFeeStruct?.paymentFrequency === "monthly" || (baseFeeStruct?.feeType || "").toLowerCase().includes("monthly");
+        const annualFeeAmount = baseFeeStruct
+          ? (isBaseMonthly ? (baseTariffs?.monthlyTotal || 0) * 12 : toNum(baseFeeStruct.totalAmount))
+          : 0;
 
         // Retrieve all schedules configured for this batch, sorted chronologically by semester / start date
         const batchSchedules = schedules
@@ -5136,7 +5188,11 @@ export const nursingRoutes = new Hono<AuthEnv>()
                   (fs.quotaCategory === (st.quotaCategory || "general") || fs.quotaCategory === "general")
               ) || baseFeeStruct;
 
-            const baseAmount = termFs ? toNum(termFs.totalAmount) : annualFeeAmount;
+            const termTariffs = termFs ? extractMonthlyTariffs(termFs) : null;
+            const isTermMonthly = termFs?.paymentFrequency === "monthly" || (termFs?.feeType || "").toLowerCase().includes("monthly");
+            const baseAmount = termFs
+              ? (isTermMonthly ? (termTariffs?.monthlyTotal || 0) * 12 : toNum(termFs.totalAmount))
+              : annualFeeAmount;
             const termAcademicYear = sch.academicYear || getAcademicYear(sch.startDate);
 
             // Check if student has locked component frequencies for this academic year
@@ -5197,92 +5253,13 @@ export const nursingRoutes = new Hono<AuthEnv>()
           }
         }
 
-        // Cumulative gross expected fee from initial batch start across all elapsed/configured terms
-        const grossTotalFee = terms.reduce((sum, t) => sum + t.expectedFee, 0);
-        // Net expected fee accounting for verified concessions/scholarships
-        const totalFee = Math.max(0, grossTotalFee - totalDiscountConcessions);
-
-        // Calculate cumulative due fee for all terms whose due date has passed
-        let earliestOverdueTerm: TermItem | null = null;
-        let nextUpcomingTerm: TermItem | null = null;
-
-        let runningExpected = 0;
-        for (const t of terms) {
-          const dueTs = new Date(t.feeDueDate + "T00:00:00").getTime();
-          const isDue = dueTs <= todayTs;
-          runningExpected += t.expectedFee;
-
-          // Effective running liability after discounts
-          const effectiveRunningExpected = Math.max(0, runningExpected - totalDiscountConcessions);
-
-          // If student's total paidAmount is less than running expected fee for this due term, it's overdue
-          if (isDue && paidAmount < effectiveRunningExpected && !earliestOverdueTerm) {
-            earliestOverdueTerm = t;
-          }
-
-          if (!isDue && !nextUpcomingTerm) {
-            nextUpcomingTerm = t;
-          }
-        }
-
-        const balanceDue = Math.max(0, totalFee - paidAmount);
-
-        // Active term for display
-        const activeTerm = earliestOverdueTerm || nextUpcomingTerm || terms[terms.length - 1] || null;
-        const termStartDate = activeTerm?.startDate || batch?.startDate || null;
-        const feeDueDate = activeTerm?.feeDueDate || (termStartDate ? termStartDate : null);
-        const semester = activeTerm?.semester || terms[terms.length - 1]?.semester || 1;
-
-        let dueStatus: "paid" | "upcoming" | "overdue" = "upcoming";
-        let daysDiffText = "Scheduled";
-
-        if (balanceDue <= 0) {
-          dueStatus = "paid";
-          daysDiffText = "Fully Paid";
-        } else if (earliestOverdueTerm) {
-          dueStatus = "overdue";
-          const dueTs = new Date(earliestOverdueTerm.feeDueDate + "T00:00:00").getTime();
-          const diffDays = Math.max(1, Math.round((todayTs - dueTs) / (1000 * 60 * 60 * 24)));
-          daysDiffText = `Overdue by ${diffDays} day${diffDays === 1 ? "" : "s"}`;
-        } else if (nextUpcomingTerm) {
-          dueStatus = "upcoming";
-          const dueTs = new Date(nextUpcomingTerm.feeDueDate + "T00:00:00").getTime();
-          const diffDays = Math.round((dueTs - todayTs) / (1000 * 60 * 60 * 24));
-          if (diffDays <= 0) {
-            daysDiffText = "Due Today";
-          } else {
-            daysDiffText = `Due in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
-          }
-        } else {
-          if (feeDueDate) {
-            const dueTs = new Date(feeDueDate + "T00:00:00").getTime();
-            const diffDays = Math.round((dueTs - todayTs) / (1000 * 60 * 60 * 24));
-            if (diffDays < 0) {
-              dueStatus = "overdue";
-              daysDiffText = `Overdue by ${Math.abs(diffDays)} day${Math.abs(diffDays) === 1 ? "" : "s"}`;
-            } else if (diffDays === 0) {
-              dueStatus = "upcoming";
-              daysDiffText = "Due Today";
-            } else {
-              dueStatus = "upcoming";
-              daysDiffText = `Due in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
-            }
-          }
-        }
-
         // Build detailed term schedule with per-term status
         let cumulativeExpected = 0;
-        let cumulativePaid = 0;
         const termDetails = terms.map((t) => {
           const dueTs = new Date(t.feeDueDate + "T00:00:00").getTime();
           const isDue = dueTs <= todayTs;
           cumulativeExpected += t.expectedFee;
           const effectiveCumulativeExpected = Math.max(0, cumulativeExpected - totalDiscountConcessions);
-
-          // Figure out how much of paidAmount applies to this term
-          const termPaidSoFar = Math.min(paidAmount, effectiveCumulativeExpected);
-          const termExpectedAfterDiscount = Math.max(0, t.expectedFee - (cumulativeExpected <= totalDiscountConcessions ? t.expectedFee : Math.max(0, totalDiscountConcessions - (cumulativeExpected - t.expectedFee))));
-          const termOwed = Math.max(0, effectiveCumulativeExpected - paidAmount);
 
           let termStatus: "paid" | "upcoming" | "overdue" = "upcoming";
           let termDaysDiffText = "Scheduled";
@@ -5380,12 +5357,33 @@ export const nursingRoutes = new Hono<AuthEnv>()
           }
 
           if (yearMasterComps.length === 0 && yearFs) {
+            const isYearFsMonthly = yearFs.paymentFrequency === "monthly" || (yearFs.feeType || "").toLowerCase().includes("monthly");
+            const extractedTariffs = extractMonthlyTariffs(yearFs);
+            const courseMonthly = extractedTariffs.monthlyCourseFee;
+            const hostelMonthly = extractedTariffs.monthlyHostelFee;
+            const messMonthly = extractedTariffs.monthlyMessFee;
+
             yearMasterComps = [
-              { name: "Course Fee", amount: toNum(yearFs.tuitionFee), frequency: "Annual", frequencyKey: "annually" },
-              { name: "Admission Fee", amount: isFirstYear ? toNum(yearFs.admissionFee) : 0, frequency: "Annual / Initial", frequencyKey: "annually" },
-              { name: "Uniform & Kit Fee", amount: isFirstYear ? toNum(yearFs.uniformFee) : 0, frequency: "Annual / Initial", frequencyKey: "annually" },
-              { name: "Hostel Fee", amount: toNum(yearFs.hostelFee), frequency: "Monthly", frequencyKey: "monthly" },
-              { name: "Mess Fee", amount: toNum(yearFs.hostelMessMonthlyFee) * 12, frequency: "Monthly", frequencyKey: "monthly" },
+              {
+                name: "Course Fee",
+                amount: isYearFsMonthly ? courseMonthly * 12 : (toNum(yearFs.tuitionFee) > 0 ? toNum(yearFs.tuitionFee) : courseMonthly * 12),
+                frequency: isYearFsMonthly ? "Monthly" : "Annual",
+                frequencyKey: isYearFsMonthly ? "monthly" : "annually",
+              },
+              { name: "Admission Fee", amount: isFirstYear ? toNum(yearFs.admissionFee) : 0, frequency: "One-Time", frequencyKey: "one_time" },
+              { name: "Uniform & Kit Fee", amount: isFirstYear ? toNum(yearFs.uniformFee) : 0, frequency: "One-Time", frequencyKey: "one_time" },
+              {
+                name: "Hostel Fee",
+                amount: hostelMonthly * 12,
+                frequency: "Monthly",
+                frequencyKey: "monthly",
+              },
+              {
+                name: "Mess Fee",
+                amount: messMonthly * 12,
+                frequency: "Monthly",
+                frequencyKey: "monthly",
+              },
               { name: "Examination Fee", amount: toNum(yearFs.examFee), frequency: "Semester", frequencyKey: "semester" },
               { name: "Security Deposit", amount: isFirstYear ? toNum(yearFs.securityDeposit) : 0, frequency: "One-Time", frequencyKey: "one_time" },
               { name: "Library & Misc Fee", amount: toNum(yearFs.miscFee), frequency: "Annual", frequencyKey: "annually" },
@@ -5415,10 +5413,6 @@ export const nursingRoutes = new Hono<AuthEnv>()
             ) {
               installmentAmount = baseCompAmount / installmentCount;
             }
-            // Once a student selects a payment frequency, rebates/surcharges
-            // make the locked installment schedule the authoritative liability.
-            // Using baseAmount here caused the component ledger to ignore the
-            // annual rebate even though the headline calculation applied it.
             const expectedCompAmount = locked && installmentAmount > 0
               ? Math.round(installmentAmount * installmentCount)
               : baseCompAmount;
@@ -5447,33 +5441,75 @@ export const nursingRoutes = new Hono<AuthEnv>()
                 txTargetPeriod = parsed.periodLabel || (parsed.academicYear ? `AY ${parsed.academicYear}${parsed.billingPeriodValue ? ` • ${parsed.billingPeriodValue}` : ""}` : null);
 
                 const matchesYear = txTargetAcadYear === acadYear || distinctAcademicYears.length === 1;
+                const compCat = classifyFeeCategory(comp.name);
 
                 if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
                   const item = parsed.items.find(
                     (i: any) => {
-                      const iname = String(i.name || "").toLowerCase().trim();
-                      const cname = comp.name.toLowerCase().trim();
-                      return iname === cname ||
-                        ((iname.includes("course") || iname.includes("tuition")) && (cname.includes("course") || cname.includes("tuition")));
+                      const iname = String(i.name || i.category || "").toLowerCase().trim();
+                      const itemCat = classifyFeeCategory(iname);
+                      if (compCat !== "other" && compCat === itemCat) return true;
+                      return iname === comp.name.toLowerCase().trim();
                     }
                   );
                   if (item && matchesYear) {
                     const amt = toNum(item.amount);
                     paidForComp += amt;
+                    const rawReceiptPeriods: string[] = (
+                      Array.isArray(item.selectedMonths) && item.selectedMonths.length > 0
+                        ? item.selectedMonths
+                        : (Array.isArray(item.coveredMonths) && item.coveredMonths.length > 0
+                          ? item.coveredMonths
+                          : (Array.isArray(parsed.selectedPeriods) && parsed.selectedPeriods.length > 0
+                            ? parsed.selectedPeriods
+                            : (parsed.billingPeriodValue ? [parsed.billingPeriodValue] : [])))
+                    );
+
+                    const receiptMonthsIso = rawReceiptPeriods
+                      .map(normalizeToIsoMonth)
+                      .filter(Boolean);
+
+                    const allocations = Array.isArray(item.monthlyAllocations) && item.monthlyAllocations.length > 0
+                      ? item.monthlyAllocations.map((a: any) => ({
+                          month: normalizeToIsoMonth(String(a.month || "")),
+                          amount: toNum(a.amount),
+                        }))
+                      : splitAmountAcrossMonths(amt, receiptMonthsIso);
+
+                    for (const allocation of allocations) {
+                      const month = String(allocation?.month || "");
+                      if (!month) continue;
+                      paidByMonth.set(month, (paidByMonth.get(month) || 0) + toNum(allocation?.amount));
+                    }
+
+                    compPayments.push({
+                      receiptNumber: tx.receiptNumber,
+                      paymentDate: tx.paymentDate,
+                      amount: amt,
+                      paymentMode: tx.paymentMode,
+                      targetPeriod: item.periodLabel || txTargetPeriod,
+                      isProportional: false,
+                    });
+                  }
+                } else {
+                  // Legacy receipt without items array
+                  const txCat = classifyFeeCategory(tx.feeType || parsed.category || "");
+                  if (txCat === compCat && matchesYear) {
+                    const amt = toNum(tx.amount);
+                    paidForComp += amt;
                     const receiptPeriods: string[] = Array.isArray(parsed.selectedPeriods)
                       ? parsed.selectedPeriods
                       : (parsed.billingPeriodValue ? [parsed.billingPeriodValue] : []);
-                    const receiptMonths = Array.isArray(parsed.coveredMonths)
-                      ? parsed.coveredMonths.map((month: unknown) => String(month))
+                    const rawReceiptMonths = Array.isArray(parsed.coveredMonths)
+                      ? parsed.coveredMonths.map((m: unknown) => String(m))
                       : expandBillingPeriodsToMonths(
                           String(parsed.academicYear || txTargetAcadYear),
                           String(parsed.billingPeriodType || ""),
                           receiptPeriods,
                           yearScheduleRows
                         );
-                    const allocations = Array.isArray(item.monthlyAllocations) && item.monthlyAllocations.length > 0
-                      ? item.monthlyAllocations
-                      : splitAmountAcrossMonths(amt, receiptMonths);
+                    const receiptMonthsIso = rawReceiptMonths.map(normalizeToIsoMonth).filter(Boolean);
+                    const allocations = splitAmountAcrossMonths(amt, receiptMonthsIso);
                     for (const allocation of allocations) {
                       const month = String(allocation?.month || "");
                       if (!month) continue;
@@ -5493,10 +5529,9 @@ export const nursingRoutes = new Hono<AuthEnv>()
             }
             paidForComp = Math.round(paidForComp * 100) / 100;
 
-            // Build installment-level breakdown based on frequency
-            // Shows what's expected per period and how much has been covered
             interface InstallmentPeriod {
               period: string;
+              monthKey?: string;
               dueDate: string | null;
               expectedAmount: number;
               paidAmount: number;
@@ -5529,16 +5564,19 @@ export const nursingRoutes = new Hono<AuthEnv>()
             } else {
               const expectedAllocations = splitAmountAcrossMonths(expectedCompAmount, scheduledMonthKeys);
               for (const allocation of expectedAllocations) {
-                const [year, month] = allocation.month.split("-");
-                const monthLabel = new Date(Number(year), Number(month) - 1, 1)
-                  .toLocaleString("en-US", { month: "short" })
-                  .toUpperCase();
-                const paid = Math.min(allocation.amount, Math.round((paidByMonth.get(allocation.month) || 0) * 100) / 100);
+                const monthKey = normalizeToIsoMonth(allocation.month);
+                const [year, month] = monthKey.split("-");
+                const monthNum = Number(month);
+                const monthLabel = !isNaN(monthNum) && monthNum >= 1 && monthNum <= 12
+                  ? ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"][monthNum - 1]
+                  : "MON";
+                const paid = Math.min(allocation.amount, Math.round((paidByMonth.get(monthKey) || 0) * 100) / 100);
                 const remaining = Math.max(0, Math.round((allocation.amount - paid) * 100) / 100);
-                const dueDate = scheduleMonthPlan.monthDueDates.get(allocation.month) || `${allocation.month}-01`;
+                const dueDate = scheduleMonthPlan.monthDueDates.get(monthKey) || `${monthKey}-01`;
                 const isMatured = dueDate <= todayStr;
                 installments.push({
-                  period: `${monthLabel}-${year.slice(-2)}`,
+                  period: `${monthLabel}-${(year || "").slice(-2)}`,
+                  monthKey,
                   dueDate,
                   expectedAmount: allocation.amount,
                   paidAmount: paid,
@@ -5606,10 +5644,45 @@ export const nursingRoutes = new Hono<AuthEnv>()
         );
         const reconciledRemainingBalance = Math.max(0, reconciledTotalFee - paidAmount);
 
-        // The component master is the authoritative source of liability. This
-        // also keeps unpaid/unlocked components in the headline total; the old
-        // term calculation only included components that already had a saved
-        // frequency lock and could therefore understate outstanding dues.
+        // Compute Head summaries (Course, Hostel, Mess, Other)
+        const headCategories: FeeHeadCategory[] = ["course", "hostel", "mess", "other"];
+        const heads: Record<FeeHeadCategory, {
+          expected: number;
+          paid: number;
+          dueNow: number;
+          futureScheduled: number;
+          status: "paid" | "partial" | "due" | "upcoming";
+          overdueMonthsCount: number;
+        }> = {
+          course: { expected: 0, paid: 0, dueNow: 0, futureScheduled: 0, status: "paid", overdueMonthsCount: 0 },
+          hostel: { expected: 0, paid: 0, dueNow: 0, futureScheduled: 0, status: "paid", overdueMonthsCount: 0 },
+          mess: { expected: 0, paid: 0, dueNow: 0, futureScheduled: 0, status: "paid", overdueMonthsCount: 0 },
+          other: { expected: 0, paid: 0, dueNow: 0, futureScheduled: 0, status: "paid", overdueMonthsCount: 0 },
+        };
+
+        allFlatComponentDues.forEach((comp) => {
+          const cat = classifyFeeCategory(comp.name);
+          heads[cat].expected += comp.expectedAmount;
+          heads[cat].paid += comp.paidAmount;
+          heads[cat].dueNow += comp.dueAmount;
+          heads[cat].futureScheduled += comp.scheduledBalance;
+          const overdueInsts = comp.installments.filter((i) => (i.status === "due" || i.status === "partial") && i.dueAmount > 0);
+          heads[cat].overdueMonthsCount += overdueInsts.length;
+        });
+
+        for (const cat of headCategories) {
+          const h = heads[cat];
+          if (h.expected === 0) {
+            h.status = "upcoming";
+          } else if (h.dueNow <= 0 && h.futureScheduled <= 0) {
+            h.status = "paid";
+          } else if (h.dueNow > 0) {
+            h.status = h.paid > 0 ? "partial" : "due";
+          } else {
+            h.status = "upcoming";
+          }
+        }
+
         const unpaidInstallments = allFlatComponentDues
           .flatMap((component) => component.installments)
           .filter((installment) => installment.status !== "paid" && installment.dueDate)
@@ -5621,22 +5694,38 @@ export const nursingRoutes = new Hono<AuthEnv>()
           (installment) => String(installment.dueDate) > todayStr
         );
 
+        let dueStatus: "paid" | "upcoming" | "overdue" = "upcoming";
+        let daysDiffText = "Scheduled";
+        let overdueAgingDays = 0;
+        let overdueAgingCategory: "current" | "1_30" | "31_60" | "61_90" | "90_plus" = "current";
+
         if (reconciledRemainingBalance <= 0) {
           dueStatus = "paid";
           daysDiffText = "Fully Paid";
+          overdueAgingDays = 0;
+          overdueAgingCategory = "current";
         } else if (earliestMaturedInstallment) {
           dueStatus = "overdue";
           const dueTs = new Date(`${earliestMaturedInstallment.dueDate}T00:00:00`).getTime();
           const diffDays = Math.max(1, Math.round((todayTs - dueTs) / 86_400_000));
           daysDiffText = `Overdue by ${diffDays} day${diffDays === 1 ? "" : "s"}`;
+          overdueAgingDays = diffDays;
+          if (diffDays <= 30) overdueAgingCategory = "1_30";
+          else if (diffDays <= 60) overdueAgingCategory = "31_60";
+          else if (diffDays <= 90) overdueAgingCategory = "61_90";
+          else overdueAgingCategory = "90_plus";
         } else if (nextScheduledInstallment) {
           dueStatus = "upcoming";
           const dueTs = new Date(`${nextScheduledInstallment.dueDate}T00:00:00`).getTime();
           const diffDays = Math.max(0, Math.round((dueTs - todayTs) / 86_400_000));
           daysDiffText = diffDays === 0 ? "Due Today" : `Due in ${diffDays} day${diffDays === 1 ? "" : "s"}`;
+          overdueAgingDays = 0;
+          overdueAgingCategory = "current";
         } else {
           dueStatus = "upcoming";
           daysDiffText = "Scheduled";
+          overdueAgingDays = 0;
+          overdueAgingCategory = "current";
         }
 
         // Build compact payment history for this student
@@ -5673,6 +5762,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
               feeType: feeTypeDisplay,
               components,
               targetPeriod,
+              remarks: tx.remarks,
             };
           });
 
@@ -5686,7 +5776,7 @@ export const nursingRoutes = new Hono<AuthEnv>()
           batchName: batch ? `${batch.courseName} (${batch.academicYear})` : "N/A",
           courseName: batch?.courseName || "B.Sc Nursing",
           quotaCategory: st.quotaCategory || "general",
-          semester,
+          semester: terms[terms.length - 1]?.semester || 1,
           grossFee: reconciledGrossFee,
           totalFee: reconciledTotalFee,
           paidAmount,
@@ -5694,10 +5784,13 @@ export const nursingRoutes = new Hono<AuthEnv>()
           remainingBalance: reconciledRemainingBalance,
           scheduledBalance: reconciledScheduledBalance,
           totalDiscountConcessions,
-          termStartDate,
-          feeDueDate: earliestMaturedInstallment?.dueDate || nextScheduledInstallment?.dueDate || feeDueDate,
+          termStartDate: terms[0]?.startDate || batch?.startDate || null,
+          feeDueDate: earliestMaturedInstallment?.dueDate || nextScheduledInstallment?.dueDate || null,
           dueStatus,
           daysDiffText,
+          overdueAgingDays,
+          overdueAgingCategory,
+          heads,
           termDetails,
           componentDues: allFlatComponentDues,
           yearlyComponentDues,
@@ -5746,24 +5839,85 @@ export const nursingRoutes = new Hono<AuthEnv>()
       totalCollected: studentDues.reduce((sum, s) => sum + s.paidAmount, 0),
       totalBalanceDue: studentDues.reduce((sum, s) => sum + s.balanceDue, 0),
       overdueCount: studentDues.filter((s) => s.dueStatus === "overdue").length,
+      byHead: {
+        course: {
+          expected: studentDues.reduce((sum, s) => sum + s.heads.course.expected, 0),
+          collected: studentDues.reduce((sum, s) => sum + s.heads.course.paid, 0),
+          due: studentDues.reduce((sum, s) => sum + s.heads.course.dueNow, 0),
+          overdueCount: studentDues.filter((s) => s.heads.course.dueNow > 0).length,
+        },
+        hostel: {
+          expected: studentDues.reduce((sum, s) => sum + s.heads.hostel.expected, 0),
+          collected: studentDues.reduce((sum, s) => sum + s.heads.hostel.paid, 0),
+          due: studentDues.reduce((sum, s) => sum + s.heads.hostel.dueNow, 0),
+          overdueCount: studentDues.filter((s) => s.heads.hostel.dueNow > 0).length,
+        },
+        mess: {
+          expected: studentDues.reduce((sum, s) => sum + s.heads.mess.expected, 0),
+          collected: studentDues.reduce((sum, s) => sum + s.heads.mess.paid, 0),
+          due: studentDues.reduce((sum, s) => sum + s.heads.mess.dueNow, 0),
+          overdueCount: studentDues.filter((s) => s.heads.mess.dueNow > 0).length,
+        },
+        other: {
+          expected: studentDues.reduce((sum, s) => sum + s.heads.other.expected, 0),
+          collected: studentDues.reduce((sum, s) => sum + s.heads.other.paid, 0),
+          due: studentDues.reduce((sum, s) => sum + s.heads.other.dueNow, 0),
+          overdueCount: studentDues.filter((s) => s.heads.other.dueNow > 0).length,
+        },
+      },
     };
 
-    // Apply search and due-status filters
+    // Apply search, fee head, due-status, and aging filters
     let filteredDues = studentDues;
     if (searchParam) {
       filteredDues = filteredDues.filter((s) =>
         s.name.toLowerCase().includes(searchParam) ||
         s.enrollmentNo.toLowerCase().includes(searchParam) ||
         s.batchName.toLowerCase().includes(searchParam) ||
-        s.courseName.toLowerCase().includes(searchParam)
+        s.courseName.toLowerCase().includes(searchParam) ||
+        (s.phone && s.phone.includes(searchParam))
       );
     }
     if (dueStatusParam !== "all") {
       filteredDues = filteredDues.filter((s) => s.dueStatus === dueStatusParam);
     }
+    if (feeHeadParam !== "all") {
+      if (feeHeadParam === "course") {
+        filteredDues = filteredDues.filter((s) => s.heads.course.dueNow > 0);
+      } else if (feeHeadParam === "hostel") {
+        filteredDues = filteredDues.filter((s) => s.heads.hostel.dueNow > 0);
+      } else if (feeHeadParam === "mess") {
+        filteredDues = filteredDues.filter((s) => s.heads.mess.dueNow > 0);
+      } else if (feeHeadParam === "other") {
+        filteredDues = filteredDues.filter((s) => s.heads.other.dueNow > 0);
+      }
+    }
+    if (agingParam !== "all") {
+      if (agingParam === "overdue_all") {
+        filteredDues = filteredDues.filter((s) => s.overdueAgingDays > 0);
+      } else if (agingParam === "current") {
+        filteredDues = filteredDues.filter((s) => s.overdueAgingDays === 0);
+      } else {
+        filteredDues = filteredDues.filter((s) => s.overdueAgingCategory === agingParam);
+      }
+    }
 
     const sortBy = c.req.query("sortBy");
-    const sortColumns = ["enrollmentNo", "name", "batchName", "totalFee", "paidAmount", "balanceDue", "feeDueDate", "dueStatus"] as const;
+    const sortColumns = [
+      "enrollmentNo",
+      "name",
+      "batchName",
+      "totalFee",
+      "paidAmount",
+      "balanceDue",
+      "feeDueDate",
+      "dueStatus",
+      "courseDue",
+      "hostelDue",
+      "messDue",
+      "overdueAgingDays",
+    ] as const;
+
     if (sortBy && sortColumns.includes(sortBy as typeof sortColumns[number])) {
       const column = sortBy as typeof sortColumns[number];
       const direction = c.req.query("sortDirection") === "desc" ? -1 : 1;
@@ -5772,9 +5926,22 @@ export const nursingRoutes = new Hono<AuthEnv>()
           if (!a.feeDueDate && b.feeDueDate) return 1;
           if (a.feeDueDate && !b.feeDueDate) return -1;
         }
-        const comparison = ["totalFee", "paidAmount", "balanceDue"].includes(column)
-          ? toNum(a[column]) - toNum(b[column])
-          : String(a[column] || "").localeCompare(String(b[column] || ""), undefined, { numeric: true, sensitivity: "base" });
+        if (column === "courseDue") {
+          return direction * (a.heads.course.dueNow - b.heads.course.dueNow) || a.studentId - b.studentId;
+        }
+        if (column === "hostelDue") {
+          return direction * (a.heads.hostel.dueNow - b.heads.hostel.dueNow) || a.studentId - b.studentId;
+        }
+        if (column === "messDue") {
+          return direction * (a.heads.mess.dueNow - b.heads.mess.dueNow) || a.studentId - b.studentId;
+        }
+        if (column === "overdueAgingDays") {
+          return direction * (a.overdueAgingDays - b.overdueAgingDays) || a.studentId - b.studentId;
+        }
+        const numeric = ["totalFee", "paidAmount", "balanceDue"].includes(column);
+        const comparison = numeric
+          ? toNum(a[column as keyof typeof a]) - toNum(b[column as keyof typeof b])
+          : String(a[column as keyof typeof a] || "").localeCompare(String(b[column as keyof typeof b] || ""), undefined, { numeric: true, sensitivity: "base" });
         const quotaComparison = column === "batchName" && comparison === 0
           ? a.quotaCategory.localeCompare(b.quotaCategory)
           : 0;

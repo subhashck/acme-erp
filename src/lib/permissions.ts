@@ -25,6 +25,7 @@ export interface UserPermissions {
   canViewInventory: boolean;
   canViewPurchases: boolean;
   canManageStores: boolean;
+  canViewDashboard: boolean;
   isLoading: boolean;
 }
 
@@ -99,6 +100,7 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     canViewInventory,
     canViewPurchases,
     canManageStores,
+    canViewDashboard: isAdmin || isManagementApprover,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
   };
 }

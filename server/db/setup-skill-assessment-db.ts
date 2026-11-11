@@ -154,7 +154,7 @@ export async function createSkillAssessmentSchemaAndTables() {
       "total_questions" INTEGER NOT NULL DEFAULT 20,
       "total_time_seconds" INTEGER NOT NULL DEFAULT 1200,
       "per_question_time_seconds" INTEGER NOT NULL DEFAULT 60,
-      "pass_percentage" NUMERIC(4, 2) NOT NULL DEFAULT 60.00,
+      "pass_percentage" NUMERIC(4, 2) NOT NULL DEFAULT 80.00,
       "active" BOOLEAN NOT NULL DEFAULT true,
       "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
       "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
@@ -188,7 +188,12 @@ export async function createSkillAssessmentSchemaAndTables() {
 
     ALTER TABLE "skill_assessment"."exam_configs" ALTER COLUMN "pass_percentage" TYPE NUMERIC(5, 2);
     ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "question_snapshot" JSONB;
-    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "pass_percentage" NUMERIC(5, 2) NOT NULL DEFAULT 60.00;
+    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "pass_percentage" NUMERIC(5, 2) NOT NULL DEFAULT 80.00;
+    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "is_retest" BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "retest_authorized" BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "retest_authorized_at" TIMESTAMP;
+    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "retest_authorized_by" TEXT;
+    ALTER TABLE "skill_assessment"."exam_attempts" ADD COLUMN IF NOT EXISTS "retest_reason" TEXT;
 
     -- Legacy attempts have no original version. Freeze the currently available
     -- content once; future edits must never change an existing attempt.
@@ -242,6 +247,54 @@ export async function createSkillAssessmentSchemaAndTables() {
 
     CREATE INDEX IF NOT EXISTS "idx_skill_dept_monthly_bank_dept" 
     ON "skill_assessment"."department_monthly_question_banks" ("department_id");
+
+    -- 10. Cross-Department Exam Track Enrollments (Model C)
+    CREATE TABLE IF NOT EXISTS "skill_assessment"."cross_dept_exam_enrollments" (
+      "id" SERIAL PRIMARY KEY,
+      "staff_id" INTEGER NOT NULL,
+      "target_department_id" INTEGER NOT NULL,
+      "home_department_id" INTEGER,
+      "purpose" TEXT NOT NULL DEFAULT 'rotation',
+      "notes" TEXT,
+      "month_year" VARCHAR(7),
+      "valid_from" TIMESTAMP DEFAULT NOW(),
+      "valid_until" TIMESTAMP,
+      "status" TEXT NOT NULL DEFAULT 'active',
+      "assigned_by_staff_id" INTEGER,
+      "assigned_by_name" TEXT,
+      "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS "idx_cross_dept_enrollments_staff" 
+      ON "skill_assessment"."cross_dept_exam_enrollments" ("staff_id");
+    CREATE INDEX IF NOT EXISTS "idx_cross_dept_enrollments_target_dept" 
+      ON "skill_assessment"."cross_dept_exam_enrollments" ("target_department_id");
+    CREATE INDEX IF NOT EXISTS "idx_cross_dept_enrollments_status" 
+      ON "skill_assessment"."cross_dept_exam_enrollments" ("status");
+
+    -- Add cross-dept columns to exam_attempts
+    ALTER TABLE "skill_assessment"."exam_attempts" 
+      ADD COLUMN IF NOT EXISTS "target_department_id" INTEGER;
+    ALTER TABLE "skill_assessment"."exam_attempts" 
+      ADD COLUMN IF NOT EXISTS "home_department_id" INTEGER;
+    ALTER TABLE "skill_assessment"."exam_attempts" 
+      ADD COLUMN IF NOT EXISTS "home_department_name" TEXT;
+    ALTER TABLE "skill_assessment"."exam_attempts" 
+      ADD COLUMN IF NOT EXISTS "exam_purpose" TEXT NOT NULL DEFAULT 'core_monthly';
+    ALTER TABLE "skill_assessment"."exam_attempts" 
+      ADD COLUMN IF NOT EXISTS "enrollment_id" INTEGER;
+
+    -- Backfill target_department_id and home_department_id
+    UPDATE "skill_assessment"."exam_attempts"
+    SET 
+      "target_department_id" = COALESCE("target_department_id", "department_id"),
+      "home_department_id" = COALESCE("home_department_id", "department_id"),
+      "home_department_name" = COALESCE("home_department_name", "department_name")
+    WHERE "target_department_id" IS NULL;
+
+    CREATE INDEX IF NOT EXISTS "idx_exam_attempts_staff_target_dept_started" 
+      ON "skill_assessment"."exam_attempts" ("staff_id", "target_department_id", "started_at");
 
     -- PostgreSQL Sequences for robust, collision-free numbering
     CREATE SEQUENCE IF NOT EXISTS "skill_assessment"."staff_skill_assessments_seq";
@@ -699,7 +752,7 @@ async function seedTheoreticalQuestionsAndExamConfig() {
     INSERT INTO "skill_assessment"."exam_configs" (
       "title", "total_questions", "total_time_seconds", "per_question_time_seconds", "pass_percentage", "active"
     )
-    SELECT 'Clinical Staff NABH Theoretical Examination', 20, 1200, 60, 60.00, true
+    SELECT 'Clinical Staff NABH Theoretical Examination', 20, 1200, 60, 80.00, true
     WHERE NOT EXISTS (SELECT 1 FROM "skill_assessment"."exam_configs" WHERE "active" = true)
     ON CONFLICT DO NOTHING;
   `);

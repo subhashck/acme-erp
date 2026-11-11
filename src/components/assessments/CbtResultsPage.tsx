@@ -1,6 +1,6 @@
 import React, { useState, useId } from "react";
 import { Link } from "@tanstack/react-router";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   GraduationCap,
@@ -25,6 +25,7 @@ import {
   X,
   AlertTriangle,
   RotateCcw,
+  FileSpreadsheet,
 } from "lucide-react";
 import { ModuleLayout } from "../ModuleLayout";
 import { Button } from "@/ui/button";
@@ -33,6 +34,8 @@ import { cn } from "@/utils/cn";
 import { assessmentJson, assessmentPermissionsQuery } from "./AssessmentsHome";
 import { canPrintCbtCertificate } from "@/lib/cbt-certificate";
 import { fmtDate } from "./SkillAssessmentsPage";
+import { exportCbtResultsToExcel } from "@/lib/cbt-results-export";
+import { AssignCrossDeptTrackModal } from "./AssignCrossDeptTrackModal";
 
 interface AttemptRecord {
   id: number;
@@ -44,6 +47,11 @@ interface AttemptRecord {
   designation: string | null;
   departmentId: number | null;
   departmentName: string | null;
+  targetDepartmentId?: number | null;
+  homeDepartmentId?: number | null;
+  homeDepartmentName?: string | null;
+  examPurpose?: string | null;
+  enrollmentId?: number | null;
   status: string;
   totalQuestions: number;
   score: string | number | null;
@@ -55,6 +63,13 @@ interface AttemptRecord {
   timeSpentSeconds: number | null;
   startedAt: string;
   completedAt: string | null;
+  isRetest?: boolean;
+  retestAuthorized?: boolean;
+  retestAuthorizedAt?: string | null;
+  retestAuthorizedBy?: string | null;
+  retestReason?: string | null;
+  answeredCount?: number;
+  remainingSeconds?: number;
 }
 
 interface SummaryData {
@@ -99,16 +114,53 @@ export function CbtResultsPage() {
   const departmentSelectId = useId();
   const statusSelectId = useId();
   const outcomeSelectId = useId();
+  const trackSelectId = useId();
   const permissions = useQuery(assessmentPermissionsQuery);
+
+  const isAdmin = Boolean(permissions.data?.isAdmin);
+  const isHr = Boolean(permissions.data?.isHr || isAdmin);
+  const isNursingSuper = Boolean(permissions.data?.isNursingSuper);
+  const isPrivileged = isHr || isNursingSuper;
+  const isStaffCompetencyModuleEnabled = Boolean(
+    permissions.data?.isStaffCompetencyModuleEnabled ?? true
+  );
+  // When Staff access is restricted for CBT, hide the "Review" button for regular staff
+  const canReview = isPrivileged || isStaffCompetencyModuleEnabled;
 
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [departmentId, setDepartmentId] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const [outcome, setOutcome] = useState<string>("all");
+  const [examPurpose, setExamPurpose] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selectedAttemptId, setSelectedAttemptId] = useState<number | null>(null);
+  const [retestAttempt, setRetestAttempt] = useState<AttemptRecord | null>(null);
+  const [retestReasonInput, setRetestReasonInput] = useState("");
+  const [showAssignModal, setShowAssignModal] = useState(false);
+
+  const authorizeRetestMutation = useMutation({
+    mutationFn: async ({ attemptId, reason }: { attemptId: number; reason: string }) => {
+      const res = await fetch("/api/skill-assessment/exam/authorize-retest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attemptId, reason }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "Failed to authorize retest.");
+      return body;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Retest successfully authorized.");
+      queryClient.invalidateQueries({ queryKey: ["cbt-results-list"] });
+      setRetestAttempt(null);
+      setRetestReasonInput("");
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Could not authorize retest.");
+    },
+  });
 
   // Debounce search input
   React.useEffect(() => {
@@ -135,6 +187,7 @@ export function CbtResultsPage() {
       departmentId,
       status,
       outcome,
+      examPurpose,
     ],
     queryFn: () => {
       const params = new URLSearchParams({
@@ -145,9 +198,17 @@ export function CbtResultsPage() {
       if (departmentId !== "all") params.set("departmentId", departmentId);
       if (status !== "all") params.set("status", status);
       if (outcome !== "all") params.set("outcome", outcome);
+      if (examPurpose !== "all") params.set("examPurpose", examPurpose);
 
       return assessmentJson(`/api/skill-assessment/exam/attempts?${params.toString()}`);
     },
+    refetchInterval: (query) => {
+      const inProgressCount = query.state.data?.summary?.inProgressCount || 0;
+      // Auto-refresh every 3s if any attempt is currently in progress, otherwise every 10s
+      return inProgressCount > 0 ? 3000 : 10000;
+    },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
   });
 
   const refresh = () => {
@@ -161,82 +222,68 @@ export function CbtResultsPage() {
     setDepartmentId("all");
     setStatus("all");
     setOutcome("all");
+    setExamPurpose("all");
     setPage(1);
   };
 
-  // Export filtered attempts to CSV
-  const handleExportCsv = () => {
-    const records: AttemptRecord[] = attemptsQuery.data?.data || [];
-    if (!records.length) {
-      toast.error("No attempts to export");
-      return;
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Export filtered attempts to a styled Excel workbook with executive dashboard
+  const handleExportExcel = async () => {
+    try {
+      setIsExporting(true);
+      toast.info("Preparing Excel export with executive dashboard...");
+
+      // Fetch all matching records across pages for the active filter set
+      const params = new URLSearchParams({
+        page: "1",
+        export: "true",
+        pageSize: "all",
+      });
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (departmentId !== "all") params.set("departmentId", departmentId);
+      if (status !== "all") params.set("status", status);
+      if (outcome !== "all") params.set("outcome", outcome);
+      if (examPurpose !== "all") params.set("examPurpose", examPurpose);
+
+      let records: AttemptRecord[] = [];
+      let summaryData: SummaryData | undefined = attemptsQuery.data?.summary;
+
+      try {
+        const res = await assessmentJson(`/api/skill-assessment/exam/attempts?${params.toString()}`);
+        records = Array.isArray(res) ? res : res.data || [];
+        if (res.summary) summaryData = res.summary;
+      } catch (err) {
+        records = attemptsQuery.data?.data || [];
+      }
+
+      if (!records.length) {
+        toast.error("No attempts found to export.");
+        return;
+      }
+
+      const activeDept = (departmentsQuery.data || []).find(
+        (d: any) => String(d.id) === String(departmentId)
+      );
+
+      exportCbtResultsToExcel({
+        records,
+        summary: summaryData,
+        filters: {
+          search: debouncedSearch || undefined,
+          departmentName: activeDept?.name,
+          status: status !== "all" ? status : undefined,
+          outcome: outcome !== "all" ? outcome : undefined,
+        },
+      });
+
+      toast.success(`Exported ${records.length} examination records to Excel workbook.`);
+    } catch (err: any) {
+      console.error("CBT Excel export error:", err);
+      toast.error(err.message || "Failed to generate Excel export.");
+    } finally {
+      setIsExporting(false);
     }
-
-    const headers = [
-      "Attempt No",
-      "Candidate Name",
-      "Employee Code",
-      "Designation",
-      "Department",
-      "Started At",
-      "Completed At",
-      "Duration",
-      "Total Questions",
-      "Correct",
-      "Incorrect",
-      "Unanswered",
-      "Score (%)",
-      "Benchmark (%)",
-      "Rating (out of 5)",
-      "Status",
-      "Outcome",
-    ];
-
-    const rows = records.map((r) => {
-      const scoreNum = Number(r.score ?? 0);
-      const benchmarkNum = Number(r.passPercentage ?? 60);
-      const isPassed = scoreNum >= benchmarkNum;
-      const outcomeText = ["completed", "timed_out"].includes(r.status)
-        ? isPassed
-          ? "PASSED"
-          : "FAILED"
-        : r.status.toUpperCase();
-
-      return [
-        `"${r.attemptNo}"`,
-        `"${r.staffName || ""}"`,
-        `"${r.employeeCode || ""}"`,
-        `"${r.designation || ""}"`,
-        `"${r.departmentName || ""}"`,
-        `"${formatDateTime(r.startedAt)}"`,
-        `"${formatDateTime(r.completedAt)}"`,
-        `"${formatDuration(r.timeSpentSeconds)}"`,
-        r.totalQuestions,
-        r.correctCount ?? 0,
-        r.incorrectCount ?? 0,
-        r.unansweredCount ?? 0,
-        r.score ?? "0.00",
-        r.passPercentage ?? "60.00",
-        r.theoreticalRating ?? "0.00",
-        `"${r.status}"`,
-        `"${outcomeText}"`,
-      ].join(",");
-    });
-
-    const csvContent = [headers.join(","), ...rows].join("\r\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `cbt-results-${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success(`Exported ${records.length} records to CSV`);
   };
 
   const attempts: AttemptRecord[] = attemptsQuery.data?.data || [];
@@ -262,7 +309,8 @@ export function CbtResultsPage() {
     search.trim() !== "" ||
     departmentId !== "all" ||
     status !== "all" ||
-    outcome !== "all";
+    outcome !== "all" ||
+    examPurpose !== "all";
 
   return (
     <ModuleLayout
@@ -270,10 +318,35 @@ export function CbtResultsPage() {
       description="Track staff online theoretical examination attempts, audit scorecards and domain breakdowns, and issue verification certificates."
       action={
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-2">
-            <Download size={14} />
-            Export CSV
+          {isPrivileged && (
+            <Button
+              size="sm"
+              onClick={() => setShowAssignModal(true)}
+              className="gap-2 bg-primary text-primary-foreground font-semibold shadow-xs"
+              title="Assign an employee to a cross-department clinical exam track (rotation, transfer vetting, certification)"
+            >
+              <Building2 size={14} />
+              Assign Cross-Dept Track
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+            className="gap-2 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 font-medium"
+            title="Export filtered attempts and KPI dashboard to an Excel workbook (.xlsx)"
+          >
+            <FileSpreadsheet size={14} className={isExporting ? "animate-spin" : "text-emerald-600 dark:text-emerald-400"} />
+            {isExporting ? "Exporting..." : "Export Excel"}
           </Button>
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shadow-2xs"
+            title="Real-time test tracking active (auto-refreshes every 3-10s)"
+          >
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="hidden sm:inline">Live Sync</span>
+          </div>
           <Button variant="outline" size="sm" onClick={refresh} className="gap-2">
             <RefreshCw size={14} className={attemptsQuery.isFetching ? "animate-spin" : ""} />
             Refresh
@@ -281,6 +354,57 @@ export function CbtResultsPage() {
         </div>
       }
     >
+      {/* Real-Time Live Examination Alert Banner */}
+      {summary && summary.inProgressCount > 0 && (
+        <div className="p-4 rounded-2xl border border-emerald-300 dark:border-emerald-800 bg-emerald-500/10 dark:bg-emerald-950/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <span className="relative flex size-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full size-3 bg-emerald-500"></span>
+            </span>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-foreground">
+                  {summary.inProgressCount} Live CBT Examination{summary.inProgressCount > 1 ? "s" : ""} Currently In Progress
+                </span>
+                <Badge className="bg-emerald-600 text-white text-[10px] py-0 px-1.5 uppercase font-bold animate-pulse">
+                  Live
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Candidates are actively taking their theoretical assessments right now. Progress, answers, and timers update in real time.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {status !== "in_progress" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setStatus("in_progress");
+                  setPage(1);
+                }}
+                className="text-xs bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white border-none shadow-xs font-semibold"
+              >
+                Filter Live Tests ({summary.inProgressCount})
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setStatus("all");
+                  setPage(1);
+                }}
+                className="text-xs"
+              >
+                Show All Statuses
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Attempts */}
@@ -376,7 +500,7 @@ export function CbtResultsPage() {
       <div className="rounded-2xl border bg-card p-4 space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Search Input */}
-          <div className="lg:col-span-2 relative">
+          <div className="relative">
             <label htmlFor={searchInputId} className="sr-only">
               Search by candidate, code, or attempt
             </label>
@@ -414,6 +538,29 @@ export function CbtResultsPage() {
                   {dept.name}
                 </option>
               ))}
+            </select>
+          </div>
+
+          {/* Track Purpose Filter */}
+          <div>
+            <label htmlFor={trackSelectId} className="sr-only">
+              Filter by exam track purpose
+            </label>
+            <select
+              id={trackSelectId}
+              value={examPurpose}
+              onChange={(e) => {
+                setExamPurpose(e.target.value);
+                setPage(1);
+              }}
+              className="w-full p-2 text-sm rounded-xl border bg-background"
+            >
+              <option value="all">All Tracks / Purp.</option>
+              <option value="core_monthly">Core Monthly Only</option>
+              <option value="rotation">Clinical Rotations</option>
+              <option value="transfer_vetting">Transfer Vetting</option>
+              <option value="hospital_wide_certification">Hospital Certifications</option>
+              <option value="voluntary">Elective Upskilling</option>
             </select>
           </div>
 
@@ -526,7 +673,7 @@ export function CbtResultsPage() {
               <tbody className="divide-y divide-border">
                 {attempts.map((attempt) => {
                   const scoreNum = Number(attempt.score ?? 0);
-                  const benchmark = Number(attempt.passPercentage ?? 60);
+                  const benchmark = Number(attempt.passPercentage ?? 80);
                   const isCompleted = ["completed", "timed_out"].includes(attempt.status);
                   const isPassed = isCompleted && scoreNum >= benchmark;
                   const canPrint = canPrintCbtCertificate(attempt.status);
@@ -534,11 +681,26 @@ export function CbtResultsPage() {
                   return (
                     <tr
                       key={attempt.id}
-                      className="hover:bg-muted/30 transition-colors"
+                      className={cn(
+                        "hover:bg-muted/30 transition-colors",
+                        attempt.status === "in_progress" && "bg-emerald-500/5 dark:bg-emerald-950/20 border-l-4 border-l-emerald-500"
+                      )}
                     >
                       {/* Attempt No */}
                       <td className="p-3.5 font-mono font-semibold text-foreground whitespace-nowrap">
-                        {attempt.attemptNo}
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span>{attempt.attemptNo}</span>
+                          {attempt.isRetest && (
+                            <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                              Attempt 2 (Retest)
+                            </span>
+                          )}
+                          {attempt.retestAuthorized && (
+                            <span className="inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              Retest Authorized
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Candidate */}
@@ -556,10 +718,26 @@ export function CbtResultsPage() {
 
                       {/* Department */}
                       <td className="p-3.5 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted text-[11px] font-medium text-foreground">
-                          <Building2 size={12} className="text-muted-foreground" />
-                          {attempt.departmentName || "General"}
-                        </span>
+                        <div className="space-y-1">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-muted text-[11px] font-medium text-foreground">
+                            <Building2 size={12} className="text-muted-foreground" />
+                            {attempt.departmentName || "General"}
+                          </span>
+                          {attempt.homeDepartmentName && attempt.homeDepartmentName !== attempt.departmentName && (
+                            <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+                              <span>Home: {attempt.homeDepartmentName}</span>
+                              <Badge className="bg-sky-600 text-white text-[8px] py-0 px-1 font-semibold">
+                                {attempt.examPurpose === "rotation"
+                                  ? "Rotation"
+                                  : attempt.examPurpose === "transfer_vetting"
+                                  ? "Transfer"
+                                  : attempt.examPurpose === "hospital_wide_certification"
+                                  ? "Cert"
+                                  : "Cross-Dept"}
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
                       </td>
 
                       {/* Date & Time */}
@@ -569,33 +747,73 @@ export function CbtResultsPage() {
 
                       {/* Duration */}
                       <td className="p-3.5 whitespace-nowrap font-mono text-muted-foreground">
-                        {formatDuration(attempt.timeSpentSeconds)}
+                        {attempt.status === "in_progress" ? (
+                          <div className="flex flex-col items-start font-mono text-emerald-700 dark:text-emerald-400 font-semibold">
+                            <span className="flex items-center gap-1">
+                              <Clock size={11} className="animate-spin text-emerald-600" />
+                              {formatDuration(attempt.timeSpentSeconds)}
+                            </span>
+                            {attempt.remainingSeconds !== undefined && attempt.remainingSeconds > 0 && (
+                              <span className="text-[10px] text-muted-foreground font-normal">
+                                {formatDuration(attempt.remainingSeconds)} left
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          formatDuration(attempt.timeSpentSeconds)
+                        )}
                       </td>
 
                       {/* Questions */}
                       <td className="p-3.5 text-center whitespace-nowrap font-mono">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                          {attempt.correctCount ?? 0}
-                        </span>
-                        <span className="text-muted-foreground"> / {attempt.totalQuestions}</span>
+                        {attempt.status === "in_progress" ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
+                              {attempt.answeredCount ?? 0} / {attempt.totalQuestions}
+                            </span>
+                            <div className="w-16 h-1 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 transition-all duration-300"
+                                style={{
+                                  width: `${Math.round(((attempt.answeredCount ?? 0) / (attempt.totalQuestions || 1)) * 100)}%`
+                                }}
+                              />
+                            </div>
+                            <span className="text-[9px] text-muted-foreground uppercase font-medium">
+                              {Math.round(((attempt.answeredCount ?? 0) / (attempt.totalQuestions || 1)) * 100)}% answered
+                            </span>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                              {attempt.correctCount ?? 0}
+                            </span>
+                            <span className="text-muted-foreground"> / {attempt.totalQuestions}</span>
+                          </>
+                        )}
                       </td>
 
                       {/* Status */}
                       <td className="p-3.5 text-center whitespace-nowrap">
-                        <span
-                          className={cn(
-                            "inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
-                            attempt.status === "completed"
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                              : attempt.status === "timed_out"
-                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                              : attempt.status === "in_progress"
-                              ? "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300"
-                              : "bg-muted text-muted-foreground"
-                          )}
-                        >
-                          {attempt.status.replace("_", " ")}
-                        </span>
+                        {attempt.status === "in_progress" ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 shadow-2xs">
+                            <span className="size-1.5 rounded-full bg-emerald-500 animate-ping inline-block"></span>
+                            Testing Now
+                          </span>
+                        ) : (
+                          <span
+                            className={cn(
+                              "inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase",
+                              attempt.status === "completed"
+                                ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
+                                : attempt.status === "timed_out"
+                                ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                                : "bg-muted text-muted-foreground"
+                            )}
+                          >
+                            {attempt.status.replace("_", " ")}
+                          </span>
+                        )}
                       </td>
 
                       {/* Score */}
@@ -609,6 +827,10 @@ export function CbtResultsPage() {
                               Pass: {benchmark}%
                             </div>
                           </div>
+                        ) : attempt.status === "in_progress" ? (
+                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 animate-pulse">
+                            Live In-Progress
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
@@ -637,6 +859,11 @@ export function CbtResultsPage() {
                               </>
                             )}
                           </span>
+                        ) : attempt.status === "in_progress" ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-[10px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 animate-pulse">
+                            <span className="size-1.5 rounded-full bg-emerald-500"></span>
+                            IN PROGRESS
+                          </span>
                         ) : (
                           <span className="text-muted-foreground text-[10px]">IN PROGRESS</span>
                         )}
@@ -644,24 +871,58 @@ export function CbtResultsPage() {
 
                       {/* Rating */}
                       <td className="p-3.5 text-right whitespace-nowrap font-mono font-bold text-foreground">
-                        {attempt.theoreticalRating != null
-                          ? `${Number(attempt.theoreticalRating).toFixed(2)}/5`
-                          : "—"}
+                        {isCompleted && attempt.theoreticalRating != null ? (
+                          `${Number(attempt.theoreticalRating).toFixed(2)}/5`
+                        ) : attempt.status === "in_progress" ? (
+                          <span className="text-[10px] text-muted-foreground font-mono font-normal">
+                            Pending submit
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="p-3.5 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedAttemptId(attempt.id)}
-                            className="h-8 px-2.5 text-xs gap-1"
-                            title="View question-by-question review"
-                          >
-                            <Eye size={13} />
-                            Review
-                          </Button>
+                          {canReview && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedAttemptId(attempt.id)}
+                              className="h-8 px-2.5 text-xs gap-1"
+                              title="View question-by-question review"
+                            >
+                              <Eye size={13} />
+                              Review
+                            </Button>
+                          )}
+
+                          {isHr && isCompleted && !isPassed && (
+                            attempt.retestAuthorized ? (
+                              <span
+                                className="inline-flex items-center gap-1 h-8 px-2.5 rounded text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300"
+                                title={`Retest authorized by ${attempt.retestAuthorizedBy || "HR"}`}
+                              >
+                                <RotateCcw size={12} />
+                                Retest Unlocked
+                              </span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setRetestAttempt(attempt);
+                                  setRetestReasonInput("");
+                                }}
+                                className="h-8 px-2.5 text-xs gap-1 text-primary border-primary/30 hover:bg-primary/5"
+                                title="Authorize Same-Month Retest (Admin & HR Only)"
+                              >
+                                <RotateCcw size={12} />
+                                Retest
+                              </Button>
+                            )
+                          )}
 
                           {canPrint ? (
                             <Button
@@ -760,12 +1021,148 @@ export function CbtResultsPage() {
       </div>
 
       {/* Attempt Review Modal */}
-      {selectedAttemptId != null && (
+      {selectedAttemptId != null && canReview && (
         <AttemptReviewModal
           attemptId={selectedAttemptId}
           onClose={() => setSelectedAttemptId(null)}
         />
       )}
+
+      {/* Authorize Retest Modal (Admin & HR Only) */}
+      {retestAttempt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="bg-card text-card-foreground border border-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+          >
+            <div className="p-5 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                  <RotateCcw size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Authorize CBT Retest</h3>
+                  <p className="text-xs text-muted-foreground">Admin & HR Governance Workflow</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRetestAttempt(null)}
+                className="text-muted-foreground hover:text-foreground p-1 rounded-md"
+                title="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-sm">
+              <div className="p-3 rounded-lg bg-muted/50 border border-border space-y-1.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Candidate:</span>
+                  <span className="font-semibold text-foreground">{retestAttempt.staffName || `Staff #${retestAttempt.staffId}`}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Employee Code:</span>
+                  <span className="font-mono text-foreground">{retestAttempt.employeeCode || "—"}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Department:</span>
+                  <span className="text-foreground">{retestAttempt.departmentName || "—"}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Attempt 1 Score:</span>
+                  <span className="font-bold text-destructive">
+                    {retestAttempt.score != null ? `${Number(retestAttempt.score).toFixed(1)}%` : "0%"} (Below {retestAttempt.passPercentage || 60}% Benchmark)
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-lg p-3 bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                <p className="font-semibold flex items-center gap-1.5">
+                  <AlertTriangle size={13} />
+                  NABH Competency & Cooling Period Governance
+                </p>
+                <p>
+                  Standard policy mandates a <strong>10-day minimum</strong> remediation period between attempts. Authorizing this retest will immediately allow the candidate to take Attempt 2 within the current calendar month.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-foreground mb-1.5">
+                  Authorization Reason / In-Service Remediation Note <span className="text-destructive">*</span>
+                </label>
+                <textarea
+                  value={retestReasonInput}
+                  onChange={(e) => setRetestReasonInput(e.target.value)}
+                  placeholder="e.g., Completed 10-day clinical remediation on medication safety guidelines, or emergency technical disruption waiver."
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                />
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setRetestReasonInput("Completed 10-day clinical remediation & protocol review.")}
+                    className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
+                  >
+                    + 10-day remediation completed
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRetestReasonInput("Technical disruption / connection timeout waiver.")}
+                    className="text-[10px] px-2 py-0.5 rounded bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
+                  >
+                    + Technical disruption waiver
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-muted/30 border-t border-border flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRetestAttempt(null)}
+                disabled={authorizeRetestMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (!retestReasonInput.trim()) {
+                    toast.error("Please enter a valid authorization reason.");
+                    return;
+                  }
+                  authorizeRetestMutation.mutate({
+                    attemptId: retestAttempt.id,
+                    reason: retestReasonInput.trim(),
+                  });
+                }}
+                disabled={authorizeRetestMutation.isPending || retestReasonInput.trim().length < 3}
+                className="gap-1.5 bg-primary text-primary-foreground"
+              >
+                {authorizeRetestMutation.isPending ? (
+                  <>
+                    <RefreshCw size={13} className="animate-spin" />
+                    Unlocking...
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={13} />
+                    Confirm & Unlock Retest
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Cross-Department Track Modal (Model C) */}
+      <AssignCrossDeptTrackModal
+        isOpen={showAssignModal}
+        onClose={() => setShowAssignModal(false)}
+      />
     </ModuleLayout>
   );
 }
@@ -794,7 +1191,7 @@ function AttemptReviewModal({
   const domainResults = data?.domainResults || [];
 
   const scoreNum = Number(attempt?.score ?? 0);
-  const benchmark = Number(attempt?.passPercentage ?? 60);
+  const benchmark = Number(attempt?.passPercentage ?? 80);
   const isPassed = scoreNum >= benchmark;
   const canPrint = attempt ? canPrintCbtCertificate(attempt.status) : false;
 

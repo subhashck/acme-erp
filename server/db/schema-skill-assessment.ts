@@ -239,7 +239,7 @@ export const examConfigs = skillAssessmentSchema.table("exam_configs", {
   departmentPercentage: integer("department_percentage").notNull().default(50),
   totalTimeSeconds: integer("total_time_seconds").notNull().default(1200), // 20 minutes (1200 seconds)
   perQuestionTimeSeconds: integer("per_question_time_seconds").notNull().default(60), // 60 seconds per question
-  passPercentage: numeric("pass_percentage", { precision: 5, scale: 2 }).notNull().default("60.00"),
+  passPercentage: numeric("pass_percentage", { precision: 5, scale: 2 }).notNull().default("80.00"),
   active: boolean("active").notNull().default(true),
   ...timestamps,
 });
@@ -268,8 +268,18 @@ export const examAttempts = skillAssessmentSchema.table("exam_attempts", {
   unansweredCount: integer("unanswered_count").default(0),
   questionIds: jsonb("question_ids").notNull(), // number[]
   questionSnapshot: jsonb("question_snapshot").$type<ExamQuestionSnapshot[]>(),
-  passPercentage: numeric("pass_percentage", { precision: 5, scale: 2 }).notNull().default("60.00"),
+  passPercentage: numeric("pass_percentage", { precision: 5, scale: 2 }).notNull().default("80.00"),
   answers: jsonb("answers").default({}), // Record<string, { selectedOptionIndex: number, isCorrect: boolean, timeSpentSeconds: number }>
+  isRetest: boolean("is_retest").notNull().default(false),
+  retestAuthorized: boolean("retest_authorized").notNull().default(false),
+  retestAuthorizedAt: timestamp("retest_authorized_at"),
+  retestAuthorizedBy: text("retest_authorized_by"),
+  retestReason: text("retest_reason"),
+  targetDepartmentId: integer("target_department_id"),
+  homeDepartmentId: integer("home_department_id"),
+  homeDepartmentName: text("home_department_name"),
+  examPurpose: text("exam_purpose").notNull().default("core_monthly"), // "core_monthly", "rotation", "transfer_vetting", "hospital_wide_certification", "voluntary"
+  enrollmentId: integer("enrollment_id"),
   ...timestamps,
 });
 
@@ -296,5 +306,30 @@ export const departmentMonthlyQuestionBanks = skillAssessmentSchema.table(
     uniqueIndex("idx_skill_dept_monthly_bank_unique").on(table.departmentName, table.monthYear),
   ]
 );
+
+// ---------------------------------------------------------------------------
+// 10. Cross-Department Exam Track Enrollments (Model C)
+// Enables HR / Nursing Superintendents to assign staff to external department CBT tracks
+// (e.g. ICU rotation, ER rotation, transfer evaluation, or hospital-wide certifications)
+// ---------------------------------------------------------------------------
+export const crossDeptExamEnrollments = skillAssessmentSchema.table(
+  "cross_dept_exam_enrollments",
+  {
+    id: serial("id").primaryKey(),
+    staffId: integer("staff_id").notNull(),
+    targetDepartmentId: integer("target_department_id").notNull(),
+    homeDepartmentId: integer("home_department_id"),
+    purpose: text("purpose").notNull().default("rotation"), // "rotation", "transfer_vetting", "hospital_wide_certification", "voluntary"
+    notes: text("notes"),
+    monthYear: text("month_year"), // 'YYYY-MM', or null for multi-month / perpetual
+    validFrom: timestamp("valid_from").defaultNow(),
+    validUntil: timestamp("valid_until"),
+    status: text("status").notNull().default("active"), // "active", "completed", "revoked"
+    assignedByStaffId: integer("assigned_by_staff_id"),
+    assignedByName: text("assigned_by_name"),
+    ...timestamps,
+  }
+);
+
 
 

@@ -43,8 +43,10 @@ import {
   GraduationCap,
   BookOpen,
   Award,
-  FileQuestion
+  FileQuestion,
+  MonitorSmartphone
 } from "lucide-react";
+import { DesktopPinDialog } from "./DesktopPinDialog";
 import { authClient } from "../services/auth";
 import { uiStore } from "../lib/ui-store";
 import { Button } from "../ui/button";
@@ -403,7 +405,7 @@ function ShellContent({ session }: { session: any }) {
     };
   }, [isMobileMenuOpen, isDesktop]);
 
-  const { isAdmin, isHr, currentStaff, isManagementApprover, canViewAssessments, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases } = useUserPermissions();
+  const { isAdmin, isHr, currentStaff, isManagementApprover, canViewAssessments, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canViewDashboard } = useUserPermissions();
   const magazineConfig = useRpcQuery<{ publicUrl: string | null }>(['magazine-service-config'], () => fetch('/api/public/magazine/config'));
   const magazineUrl = magazineConfig.data?.publicUrl;
   const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
@@ -436,6 +438,7 @@ function ShellContent({ session }: { session: any }) {
   const unreadCount = notifications.filter((n) => !n.read).length;
   const [notificationsOpen, setNotificationsOpen] = React.useState(false);
   const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const [isDesktopPinOpen, setIsDesktopPinOpen] = React.useState(false);
 
   // Chat system global state and unread count
   const chatState = useStore(chatStore);
@@ -549,14 +552,14 @@ function ShellContent({ session }: { session: any }) {
 
           {/* Expanded Sidebar Navigation */}
             <div className="erp-sidebar-nav-expanded custom-scrollbar space-y-1.5 pr-1 pb-2" inert={isSidebarCollapsed || undefined} aria-hidden={isSidebarCollapsed}>
-              {/* Home */}
+              {/* Home / Dashboard */}
               <Link
                 to="/"
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
               >
                 <Home size={18} />
-                Home
+                {canViewDashboard ? "Dashboard" : "Home"}
               </Link>
 
               {/* Collapsible Dashboard group */}
@@ -2011,6 +2014,17 @@ function ShellContent({ session }: { session: any }) {
                 </div>
               </div>
 
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10"
+                title="Generate 6-digit PIN for Desktop Login"
+                onClick={() => setIsDesktopPinOpen(true)}
+              >
+                <MonitorSmartphone size={15} />
+                <span className="hidden sm:inline">Desktop PIN</span>
+              </Button>
+
               <Button variant="outline" size="icon" title="Sign out" onClick={signOut}>
                 <LogOut size={17} />
               </Button>
@@ -2023,6 +2037,11 @@ function ShellContent({ session }: { session: any }) {
           </PageTransition>
         </section>
       </main>
+
+      <DesktopPinDialog
+        open={isDesktopPinOpen}
+        onOpenChange={setIsDesktopPinOpen}
+      />
     </div>
   );
 }
