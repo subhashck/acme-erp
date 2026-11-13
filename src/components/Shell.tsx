@@ -1826,9 +1826,9 @@ function ShellContent({ session }: { session: any }) {
       </aside>
 
       <main className={cn("erp-sidebar-content", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")} inert={!isDesktop && isMobileMenuOpen || undefined}>
-        <header className={cn("relative border-b bg-background/80 px-4 py-4 backdrop-blur md:px-8", notificationsOpen && "z-[100000]")}>
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
+        <header className={cn("relative border-b bg-background/80 px-4 py-3 backdrop-blur md:px-8", notificationsOpen && "z-[100000]")}>
+          <div className="grid grid-cols-[1fr_auto] md:flex md:items-center md:justify-between gap-2.5 md:gap-2">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 md:mr-auto">
               <Button
                 variant="outline"
                 size="icon"
@@ -1852,10 +1852,10 @@ function ShellContent({ session }: { session: any }) {
                   alt={hospital.name}
                   width={768}
                   height={277}
-                  className="h-7 w-auto max-w-[120px] object-contain"
+                  className="h-7 w-auto max-w-[100px] sm:max-w-[120px] object-contain"
                 />
               </Link>
-              <div className="flex items-center">
+              <div className="hidden md:flex items-center">
                 <nav className="flex flex-wrap items-center gap-1 text-xs font-medium text-muted-foreground md:gap-1.5 md:text-sm" aria-label="Breadcrumb">
                   {getBreadcrumbs(location.pathname).map((item, idx, arr) => (
                     <React.Fragment key={item.label}>
@@ -1875,7 +1875,8 @@ function ShellContent({ session }: { session: any }) {
                 </nav>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex items-center justify-end gap-2">
               <PwaInstallButton />
               {/* <div className="relative w-full md:w-72">
                 <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
@@ -1898,7 +1899,7 @@ function ShellContent({ session }: { session: any }) {
                 </Button>
 
                 {notificationsOpen && (
-                  <div className="absolute left-0 md:left-auto md:right-0 mt-2 z-[100001] w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
+                  <div className="absolute right-0 mt-2 z-[100001] w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
                     <div className="flex items-center justify-between border-b px-4 py-3">
                       <div className="font-semibold text-sm">Notifications</div>
                       <div className="flex items-center gap-3">
@@ -2004,29 +2005,39 @@ function ShellContent({ session }: { session: any }) {
                 )}
               </div>
 
-              <div className="flex items-center gap-2.5 rounded-lg border bg-muted/50 px-3 py-1.5" title={session.data?.user.email}>
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-1.5 sm:px-3" title={session.data?.user.email}>
                 <ShieldCheck size={14} className="shrink-0 text-muted-foreground" />
-                <div className="flex flex-col leading-tight">
-                  {displayName && <span className="text-xs font-semibold truncate max-w-[120px]">{displayName}</span>}
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                <div className="flex flex-col leading-tight min-w-0">
+                  {displayName && <span className="text-xs font-semibold truncate max-w-[85px] sm:max-w-[120px]">{displayName}</span>}
+                  <span className="text-[10px] text-muted-foreground truncate max-w-[85px] sm:max-w-[120px]">
                     {session.data?.user.role === "admin" ? "Admin" : "Staff"}
                   </span>
                 </div>
               </div>
+            </div>
 
+            <div className="col-span-2 md:col-auto flex items-center gap-2 w-full md:w-auto">
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10"
+                className="flex-1 md:flex-initial gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10 h-8"
                 title="Generate 6-digit PIN for Desktop Login"
                 onClick={() => setIsDesktopPinOpen(true)}
               >
                 <MonitorSmartphone size={15} />
-                <span className="hidden sm:inline">Desktop PIN</span>
+                <span className="md:hidden">Generate PIN</span>
+                <span className="hidden md:inline">Desktop PIN</span>
               </Button>
 
-              <Button variant="outline" size="icon" title="Sign out" onClick={signOut}>
-                <LogOut size={17} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 md:flex-initial gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/40 md:text-foreground md:border-input md:hover:bg-accent md:hover:text-accent-foreground md:w-9 md:px-0 md:justify-center h-8"
+                title="Sign out"
+                onClick={signOut}
+              >
+                <LogOut size={16} />
+                <span className="md:hidden">Logout</span>
               </Button>
             </div>
           </div>

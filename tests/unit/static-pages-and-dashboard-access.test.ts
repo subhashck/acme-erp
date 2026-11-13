@@ -88,4 +88,11 @@ describe("Public Static HTML Pages & Google Console Verification", () => {
     const res = await app.request("/api/dashboard");
     expect(res.status).toBe(401);
   });
+
+  it("returns auth config from /api/public/auth-config", async () => {
+    const res = await app.request("/api/public/auth-config");
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data).toHaveProperty("googleEnabled");
+  });
 });

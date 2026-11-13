@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { APIError } from "better-auth/api";
 import { admin, customSession } from "better-auth/plugins";
 import { pool } from "./db/client.ts";
 
@@ -44,13 +45,27 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true
   },
-  ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
+  ...(process.env.GOOGLE_CLIENT_ID?.trim() && process.env.GOOGLE_CLIENT_SECRET?.trim() ? {
     socialProviders: {
       google: {
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        clientId: process.env.GOOGLE_CLIENT_ID.trim(),
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET.trim(),
         requireEmailVerification: true,
         disableImplicitSignUp: true,
+        mapProfileToUser: (profile) => {
+          const email = profile.email?.trim().toLowerCase() ?? "";
+          if (!email.endsWith("@gmail.com") || profile.email_verified !== true) {
+            throw new APIError("BAD_REQUEST", {
+              message: "Use a verified Gmail address to connect or sign in.",
+            });
+          }
+          return {
+            email,
+            name: profile.name,
+            image: profile.picture,
+            emailVerified: profile.email_verified,
+          };
+        },
       }
     }
   } : {}),
@@ -61,16 +76,6 @@ export const auth = betterAuth({
     }
   },
   user: {
-    validateUserInfo: ({ user, source }) => {
-      if (source.oauth?.providerId !== "google") return;
-      const email = user.email?.trim().toLowerCase() ?? "";
-      if (!email.endsWith("@gmail.com") || user.emailVerified !== true) {
-        return {
-          error: "google_account_not_allowed",
-          errorDescription: "Use a verified Gmail address to connect or sign in.",
-        };
-      }
-    },
     additionalFields: {
       mustChangePassword: {
         type: "boolean",
