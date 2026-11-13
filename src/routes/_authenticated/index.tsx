@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { 
   Users, 
   Landmark, 
@@ -36,6 +36,13 @@ import { useUserPermissions } from "../../lib/permissions";
 import * as React from "react";
 
 export const Route = createFileRoute("/_authenticated/")({
+  beforeLoad: ({ context }) => {
+    const session = (context as any)?.session;
+    const role = (session?.user?.role || session?.data?.user?.role || "").trim().toLowerCase();
+    if (role === "doctor_candidate") {
+      throw redirect({ to: "/doctor-cbt" });
+    }
+  },
   component: Dashboard
 });
 

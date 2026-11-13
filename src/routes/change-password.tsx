@@ -16,8 +16,9 @@ export const Route = createFileRoute("/change-password")({
         search: { redirect: "/change-password" }
       });
     }
-    if (!session.data.user.mustChangePassword) {
-      throw redirect({ to: "/" });
+    const role = (session.data.user.role || "").trim().toLowerCase();
+    if (!session.data.user.mustChangePassword || role === "doctor_candidate") {
+      throw redirect({ to: role === "doctor_candidate" ? "/doctor-cbt" : "/" });
     }
   },
   component: ChangePassword

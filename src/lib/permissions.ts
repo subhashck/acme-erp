@@ -17,6 +17,11 @@ export interface UserPermissions {
   isPurchaseAndStore: boolean;
   isDispensary: boolean;
   isManagementApprover: boolean;
+  isDoctorCandidate: boolean;
+  isDoctorCbtAdmin: boolean;
+  isExternalDoctor: boolean;
+  canViewDoctorCbt: boolean;
+  canManageDoctorCbt: boolean;
   canViewAccounts: boolean;
   canViewHr: boolean;
   canViewAssessments: boolean;
@@ -50,6 +55,12 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     { staleTime: 10 * 60 * 1000 }
   );
 
+  const doctorCbtMeQuery = useRpcQuery<any>(
+    ["doctor-cbt-me"],
+    () => fetch("/api/doctor-cbt/me"),
+    { staleTime: 10 * 60 * 1000 }
+  );
+
   const isManagementApprover = React.useMemo(() => {
     if (currentStaff?.staffId == null) return false;
     const approvers = managementApproversQuery.data;
@@ -74,13 +85,21 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     cleanStaffDept.startsWith("PURCHASE AND STORE");
   const isDispensary = cleanStaffDept === "DISPENSARY" || cleanStaffDept.startsWith("DISPENSARY");
 
-  const canViewAccounts = isAdmin || isAccounts || isManagementApprover;
-  const canViewHr = isAdmin || isHr || isManagementApprover;
-  const canViewCollege = isAdmin || isAccounts || isAcon;
-  const canViewFrontOffice = isAdmin || isFrontOffice;
-  const canViewInventory = isAdmin || isPurchaseAndStore || isDispensary;
-  const canViewPurchases = isAdmin || isAccounts || isPurchaseAndStore;
-  const canManageStores = isAdmin || isManagementApprover;
+  const isDoctorCandidate = userRole === "doctor_candidate" || Boolean(doctorCbtMeQuery.data?.isCandidate);
+  const isDoctorCbtAdmin = isAdmin || Boolean(doctorCbtMeQuery.data?.isDoctorCbtAdmin);
+  const isExternalDoctor = (userRole === "doctor_candidate" || Boolean(doctorCbtMeQuery.data?.isCandidate)) && !currentStaff?.staffId && !isAdmin;
+  const canViewDoctorCbt = isAdmin || isDoctorCbtAdmin || isDoctorCandidate;
+  const canManageDoctorCbt = isAdmin || isDoctorCbtAdmin;
+
+  const canViewAccounts = !isExternalDoctor && (isAdmin || isAccounts || isManagementApprover);
+  const canViewHr = !isExternalDoctor && (isAdmin || isHr || isManagementApprover);
+  const canViewCollege = !isExternalDoctor && (isAdmin || isAccounts || isAcon);
+  const canViewFrontOffice = !isExternalDoctor && (isAdmin || isFrontOffice);
+  const canViewInventory = !isExternalDoctor && (isAdmin || isPurchaseAndStore || isDispensary);
+  const canViewPurchases = !isExternalDoctor && (isAdmin || isAccounts || isPurchaseAndStore);
+  const canManageStores = !isExternalDoctor && (isAdmin || isManagementApprover);
+  const canViewAssessments = !isExternalDoctor && (isAdmin || isHr || Boolean(currentStaff?.staffId));
+  const canViewDashboard = !isExternalDoctor && (isAdmin || isManagementApprover);
 
   return {
     currentStaff,
@@ -92,15 +111,20 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     isPurchaseAndStore,
     isDispensary,
     isManagementApprover,
+    isDoctorCandidate,
+    isDoctorCbtAdmin,
+    isExternalDoctor,
+    canViewDoctorCbt,
+    canManageDoctorCbt,
     canViewAccounts,
     canViewHr,
-    canViewAssessments: isAdmin || isHr || Boolean(currentStaff?.staffId),
+    canViewAssessments,
     canViewCollege,
     canViewFrontOffice,
     canViewInventory,
     canViewPurchases,
     canManageStores,
-    canViewDashboard: isAdmin || isManagementApprover,
+    canViewDashboard,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
   };
 }

@@ -14,7 +14,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "db:setup-push": "tsx server/db/setup-push-db.ts",
     "db:push": "drizzle-kit push",
-    "db:setup": "tsx server/db/setup-inventory-db.ts && tsx server/db/setup-front-office-db.ts && tsx server/db/setup-capital-db.ts && tsx server/db/setup-skill-assessment-db.ts && tsx server/db/migrate-security-deposit-opening.ts && tsx server/db/setup-push-db.ts",
+    "db:setup": "tsx server/db/setup-inventory-db.ts && tsx server/db/setup-front-office-db.ts && tsx server/db/setup-capital-db.ts && tsx server/db/setup-skill-assessment-db.ts && tsx server/db/migrate-security-deposit-opening.ts && tsx server/db/setup-push-db.ts && tsx server/db/setup-doctor-cbt-db.ts",
     "db:seed": "tsx server/db/seed.ts",
     "db:studio": "drizzle-kit studio",
     "front-office:backfill-last-visited": "tsx scripts/backfill-patient-last-visited.ts",

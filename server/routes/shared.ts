@@ -6,6 +6,8 @@ import { db } from "../db/client.ts";
 import { auth, type AuthEnv } from "../auth.ts";
 import { staff, patients, managementApprovers, departments, staffDepartments, unitTypes, unitConversions, items, departmentLeaders } from "../db/schema.ts";
 import { stores } from "../db/schema-inventory.ts";
+import { doctorProfiles } from "../db/schema-doctor-cbt.ts";
+import { isDoctorCbtAdmin } from "../services/doctor-cbt-auth.ts";
 
 // ---------------------------------------------------------------------------
 // Simple helpers
@@ -316,6 +318,64 @@ export const requireCollegeAccess = async (c: Context<AuthEnv>, next: any) => {
     );
   }
   await next();
+};
+
+export const getCurrentDoctorProfile = async (c: Context<AuthEnv>) => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  const userId = session?.user?.id;
+  const userEmail = session?.user?.email;
+  if (!userId && !userEmail) return null;
+
+  const conditions = [];
+  if (userId) conditions.push(eq(doctorProfiles.userId, userId));
+  if (userEmail) conditions.push(sql`LOWER(TRIM(${doctorProfiles.email})) = ${userEmail.trim().toLowerCase()}`);
+
+  const [profile] = await db
+    .select()
+    .from(doctorProfiles)
+    .where(sql`(${sql.join(conditions, sql` OR `)})`)
+    .limit(1);
+  return profile ?? null;
+};
+
+export const requireDoctorCbtAdmin = async (c: Context<AuthEnv>, next: any) => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const role = (session.user.role || "").trim().toLowerCase();
+  if (role === "admin") {
+    await next();
+    return;
+  }
+  const isModAdmin = await isDoctorCbtAdmin(session.user.id, session.user.email);
+  if (!isModAdmin) {
+    return c.json({ error: "Forbidden: Doctor CBT Admin access required" }, 403);
+  }
+  await next();
+};
+
+export const requireDoctorCbtAccess = async (c: Context<AuthEnv>, next: any) => {
+  const session: any = c.get("session") || (await auth.api.getSession({ headers: c.req.raw.headers }));
+  if (!session?.user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const role = (session.user.role || "").trim().toLowerCase();
+  if (role === "admin" || role === "doctor_candidate") {
+    await next();
+    return;
+  }
+  const isModAdmin = await isDoctorCbtAdmin(session.user.id, session.user.email);
+  if (isModAdmin) {
+    await next();
+    return;
+  }
+  const profile = await getCurrentDoctorProfile(c);
+  if (profile && profile.status !== "suspended") {
+    await next();
+    return;
+  }
+  return c.json({ error: "Forbidden: Not enrolled in Doctor Skill Upgradation Program" }, 403);
 };
 
 export const hasFrontOfficeAccess = async (c: Context<AuthEnv>): Promise<boolean> => {

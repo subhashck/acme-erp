@@ -44,7 +44,8 @@ import {
   BookOpen,
   Award,
   FileQuestion,
-  MonitorSmartphone
+  MonitorSmartphone,
+  Stethoscope,
 } from "lucide-react";
 import { DesktopPinDialog } from "./DesktopPinDialog";
 import { authClient } from "../services/auth";
@@ -356,6 +357,7 @@ function ShellContent({ session }: { session: any }) {
   const [collegeReportsOpen, setCollegeReportsOpen] = React.useState(false);
   const [hrOpen, setHrOpen] = React.useState(false);
   const [assessmentsOpen, setAssessmentsOpen] = React.useState(false);
+  const [doctorCbtOpen, setDoctorCbtOpen] = React.useState(false);
   const [accountsOpen, setAccountsOpen] = React.useState(false);
   const [capitalOpen, setCapitalOpen] = React.useState(false);
   const [purchasesOpen, setPurchasesOpen] = React.useState(false);
@@ -405,7 +407,24 @@ function ShellContent({ session }: { session: any }) {
     };
   }, [isMobileMenuOpen, isDesktop]);
 
-  const { isAdmin, isHr, currentStaff, isManagementApprover, canViewAssessments, canViewAccounts: isAccountsVisible, canViewCollege, canViewFrontOffice, canViewInventory, canViewPurchases, canViewDashboard } = useUserPermissions();
+  const {
+    isAdmin,
+    isHr,
+    currentStaff,
+    isManagementApprover,
+    canViewHr,
+    canViewAssessments,
+    canViewDoctorCbt,
+    canManageDoctorCbt,
+    isDoctorCandidate,
+    isExternalDoctor,
+    canViewAccounts: isAccountsVisible,
+    canViewCollege,
+    canViewFrontOffice,
+    canViewInventory,
+    canViewPurchases,
+    canViewDashboard,
+  } = useUserPermissions();
   const magazineConfig = useRpcQuery<{ publicUrl: string | null }>(['magazine-service-config'], () => fetch('/api/public/magazine/config'));
   const magazineUrl = magazineConfig.data?.publicUrl;
   const displayName = currentStaff?.name || session?.user?.name || session?.data?.user?.name;
@@ -425,6 +444,7 @@ function ShellContent({ session }: { session: any }) {
     }
     if (location.pathname.startsWith("/hr/")) setHrOpen(true);
     if (location.pathname.startsWith("/assessments")) setAssessmentsOpen(true);
+    if (location.pathname.startsWith("/doctor-cbt")) setDoctorCbtOpen(true);
     if (location.pathname.startsWith("/accounts/")) setAccountsOpen(true);
     if (location.pathname.startsWith("/capital")) setCapitalOpen(true);
     if (location.pathname.startsWith("/purchases/")) setPurchasesOpen(true);
@@ -553,57 +573,63 @@ function ShellContent({ session }: { session: any }) {
           {/* Expanded Sidebar Navigation */}
             <div className="erp-sidebar-nav-expanded custom-scrollbar space-y-1.5 pr-1 pb-2" inert={isSidebarCollapsed || undefined} aria-hidden={isSidebarCollapsed}>
               {/* Home / Dashboard */}
-              <Link
-                to="/"
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-              >
-                <Home size={18} />
-                {canViewDashboard ? "Dashboard" : "Home"}
-              </Link>
+              {!isExternalDoctor && (
+                <Link
+                  to="/"
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                >
+                  <Home size={18} />
+                  {canViewDashboard ? "Dashboard" : "Home"}
+                </Link>
+              )}
 
               {/* Collapsible Dashboard group */}
-              <div className="flex flex-col">
-                <button
-                  type="button"
-                  onClick={() => setDashboardOpen(!dashboardOpen)}
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <LayoutDashboard size={18} />
-                    <span>Dashboard</span>
-                  </div>
-                  {dashboardOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                {dashboardOpen && (
-                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                    <Link
-                      to={"/dashboard/inventory" as any}
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Pharmacy Stock
-                    </Link>
-                  </div>
-                )}
-              </div>
+              {!isExternalDoctor && canViewDashboard && (
+                <div className="flex flex-col">
+                  <button
+                    type="button"
+                    onClick={() => setDashboardOpen(!dashboardOpen)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <LayoutDashboard size={18} />
+                      <span>Dashboard</span>
+                    </div>
+                    {dashboardOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  {dashboardOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                      <Link
+                        to={"/dashboard/inventory" as any}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Pharmacy Stock
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Communication */}
-              <Link
-                to="/communication"
-                className="flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-              >
-                <div className="flex items-center gap-3">
-                  <MessageSquare size={18} />
-                  <span>Communication</span>
-                </div>
-                {totalChatUnread > 0 && (
-                  <span className="h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
-                    {totalChatUnread > 99 ? "99+" : totalChatUnread}
-                  </span>
-                )}
-              </Link>
+              {!isExternalDoctor && (
+                <Link
+                  to="/communication"
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <MessageSquare size={18} />
+                    <span>Communication</span>
+                  </div>
+                  {totalChatUnread > 0 && (
+                    <span className="h-5 min-w-5 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
+                      {totalChatUnread > 99 ? "99+" : totalChatUnread}
+                    </span>
+                  )}
+                </Link>
+              )}
 
               {/* Front Office */}
               {canViewFrontOffice && (
@@ -832,81 +858,101 @@ function ShellContent({ session }: { session: any }) {
                 </div>}
               </div>}
 
-              {/* Collapsible HR group */}
-              <div className="flex flex-col">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setHrOpen(!hrOpen);
-                  }}
-                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
-                >
-                  <div className="flex items-center gap-3">
-                    <Users size={18} />
-                    <span>HR Management</span>
-                  </div>
-                  {hrOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              {canViewDoctorCbt && <div className="flex flex-col">
+                <button type="button" aria-expanded={doctorCbtOpen} aria-controls="doctor-cbt-sidebar-links"
+                  onClick={event => { event.stopPropagation(); setDoctorCbtOpen(!doctorCbtOpen); }}
+                  className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer">
+                  <span className="flex items-center gap-3"><Stethoscope size={18} />Doctor CBT</span>
+                  {doctorCbtOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
+                {doctorCbtOpen && <div id="doctor-cbt-sidebar-links" className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
+                  <Link to="/doctor-cbt" activeOptions={{ exact: true }} className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Dashboard</Link>
+                  <Link to="/doctor-cbt/cbt" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>CBT Examination</Link>
+                  <Link to="/doctor-cbt/programs" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Programs & Topics</Link>
+                  {canManageDoctorCbt && <>
+                    <Link to="/doctor-cbt/candidates" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Candidates</Link>
+                    <Link to="/doctor-cbt/settings" className="rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground" activeProps={{ className: "text-primary bg-muted" }}>Settings</Link>
+                  </>}
+                </div>}
+              </div>}
 
-                {hrOpen && (
-                  <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                    <Link
-                      to="/hr/staff-list"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Employee Details
-                    </Link>
-                    <Link
-                      to="/hr/roster"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Shift Roster
-                    </Link>
-                    <Link
-                      to="/hr/leaves"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Leave Management
-                    </Link>
-                    <Link
-                      to="/hr/off-day-requests"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Off-Day Requests
-                    </Link>
-                    <Link
-                      to="/hr/attendance"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Attendance
-                    </Link>
-                    <Link
-                      to="/hr/payroll"
-                      className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                      activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                    >
-                      Payroll
-                    </Link>
-                    {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
-                      <Link to="/hr/payroll-deductions" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors" activeProps={{ className: "text-primary bg-muted" }}>Payroll Deductions</Link>
-                    )}
-                    {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
+              {/* Collapsible HR group */}
+              {!isExternalDoctor && canViewHr && (
+                <div className="flex flex-col">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHrOpen(!hrOpen);
+                    }}
+                    className="flex items-center justify-between w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground cursor-pointer outline-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Users size={18} />
+                      <span>HR Management</span>
+                    </div>
+                    {hrOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+
+                  {hrOpen && (
+                    <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
                       <Link
-                        to="/admin/users"
+                        to="/hr/staff-list"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
                       >
-                        User Management
+                        Employee Details
                       </Link>
-                    )}
-                  </div>
-                )}
-              </div>
+                      <Link
+                        to="/hr/roster"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Shift Roster
+                      </Link>
+                      <Link
+                        to="/hr/leaves"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Leave Management
+                      </Link>
+                      <Link
+                        to="/hr/off-day-requests"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Off-Day Requests
+                      </Link>
+                      <Link
+                        to="/hr/attendance"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Attendance
+                      </Link>
+                      <Link
+                        to="/hr/payroll"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Payroll
+                      </Link>
+                      {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
+                        <Link to="/hr/payroll-deductions" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors" activeProps={{ className: "text-primary bg-muted" }}>Payroll Deductions</Link>
+                      )}
+                      {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && (
+                        <Link
+                          to="/admin/users"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          User Management
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* <div className="flex flex-col">
                 <button
@@ -1422,7 +1468,7 @@ function ShellContent({ session }: { session: any }) {
               )}
 
               {/* E-Magazine */}
-              {magazineUrl && (
+              {!isExternalDoctor && magazineUrl && (
                 <a href={magazineUrl} target="_blank" rel="noopener noreferrer"
                   className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
@@ -1442,37 +1488,43 @@ function ShellContent({ session }: { session: any }) {
             </div>
             {/* Minimized Sidebar Navigation (Icons only) */}
             <div className="erp-sidebar-nav-collapsed custom-scrollbar flex flex-col items-center space-y-3 pb-2" inert={!isSidebarCollapsed || undefined} aria-hidden={!isSidebarCollapsed}>
-              <Link
-                to="/"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Home"
-              >
-                <Home size={20} />
-              </Link>
+              {!isExternalDoctor && (
+                <Link
+                  to="/"
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Home"
+                >
+                  <Home size={20} />
+                </Link>
+              )}
 
-              <Link
-                to={"/dashboard/inventory" as any}
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Pharmacy Stock Dashboard"
-              >
-                <LayoutDashboard size={20} />
-              </Link>
+              {!isExternalDoctor && canViewDashboard && (
+                <Link
+                  to={"/dashboard/inventory" as any}
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Pharmacy Stock Dashboard"
+                >
+                  <LayoutDashboard size={20} />
+                </Link>
+              )}
 
-              <Link
-                to="/communication"
-                className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Communication"
-              >
-                <MessageSquare size={20} />
-                {totalChatUnread > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 min-w-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
-                    {totalChatUnread > 99 ? "99+" : totalChatUnread}
-                  </span>
-                )}
-              </Link>
+              {!isExternalDoctor && (
+                <Link
+                  to="/communication"
+                  className="relative flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Communication"
+                >
+                  <MessageSquare size={20} />
+                  {totalChatUnread > 0 && (
+                    <span className="absolute -top-1 -right-1 h-4 min-w-4 px-0.5 rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
+                      {totalChatUnread > 99 ? "99+" : totalChatUnread}
+                    </span>
+                  )}
+                </Link>
+              )}
 
               {canViewCollege && (
                 <Link
@@ -1496,54 +1548,58 @@ function ShellContent({ session }: { session: any }) {
                 </Link>
               )}
 
-              <div className="w-8 h-px bg-border my-2" />
+              {!isExternalDoctor && <div className="w-8 h-px bg-border my-2" />}
 
-              <Link
-                to="/hr/staff-list"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Employee Details"
-              >
-                <Users size={20} />
-              </Link>
+              {!isExternalDoctor && canViewHr && (
+                <>
+                  <Link
+                    to="/hr/staff-list"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Employee Details"
+                  >
+                    <Users size={20} />
+                  </Link>
 
-              <Link
-                to="/hr/roster"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Shift Roster"
-              >
-                <CalendarDays size={20} />
-              </Link>
+                  <Link
+                    to="/hr/roster"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Shift Roster"
+                  >
+                    <CalendarDays size={20} />
+                  </Link>
 
-              <Link
-                to="/hr/leaves"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Leave Management"
-              >
-                <CalendarClock size={20} />
-              </Link>
+                  <Link
+                    to="/hr/leaves"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Leave Management"
+                  >
+                    <CalendarClock size={20} />
+                  </Link>
 
-              <Link
-                to="/hr/off-day-requests"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Off-Day Requests"
-              >
-                <CalendarOff size={20} />
-              </Link>
+                  <Link
+                    to="/hr/off-day-requests"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Off-Day Requests"
+                  >
+                    <CalendarOff size={20} />
+                  </Link>
 
-              <Link
-                to="/hr/payroll"
-                className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Payroll"
-              >
-                <Receipt size={20} />
-              </Link>
+                  <Link
+                    to="/hr/payroll"
+                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                    title="Payroll"
+                  >
+                    <Receipt size={20} />
+                  </Link>
 
-              {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && <Link to="/hr/payroll-deductions" title="Payroll Deductions" className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" activeProps={{ className: "bg-primary text-primary-foreground" }}><Receipt size={20} /></Link>}
+                  {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && <Link to="/hr/payroll-deductions" title="Payroll Deductions" className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" activeProps={{ className: "bg-primary text-primary-foreground" }}><Receipt size={20} /></Link>}
+                </>
+              )}
 
               {canViewAssessments && <Link
                 to="/assessments"
@@ -1552,16 +1608,25 @@ function ShellContent({ session }: { session: any }) {
                 title="Assessments"
               ><Award size={20} /></Link>}
 
-              <Link
-                to="/clinical/immunization"
+              {canViewDoctorCbt && <Link
+                to="/doctor-cbt"
                 className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                title="Immunization History"
-              >
-                <Syringe size={20} />
-              </Link>
+                title="Doctor CBT"
+              ><Stethoscope size={20} /></Link>}
 
-              <div className="w-8 h-px bg-border my-2" />
+              {!isExternalDoctor && (
+                <Link
+                  to="/clinical/immunization"
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="Immunization History"
+                >
+                  <Syringe size={20} />
+                </Link>
+              )}
+
+              {!isExternalDoctor && isAccountsVisible && <div className="w-8 h-px bg-border my-2" />}
 
 
               {isAccountsVisible && (
@@ -1826,13 +1891,13 @@ function ShellContent({ session }: { session: any }) {
       </aside>
 
       <main className={cn("erp-sidebar-content", isSidebarMinimized ? "lg:pl-16" : "lg:pl-72")} inert={!isDesktop && isMobileMenuOpen || undefined}>
-        <header className={cn("relative border-b bg-background/80 px-4 py-3 backdrop-blur md:px-8", notificationsOpen && "z-[100000]")}>
-          <div className="grid grid-cols-[1fr_auto] md:flex md:items-center md:justify-between gap-2.5 md:gap-2">
-            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 md:mr-auto">
+        <header className={cn("relative border-b bg-background/80 px-3 py-2 sm:px-4 sm:py-2.5 backdrop-blur md:px-8", notificationsOpen && "z-[100000]")}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 md:mr-auto">
               <Button
                 variant="outline"
                 size="icon"
-                className="lg:hidden shrink-0"
+                className="lg:hidden shrink-0 size-8 sm:size-9"
                 onClick={() => setIsMobileMenuOpen(true)}
                 title="Open Navigation"
                 ref={mobileMenuButtonRef}
@@ -1852,7 +1917,7 @@ function ShellContent({ session }: { session: any }) {
                   alt={hospital.name}
                   width={768}
                   height={277}
-                  className="h-7 w-auto max-w-[100px] sm:max-w-[120px] object-contain"
+                  className="h-6 sm:h-7 w-auto max-w-[90px] sm:max-w-[120px] object-contain"
                 />
               </Link>
               <div className="hidden md:flex items-center">
@@ -1876,168 +1941,196 @@ function ShellContent({ session }: { session: any }) {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2">
-              <PwaInstallButton />
-              {/* <div className="relative w-full md:w-72">
-                <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-                <Input value={search} onChange={(event) => uiStore.setState((state) => ({ ...state, search: event.target.value }))} className="pl-9" placeholder="Search records" />
-              </div> */}
-              <div className="relative" ref={dropdownRef}>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="relative cursor-pointer"
-                  onClick={() => setNotificationsOpen(!notificationsOpen)}
-                  title="Notifications"
-                >
-                  <Bell size={17} />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-background">
-                      {unreadCount}
-                    </span>
-                  )}
-                </Button>
+            <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
+              {/* PWA Install Button: Hidden on mobile, shown on tablet/desktop */}
+              <PwaInstallButton className="hidden sm:inline-flex" />
 
-                {notificationsOpen && (
-                  <div className="absolute right-0 mt-2 z-[100001] w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
-                    <div className="flex items-center justify-between border-b px-4 py-3">
-                      <div className="font-semibold text-sm">Notifications</div>
-                      <div className="flex items-center gap-3">
-                        {unreadCount > 0 && (
-                          <button
-                            onClick={() => notificationsActions.clearAll()}
-                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
-                          >
-                            <Check className="size-3" /> Mark all read
-                          </button>
-                        )}
-                        {notifications.length > 0 && (
-                          <button
-                            onClick={() => notificationsActions.deleteAll()}
-                            className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer transition-colors"
-                          >
-                            <Trash2 className="size-3" /> Delete all
-                          </button>
+              {/* Desktop PIN for non-external doctors */}
+              {!isExternalDoctor && (
+                <>
+                  {/* Desktop version with label */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="hidden md:inline-flex gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10 h-8"
+                    title="Generate 6-digit PIN for Desktop Login"
+                    onClick={() => setIsDesktopPinOpen(true)}
+                  >
+                    <MonitorSmartphone size={15} />
+                    <span>Desktop PIN</span>
+                  </Button>
+                  {/* Mobile icon-only version */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="md:hidden size-8 border-primary/30 text-primary hover:bg-primary/10 shrink-0"
+                    title="Generate 6-digit PIN for Desktop Login"
+                    onClick={() => setIsDesktopPinOpen(true)}
+                    aria-label="Generate Desktop PIN"
+                  >
+                    <MonitorSmartphone size={15} />
+                  </Button>
+                </>
+              )}
+
+              {!isExternalDoctor && (
+                <div className="relative" ref={dropdownRef}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="relative cursor-pointer size-8 sm:size-9"
+                    onClick={() => setNotificationsOpen(!notificationsOpen)}
+                    title="Notifications"
+                    aria-label="Notifications"
+                  >
+                    <Bell size={16} />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white ring-2 ring-background">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Button>
+
+                  {notificationsOpen && (
+                    <div className="absolute right-0 mt-2 z-[100001] w-[calc(100vw-2rem)] max-w-sm md:w-96 md:max-w-none rounded-lg border bg-popover shadow-xl text-popover-foreground transition-all animate-page-transition">
+                      <div className="flex items-center justify-between border-b px-4 py-3">
+                        <div className="font-semibold text-sm">Notifications</div>
+                        <div className="flex items-center gap-3">
+                          {unreadCount > 0 && (
+                            <button
+                              onClick={() => notificationsActions.clearAll()}
+                              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+                            >
+                              <Check className="size-3" /> Mark all read
+                            </button>
+                          )}
+                          {notifications.length > 0 && (
+                            <button
+                              onClick={() => notificationsActions.deleteAll()}
+                              className="flex items-center gap-1 text-xs text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="size-3" /> Delete all
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="max-h-[calc(100vh-14rem)] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-border">
+                        {notifications.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs">
+                            <Bell className="size-8 mb-2 opacity-40" />
+                            No notifications
+                          </div>
+                        ) : (
+                          notifications.map((n) => {
+                            const Icon = {
+                              success: CheckCircle,
+                              error: AlertCircle,
+                              warning: AlertTriangle,
+                              info: Info,
+                            }[n.type as "success" | "error" | "warning" | "info"] || Info;
+
+                            return (
+                              <div
+                                key={n.id}
+                                className={cn(
+                                  "flex items-start gap-3 p-4 transition-colors hover:bg-muted/40",
+                                  !n.read && "bg-primary/5 font-medium"
+                                )}
+                              >
+                                <div
+                                  className={cn(
+                                    "grid size-8 place-items-center rounded-full shrink-0",
+                                    n.type === "success" && "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400",
+                                    n.type === "error" && "bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400",
+                                    n.type === "warning" && "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400",
+                                    n.type === "info" && "bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
+                                  )}
+                                >
+                                  <Icon className="size-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold truncate text-foreground">{n.title}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">{n.message}</p>
+                                  <div className="flex items-center gap-3 mt-1.5">
+                                    {n.link && (
+                                      <Link
+                                        to={n.link}
+                                        onClick={() => {
+                                          setNotificationsOpen(false);
+                                          if (!n.read) {
+                                            notificationsActions.clearNotification(n.id);
+                                          }
+                                        }}
+                                        className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline font-semibold"
+                                      >
+                                        View action
+                                      </Link>
+                                    )}
+                                    <span className="text-[9px] text-muted-foreground">
+                                      {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {!n.read && (
+                                    <button
+                                      onClick={() => notificationsActions.clearNotification(n.id)}
+                                      className="p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
+                                      title="Mark as read"
+                                    >
+                                      <Check className="size-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => notificationsActions.deleteNotification(n.id)}
+                                    className="p-1 rounded-md text-muted-foreground hover:text-rose-500 cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
+                                    title="Delete notification"
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     </div>
-                    <div className="max-h-[calc(100vh-14rem)] sm:max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-border">
-                      {notifications.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-xs">
-                          <Bell className="size-8 mb-2 opacity-40" />
-                          No notifications
-                        </div>
-                      ) : (
-                        notifications.map((n) => {
-                          const Icon = {
-                            success: CheckCircle,
-                            error: AlertCircle,
-                            warning: AlertTriangle,
-                            info: Info,
-                          }[n.type as "success" | "error" | "warning" | "info"] || Info;
+                  )}
+                </div>
+              )}
 
-                          return (
-                            <div
-                              key={n.id}
-                              className={cn(
-                                "flex items-start gap-3 p-4 transition-colors hover:bg-muted/40",
-                                !n.read && "bg-primary/5 font-medium"
-                              )}
-                            >
-                              <div
-                                className={cn(
-                                  "grid size-8 place-items-center rounded-full shrink-0",
-                                  n.type === "success" && "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400",
-                                  n.type === "error" && "bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400",
-                                  n.type === "warning" && "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400",
-                                  n.type === "info" && "bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
-                                )}
-                              >
-                                <Icon className="size-4" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold truncate text-foreground">{n.title}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5 whitespace-pre-wrap">{n.message}</p>
-                                <div className="flex items-center gap-3 mt-1.5">
-                                  {n.link && (
-                                    <Link
-                                      to={n.link}
-                                      onClick={() => {
-                                        setNotificationsOpen(false);
-                                        if (!n.read) {
-                                          notificationsActions.clearNotification(n.id);
-                                        }
-                                      }}
-                                      className="text-[10px] text-teal-600 dark:text-teal-400 hover:underline font-semibold"
-                                    >
-                                      View action
-                                    </Link>
-                                  )}
-                                  <span className="text-[9px] text-muted-foreground">
-                                    {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                {!n.read && (
-                                  <button
-                                    onClick={() => notificationsActions.clearNotification(n.id)}
-                                    className="p-1 rounded-md text-muted-foreground hover:text-foreground cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
-                                    title="Mark as read"
-                                  >
-                                    <Check className="size-3" />
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => notificationsActions.deleteNotification(n.id)}
-                                  className="p-1 rounded-md text-muted-foreground hover:text-rose-500 cursor-pointer hover:bg-black/5 dark:hover:bg-white/10"
-                                  title="Delete notification"
-                                >
-                                  <Trash2 className="size-3" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-2.5 py-1.5 sm:px-3" title={session.data?.user.email}>
-                <ShieldCheck size={14} className="shrink-0 text-muted-foreground" />
+              {/* User Identity Pill */}
+              <div
+                className="flex items-center gap-2 sm:gap-2.5 rounded-lg border bg-muted/50 px-2.5 py-1 sm:px-3 sm:py-1.5 max-w-[160px] xs:max-w-[210px] sm:max-w-[280px] md:max-w-[360px] min-w-0"
+                title={session.data?.user.email}
+              >
+                <ShieldCheck size={16} className="shrink-0 text-muted-foreground" />
                 <div className="flex flex-col leading-tight min-w-0">
-                  {displayName && <span className="text-xs font-semibold truncate max-w-[85px] sm:max-w-[120px]">{displayName}</span>}
-                  <span className="text-[10px] text-muted-foreground truncate max-w-[85px] sm:max-w-[120px]">
-                    {session.data?.user.role === "admin" ? "Admin" : "Staff"}
+                  {displayName && (
+                    <span className="text-xs sm:text-sm font-semibold truncate text-foreground">
+                      {displayName}
+                    </span>
+                  )}
+                  <span className="text-[10px] sm:text-xs text-muted-foreground truncate">
+                    {session.data?.user.role === "admin"
+                      ? "Admin"
+                      : isExternalDoctor
+                      ? "Candidate Doctor"
+                      : currentStaff?.departmentName || session.data?.user.role || "Staff"}
                   </span>
                 </div>
               </div>
-            </div>
 
-            <div className="col-span-2 md:col-auto flex items-center gap-2 w-full md:w-auto">
+              {/* Logout Button: Clean Icon Button on Mobile & Desktop */}
               <Button
                 variant="outline"
-                size="sm"
-                className="flex-1 md:flex-initial gap-1.5 text-xs font-medium border-primary/30 text-primary hover:bg-primary/10 h-8"
-                title="Generate 6-digit PIN for Desktop Login"
-                onClick={() => setIsDesktopPinOpen(true)}
-              >
-                <MonitorSmartphone size={15} />
-                <span className="md:hidden">Generate PIN</span>
-                <span className="hidden md:inline">Desktop PIN</span>
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 md:flex-initial gap-1.5 text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/40 md:text-foreground md:border-input md:hover:bg-accent md:hover:text-accent-foreground md:w-9 md:px-0 md:justify-center h-8"
+                size="icon"
+                className="size-8 sm:size-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-900/40 shrink-0 cursor-pointer"
                 title="Sign out"
                 onClick={signOut}
+                aria-label="Sign out"
               >
-                <LogOut size={16} />
-                <span className="md:hidden">Logout</span>
+                <LogOut size={15} />
               </Button>
             </div>
           </div>

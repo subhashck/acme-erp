@@ -30,6 +30,7 @@ import { capitalRoutes } from "./routes/capital.ts";
 import { skillAssessmentRoutes } from "./routes/skill-assessment.ts";
 import { closingStockSyncRoutes } from "./routes/closing-stock-sync.ts";
 import { mobilePinAuthRoutes } from "./routes/mobile-pin-auth.ts";
+import { doctorCbtRoutes } from "./routes/doctor-cbt.ts";
 
 export const api = new Hono<AuthEnv>()
   .route("/", dashboardRoutes)
@@ -61,6 +62,7 @@ export const api = new Hono<AuthEnv>()
   .route("/", capitalRoutes)
   .route("/", skillAssessmentRoutes)
   .route("/", closingStockSyncRoutes)
+  .route("/", doctorCbtRoutes)
   .route("/mobile-pin-auth", mobilePinAuthRoutes);
 
 export type AppType = typeof api;

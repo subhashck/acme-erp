@@ -20,3 +20,7 @@ export function CardContent({ className, ...props }: React.ComponentProps<"div">
 export function CardDescription({ className, ...props }: React.ComponentProps<"p">) {
   return <p className={cn("text-xs text-muted-foreground", className)} {...props} />;
 }
+
+export function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
+  return <div className={cn("flex items-center p-5 pt-0", className)} {...props} />;
+}

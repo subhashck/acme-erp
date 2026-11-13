@@ -14,10 +14,12 @@ import { Route as ChangePasswordRouteImport } from './routes/change-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedDoctorCbtRouteImport } from './routes/_authenticated/doctor-cbt'
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedCollegeRouteImport } from './routes/_authenticated/college'
 import { Route as AuthenticatedAssessmentsRouteImport } from './routes/_authenticated/assessments'
 import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
+import { Route as AuthenticatedDoctorCbtIndexRouteImport } from './routes/_authenticated/doctor-cbt/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as AuthenticatedCapitalIndexRouteImport } from './routes/_authenticated/capital/index'
 import { Route as AuthenticatedAssessmentsIndexRouteImport } from './routes/_authenticated/assessments/index'
@@ -56,6 +58,11 @@ import { Route as AuthenticatedHrAddStaffRouteImport } from './routes/_authentic
 import { Route as AuthenticatedFrontOfficeRazorpayReconciliationRouteImport } from './routes/_authenticated/front-office/razorpay-reconciliation'
 import { Route as AuthenticatedFrontOfficePatientsRouteImport } from './routes/_authenticated/front-office/patients'
 import { Route as AuthenticatedFrontOfficeNewRouteImport } from './routes/_authenticated/front-office/new'
+import { Route as AuthenticatedDoctorCbtSettingsRouteImport } from './routes/_authenticated/doctor-cbt/settings'
+import { Route as AuthenticatedDoctorCbtProgramsRouteImport } from './routes/_authenticated/doctor-cbt/programs'
+import { Route as AuthenticatedDoctorCbtProfileRouteImport } from './routes/_authenticated/doctor-cbt/profile'
+import { Route as AuthenticatedDoctorCbtCbtRouteImport } from './routes/_authenticated/doctor-cbt/cbt'
+import { Route as AuthenticatedDoctorCbtCandidatesRouteImport } from './routes/_authenticated/doctor-cbt/candidates'
 import { Route as AuthenticatedDashboardInventoryRouteImport } from './routes/_authenticated/dashboard/inventory'
 import { Route as AuthenticatedCollegeSubjectsRouteImport } from './routes/_authenticated/college/subjects'
 import { Route as AuthenticatedCollegeStudentsRouteImport } from './routes/_authenticated/college/students'
@@ -145,6 +152,11 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedDoctorCbtRoute = AuthenticatedDoctorCbtRouteImport.update({
+  id: '/doctor-cbt',
+  path: '/doctor-cbt',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedCommunicationRoute =
   AuthenticatedCommunicationRouteImport.update({
     id: '/communication',
@@ -167,6 +179,12 @@ const AuthenticatedFrontOfficeIndexRoute =
     id: '/front-office/',
     path: '/front-office/',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedDoctorCbtIndexRoute =
+  AuthenticatedDoctorCbtIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedDoctorCbtRoute,
   } as any)
 const AuthenticatedCollegeIndexRoute =
   AuthenticatedCollegeIndexRouteImport.update({
@@ -390,6 +408,36 @@ const AuthenticatedFrontOfficeNewRoute =
     id: '/front-office/new',
     path: '/front-office/new',
     getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedDoctorCbtSettingsRoute =
+  AuthenticatedDoctorCbtSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedDoctorCbtRoute,
+  } as any)
+const AuthenticatedDoctorCbtProgramsRoute =
+  AuthenticatedDoctorCbtProgramsRouteImport.update({
+    id: '/programs',
+    path: '/programs',
+    getParentRoute: () => AuthenticatedDoctorCbtRoute,
+  } as any)
+const AuthenticatedDoctorCbtProfileRoute =
+  AuthenticatedDoctorCbtProfileRouteImport.update({
+    id: '/profile',
+    path: '/profile',
+    getParentRoute: () => AuthenticatedDoctorCbtRoute,
+  } as any)
+const AuthenticatedDoctorCbtCbtRoute =
+  AuthenticatedDoctorCbtCbtRouteImport.update({
+    id: '/cbt',
+    path: '/cbt',
+    getParentRoute: () => AuthenticatedDoctorCbtRoute,
+  } as any)
+const AuthenticatedDoctorCbtCandidatesRoute =
+  AuthenticatedDoctorCbtCandidatesRouteImport.update({
+    id: '/candidates',
+    path: '/candidates',
+    getParentRoute: () => AuthenticatedDoctorCbtRoute,
   } as any)
 const AuthenticatedDashboardInventoryRoute =
   AuthenticatedDashboardInventoryRouteImport.update({
@@ -782,6 +830,7 @@ export interface FileRoutesByFullPath {
   '/assessments': typeof AuthenticatedAssessmentsRouteWithChildren
   '/college': typeof AuthenticatedCollegeRouteWithChildren
   '/communication': typeof AuthenticatedCommunicationRoute
+  '/doctor-cbt': typeof AuthenticatedDoctorCbtRouteWithChildren
   '/settings': typeof AuthenticatedSettingsRoute
   '/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
   '/accounts/bank-expenses': typeof AuthenticatedAccountsBankExpensesRoute
@@ -817,6 +866,11 @@ export interface FileRoutesByFullPath {
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/dashboard/inventory': typeof AuthenticatedDashboardInventoryRoute
+  '/doctor-cbt/candidates': typeof AuthenticatedDoctorCbtCandidatesRoute
+  '/doctor-cbt/cbt': typeof AuthenticatedDoctorCbtCbtRoute
+  '/doctor-cbt/profile': typeof AuthenticatedDoctorCbtProfileRoute
+  '/doctor-cbt/programs': typeof AuthenticatedDoctorCbtProgramsRoute
+  '/doctor-cbt/settings': typeof AuthenticatedDoctorCbtSettingsRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -855,6 +909,7 @@ export interface FileRoutesByFullPath {
   '/assessments/': typeof AuthenticatedAssessmentsIndexRoute
   '/capital/': typeof AuthenticatedCapitalIndexRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
+  '/doctor-cbt/': typeof AuthenticatedDoctorCbtIndexRoute
   '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
@@ -927,6 +982,11 @@ export interface FileRoutesByTo {
   '/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/dashboard/inventory': typeof AuthenticatedDashboardInventoryRoute
+  '/doctor-cbt/candidates': typeof AuthenticatedDoctorCbtCandidatesRoute
+  '/doctor-cbt/cbt': typeof AuthenticatedDoctorCbtCbtRoute
+  '/doctor-cbt/profile': typeof AuthenticatedDoctorCbtProfileRoute
+  '/doctor-cbt/programs': typeof AuthenticatedDoctorCbtProgramsRoute
+  '/doctor-cbt/settings': typeof AuthenticatedDoctorCbtSettingsRoute
   '/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
   '/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -964,6 +1024,7 @@ export interface FileRoutesByTo {
   '/assessments': typeof AuthenticatedAssessmentsIndexRoute
   '/capital': typeof AuthenticatedCapitalIndexRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
+  '/doctor-cbt': typeof AuthenticatedDoctorCbtIndexRoute
   '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
@@ -1004,6 +1065,7 @@ export interface FileRoutesById {
   '/_authenticated/assessments': typeof AuthenticatedAssessmentsRouteWithChildren
   '/_authenticated/college': typeof AuthenticatedCollegeRouteWithChildren
   '/_authenticated/communication': typeof AuthenticatedCommunicationRoute
+  '/_authenticated/doctor-cbt': typeof AuthenticatedDoctorCbtRouteWithChildren
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/accounts/bank-accounts': typeof AuthenticatedAccountsBankAccountsRoute
@@ -1040,6 +1102,11 @@ export interface FileRoutesById {
   '/_authenticated/college/students': typeof AuthenticatedCollegeStudentsRoute
   '/_authenticated/college/subjects': typeof AuthenticatedCollegeSubjectsRoute
   '/_authenticated/dashboard/inventory': typeof AuthenticatedDashboardInventoryRoute
+  '/_authenticated/doctor-cbt/candidates': typeof AuthenticatedDoctorCbtCandidatesRoute
+  '/_authenticated/doctor-cbt/cbt': typeof AuthenticatedDoctorCbtCbtRoute
+  '/_authenticated/doctor-cbt/profile': typeof AuthenticatedDoctorCbtProfileRoute
+  '/_authenticated/doctor-cbt/programs': typeof AuthenticatedDoctorCbtProgramsRoute
+  '/_authenticated/doctor-cbt/settings': typeof AuthenticatedDoctorCbtSettingsRoute
   '/_authenticated/front-office/new': typeof AuthenticatedFrontOfficeNewRoute
   '/_authenticated/front-office/patients': typeof AuthenticatedFrontOfficePatientsRoute
   '/_authenticated/front-office/razorpay-reconciliation': typeof AuthenticatedFrontOfficeRazorpayReconciliationRoute
@@ -1078,6 +1145,7 @@ export interface FileRoutesById {
   '/_authenticated/assessments/': typeof AuthenticatedAssessmentsIndexRoute
   '/_authenticated/capital/': typeof AuthenticatedCapitalIndexRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
+  '/_authenticated/doctor-cbt/': typeof AuthenticatedDoctorCbtIndexRoute
   '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
@@ -1119,6 +1187,7 @@ export interface FileRouteTypes {
     | '/assessments'
     | '/college'
     | '/communication'
+    | '/doctor-cbt'
     | '/settings'
     | '/accounts/bank-accounts'
     | '/accounts/bank-expenses'
@@ -1154,6 +1223,11 @@ export interface FileRouteTypes {
     | '/college/students'
     | '/college/subjects'
     | '/dashboard/inventory'
+    | '/doctor-cbt/candidates'
+    | '/doctor-cbt/cbt'
+    | '/doctor-cbt/profile'
+    | '/doctor-cbt/programs'
+    | '/doctor-cbt/settings'
     | '/front-office/new'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
@@ -1192,6 +1266,7 @@ export interface FileRouteTypes {
     | '/assessments/'
     | '/capital/'
     | '/college/'
+    | '/doctor-cbt/'
     | '/front-office/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
@@ -1264,6 +1339,11 @@ export interface FileRouteTypes {
     | '/college/students'
     | '/college/subjects'
     | '/dashboard/inventory'
+    | '/doctor-cbt/candidates'
+    | '/doctor-cbt/cbt'
+    | '/doctor-cbt/profile'
+    | '/doctor-cbt/programs'
+    | '/doctor-cbt/settings'
     | '/front-office/new'
     | '/front-office/patients'
     | '/front-office/razorpay-reconciliation'
@@ -1301,6 +1381,7 @@ export interface FileRouteTypes {
     | '/assessments'
     | '/capital'
     | '/college'
+    | '/doctor-cbt'
     | '/front-office'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
@@ -1340,6 +1421,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assessments'
     | '/_authenticated/college'
     | '/_authenticated/communication'
+    | '/_authenticated/doctor-cbt'
     | '/_authenticated/settings'
     | '/_authenticated/'
     | '/_authenticated/accounts/bank-accounts'
@@ -1376,6 +1458,11 @@ export interface FileRouteTypes {
     | '/_authenticated/college/students'
     | '/_authenticated/college/subjects'
     | '/_authenticated/dashboard/inventory'
+    | '/_authenticated/doctor-cbt/candidates'
+    | '/_authenticated/doctor-cbt/cbt'
+    | '/_authenticated/doctor-cbt/profile'
+    | '/_authenticated/doctor-cbt/programs'
+    | '/_authenticated/doctor-cbt/settings'
     | '/_authenticated/front-office/new'
     | '/_authenticated/front-office/patients'
     | '/_authenticated/front-office/razorpay-reconciliation'
@@ -1414,6 +1501,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assessments/'
     | '/_authenticated/capital/'
     | '/_authenticated/college/'
+    | '/_authenticated/doctor-cbt/'
     | '/_authenticated/front-office/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
@@ -1491,6 +1579,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/doctor-cbt': {
+      id: '/_authenticated/doctor-cbt'
+      path: '/doctor-cbt'
+      fullPath: '/doctor-cbt'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/communication': {
       id: '/_authenticated/communication'
       path: '/communication'
@@ -1518,6 +1613,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/front-office/'
       preLoaderRoute: typeof AuthenticatedFrontOfficeIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/doctor-cbt/': {
+      id: '/_authenticated/doctor-cbt/'
+      path: '/'
+      fullPath: '/doctor-cbt/'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtIndexRouteImport
+      parentRoute: typeof AuthenticatedDoctorCbtRoute
     }
     '/_authenticated/college/': {
       id: '/_authenticated/college/'
@@ -1784,6 +1886,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/front-office/new'
       preLoaderRoute: typeof AuthenticatedFrontOfficeNewRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/doctor-cbt/settings': {
+      id: '/_authenticated/doctor-cbt/settings'
+      path: '/settings'
+      fullPath: '/doctor-cbt/settings'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtSettingsRouteImport
+      parentRoute: typeof AuthenticatedDoctorCbtRoute
+    }
+    '/_authenticated/doctor-cbt/programs': {
+      id: '/_authenticated/doctor-cbt/programs'
+      path: '/programs'
+      fullPath: '/doctor-cbt/programs'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtProgramsRouteImport
+      parentRoute: typeof AuthenticatedDoctorCbtRoute
+    }
+    '/_authenticated/doctor-cbt/profile': {
+      id: '/_authenticated/doctor-cbt/profile'
+      path: '/profile'
+      fullPath: '/doctor-cbt/profile'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtProfileRouteImport
+      parentRoute: typeof AuthenticatedDoctorCbtRoute
+    }
+    '/_authenticated/doctor-cbt/cbt': {
+      id: '/_authenticated/doctor-cbt/cbt'
+      path: '/cbt'
+      fullPath: '/doctor-cbt/cbt'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtCbtRouteImport
+      parentRoute: typeof AuthenticatedDoctorCbtRoute
+    }
+    '/_authenticated/doctor-cbt/candidates': {
+      id: '/_authenticated/doctor-cbt/candidates'
+      path: '/candidates'
+      fullPath: '/doctor-cbt/candidates'
+      preLoaderRoute: typeof AuthenticatedDoctorCbtCandidatesRouteImport
+      parentRoute: typeof AuthenticatedDoctorCbtRoute
     }
     '/_authenticated/dashboard/inventory': {
       id: '/_authenticated/dashboard/inventory'
@@ -2319,6 +2456,31 @@ const AuthenticatedCollegeRouteChildren: AuthenticatedCollegeRouteChildren = {
 const AuthenticatedCollegeRouteWithChildren =
   AuthenticatedCollegeRoute._addFileChildren(AuthenticatedCollegeRouteChildren)
 
+interface AuthenticatedDoctorCbtRouteChildren {
+  AuthenticatedDoctorCbtCandidatesRoute: typeof AuthenticatedDoctorCbtCandidatesRoute
+  AuthenticatedDoctorCbtCbtRoute: typeof AuthenticatedDoctorCbtCbtRoute
+  AuthenticatedDoctorCbtProfileRoute: typeof AuthenticatedDoctorCbtProfileRoute
+  AuthenticatedDoctorCbtProgramsRoute: typeof AuthenticatedDoctorCbtProgramsRoute
+  AuthenticatedDoctorCbtSettingsRoute: typeof AuthenticatedDoctorCbtSettingsRoute
+  AuthenticatedDoctorCbtIndexRoute: typeof AuthenticatedDoctorCbtIndexRoute
+}
+
+const AuthenticatedDoctorCbtRouteChildren: AuthenticatedDoctorCbtRouteChildren =
+  {
+    AuthenticatedDoctorCbtCandidatesRoute:
+      AuthenticatedDoctorCbtCandidatesRoute,
+    AuthenticatedDoctorCbtCbtRoute: AuthenticatedDoctorCbtCbtRoute,
+    AuthenticatedDoctorCbtProfileRoute: AuthenticatedDoctorCbtProfileRoute,
+    AuthenticatedDoctorCbtProgramsRoute: AuthenticatedDoctorCbtProgramsRoute,
+    AuthenticatedDoctorCbtSettingsRoute: AuthenticatedDoctorCbtSettingsRoute,
+    AuthenticatedDoctorCbtIndexRoute: AuthenticatedDoctorCbtIndexRoute,
+  }
+
+const AuthenticatedDoctorCbtRouteWithChildren =
+  AuthenticatedDoctorCbtRoute._addFileChildren(
+    AuthenticatedDoctorCbtRouteChildren,
+  )
+
 interface AuthenticatedCapitalFacilityRouteChildren {
   AuthenticatedCapitalFacilityIdRoute: typeof AuthenticatedCapitalFacilityIdRoute
 }
@@ -2364,6 +2526,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAssessmentsRoute: typeof AuthenticatedAssessmentsRouteWithChildren
   AuthenticatedCollegeRoute: typeof AuthenticatedCollegeRouteWithChildren
   AuthenticatedCommunicationRoute: typeof AuthenticatedCommunicationRoute
+  AuthenticatedDoctorCbtRoute: typeof AuthenticatedDoctorCbtRouteWithChildren
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
   AuthenticatedAccountsBankAccountsRoute: typeof AuthenticatedAccountsBankAccountsRoute
@@ -2443,6 +2606,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAssessmentsRoute: AuthenticatedAssessmentsRouteWithChildren,
   AuthenticatedCollegeRoute: AuthenticatedCollegeRouteWithChildren,
   AuthenticatedCommunicationRoute: AuthenticatedCommunicationRoute,
+  AuthenticatedDoctorCbtRoute: AuthenticatedDoctorCbtRouteWithChildren,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
   AuthenticatedAccountsBankAccountsRoute:

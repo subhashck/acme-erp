@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { Download, RefreshCw, WifiOff, ServerOff, X } from "lucide-react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { Button } from "../ui/button";
+import { cn } from "../lib/utils";
 
 interface InstallPrompt extends Event {
   prompt(): Promise<void>;
@@ -14,12 +15,16 @@ const InstallContext = createContext<{ available: boolean; nativePrompt: boolean
   install: () => {}
 });
 
-export function PwaInstallButton() {
+export function PwaInstallButton({ className }: { className?: string } = {}) {
   const { available, nativePrompt, install } = useContext(InstallContext);
   if (!available) return null;
   return (
-    <Button variant="outline" className="min-h-11 print:hidden" onClick={install}>
-      <Download size={16} aria-hidden="true" /> {nativePrompt ? "Install app" : "How to install"}
+    <Button
+      variant="outline"
+      className={cn("hidden sm:inline-flex min-h-9 h-9 print:hidden text-xs", className)}
+      onClick={install}
+    >
+      <Download size={15} aria-hidden="true" /> {nativePrompt ? "Install app" : "How to install"}
     </Button>
   );
 }

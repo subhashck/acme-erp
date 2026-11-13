@@ -28,7 +28,10 @@ import {
 import { googleAuthErrorMessage } from "@/lib/google-auth-errors";
 
 export const Route = createFileRoute("/_authenticated/settings")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): {
+    error?: string;
+    error_description?: string;
+  } => ({
     error: typeof search.error === "string" ? search.error : undefined,
     error_description: typeof search.error_description === "string" ? search.error_description : undefined,
   }),

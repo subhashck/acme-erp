@@ -23,14 +23,6 @@ import { Badge } from "../ui/badge";
 import { PublishedMagazineSection } from "../components/PublishedMagazineSection";
 import { PwaInstallHelp } from "../components/PwaProvider";
 import { googleAuthErrorMessage } from "../lib/google-auth-errors";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog";
 
 const isMagazineReturnPath = (path: string) =>
   path === "/magazine/admin" || path.startsWith("/magazine/admin/");
@@ -97,7 +89,6 @@ function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [googleEnabled, setGoogleEnabled] = useState(false);
-  const [googleConfirmOpen, setGoogleConfirmOpen] = useState(false);
 
   // Load Recent Station Users from LocalStorage
   const loadRecentUsers = useCallback(() => {
@@ -405,7 +396,7 @@ function Login() {
                   variant="outline"
                   className="w-full h-10 gap-2.5 border-border/80 hover:bg-muted font-semibold text-sm transition-all"
                   disabled={isGoogleSubmitting}
-                  onClick={() => setGoogleConfirmOpen(true)}
+                  onClick={() => void signInWithGoogle()}
                 >
                   <svg className="size-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
                     <path
@@ -735,33 +726,6 @@ function Login() {
             )}
           </CardContent>
         </Card>
-
-        {/* Google Confirmation Dialog */}
-        <Dialog open={googleConfirmOpen} onOpenChange={setGoogleConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Confirm Google sign-in approval</DialogTitle>
-              <DialogDescription>
-                Google sign-in is available only to staff approved by HR or an Administrator. Please confirm you have
-                received approval before continuing.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setGoogleConfirmOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  setGoogleConfirmOpen(false);
-                  void signInWithGoogle();
-                }}
-              >
-                Yes, I have approval
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         <PwaInstallHelp />
 
