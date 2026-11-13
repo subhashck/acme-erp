@@ -241,3 +241,57 @@ The development database is pre-seeded with realistic clinical data for testing 
 [ ] Step 5: Achieving >= 75% issues an instant modular certificate with verifiable QR code
 [ ] Step 6: Coordinator tracks cohort performance and exports accreditation rosters
 ```
+
+---
+
+## 7. Production Deployment & Seeding Guide
+
+### 7.1. Database Schema Deployment (Automatic)
+The `doctor_cbt` schema and all 12 tables are automatically applied during deployment.
+In `docker-entrypoint.sh`, the standard `pnpm db:setup` command executes `server/db/setup-doctor-cbt-db.ts`:
+```bash
+# Executed automatically on Docker container startup, or run manually:
+pnpm doctor-cbt:setup
+# (or: npx tsx server/db/setup-doctor-cbt-db.ts)
+```
+- Creates PostgreSQL schema `"doctor_cbt"`
+- Creates 12 module tables with strict foreign keys and performance indexes
+- Initializes default module settings (`default_pass_percentage: 75%`, `enable_google_whitelist: true`) idempotently.
+
+---
+
+### 7.2. Deploying Curriculum & Candidate Data in Production
+
+To seed or update the **Basic Course in Reproductive Medicine** curriculum, 10 clinical modules, 50 exam MCQs, pre/exit blueprints, and the candidate directory in production:
+
+#### Via Docker Compose (Recommended)
+Run inside the running `web` container:
+```bash
+docker compose exec web pnpm doctor-cbt:seed
+```
+
+#### Direct Server Execution (VM / Bare Metal / Railway)
+```bash
+pnpm doctor-cbt:seed
+# (or: npx tsx server/db/seed-doctor-cbt-dev.ts)
+```
+
+> [!NOTE]
+> **Idempotent & Safe**: `doctor-cbt:seed` checks for existing records by unique code/email (`ON CONFLICT` / upsert) and will **never** wipe existing hospital records, clinical data, or closing accounts.
+
+---
+
+### 7.3. Google OAuth Production Configuration
+To enable passwordless one-click sign-in for doctor candidates in production:
+1. Ensure your production `.env` or Docker environment contains:
+   ```env
+   GOOGLE_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-your-google-client-secret
+   BETTER_AUTH_URL=https://my-acme.cloud
+   TRUSTED_ORIGINS=https://my-acme.cloud
+   ```
+2. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials):
+   - Add your production redirect URI:
+     `https://my-acme.cloud/api/auth/callback/google`
+3. Candidates whose email appears in `doctor_cbt.doctor_profiles` (or `doctor_cbt.module_users`) can immediately sign in with one click via **Continue with Google**.
+

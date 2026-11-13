@@ -317,7 +317,7 @@ export const moduleUsersRelations = relations(moduleUsers, ({ one }) => ({
   }),
   staff: one(staff, {
     fields: [moduleUsers.staffId],
-    references: [staff.id],
+    references: [staff.staffId],
   }),
 }));
 
@@ -328,7 +328,7 @@ export const doctorProfilesRelations = relations(doctorProfiles, ({ one, many })
   }),
   staff: one(staff, {
     fields: [doctorProfiles.staffId],
-    references: [staff.id],
+    references: [staff.staffId],
   }),
   enrollments: many(doctorEnrollments),
   sessions: many(examSessions),
