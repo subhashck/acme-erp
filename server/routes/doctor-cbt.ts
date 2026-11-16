@@ -1098,7 +1098,7 @@ export const doctorCbtRoutes = new Hono<AuthEnv>()
             inProgressSessionId: activePre?.id ?? null,
             latestAttempt: completedPre || activePre || null,
             attemptsCount: preSessions.filter((s) => s.status !== "in_progress").length,
-            retakeAllowed: Boolean(preTestBp.allowRetakes || enrollment.preTestRetakeAllowed),
+            retakeAllowed: Boolean(preTestBp?.allowRetakes || enrollment.preTestRetakeAllowed),
           },
           exitTest: {
             blueprint: exitTestBp,
@@ -1106,7 +1106,7 @@ export const doctorCbtRoutes = new Hono<AuthEnv>()
             inProgressSessionId: activeExit?.id ?? null,
             latestAttempt: completedExit || activeExit || null,
             attemptsCount: exitSessions.filter((s) => s.status !== "in_progress").length,
-            retakeAllowed: Boolean(exitTestBp.allowRetakes || enrollment.exitTestRetakeAllowed),
+            retakeAllowed: Boolean(exitTestBp?.allowRetakes || enrollment.exitTestRetakeAllowed),
           },
           allAttempts: sessions,
         };

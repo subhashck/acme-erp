@@ -110,11 +110,16 @@ export async function createDoctorCbtSchemaAndTables() {
       "enrolled_at" TIMESTAMP NOT NULL DEFAULT NOW(),
       "status" TEXT NOT NULL DEFAULT 'enrolled',
       "completed_at" TIMESTAMP,
+      "pre_test_retake_allowed" BOOLEAN NOT NULL DEFAULT false,
+      "exit_test_retake_allowed" BOOLEAN NOT NULL DEFAULT false,
       "notes" TEXT,
       "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
       "updated_at" TIMESTAMP NOT NULL DEFAULT NOW(),
       CONSTRAINT "uniq_doctor_program_batch" UNIQUE ("doctor_id", "program_id", "batch_code")
     );
+
+    ALTER TABLE "doctor_cbt"."doctor_enrollments" ADD COLUMN IF NOT EXISTS "pre_test_retake_allowed" BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE "doctor_cbt"."doctor_enrollments" ADD COLUMN IF NOT EXISTS "exit_test_retake_allowed" BOOLEAN NOT NULL DEFAULT false;
 
     CREATE INDEX IF NOT EXISTS "idx_doctor_cbt_enrollments_doctor" ON "doctor_cbt"."doctor_enrollments"("doctor_id");
     CREATE INDEX IF NOT EXISTS "idx_doctor_cbt_enrollments_program" ON "doctor_cbt"."doctor_enrollments"("program_id");
@@ -155,12 +160,17 @@ export async function createDoctorCbtSchemaAndTables() {
       "has_negative_marking" BOOLEAN NOT NULL DEFAULT false,
       "negative_marking_penalty" NUMERIC(4, 2) NOT NULL DEFAULT 0.25,
       "max_attempts" INTEGER,
+      "allow_retakes" BOOLEAN NOT NULL DEFAULT false,
       "active" BOOLEAN NOT NULL DEFAULT true,
       "created_at" TIMESTAMP NOT NULL DEFAULT NOW(),
       "updated_at" TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
     ALTER TABLE "doctor_cbt"."assessment_blueprints" ADD COLUMN IF NOT EXISTS "exam_type" TEXT NOT NULL DEFAULT 'pre_test';
+    ALTER TABLE "doctor_cbt"."assessment_blueprints" ADD COLUMN IF NOT EXISTS "allow_retakes" BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE "doctor_cbt"."assessment_blueprints" ADD COLUMN IF NOT EXISTS "passing_percentage" NUMERIC(5, 2) NOT NULL DEFAULT 75.00;
+    ALTER TABLE "doctor_cbt"."assessment_blueprints" ADD COLUMN IF NOT EXISTS "has_negative_marking" BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE "doctor_cbt"."assessment_blueprints" ADD COLUMN IF NOT EXISTS "negative_marking_penalty" NUMERIC(4, 2) NOT NULL DEFAULT 0.25;
 
     -- 9. Exam Sessions (Candidate Test Attempts)
     CREATE TABLE IF NOT EXISTS "doctor_cbt"."exam_sessions" (

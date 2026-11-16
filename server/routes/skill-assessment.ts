@@ -2248,7 +2248,7 @@ export const skillAssessmentRoutes = new Hono<AuthEnv>()
 
     // Find staff's home department
     const [homeDept] = await db
-      .select({ id: departments.id })
+      .select({ id: staffDepartments.departmentId })
       .from(staffDepartments)
       .where(and(eq(staffDepartments.staffId, staffId), eq(staffDepartments.status, "Active")))
       .limit(1);
