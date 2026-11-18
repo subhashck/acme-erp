@@ -155,6 +155,7 @@ export const staff = sqliteTable("staff", {
   permanentConfirmationDate: text("permanent_confirmation_date"),
   employmentStartDate: text("employment_start_date"),
   employmentEndDate: text("employment_end_date"),
+  photoUrl: text("photo_url"),
   ...timestamps
 }, (table) => [
   primaryKey({ columns: [table.staffId, table.version] })
@@ -1274,6 +1275,7 @@ export const nursingApplicants = sqliteTable("nursing_applicants", {
   aadharNo: text("aadhar_no"),
   gender: text("gender").notNull().default("Female"),
   dob: text("dob"),
+  bloodGroup: text("blood_group"),
   address: text("address"),
   // Referrer Details
   referrerId: integer("referrer_id").references(() => nursingReferrers.id, { onDelete: "set null" }),
@@ -1338,6 +1340,7 @@ export const nursingStudents = sqliteTable("nursing_students", {
   aadharNo: text("aadhar_no"),
   gender: text("gender").notNull().default("Female"),
   dob: text("dob"),
+  bloodGroup: text("blood_group"),
   address: text("address"),
   // Referrer Details
   referrerId: integer("referrer_id").references(() => nursingReferrers.id, { onDelete: "set null" }),
@@ -1380,6 +1383,7 @@ export const nursingStudents = sqliteTable("nursing_students", {
   academicHistory: jsonb("academic_history"),
   status: text("status").notNull().default("active"), // active, promoted, graduated, dropped, transferred
   admissionDate: text("admission_date"),
+  photoUrl: text("photo_url"),
   ...timestamps
 });
 
@@ -1814,5 +1818,8 @@ export const desktopAuthPinsRelations = relations(desktopAuthPins, ({ one }) => 
     references: [session.id],
   }),
 }));
+
+export * from "./schema-idcards";
+
 
 

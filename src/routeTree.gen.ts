@@ -18,11 +18,13 @@ import { Route as AuthenticatedDoctorCbtRouteImport } from './routes/_authentica
 import { Route as AuthenticatedCommunicationRouteImport } from './routes/_authenticated/communication'
 import { Route as AuthenticatedCollegeRouteImport } from './routes/_authenticated/college'
 import { Route as AuthenticatedAssessmentsRouteImport } from './routes/_authenticated/assessments'
+import { Route as AuthenticatedIdCardsIndexRouteImport } from './routes/_authenticated/id-cards/index'
 import { Route as AuthenticatedFrontOfficeIndexRouteImport } from './routes/_authenticated/front-office/index'
 import { Route as AuthenticatedDoctorCbtIndexRouteImport } from './routes/_authenticated/doctor-cbt/index'
 import { Route as AuthenticatedCollegeIndexRouteImport } from './routes/_authenticated/college/index'
 import { Route as AuthenticatedCapitalIndexRouteImport } from './routes/_authenticated/capital/index'
 import { Route as AuthenticatedAssessmentsIndexRouteImport } from './routes/_authenticated/assessments/index'
+import { Route as VerifyIdTokenRouteImport } from './routes/verify/id/$token'
 import { Route as SharedReportTokenRouteImport } from './routes/shared/report/$token'
 import { Route as AuthenticatedPurchasesVendorsRouteImport } from './routes/_authenticated/purchases/vendors'
 import { Route as AuthenticatedPurchasesUnitTypesRouteImport } from './routes/_authenticated/purchases/unit-types'
@@ -174,6 +176,12 @@ const AuthenticatedAssessmentsRoute =
     path: '/assessments',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedIdCardsIndexRoute =
+  AuthenticatedIdCardsIndexRouteImport.update({
+    id: '/id-cards/',
+    path: '/id-cards/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedFrontOfficeIndexRoute =
   AuthenticatedFrontOfficeIndexRouteImport.update({
     id: '/front-office/',
@@ -204,6 +212,11 @@ const AuthenticatedAssessmentsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedAssessmentsRoute,
   } as any)
+const VerifyIdTokenRoute = VerifyIdTokenRouteImport.update({
+  id: '/verify/id/$token',
+  path: '/verify/id/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SharedReportTokenRoute = SharedReportTokenRouteImport.update({
   id: '/shared/report/$token',
   path: '/shared/report/$token',
@@ -906,11 +919,13 @@ export interface FileRoutesByFullPath {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/verify/id/$token': typeof VerifyIdTokenRoute
   '/assessments/': typeof AuthenticatedAssessmentsIndexRoute
   '/capital/': typeof AuthenticatedCapitalIndexRoute
   '/college/': typeof AuthenticatedCollegeIndexRoute
   '/doctor-cbt/': typeof AuthenticatedDoctorCbtIndexRoute
   '/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
+  '/id-cards/': typeof AuthenticatedIdCardsIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
@@ -1021,11 +1036,13 @@ export interface FileRoutesByTo {
   '/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/verify/id/$token': typeof VerifyIdTokenRoute
   '/assessments': typeof AuthenticatedAssessmentsIndexRoute
   '/capital': typeof AuthenticatedCapitalIndexRoute
   '/college': typeof AuthenticatedCollegeIndexRoute
   '/doctor-cbt': typeof AuthenticatedDoctorCbtIndexRoute
   '/front-office': typeof AuthenticatedFrontOfficeIndexRoute
+  '/id-cards': typeof AuthenticatedIdCardsIndexRoute
   '/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
@@ -1142,11 +1159,13 @@ export interface FileRoutesById {
   '/_authenticated/purchases/unit-types': typeof AuthenticatedPurchasesUnitTypesRoute
   '/_authenticated/purchases/vendors': typeof AuthenticatedPurchasesVendorsRoute
   '/shared/report/$token': typeof SharedReportTokenRoute
+  '/verify/id/$token': typeof VerifyIdTokenRoute
   '/_authenticated/assessments/': typeof AuthenticatedAssessmentsIndexRoute
   '/_authenticated/capital/': typeof AuthenticatedCapitalIndexRoute
   '/_authenticated/college/': typeof AuthenticatedCollegeIndexRoute
   '/_authenticated/doctor-cbt/': typeof AuthenticatedDoctorCbtIndexRoute
   '/_authenticated/front-office/': typeof AuthenticatedFrontOfficeIndexRoute
+  '/_authenticated/id-cards/': typeof AuthenticatedIdCardsIndexRoute
   '/_authenticated/accounts/reports/$id': typeof AuthenticatedAccountsReportsIdRoute
   '/_authenticated/accounts/reports/new': typeof AuthenticatedAccountsReportsNewRoute
   '/_authenticated/assessments/certificates/$attemptId': typeof AuthenticatedAssessmentsCertificatesAttemptIdRoute
@@ -1263,11 +1282,13 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/verify/id/$token'
     | '/assessments/'
     | '/capital/'
     | '/college/'
     | '/doctor-cbt/'
     | '/front-office/'
+    | '/id-cards/'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/assessments/certificates/$attemptId'
@@ -1378,11 +1399,13 @@ export interface FileRouteTypes {
     | '/purchases/unit-types'
     | '/purchases/vendors'
     | '/shared/report/$token'
+    | '/verify/id/$token'
     | '/assessments'
     | '/capital'
     | '/college'
     | '/doctor-cbt'
     | '/front-office'
+    | '/id-cards'
     | '/accounts/reports/$id'
     | '/accounts/reports/new'
     | '/assessments/certificates/$attemptId'
@@ -1498,11 +1521,13 @@ export interface FileRouteTypes {
     | '/_authenticated/purchases/unit-types'
     | '/_authenticated/purchases/vendors'
     | '/shared/report/$token'
+    | '/verify/id/$token'
     | '/_authenticated/assessments/'
     | '/_authenticated/capital/'
     | '/_authenticated/college/'
     | '/_authenticated/doctor-cbt/'
     | '/_authenticated/front-office/'
+    | '/_authenticated/id-cards/'
     | '/_authenticated/accounts/reports/$id'
     | '/_authenticated/accounts/reports/new'
     | '/_authenticated/assessments/certificates/$attemptId'
@@ -1540,6 +1565,7 @@ export interface RootRouteChildren {
   ChangePasswordRoute: typeof ChangePasswordRoute
   LoginRoute: typeof LoginRoute
   SharedReportTokenRoute: typeof SharedReportTokenRoute
+  VerifyIdTokenRoute: typeof VerifyIdTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1607,6 +1633,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssessmentsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/id-cards/': {
+      id: '/_authenticated/id-cards/'
+      path: '/id-cards'
+      fullPath: '/id-cards/'
+      preLoaderRoute: typeof AuthenticatedIdCardsIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/front-office/': {
       id: '/_authenticated/front-office/'
       path: '/front-office'
@@ -1641,6 +1674,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/assessments/'
       preLoaderRoute: typeof AuthenticatedAssessmentsIndexRouteImport
       parentRoute: typeof AuthenticatedAssessmentsRoute
+    }
+    '/verify/id/$token': {
+      id: '/verify/id/$token'
+      path: '/verify/id/$token'
+      fullPath: '/verify/id/$token'
+      preLoaderRoute: typeof VerifyIdTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/shared/report/$token': {
       id: '/shared/report/$token'
@@ -2582,6 +2622,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedPurchasesVendorsRoute: typeof AuthenticatedPurchasesVendorsRoute
   AuthenticatedCapitalIndexRoute: typeof AuthenticatedCapitalIndexRoute
   AuthenticatedFrontOfficeIndexRoute: typeof AuthenticatedFrontOfficeIndexRoute
+  AuthenticatedIdCardsIndexRoute: typeof AuthenticatedIdCardsIndexRoute
   AuthenticatedAccountsReportsIdRoute: typeof AuthenticatedAccountsReportsIdRoute
   AuthenticatedAccountsReportsNewRoute: typeof AuthenticatedAccountsReportsNewRoute
   AuthenticatedInventoryPurchaseInvoicesIdRoute: typeof AuthenticatedInventoryPurchaseInvoicesIdRoute
@@ -2675,6 +2716,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedPurchasesVendorsRoute: AuthenticatedPurchasesVendorsRoute,
   AuthenticatedCapitalIndexRoute: AuthenticatedCapitalIndexRoute,
   AuthenticatedFrontOfficeIndexRoute: AuthenticatedFrontOfficeIndexRoute,
+  AuthenticatedIdCardsIndexRoute: AuthenticatedIdCardsIndexRoute,
   AuthenticatedAccountsReportsIdRoute: AuthenticatedAccountsReportsIdRoute,
   AuthenticatedAccountsReportsNewRoute: AuthenticatedAccountsReportsNewRoute,
   AuthenticatedInventoryPurchaseInvoicesIdRoute:
@@ -2717,6 +2759,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChangePasswordRoute: ChangePasswordRoute,
   LoginRoute: LoginRoute,
   SharedReportTokenRoute: SharedReportTokenRoute,
+  VerifyIdTokenRoute: VerifyIdTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

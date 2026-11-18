@@ -157,3 +157,79 @@ export async function deleteDocument(objectKey: string): Promise<void> {
  * Alias for deleting leave document.
  */
 export const deleteLeaveDocument = deleteDocument;
+
+/**
+ * Save an ID card profile photo (auto-crops/resizes to portrait aspect ratio)
+ */
+export async function saveProfilePhoto(
+  file: File,
+  entityType: "staff" | "student",
+  id: string | number
+): Promise<string> {
+  const rawBuffer = Buffer.from(await file.arrayBuffer());
+  const optimizedBuffer = await sharp(rawBuffer)
+    .rotate()
+    .resize({
+      width: 600,
+      height: 750,
+      fit: "cover",
+      position: "top",
+    })
+    .webp({ quality: 85 })
+    .toBuffer();
+
+  const objectKey = `id-cards/photos/${entityType}-${id}-${Date.now()}.webp`;
+  await uploadToMinio(optimizedBuffer, objectKey, "image/webp");
+  return objectKey;
+}
+
+/**
+ * Save an authorized signature image (preserves transparency PNG/WebP)
+ */
+export async function saveSignatureImage(
+  file: File,
+  identifier: string
+): Promise<string> {
+  const rawBuffer = Buffer.from(await file.arrayBuffer());
+  const optimizedBuffer = await sharp(rawBuffer)
+    .rotate()
+    .resize({
+      width: 600,
+      height: 250,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 90 })
+    .toBuffer();
+
+  const cleanId = identifier.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const objectKey = `id-cards/signatures/${cleanId}-${Date.now()}.webp`;
+  await uploadToMinio(optimizedBuffer, objectKey, "image/webp");
+  return objectKey;
+}
+
+/**
+ * Save an ID card background template image (front or back side)
+ */
+export async function saveCardBackgroundTemplate(
+  file: File,
+  templateId: string | number,
+  side: "front" | "back"
+): Promise<string> {
+  const rawBuffer = Buffer.from(await file.arrayBuffer());
+  const optimizedBuffer = await sharp(rawBuffer)
+    .rotate()
+    .resize({
+      width: 1200,
+      height: 1900,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 92 })
+    .toBuffer();
+
+  const objectKey = `id-cards/templates/${templateId}-${side}-${Date.now()}.webp`;
+  await uploadToMinio(optimizedBuffer, objectKey, "image/webp");
+  return objectKey;
+}
+

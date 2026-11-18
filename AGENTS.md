@@ -188,6 +188,29 @@ The standalone LIS module has been removed from application source and navigatio
 
 ---
 
+### K. Unified Student & Staff ID Card Service
+- **Access Policy**: Restricted to `admin`, `hr` role, `acon` department, and management approvers (`canViewHr || canViewCollege || isAdmin`).
+- **Core Capabilities**:
+  - ISO 7810 CR80 standard PVC identity card layout (85.60 mm × 53.98 mm) in Portrait (lanyard badge) and Landscape (pocket clip) orientations.
+  - Multi-card A4 duplex imposition sheet generation with 2mm bleed markers, crop marks, and horizontal mirroring on page 2 for duplex printing.
+  - Code128 1D vector barcode and dynamic anti-counterfeit QR code generation.
+  - Public mobile-responsive verification portal (`/verify/id/:token`).
+  - Automatic face/portrait aspect-ratio photo upload via Sharp & MinIO.
+- **Frontend Routes**:
+  - `src/routes/_authenticated/id-cards/index.tsx`: Central ID Card Studio (Tabs: Batch Issuance Hub, Template Designer, Issuance Audit Ledger).
+  - `src/routes/verify/id/$token.tsx`: Public QR code credential verification portal.
+- **Frontend Components & Helpers**:
+  - `src/components/id-cards/IdCardPreview.tsx`: Live dual-sided vector preview with flip animation.
+  - `src/components/id-cards/TemplateEditor.tsx`: Visual layout, branding, and color palette customizer.
+  - `src/components/id-cards/BatchPrintDialog.tsx`: Direct CR80 and A4 Duplex Imposition PDF generator.
+  - `src/lib/id-card-pdf.ts`: Millimeter-precise jsPDF vector renderer.
+- **Backend Route File**: `server/routes/id-cards.ts` (prefixed with `/api/id-cards/*` and public `/api/public/id-verify/*`).
+- **Key Tables**: `id_card_templates`, `id_card_issuances`, enhanced `staff.photo_url` and `nursing_students.photo_url`.
+- **Database Setup & Seeder**: `server/db/setup-idcards-db.ts` (DDL and default templates for Hospital Staff, ACON Nursing Students, and Executive Clinical ID).
+- **Unit Test Suite**: `tests/unit/id-card-engine.test.ts`.
+
+---
+
 ## 3. Security & Permission Architecture
 
 1. **Frontend Permissions Hook** (`src/lib/permissions.ts`):

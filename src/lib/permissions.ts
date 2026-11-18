@@ -31,6 +31,7 @@ export interface UserPermissions {
   canViewPurchases: boolean;
   canManageStores: boolean;
   canViewDashboard: boolean;
+  canViewRosterAndLeaves: boolean;
   isLoading: boolean;
 }
 
@@ -100,6 +101,7 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
   const canManageStores = !isExternalDoctor && (isAdmin || isManagementApprover);
   const canViewAssessments = !isExternalDoctor && (isAdmin || isHr || Boolean(currentStaff?.staffId));
   const canViewDashboard = !isExternalDoctor && (isAdmin || isManagementApprover);
+  const canViewRosterAndLeaves = !isExternalDoctor && (isAdmin || isHr || isManagementApprover || Boolean(currentStaff?.staffId));
 
   return {
     currentStaff,
@@ -125,6 +127,7 @@ function useUserPermissionsInternal(providedSession?: any): UserPermissions {
     canViewPurchases,
     canManageStores,
     canViewDashboard,
+    canViewRosterAndLeaves,
     isLoading: staffQuery.isLoading || managementApproversQuery.isLoading,
   };
 }

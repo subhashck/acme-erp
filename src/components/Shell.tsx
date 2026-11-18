@@ -424,6 +424,7 @@ function ShellContent({ session }: { session: any }) {
     canViewInventory,
     canViewPurchases,
     canViewDashboard,
+    canViewRosterAndLeaves,
   } = useUserPermissions();
   const magazineConfig = useRpcQuery<{ publicUrl: string | null }>(['magazine-service-config'], () => fetch('/api/public/magazine/config'));
   const magazineUrl = magazineConfig.data?.publicUrl;
@@ -702,6 +703,13 @@ function ShellContent({ session }: { session: any }) {
                         Student Master List
                       </Link>
                       <Link
+                        to="/id-cards"
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                      >
+                        Student ID Cards
+                      </Link>
+                      <Link
                         to={"/college/fees" as any}
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
@@ -877,7 +885,7 @@ function ShellContent({ session }: { session: any }) {
               </div>}
 
               {/* Collapsible HR group */}
-              {!isExternalDoctor && canViewHr && (
+              {!isExternalDoctor && (canViewHr || canViewRosterAndLeaves) && (
                 <div className="flex flex-col">
                   <button
                     onClick={(e) => {
@@ -895,13 +903,24 @@ function ShellContent({ session }: { session: any }) {
 
                   {hrOpen && (
                     <div className="mt-1 ml-4 pl-4 border-l border-border flex flex-col gap-1">
-                      <Link
-                        to="/hr/staff-list"
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                        activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
-                      >
-                        Employee Details
-                      </Link>
+                      {canViewHr && (
+                        <Link
+                          to="/hr/staff-list"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Employee Details
+                        </Link>
+                      )}
+                      {(canViewHr || canViewCollege || isAdmin) && (
+                        <Link
+                          to="/id-cards"
+                          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                          activeProps={{ className: "text-[hsl(174_88%_26%)] dark:text-teal-400 font-bold bg-muted" }}
+                        >
+                          Staff ID Cards
+                        </Link>
+                      )}
                       <Link
                         to="/hr/roster"
                         className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -1548,18 +1567,31 @@ function ShellContent({ session }: { session: any }) {
                 </Link>
               )}
 
+              {(canViewHr || canViewCollege || isAdmin) && (
+                <Link
+                  to="/id-cards"
+                  className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                  title="ID Card Studio"
+                >
+                  <CreditCard size={20} />
+                </Link>
+              )}
+
               {!isExternalDoctor && <div className="w-8 h-px bg-border my-2" />}
 
-              {!isExternalDoctor && canViewHr && (
+              {!isExternalDoctor && (canViewHr || canViewRosterAndLeaves) && (
                 <>
-                  <Link
-                    to="/hr/staff-list"
-                    className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
-                    title="Employee Details"
-                  >
-                    <Users size={20} />
-                  </Link>
+                  {canViewHr && (
+                    <Link
+                      to="/hr/staff-list"
+                      className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      activeProps={{ className: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" }}
+                      title="Employee Details"
+                    >
+                      <Users size={20} />
+                    </Link>
+                  )}
 
                   <Link
                     to="/hr/roster"
@@ -1597,7 +1629,7 @@ function ShellContent({ session }: { session: any }) {
                     <Receipt size={20} />
                   </Link>
 
-                  {(session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && <Link to="/hr/payroll-deductions" title="Payroll Deductions" className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" activeProps={{ className: "bg-primary text-primary-foreground" }}><Receipt size={20} /></Link>}
+                  {canViewHr && (session.data?.user?.role === "admin" || session.data?.user?.role === "hr") && <Link to="/hr/payroll-deductions" title="Payroll Deductions" className="flex size-10 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" activeProps={{ className: "bg-primary text-primary-foreground" }}><Receipt size={20} /></Link>}
                 </>
               )}
 
